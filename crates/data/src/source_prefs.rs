@@ -101,8 +101,13 @@ pub fn set_option(m: &mut MetadataSettings, id: &str, key: &str, value: Option<s
 pub fn is_field_customised(m: &MetadataSettings, field: &str) -> bool {
     m.field_priority.get(field).is_some_and(|list| {
         let default = default_field_priority(field);
-        let before: Vec<String> = default.iter().filter(|id| !ADDED_SOURCES.contains(&id.as_str())).cloned().collect();
-        *list != default && *list != before
+        // The default as each earlier build saved it: without the sources
+        // added after it.
+        let saved_before = (0..ADDED_SOURCES.len()).map(|built| {
+            let later = &ADDED_SOURCES[built..];
+            default.iter().filter(|id| !later.contains(&id.as_str())).cloned().collect::<Vec<String>>()
+        });
+        *list != default && saved_before.into_iter().all(|before| *list != before)
     })
 }
 

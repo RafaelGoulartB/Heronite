@@ -283,8 +283,11 @@ pub struct GameCounts {
     /// Per [`bulk_fields`] id: the games that lack it.
     pub missing_by_field: IndexMap<String, usize>,
     /// Per source a job may ask (`MetadataService::bulk_sources`, in that
-    /// order): the games it is for.
+    /// order): the games it is for (none while it waits for its download).
     pub reach: IndexMap<String, usize>,
+    /// The sources of `reach` that cannot be asked until their database is
+    /// downloaded.
+    pub needs_download: Vec<String>,
 }
 
 /// What [`MetadataService::undo_bulk_metadata`](crate::MetadataService::undo_bulk_metadata) did.

@@ -218,6 +218,12 @@ impl DataPaths {
     pub fn store_cache(&self, name: &str) -> PathBuf {
         self.j("store_cache").join(format!("{name}.json"))
     }
+    /// `store_cache/sources/<id>/`: what a metadata source downloads (a
+    /// database it is asked from). A cache: backups leave it out and nothing
+    /// syncs it between PCs.
+    pub fn source_cache_dir(&self, id: &str) -> PathBuf {
+        self.j("store_cache").join("sources").join(id)
+    }
     /// `gog_store/<name>.json`.
     pub fn gog_store(&self, name: &str) -> PathBuf {
         self.j("gog_store").join(format!("{name}.json"))

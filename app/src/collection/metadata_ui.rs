@@ -52,6 +52,8 @@ impl CollectionView {
                 this.dialog_sub = None;
                 this.open_settings_section(crate::pages::settings::Section::Metadata, window, cx);
             }
+            // Settings → Metadata reads it.
+            HubEvent::SourceDownloaded => {}
         })
         .detach();
         // The header pill follows the job's progress.

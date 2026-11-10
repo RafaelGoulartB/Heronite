@@ -4,9 +4,11 @@
 //! All base URLs live in [`Endpoints`] so tests can point them at a local mock
 //! server.
 
+use std::io::{Read, Write};
+use std::path::Path;
 use std::time::Duration;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::de::DeserializeOwned;
 
 pub const BROWSER_UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
@@ -27,6 +29,10 @@ pub struct Endpoints {
     pub lutris: String,
     /// VNDB's API v2 ("Kana").
     pub vndb: String,
+    /// The LaunchBox Games Database (its archive, `/Metadata.zip`).
+    pub launchbox: String,
+    /// Where LaunchBox's pictures are, by file name.
+    pub launchbox_images: String,
     pub steamgriddb: String,
     pub bottles_steamgrid: String,
     pub hltb: String,
@@ -48,6 +54,8 @@ impl Default for Endpoints {
             steam_community: "https://steamcommunity.com".into(),
             lutris: "https://lutris.net".into(),
             vndb: "https://api.vndb.org/kana".into(),
+            launchbox: "https://gamesdb.launchbox-app.com".into(),
+            launchbox_images: "https://images.launchbox-app.com".into(),
             steamgriddb: "https://www.steamgriddb.com/api/v2".into(),
             bottles_steamgrid: "https://steamgrid.usebottles.com".into(),
             hltb: "https://howlongtobeat.com".into(),
@@ -197,6 +205,96 @@ impl<'a> Request<'a> {
         } else {
             Err(r.error())
         }
+    }
+}
+
+/// How a download into a file ended ([`Http::download_to`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Fetched {
+    /// The file holds the whole body.
+    Complete { etag: Option<String>, last_modified: Option<String> },
+    /// The server says the copy named in `If-None-Match` is current.
+    NotModified,
+    /// `go` asked to stop; the file keeps what came.
+    Stopped,
+}
+
+/// The longest a download into a file may take.
+const DOWNLOAD_LIMIT: Duration = Duration::from_secs(3 * 3600);
+
+impl Http {
+    /// GETs `url` into the file at `path`, calling `go` after each chunk with
+    /// the bytes in the file and the full size when known; `go` returning
+    /// `false` stops it. With `resume` and a file already there, asks only
+    /// for the rest (`Range`, guarded by `If-Range: etag` so a changed file
+    /// comes whole); a server that sends it whole starts the file over.
+    /// `not_modified_if`: an ETag whose copy is current (`If-None-Match`).
+    /// `started` gets the body's ETag before the first byte is written.
+    /// A request without answer is [`Unreachable`]; the file keeps what came.
+    pub fn download_to(
+        &self,
+        url: &str,
+        path: &Path,
+        resume: Option<&str>,
+        not_modified_if: Option<&str>,
+        started: &mut dyn FnMut(Option<&str>),
+        go: &mut dyn FnMut(u64, Option<u64>) -> bool,
+    ) -> Result<Fetched> {
+        let have = resume.and(std::fs::metadata(path).ok()).map_or(0, |m| m.len());
+        let mut req = self.agent.get(url).config().timeout_global(Some(DOWNLOAD_LIMIT)).build().header("User-Agent", APP_UA);
+        if have > 0 {
+            req = req.header("Range", format!("bytes={have}-"));
+            if let Some(etag) = resume.filter(|e| !e.is_empty()) {
+                req = req.header("If-Range", etag);
+            }
+        }
+        if let Some(etag) = not_modified_if.filter(|e| !e.is_empty()) {
+            req = req.header("If-None-Match", etag);
+        }
+        let unreachable = |e: &dyn std::fmt::Display| anyhow::Error::new(Unreachable(format!("{url}: {e}")));
+        let mut resp = req.call().map_err(|e| unreachable(&e))?;
+        let status = resp.status().as_u16();
+        let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_owned);
+        let (etag, last_modified) = (header("etag"), header("last-modified"));
+        let length: Option<u64> = header("content-length").and_then(|v| v.parse().ok());
+        let (append, total) = match status {
+            304 => return Ok(Fetched::NotModified),
+            // Asked from past the end: the file is whole already.
+            416 if have > 0 => return Ok(Fetched::Complete { etag: resume.map(str::to_owned), last_modified }),
+            206 if have > 0 => (true, length.map(|l| l + have)),
+            200..=299 => (false, length),
+            _ => anyhow::bail!("HTTP {status} for {url}"),
+        };
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(append)
+            .truncate(!append)
+            .open(path)
+            .with_context(|| format!("cannot write {}", path.display()))?;
+        // A part resumed keeps the ETag it was asked with (`If-Range`).
+        started(if append { resume } else { etag.as_deref() });
+        let mut written = if append { have } else { 0 };
+        let mut reader = resp.body_mut().as_reader();
+        let mut buf = vec![0u8; 256 * 1024];
+        loop {
+            if !go(written, total) {
+                file.flush()?;
+                return Ok(Fetched::Stopped);
+            }
+            let n = reader.read(&mut buf).map_err(|e| unreachable(&e))?;
+            if n == 0 {
+                break;
+            }
+            file.write_all(&buf[..n]).with_context(|| format!("cannot write {}", path.display()))?;
+            written += n as u64;
+        }
+        file.sync_all()?;
+        if total.is_some_and(|t| t != written) {
+            return Err(unreachable(&format!("the download ended at {written} of {} bytes", total.unwrap_or(0))));
+        }
+        go(written, total);
+        Ok(Fetched::Complete { etag, last_modified })
     }
 }
 

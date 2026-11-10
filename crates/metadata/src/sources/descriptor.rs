@@ -3,9 +3,12 @@
 //! source, and an extension's manifest carries the same shape (camelCase
 //! JSON; every key but `id`, `name` and `kind` may be left out).
 
+use std::collections::BTreeMap;
+
 use heronite_data::models::LocalGameMeta;
 use serde::{Deserialize, Serialize};
 
+use super::download::SourceDownload;
 use super::options::SourceOption;
 use crate::types::{MatchedBy, MetadataApplyArgs};
 
@@ -47,8 +50,8 @@ pub enum Needs {
 
 /// The games a source is for. A source is not asked about other games.
 ///
-/// JSON: `"all"`, `"hasSteamId"`, `"emulated"`, `{"stores": ["gog"]}`,
-/// `{"platforms": ["snes"]}`.
+/// JSON: `"all"`, `"hasSteamId"`, `"emulated"`, `"pc"`, `{"stores": ["gog"]}`,
+/// `{"platforms": ["nintendo_super_nes"]}`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AppliesTo {
@@ -61,8 +64,11 @@ pub enum AppliesTo {
     Stores(Vec<String>),
     /// Games launched through an emulator.
     Emulated,
-    /// Emulated games of these platform ids (the overlay's `platformId`).
+    /// Emulated games of these platform ids ([`SourceGame::platform`],
+    /// `crate::platforms`).
     Platforms(Vec<String>),
+    /// Games that are not emulated.
+    Pc,
 }
 
 impl AppliesTo {
@@ -73,13 +79,14 @@ impl AppliesTo {
             Self::Stores(stores) => stores.iter().any(|s| *s == game.runner || game.store.as_deref() == Some(s.as_str())),
             Self::Emulated => game.emulated,
             Self::Platforms(platforms) => game.platform.as_deref().is_some_and(|p| platforms.iter().any(|x| x == p)),
+            Self::Pc => !game.emulated,
         }
     }
 
     /// Whether answering needs the overlay entry (`local_library/library.json`)
     /// beyond the Steam id.
     pub(crate) fn needs_overlay(&self) -> bool {
-        matches!(self, Self::Stores(_) | Self::Emulated | Self::Platforms(_))
+        matches!(self, Self::Stores(_) | Self::Emulated | Self::Platforms(_) | Self::Pc)
     }
 }
 
@@ -119,6 +126,16 @@ impl GameKind {
         let signals: Vec<String> = self.signals.iter().map(|s| crate::util::normalize_title(s)).collect();
         names.into_iter().any(|n| signals.contains(&crate::util::normalize_title(n)))
     }
+}
+
+/// More games a source is for while one of its switch options is on (the
+/// LaunchBox Games Database's "Also for PC games").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlsoFor {
+    /// The key of a [`Switch`](super::OptionKind::Switch) option.
+    pub option: String,
+    pub applies_to: AppliesTo,
 }
 
 /// A metadata source as data.
@@ -174,6 +191,18 @@ pub struct SourceDescriptor {
     /// row in Settings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub about: Option<String>,
+    /// The database it downloads before it can be asked
+    /// ([`Needs::Download`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub download: Option<SourceDownload>,
+    /// More games it is for while an option says so.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub also_for: Option<AlsoFor>,
+    /// The games for which, when it finds one surely, it goes ahead of the
+    /// sources that found that game only by its title, in every field
+    /// whose order the user did not set (`crate::sources::order`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leads_for: Option<AppliesTo>,
 }
 
 fn is_always(a: &Asked) -> bool {
@@ -214,8 +243,21 @@ pub struct SourceGame {
     /// The overlay's `source` (`steam`, `epic`, `emulator`, ...).
     pub store: Option<String>,
     pub emulated: bool,
-    /// The overlay's `platformId` of an emulated game.
+    /// The app's platform id of an emulated game (`nintendo_super_nes`):
+    /// the overlay's `platformId`, else what the ROM, the emulator, the
+    /// folders or the record say ([`crate::platforms::resolve`]). Each
+    /// database's names for it: [`crate::platforms::by_id`].
     pub platform: Option<String>,
+    /// The file an emulated game's dump is named by
+    /// (`Super Metroid (Japan, USA) (En,Ja).sfc`), without its folder
+    /// ([`crate::platforms::rom_file`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rom_file: Option<String>,
+    /// Hashes of the ROM the app already keeps, by kind (`crc32`, `md5`,
+    /// `sha1`, lower-case hex). A lookup never hashes a file; the app keeps
+    /// none yet, so this is empty until it does.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub rom_hashes: BTreeMap<String, String>,
     /// The fields asked of this source (`None`: every field it gives). Set
     /// for pictures sources, which fetch one picture per field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -223,9 +265,13 @@ pub struct SourceGame {
 }
 
 impl SourceGame {
-    /// `overlay` is the game's entry in `local_library/library.json`, when read.
-    pub fn new(args: &MetadataApplyArgs, overlay: Option<&LocalGameMeta>) -> Self {
+    /// `overlay` is the game's entry in `local_library/library.json`, when
+    /// read; `record_platforms` the platforms its metadata names (the last
+    /// thing an emulated game's platform is told by).
+    pub fn new(args: &MetadataApplyArgs, overlay: Option<&LocalGameMeta>, record_platforms: &[String]) -> Self {
         let non_empty = |s: Option<&String>| s.filter(|s| !s.is_empty()).cloned();
+        let emulated = overlay.is_some_and(|m| m.launch_kind == "emulator" || m.source == "emulator");
+        let emulation = overlay.filter(|_| emulated);
         Self {
             app_name: args.app_name.clone(),
             runner: args.runner.clone(),
@@ -235,8 +281,13 @@ impl SourceGame {
             lutris_slug: args.lutris_slug.clone(),
             language: args.language.clone(),
             store: overlay.map(|m| m.source.clone()).filter(|s| !s.is_empty()),
-            emulated: overlay.is_some_and(|m| m.launch_kind == "emulator"),
-            platform: non_empty(overlay.and_then(|m| m.platform_id.as_ref())),
+            emulated,
+            platform: emulation
+                .and_then(|m| crate::platforms::resolve(m, record_platforms))
+                .map(|p| p.id.to_owned())
+                .or_else(|| non_empty(emulation.and_then(|m| m.platform_id.as_ref())).filter(|p| p != "other")),
+            rom_file: emulation.and_then(crate::platforms::rom_file),
+            rom_hashes: BTreeMap::new(),
             fields: None,
         }
     }

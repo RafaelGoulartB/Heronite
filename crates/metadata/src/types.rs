@@ -215,6 +215,8 @@ pub enum NotAsked {
     NotForThisGame,
     /// It needs a key or an account the user has not set.
     NeedsKey,
+    /// Its database is not downloaded ([`crate::sources::Needs::Download`]).
+    NeedsDownload,
     /// Left out by the request (other fields or sources were chosen).
     NotChosen,
     /// Asked only as a fallback, and nothing called for it: the other

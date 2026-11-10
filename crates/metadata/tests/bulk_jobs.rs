@@ -644,8 +644,10 @@ fn fill_what_is_missing_does_what_the_counts_say() {
     assert!(after.fields_missing < counts.fields_missing);
     assert_eq!(
         s.svc.bulk_sources(&s.svc.metadata_settings()).iter().map(|d| d.id.as_str()).collect::<Vec<_>>(),
-        ["igdb", "steam", "store", "lutris", "vndb"]
+        ["igdb", "steam", "store", "lutris", "vndb", "launchbox"]
     );
+    assert_eq!(counts.needs_download, ["launchbox"], "listed, but it reaches no game before its download");
+    assert_eq!(counts.reach["launchbox"], 0);
 }
 
 #[test]

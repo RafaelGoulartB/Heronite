@@ -206,13 +206,18 @@ impl MetadataUpdate {
     }
 
     fn render_sources(&self, cx: &mut Context<Self>) -> Div {
-        let reach = self.counts.as_ref().filter(|(s, _)| *s == self.scope).map(|(_, c)| c.reach.clone());
+        let counts = self.counts.as_ref().filter(|(s, _)| *s == self.scope).map(|(_, c)| c);
+        let reach = counts.map(|c| c.reach.clone());
+        let waiting: Vec<String> = counts.map(|c| c.needs_download.clone()).unwrap_or_default();
         let mut chips = div().flex().flex_wrap().gap(px(6.));
         let mut empty = Vec::new();
+        let mut not_downloaded = Vec::new();
         for d in self.sources.iter().flatten() {
             let name = labels::name(&d.name).to_string();
             let useless = reach.as_ref().and_then(|r| r.get(&d.id)).is_some_and(|n| *n == 0);
-            if useless {
+            if waiting.contains(&d.id) {
+                not_downloaded.push(name.clone());
+            } else if useless {
                 empty.push(name.clone());
             }
             let on = !self.sources_off.contains(&d.id) && !useless;
@@ -247,6 +252,10 @@ impl MetadataUpdate {
         let mut note = tr!("In your order. Click one to leave it out of this update.").to_string();
         if !empty.is_empty() {
             note = format!("{note} {}", tr!("Nothing for these games: {sources}.", sources = empty.join(", ")));
+        }
+        if !not_downloaded.is_empty() {
+            let sources = not_downloaded.join(", ");
+            note = format!("{note} {}", tr!("Download its database in Settings → Metadata first: {sources}.", sources));
         }
         div()
             .flex()

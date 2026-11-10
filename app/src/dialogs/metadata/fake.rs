@@ -3,7 +3,9 @@
 //! pinned, Steam found by its id, Lutris found another game (left out), the
 //! store not for this game, VNDB not asked (the others found the game),
 //! genres locked and the release date picked from Steam; `vndb`: as `fake`,
-//! with VNDB asked and found by its title; `none`: no source found the
+//! with VNDB asked and found by its title; `emulated`: as `fake` for an
+//! emulated game, Steam not for it and the LaunchBox Games Database found
+//! by the dump's name on its platform; `none`: no source found the
 //! game; `offline`: none could be reached; `nokey`: as `fake`, without an
 //! IGDB key; `covers`: as `fake`, scrolled to the cover rows. SteamGridDB
 //! gives a cover of each shape. The pictures are covers the Collection
@@ -94,6 +96,17 @@ impl FakePreview {
             ]
         };
         let mut candidates = candidates;
+        let emulated = self.state == "emulated";
+        if emulated {
+            candidates.push(self.candidate("launchbox", t, "1997-03-20", MatchedBy::ExactTitle, "511", |m| {
+                m.description = Some(format!("{t}, as the LaunchBox Games Database tells it."));
+                m.developers = strings(&["North Studio"]);
+                m.genres = strings(&["Action", "Platform"]);
+                m.platforms = strings(&["PlayStation"]);
+                m.critic_score = Some(JsNum(94.));
+                m.cover_url = self.thumb(4);
+            }));
+        }
         if self.state == "vndb" {
             candidates.push(self.candidate("vndb", t, "2004-11", MatchedBy::ExactTitle, "v2002", |m| {
                 m.description = Some(format!("{t}, as the Visual Novel Database tells it."));
@@ -131,13 +144,28 @@ impl FakePreview {
                 SourceState { source: "store".into(), answer: SourceAnswer::NotAsked { why: NotAsked::NotForThisGame } },
                 SourceState {
                     source: "vndb".into(),
-                    answer: match candidates.get(4) {
+                    answer: match candidates.get(4).filter(|c| c.source == "vndb") {
                         Some(vndb) => found(vndb, true),
                         None => SourceAnswer::NotAsked { why: NotAsked::Fallback },
                     },
                 },
+                SourceState {
+                    source: "launchbox".into(),
+                    answer: match candidates.iter().find(|c| c.source == "launchbox") {
+                        Some(lb) => found(lb, true),
+                        None => SourceAnswer::NotAsked { why: NotAsked::NeedsDownload },
+                    },
+                },
             ]
         };
+        let mut sources = sources;
+        let mut candidates = candidates;
+        if emulated {
+            if let Some(steam) = sources.iter_mut().find(|s| s.source == "steam") {
+                steam.answer = SourceAnswer::NotAsked { why: NotAsked::NotForThisGame };
+            }
+            candidates.retain(|c| c.source != "steam");
+        }
         let mut proposed = current.clone();
         if let Some(igdb) = candidates.first() {
             let m = &igdb.metadata;
@@ -176,7 +204,7 @@ impl FakePreview {
     /// The picks the made-up state shows: the release date from Steam.
     pub(super) fn picks(&self) -> Vec<(&'static str, &'static str)> {
         match self.state.as_str() {
-            "none" | "offline" => Vec::new(),
+            "none" | "offline" | "emulated" => Vec::new(),
             _ => vec![("releaseDate", "steam")],
         }
     }

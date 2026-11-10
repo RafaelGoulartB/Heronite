@@ -111,6 +111,8 @@ impl Server {
             steam_community: format!("{b}/community"),
             lutris: format!("{b}/lutris"),
             vndb: format!("{b}/vndb/kana"),
+            launchbox: format!("{b}/launchbox"),
+            launchbox_images: format!("{b}/lbimages"),
             steamgriddb: format!("{b}/sgdb/api/v2"),
             bottles_steamgrid: format!("{b}/bottles"),
             hltb: format!("{b}/hltb"),

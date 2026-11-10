@@ -1,5 +1,6 @@
 //! Collection metadata and artwork backend: the registry of sources (IGDB,
-//! Steam, Lutris, VNDB, store and Playnite details, plus pictures and extras), when
+//! Steam, Lutris, VNDB, the LaunchBox Games Database, store and Playnite
+//! details, plus pictures and extras; `platforms` and `rom_names` for emulated games), when
 //! a match is sure enough to save (`confidence`) and the review queue of the
 //! others (`review`), the per-field merge, details editing, custom art,
 //! Steam details/hero caches, covers, web image search and HowLongToBeat.
@@ -22,13 +23,16 @@ pub mod http;
 pub mod igdb;
 pub mod images;
 pub mod job;
+pub mod launchbox;
 pub mod lutris;
 pub mod merge;
+pub mod platforms;
 pub mod protondb;
 pub mod providers;
 pub mod record;
 pub mod remove;
 pub mod review;
+pub mod rom_names;
 pub mod service;
 pub mod sources;
 pub mod steam;

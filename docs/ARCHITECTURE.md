@@ -54,8 +54,8 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      kscreen-doctor, Mutter, wlr-randr, hyprctl),
  │                      read-only so far                             → platform
  ├─ heronite-metadata   registry of metadata sources (IGDB, Steam,
- │                      Lutris, VNDB, HLTB, ...), the merge, the review of
- │                      unsure matches, artwork                      → data
+ │                      Lutris, VNDB, LaunchBox, HLTB, ...), the merge,
+ │                      the review of unsure matches, artwork        → data
  ├─ heronite-achievements achievements of Steam (the client's files),
  │                      GOG, Epic and RetroAchievements (ROM hashes
  │                      by the vendored rcheevos), and the local copy
@@ -565,7 +565,52 @@ text size) and applies it.
   under VNDB's 200 requests per 5 minutes and waits out a 429; its tags
   (content, no spoilers, rated 2+, 12 at most) are themes, its genre is
   "Visual Novel", its 10..100 rating the score, a safe landscape screenshot
-  the background. A descriptor may say a source is asked only as a
+  the background. `launchbox` is the LaunchBox Games Database: no API, the
+  whole database is one archive (`Metadata.zip`, ~105 MB, daily) that the
+  user downloads from the source's row; `fetch` downloads it into the
+  data folder's cache area (`store_cache/sources/launchbox/`, out of
+  backups and sync; resumed with `Range` / `If-Range`, refreshed only when
+  its ETag changed), `build` streams `Metadata.xml` and `Files.xml` out of
+  the zip (`parse`, quick-xml, a record at a time) into `index` (SQLite:
+  games, names and alternate names as `rom_names::match_key` keys by
+  platform, LaunchBox's file → title table, the pictures used with packed
+  file names, the overviews deflated 64 games a block; ~80 MB for all
+  190,000 games, built in ~8 s with ~50 MB of memory, a lookup ~0.15 ms),
+  built as `index.sqlite.part` and renamed over the old one only once it
+  opens with games, so a failed or cancelled refresh keeps the old one.
+  A lookup of an emulated game stays on its platform's LaunchBox
+  platforms (`platforms`): the dump's file in LaunchBox's file table,
+  then the dump name cleaned, then the title (exact and alone →
+  `ExactTitle`; a longer name or a shorter one, or two games → `FuzzyTitle`);
+  a PC game (the "Also for PC games" option) is looked up on Windows / DOS,
+  by its Steam id first; a search by hand spans every platform and shows
+  which. `map` fills the record (box art by the "Box art region" option,
+  automatic from the interface language; the fan art background; the
+  square cover; the 0..5 rating as a score from 5 votes; game modes from
+  the players). `platforms` is the table of the app's platform ids (the
+  emulator catalog's and Playnite's), how the Collection names them and
+  how each database a source reads names them (a column per database:
+  LaunchBox's so far), plus `resolve`, an emulated game's platform from
+  its entry (the `platformId`, else the ROM's extension, the emulator's
+  name, the ROM's folders, the record's platforms) and `rom_file`, the
+  file its dump is named by (the folder above a boot file such as
+  `EBOOT.BIN`). `rom_names` cleans No-Intro / Redump / TOSEC names (tags,
+  "Legend of Zelda, The", discs, safe roman numerals). `SourceGame`
+  carries `emulated`, `platform`, `rom_file` and `rom_hashes` (empty: the
+  app keeps no ROM hash yet; a lookup never hashes a file). A descriptor
+  may say a source needs a download (`needs: download`, `download`:
+  its size and refresh days); `sources/download` is the contract
+  (`DownloadState`, `DownloadProgress` with cancel, the trait's
+  `download_state` / `download` / `remove_download`), Settings draws it
+  for any such source, `service/source_settings` runs it
+  (`download_source`, `refresh_due_source_downloads` for the idle
+  maintenance: weekly, only a database the user downloaded, only while the
+  source is on), and `gather` never asks a source before its download
+  (`NotAsked::NeedsDownload`). A descriptor may widen its audience by a
+  switch option (`alsoFor`) and name an audience it leads for
+  (`leadsFor`, see `sources/order`: for an emulated game LaunchBox found
+  surely, it goes ahead of the sources that found the game only by its
+  title, in each field whose order is still the default one). A descriptor may say a source is asked only as a
   fallback (`Asked::AsFallback`, VNDB) and name the kind of game it is
   about (`GameKind`: a name for Settings and the genre / theme / Steam tag
   names that signal it). `service/gather` asks the sources: a fallback
@@ -655,36 +700,52 @@ text size) and applies it.
   cropped are listed apart, per family, and are not a reason to need
   attention).
 
-  *Adding a built-in source* (what VNDB needed; no screen code):
-  1. A provider module (`crates/metadata/src/<source>.rs`): the client
-     (base URL in `http::Endpoints`, the API's limits, `http::APP_UA`
-     when it asks clients to say who they are), and the mapping of an
-     answer to a `CollectionGameMetadata` (text through `util::clip` /
-     plain text, lists through `unique_names12`, dates as `YYYY[-MM[-DD]]`,
-     only `http` picture URLs), with unit tests on recorded answers in
-     `tests/fixtures/` and a `HERONITE_LIVE` check in `tests/live.rs`.
+  *Adding a built-in source* (what VNDB and LaunchBox needed; no screen code):
+  1. A provider module (`crates/metadata/src/<source>.rs`, or a folder
+     when it has a local database: `launchbox/`): the client (base URLs in
+     `http::Endpoints`, and their test prefixes in `tests/common`'s
+     `Server::endpoints`; the API's limits; `http::APP_UA` when it asks
+     clients to say who they are), and the mapping of an answer to a
+     `CollectionGameMetadata` (text through `util::clip` / plain text,
+     lists through `unique_names12`, dates as `YYYY[-MM[-DD]]`, only `http`
+     picture URLs, a cover family only when the source has art of that
+     shape: check its real sizes), with unit tests on recorded answers in
+     `tests/fixtures/` (trimmed by hand from the real data, a few hundred
+     KB at most) and a `HERONITE_LIVE` check in `tests/live.rs`.
   2. A descriptor in `sources/builtin`'s `BUILTIN`, in merge order: id,
-     name, kind, `provides` (only fields it really fills), `applies_to`,
-     `finds_by`, `needs`, `network`, `searchable`, `asked` and `game_kind`
-     when it is a fallback for a kind of game, `about` (a `n_!` line for
-     its open row), `options` (`n_!` labels and help, defaults). Options
-     not in the legacy keys are stored under `sources.<id>.options` by
-     themselves.
+     name, kind, `provides` (only fields it really fills), `applies_to`
+     (and `also_for` when an option widens it), `finds_by`, `needs`,
+     `network` (false for a local database: it never counts towards
+     "offline"), `searchable`, `asked` and `game_kind` when it is a
+     fallback for a kind of game, `about` (a `n_!` line for its open row,
+     with "Heronite is not affiliated with …"), `options` (`n_!` labels,
+     help and choice labels, defaults), `download` for a database it
+     downloads, `leads_for` when it should go ahead of title-only matches
+     for its audience. Options not in the legacy keys are stored under
+     `sources.<id>.options` by themselves.
   3. An adapter implementing `MetadataSource` (`lookup` with an honest
-     `MatchedBy`, and for a searchable source `lookup_id` and `search`),
-     with `match_id` set, and `adult_pictures` / `thumb_adult` when the
-     source rates its pictures; listed in `builtin::registry` (shared
-     client state goes in `Shared`).
+     `MatchedBy`, and for a searchable source `lookup_id` and `search`,
+     whose hits name the platform when the source has several), with
+     `match_id` set, `adult_pictures` / `thumb_adult` when the source rates
+     its pictures, and `download_state` / `download` / `remove_download`
+     for a database; listed in `builtin::registry` (shared client state
+     goes in `Shared`, and `SourceRegistry::for_tests`).
   4. `heronite_data::settings`: the id in `SOURCE_IDS` (a details source),
-     in `default_field_priority` for each field it fills, and in
-     `ADDED_SOURCES` so saved lists take it; the registry tests check the
-     two agree.
+     in `default_field_priority` for each field it fills, and at the end of
+     `ADDED_SOURCES` (in the order sources were added: a list saved between
+     two of them still reads as the default); the registry tests check the
+     two agree. Expect the tests that list the sources or a field's order
+     (`sources/tests`, `order`, `rows`, `merge`, `settings`, `bulk_jobs`,
+     `review`, `sources`) to change on purpose.
   5. A monogram colour in `theme::source_colour` (or a logo in
-     `pages/settings/metadata/labels::logo`), and the de / es / pt-BR
-     translations of its descriptor's strings.
-  6. Integration tests against the fixture server (`tests/common`: a
-     prefix in `Server::endpoints`): lookup, id, search, when it is asked,
-     offline.
+     `pages/settings/metadata/labels::logo`), the de / es / pt-BR
+     translations of its descriptor's strings (reusing the words already
+     translated: regions, "Automatic"), and, when it adds an `AppliesTo`,
+     `NotAsked` or status variant, its words in `labels` and `found_as`.
+  6. Integration tests against the fixture server (`tests/common`): lookup,
+     id, search, when it is asked and when it is not (never before a
+     download), offline, and the debug states that show it in a capture
+     (`dialogs/metadata/fake.rs`, `HERONITE_DEBUG_SOURCE_DOWNLOAD`).
 - **heronite-achievements:** every game's achievements, whatever its store.
   `target` says which sources a Collection game has (its store, its Steam
   twin, RetroAchievements for a ROM). `sources/` reads them: `steam` the
@@ -750,7 +811,7 @@ text size) and applies it.
 | `diagnosis/` | the launch diagnosis for the UI: `gather` reads what `heronite_launch::diagnose` needs for a game, `apply` applies a fix (winetricks components, game settings, the best Proton, ending a wineserver, `vm.max_map_count` through `pkexec`), `text` says it; the fixes applied this run are remembered so one that did not help is not offered as the answer again. The Collection runs it when a game ends within `FAILED_LAUNCH_WINDOW` and opens `dialogs/launch_problem`; without a window the cause goes into the notification |
 | `overlay/` | the in-game overlay (off by default): `OverlayService` follows the launch events like `services::session`, runs `heronite_overlay::input` while a game runs, and opens the panel (`panel/`, its Notes tab in `notes.rs` with the compact on-screen keyboard, its Achievements tab in `achievements.rs` from `services::achievements` when the game has a set) and notices (`toast.rs`; achievement notices queue) through `window.rs`: Wayland layer-shell on Linux, native topmost tool windows on Windows (`window/windows.rs`, HWND placement/focus in `heronite-platform::overlay_window`). Windows notices do not activate and pass pointer input through; a keyboard panel returns focus only while it still owns foreground. The keyboard shortcut uses the existing capture `GlobalHotkey` (Windows: `RegisterHotKey`, Ctrl+Shift+G default). `labels.rs` has every text that names the controller chord (Guide on Linux, Back + Start on Windows), for Settings, its search, the palette, "Getting started" and the panel. `moment.rs` marks a moment in the game's journal (a capture and an empty note); Linux-only `Feature::Replay` gates `services::replay` and its controls independently of the overlay; `replay.rs` saves the replay and marks it as a moment (`clip` in the journal entry) |
 | `collection/` | the main screen (`CollectionView`): list, header and its View menu (`view_menu`: filter search, views, sort, grouping), the Focus / Grid switch (`view_mode`) and its options menu (`view_options`), focus panel, grid view (`grid`, `grid_drawer`), wider list and drawer by dragging their edge (`resize`), Settings → Appearance on the Collection (`look`: background picture and slideshow, accent from the game, start view, Focus or Grid by the window's width), covers by family (`family_art`: each view's picture of the family it draws, keeping the tall cover's and the background's texture ids), selecting several games (`selection`: Ctrl / Shift click, Ctrl A, the batch changes and their undo; `dock`: the bar that shows them; `metadata_menu`: the menu of its Metadata button and the selection's context menu; `metadata_pill`: the header pill of a bulk metadata update and of the idle fill's games to review; `metadata_review`: opens "Review matches" on the queue, a job's games or the selection, and the debug openers of the review and of the one-game "Metadata"), stage, context menu, command palette, screenshots, the game's Journal (`journal/`: the Timeline's other view, notes written in place), and the glue to dialogs and services; `welcome/` is the empty Collection of a new setup: what Heronite found on this PC and brings in by itself (Steam's library, with "Open Steam" or "Restart Steam" when that is what is missing; emulators and the usual ROM folders, set up once with `heronite_emulation::setup`), the other sources, the other launchers found with games (a click turns their import on), the stores, and a shelf of empty covers (`HERONITE_DEBUG_WELCOME=<steam>[:<emulation>]` shows a state); `launchers` reloads the Collection when another launcher's games come in; `onboarding` hosts "Getting started" (`dialogs/onboarding`: three cards, your games, your look and while you play, that open inside it or switch things on in place, plus tips; `art` draws its pictures without needing games: empty covers, a preview of the Collection in the current look and chosen view (the bare layout until there are games) and the overlay panel; the look view puts Focus and Grid first, over the preview), which opens by itself once per setup (on a new setup, once the first games arrive), from the bulb in the header until it is closed once, and from the command palette (`onboarding.json` in the app state) |
-| `dialogs/` | one view per dialog; they talk back through `DialogEvent`. `metadata_update/` is "Update metadata" (three steps: games, what to update, results), `families` (a view that starts drawing a cover family queues its download) and, in `hub`, the `MetadataHub` that owns the metadata service, the bulk jobs' progress, their undo and the idle fill, read by the dialog, the Metadata menu, the header pill and Settings → Metadata; it also keeps the review queue the pill and the palette read. `metadata_review/` is "Review matches" (the game on the left, the games the sources proposed on the right, a search of every source by another name, and the answers: use a match, in no source, skip; `fake.rs` makes it up for the debug hooks). `metadata/` is the "Metadata" of one game: "Found as" (`found_as`, and `change` to pick another game of one source), a row per field (a cover row per kept family) with the sources to take it from and a lock (`fields`), and what it asks and saves (`actions`). `covers/` is "Covers", a game's picture of each cover family and its background (`slots` the left column, `found` the pictures SteamGridDB and the web found for the picked slot, `actions` what it searches and saves, `words` how a family reads on every screen that names one, `fake` the debug searches); Game settings → Images, the one-game Metadata and the palette open it. `metadata_update/family_notice.rs` is the notice under both Cover aspect pickers (offer, started, no source) and the hub's `download_family` |
+| `dialogs/` | one view per dialog; they talk back through `DialogEvent`. `metadata_update/` is "Update metadata" (three steps: games, what to update, results), `families` (a view that starts drawing a cover family queues its download) and, in `hub`, the `MetadataHub` that owns the metadata service, the bulk jobs' progress, their undo and the idle fill, read by the dialog, the Metadata menu, the header pill and Settings → Metadata; it also keeps the review queue the pill and the palette read. `metadata_review/` is "Review matches" (the game on the left, the games the sources proposed on the right, a search of every source by another name, and the answers: use a match, in no source, skip; `fake.rs` makes it up for the debug hooks). `metadata/` is the "Metadata" of one game: "Found as" (`found_as`, and `change` to pick another game of one source), a row per field (a cover row per kept family) with the sources to take it from and a lock (`fields`), and what it asks and saves (`actions`). `covers/` is "Covers", a game's picture of each cover family and its background (`slots` the left column, `found` the pictures SteamGridDB and the web found for the picked slot, `actions` what it searches and saves, `words` how a family reads on every screen that names one, `fake` the debug searches); Game settings → Images, the one-game Metadata and the palette open it. `metadata_update/family_notice.rs` is the notice under both Cover aspect pickers (offer, started, no source) and the hub's `download_family`; `metadata_update/source_downloads.rs` the hub's downloads of the sources' databases (start, cancel, remove, the progress Settings draws, the idle refresh) |
 | `pages/` | ☰ pages (Settings, Downloads, Epic, GOG, Amazon Games, Steam, the store clients' `clients/`: Battle.net, EA app, Ubisoft Connect, Rockstar Games, Wine Manager, Emulators); they talk back through `PageEvent`. Settings → Metadata (`pages/settings/metadata/`) is drawn from the source registry; its `shapes.rs` is the "Cover shapes" card (a row per cover family, the automatic download switch, the downloads of the families shown cropped) and its Console mode rows. `methods` is the layout of a store read in two ways (Steam, Xbox): a library strip, then "Method 1 · Local" (no login) and "Method 2 · Online · Optional" (the account) side by side |
 | `ui/` | building blocks: `controls`, `fields`, `dialog`/`drawer`, `dropdown`, `glass`, `scrollbar`; `window_area` (`content_size` / `content_bounds`: the room the views have inside a client-side window frame; layouts size from it, never from `window.viewport_size()`) |
 | `theme/` | colour, font, layout and glass tokens, plus the runtime appearance and the light or dark scheme |

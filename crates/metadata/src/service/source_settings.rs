@@ -3,14 +3,25 @@
 //! `local_library/settings.json` (the SteamGridDB key: of the global
 //! settings) and returns the settings as saved, like the other setters.
 
-use anyhow::{anyhow, Result};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::SystemTime;
+
+use anyhow::{anyhow, bail, Result};
 use heronite_data::models::MetadataSettings;
 use heronite_data::settings::{self, EffectiveSettings};
 use heronite_data::source_prefs;
+use parking_lot::Mutex;
 
 use super::MetadataService;
 use crate::sources::options::{option_values, set_option_value};
-use crate::sources::{rows, OptionValue, SourceContext, SourceDescriptor, SourceRow, SourceStatus, SourceTest};
+use crate::sources::{
+    rows, DownloadProgress, DownloadState, OptionValue, ProgressSnapshot, SourceContext, SourceDescriptor, SourceRow, SourceStatus,
+    SourceTest,
+};
+
+/// The downloads running, by source id.
+pub(super) type Downloads = Mutex<HashMap<String, Arc<DownloadProgress>>>;
 
 impl MetadataService {
     fn descriptor(&self, id: &str) -> Result<&SourceDescriptor> {
@@ -32,7 +43,8 @@ impl MetadataService {
     pub fn source_status(&self, settings: &MetadataSettings, id: &str) -> Option<SourceStatus> {
         let d = self.sources.get(id)?;
         let values = option_values(&self.paths, settings, d);
-        Some(rows::status(d, source_prefs::is_on(settings, id), &values, self.tests.get(id, &values)))
+        let download = self.sources.download_state(&self.paths, id);
+        Some(rows::status_with(d, source_prefs::is_on(settings, id), &values, self.tests.get(id, &values), download.as_ref()))
     }
 
     /// Runs the test of `id` with the saved options and remembers the
@@ -90,5 +102,85 @@ impl MetadataService {
     /// Back to the order every source move changes.
     pub fn reset_field_order(&self, field: &str) -> Result<EffectiveSettings> {
         settings::update_metadata(&self.paths, |m| source_prefs::reset_field(m, field))
+    }
+}
+
+impl MetadataService {
+    /// Where the database of source `id` stands (`None`: it downloads none).
+    pub fn source_download_state(&self, id: &str) -> Option<DownloadState> {
+        self.sources.download_state(&self.paths, id)
+    }
+
+    /// Downloads (or refreshes) the database of source `id` now, whether the
+    /// source is on or not: the user asked. Blocking; one download per
+    /// source at a time. Its progress: [`Self::source_download_progress`].
+    pub fn download_source(&self, id: &str) -> Result<()> {
+        let progress = Arc::new(DownloadProgress::new());
+        {
+            let mut running = self.downloads.lock();
+            if running.contains_key(id) {
+                bail!("{id} is downloading already");
+            }
+            running.insert(id.to_owned(), progress.clone());
+        }
+        let ctx = SourceContext::new(&self.paths, &self.http);
+        let result = self.sources.download(&ctx, id, &progress);
+        self.downloads.lock().remove(id);
+        result
+    }
+
+    /// The progress of the download of `id`, while one runs.
+    pub fn source_download_progress(&self, id: &str) -> Option<ProgressSnapshot> {
+        self.downloads.lock().get(id).map(|p| p.snapshot())
+    }
+
+    /// The sources downloading now.
+    pub fn downloading_sources(&self) -> Vec<String> {
+        self.downloads.lock().keys().cloned().collect()
+    }
+
+    /// Asks the download of `id` to stop; what is in use stays.
+    pub fn cancel_source_download(&self, id: &str) {
+        if let Some(p) = self.downloads.lock().get(id) {
+            p.cancel();
+        }
+    }
+
+    /// Frees the space the database of `id` takes; the source waits for a
+    /// download again. Refused while it downloads.
+    pub fn remove_source_download(&self, id: &str) -> Result<()> {
+        if self.downloads.lock().contains_key(id) {
+            bail!("{id} is downloading");
+        }
+        self.sources.remove_download(&SourceContext::new(&self.paths, &self.http), id)
+    }
+
+    /// The idle maintenance's part: refreshes the database of every source
+    /// that is on, has one, and whose copy is older than its refresh days.
+    /// A source never downloaded is left alone (only the user starts the
+    /// first download). Returns how many were refreshed. Blocking.
+    pub fn refresh_due_source_downloads(&self) -> usize {
+        let settings = self.metadata_settings();
+        let now = SystemTime::now();
+        let due: Vec<String> = self
+            .sources
+            .lookups()
+            .map(|s| s.descriptor())
+            .filter(|d| source_prefs::is_on(&settings, &d.id))
+            .filter(|d| {
+                let (Some(download), Some(state)) = (&d.download, self.sources.download_state(&self.paths, &d.id)) else { return false };
+                state.ready && download.due(state.refreshed_at, now)
+            })
+            .map(|d| d.id.clone())
+            .collect();
+        due.iter()
+            .filter(|id| match self.download_source(id) {
+                Ok(()) => true,
+                Err(e) => {
+                    log::warn!("refreshing the database of {id}: {e:#}");
+                    false
+                }
+            })
+            .count()
     }
 }

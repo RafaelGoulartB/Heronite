@@ -84,7 +84,14 @@ what the Cover aspect asks for and the Cover shapes card counts it) and "Review 
   "Games found on Steam"…, or the kind of game it is about: "Visual novels"), its status (a dot and a word: Off, On, Connected, Add a key, Could not connect, Sign in,
   Needs a download, Not on this system, By hand only), its switch and a chevron. A source on but waiting for a key shows
   its switch grey; one not on this system has its switch locked. A click on the row opens it in place (several can be
-  open); the switch does not. An open row has a line about the source (the descriptor's `about`), when it is asked
+  open); the switch does not. A source that is asked from a database it downloads (LaunchBox) shows "Needs a download"
+  with its switch grey until it has it; its open row puts the database under the line about it, the same for any such
+  source (`download.rs`): before, "Download the database (104.43 MiB)" (primary, with the download icon) and "Nothing is
+  downloaded before you ask. The database stays on this PC and is refreshed every week while this source is on."; while
+  it comes, a 6px accent bar (420px at most), "Downloading… 43.87 MiB of 104.45 MiB" (then "Preparing the database…
+  63%") and "Cancel"; after, a green tick with "Refreshed 2 days ago · 76.74 MiB on this PC", "Refresh now" and
+  "Remove the database"; a failed attempt adds "The last download failed: …" in red. Turning the source off keeps the
+  database. An open row has a line about the source (the descriptor's `about`), when it is asked
   for a source asked only as a fallback ("Asked when the other sources do not find a game, or when they say it is one
   of these: Visual novels. Pick its match for a game to always ask it."), its options as the source's descriptor lists
   them (text inputs, secrets masked, selects, switches, each with its help or link), "Test" where the source has one
@@ -633,7 +640,8 @@ source…"), and again after a match is pinned and after "Search every source ag
   answered it saves only the locks.
 `HERONITE_DEBUG_DIALOG=metadata:<state>` opens the selected game's "Metadata" over a made-up preview: `fake` (a pinned
 match, a match left out, a locked field, a field picked from another source, VNDB not asked), `vndb` (as `fake`, with
-VNDB found by name), `change` (the same with "Change" open),
+VNDB found by name), `emulated` (an emulated game: Steam not for it, LaunchBox found by the dump's name, its line with
+the platform: a source of emulated games says which platform it matched on), `change` (the same with "Change" open),
 `none` (no source found the game), `offline`, `nokey` (no IGDB key), `covers` (as `fake`, scrolled to the cover rows);
 plain `metadata` asks the sources for real.
 `HERONITE_DEBUG_DIALOG=covers[:<state>]` opens the selected game's "Covers" over made-up searches (pictures the
@@ -1157,6 +1165,8 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   `scripts/shot.sh` sets `HERONITE_NO_ONBOARDING=1`: "Getting started" does not open by itself on a new state folder.
   Settings → Metadata (`pages/settings/metadata/`): `HERONITE_DEBUG_METADATA_OPEN=<source id>[,<source id>…]` opens
   those sources' rows (`advanced`: "Order for one field") and scrolls to the last; with `HERONITE_DEBUG_PAGE=settings:metadata`.
+  `HERONITE_DEBUG_SOURCE_DOWNLOAD=<source id>:<none|downloading[:<percent>]|preparing[:<percent>]|ready|failed>` shows
+  that source's database in a made-up state, without the network.
 - Main Collection screen: compare with the reference PNG (crop the same region with PIL, view both). Dialogs/menus/settings: one sanity check is enough — they need to work and be consistent, not pixel-identical (user decision).
 - Anything that WRITES data must be exercised only against a copy:
   `HERONITE_DATA_DIR=/tmp/heronite-fixture-<you> scripts/shot.sh …`

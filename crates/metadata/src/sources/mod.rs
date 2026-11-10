@@ -5,7 +5,10 @@
 //! Details sources have a lookup and feed the merge. A source may be asked
 //! only as a fallback ([`Asked`]; the rule is `service/gather`'s), and may
 //! flag the pictures it gives as adult: they are dropped unless the user
-//! allows adult covers (`settings.metadata.allowAdultCovers`). Pictures and extras
+//! allows adult covers (`settings.metadata.allowAdultCovers`). A source may
+//! need a database downloaded first ([`download`]: the descriptor's
+//! [`SourceDownload`], the trait's `download_state` / `download` /
+//! `remove_download`); it is not asked until it has it. Pictures and extras
 //! sources (SteamGridDB, web images, HowLongToBeat, Steam tags, ProtonDB) are
 //! registered as descriptors only: they still run on their own paths, which
 //! ask [`is_on`] first.
@@ -17,6 +20,7 @@
 
 mod builtin;
 mod descriptor;
+pub mod download;
 pub mod options;
 pub mod order;
 pub mod rows;
@@ -31,10 +35,11 @@ use heronite_data::settings;
 
 pub(crate) use builtin::Shared;
 pub use builtin::{builtin_descriptors, offered};
-pub use descriptor::{extra_fields, AppliesTo, Asked, GameKind, Needs, SourceDescriptor, SourceGame, SourceKind};
+pub use descriptor::{extra_fields, AlsoFor, AppliesTo, Asked, GameKind, Needs, SourceDescriptor, SourceGame, SourceKind};
+pub use download::{DownloadProgress, DownloadState, Phase, ProgressSnapshot, SourceDownload};
 pub use heronite_data::source_prefs::{ids, is_field_on, is_on};
 pub use options::{OptionChoice, OptionKind, OptionValue, SourceOption};
-pub use rows::{FieldRow, OptionRow, SourceRow, SourceStatus};
+pub use rows::{DownloadRow, FieldRow, OptionRow, SourceRow, SourceStatus};
 
 use crate::http::Http;
 use crate::types::{IgdbCredentialTest, Lookup, MetadataCandidate, SourceHit};
@@ -100,6 +105,25 @@ pub trait MetadataSource: Send + Sync {
     /// sign-in). Blocking. `None` when it has no test.
     fn test(&self, _ctx: &SourceContext<'_>) -> Option<SourceTest> {
         None
+    }
+
+    /// Where its database stands, for a source whose descriptor has a
+    /// `download`. Cheap (a file's metadata, no network): rows and every
+    /// gather ask it.
+    fn download_state(&self, _paths: &DataPaths) -> DownloadState {
+        DownloadState::default()
+    }
+
+    /// Downloads (or refreshes) its database, reporting to `progress` and
+    /// stopping when it is cancelled ([`download::Cancelled`]). The copy in
+    /// use stays until the new one is complete and checked. Blocking.
+    fn download(&self, _ctx: &SourceContext<'_>, _progress: &DownloadProgress) -> anyhow::Result<()> {
+        anyhow::bail!("{} downloads nothing", self.descriptor().id)
+    }
+
+    /// Frees the space its database takes; the source needs a download again.
+    fn remove_download(&self, _ctx: &SourceContext<'_>) -> anyhow::Result<()> {
+        Ok(())
     }
 }
 
@@ -194,6 +218,41 @@ impl SourceRegistry {
         })
     }
 
+    /// Whether `d` is for `game`: its audience, or the one an option of it
+    /// adds while on ([`AlsoFor`]).
+    pub fn applies(&self, paths: &DataPaths, m: &MetadataSettings, d: &SourceDescriptor, game: &SourceGame) -> bool {
+        d.applies_to.matches(game) || also_for_on(paths, m, d).is_some_and(|a| a.matches(game))
+    }
+
+    /// Where the database of `id` stands (`None`: it downloads none).
+    pub fn download_state(&self, paths: &DataPaths, id: &str) -> Option<DownloadState> {
+        let source = self.lookup(id)?;
+        source.descriptor().download.as_ref()?;
+        Some(source.download_state(paths))
+    }
+
+    /// Whether `id` can be asked as far as its download goes: it needs none,
+    /// or has it.
+    pub fn downloaded(&self, paths: &DataPaths, id: &str) -> bool {
+        self.download_state(paths, id).is_none_or(|s| s.ready)
+    }
+
+    /// Downloads the database of `id` (see [`MetadataSource::download`]).
+    pub fn download(&self, ctx: &SourceContext<'_>, id: &str, progress: &DownloadProgress) -> anyhow::Result<()> {
+        match self.lookup(id) {
+            Some(s) if s.descriptor().download.is_some() => s.download(ctx, progress),
+            _ => anyhow::bail!("{id} downloads nothing"),
+        }
+    }
+
+    /// Removes the database of `id` (see [`MetadataSource::remove_download`]).
+    pub fn remove_download(&self, ctx: &SourceContext<'_>, id: &str) -> anyhow::Result<()> {
+        match self.lookup(id) {
+            Some(s) if s.descriptor().download.is_some() => s.remove_download(ctx),
+            _ => Ok(()),
+        }
+    }
+
     /// Whether `id` has a test (Settings shows "Test" for it).
     pub fn has_test(&self, id: &str) -> bool {
         self.lookup(id).is_some_and(|s| s.has_test())
@@ -214,11 +273,22 @@ impl SourceRegistry {
             stores: Arc::new(crate::providers::StoreLibraries::default()),
             playnite: Arc::new(parking_lot::RwLock::new(None)),
             vndb: Arc::new(crate::vndb::Vndb::new()),
+            launchbox: Arc::new(crate::launchbox::LaunchBox::new()),
         })
     }
 
     /// Whether some lookup's audience depends on the overlay entry.
     pub(crate) fn needs_overlay(&self) -> bool {
-        self.lookups().any(|s| s.descriptor().applies_to.needs_overlay())
+        self.lookups().any(|s| {
+            let d = s.descriptor();
+            d.applies_to.needs_overlay() || d.also_for.as_ref().is_some_and(|a| a.applies_to.needs_overlay())
+        })
     }
+}
+
+/// The audience `d`'s option adds, while that option is on.
+fn also_for_on<'d>(paths: &DataPaths, m: &MetadataSettings, d: &'d SourceDescriptor) -> Option<&'d AppliesTo> {
+    let also = d.also_for.as_ref()?;
+    let opt = d.options.iter().find(|o| o.key == also.option)?;
+    options::option_value(paths, m, d, opt).as_bool().then_some(&also.applies_to)
 }

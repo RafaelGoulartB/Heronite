@@ -15,6 +15,7 @@ use heronite_metadata::{BulkArgs, BulkItem, BulkProgress, BulkState, MetadataSer
 
 use super::fake::Fake;
 use super::family_notice::FamilyNotice;
+use super::source_downloads::{FakeDownload, SourceDownloads};
 
 pub enum HubEvent {
     /// The metadata job or idle fill changed data on disk: reload the library.
@@ -34,6 +35,9 @@ pub enum HubEvent {
     OpenAttention,
     /// Someone asks for Settings → Metadata (a key is missing).
     OpenSettings,
+    /// The database of a source was downloaded, refreshed or removed (or
+    /// that failed): its row reads its state again.
+    SourceDownloaded,
 }
 
 /// The games "Review matches" goes through.
@@ -70,6 +74,12 @@ pub struct MetadataHub {
     pub notice: Option<FamilyNotice>,
     /// `HERONITE_DEBUG_METADATA_JOB`: jobs are made up (see `fake.rs`).
     fake: Option<Fake>,
+    /// The sources' database downloads (`source_downloads.rs`).
+    pub(super) source_downloads: SourceDownloads,
+    /// A loop follows the running downloads.
+    pub(super) following_downloads: bool,
+    /// `HERONITE_DEBUG_SOURCE_DOWNLOAD`.
+    pub(super) fake_download: Option<FakeDownload>,
     tx: Arc<Mutex<UnboundedSender<BulkProgress>>>,
 }
 
@@ -109,6 +119,9 @@ impl MetadataHub {
             idle_check: None,
             notice: None,
             fake: Fake::from_env(),
+            source_downloads: SourceDownloads::new(),
+            following_downloads: false,
+            fake_download: FakeDownload::from_env(),
             tx: Arc::new(Mutex::new(tx)),
         };
         this.read_queue(cx);
@@ -373,7 +386,9 @@ impl MetadataHub {
 
     /// Idle maintenance like Heronite's `scheduleIdleMaintenance` (90 s after
     /// startup): fills missing Collection metadata when `autoFillMissing` is
-    /// on, and local covers. Runs off the UI thread.
+    /// on, and local covers; then refreshes the sources' databases that are
+    /// a week old (only those the user downloaded, while the source is on).
+    /// Runs off the UI thread.
     pub fn schedule_idle(&mut self, delay: Duration, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(delay).await;
@@ -421,6 +436,34 @@ impl MetadataHub {
                     this.idle_check = Some(this.queue.len());
                 }
                 this.note_review(cx);
+                this.refresh_source_downloads(cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// The idle maintenance's refresh of the sources' databases.
+    fn refresh_source_downloads(&mut self, cx: &mut Context<Self>) {
+        if self.fake_download.is_some() {
+            return;
+        }
+        let service = self.service.clone();
+        cx.spawn(async move |this, cx| {
+            let refreshed = cx.background_spawn(async move { service.refresh_due_source_downloads() }).await;
+            if refreshed > 0 {
+                log::info!("idle maintenance refreshed {refreshed} source database(s)");
+            }
+            this.update(cx, |_, cx| cx.notify()).ok();
+        })
+        .detach();
+        // The refresh shows in Settings like a download by hand.
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_millis(500)).await;
+            this.update(cx, |this, cx| {
+                if !this.service.downloading_sources().is_empty() {
+                    this.follow_downloads(cx);
+                }
             })
             .ok();
         })

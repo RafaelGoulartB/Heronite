@@ -102,13 +102,8 @@ fn row(r: &SourceRow, place: usize, movable: bool, open: bool, cx: &mut Context<
                 .child(name.clone()),
         )
         .child(div().text_size(px(12.)).text_color(theme::text_dim()).truncate().child(labels::gives(&r.descriptor.provides)));
-    let audience = div()
-        .flex_none()
-        .w(px(AUDIENCE_W))
-        .text_size(px(12.))
-        .text_color(theme::text_dim())
-        .truncate()
-        .child(labels::audience(&r.descriptor));
+    let audience =
+        div().flex_none().w(px(AUDIENCE_W)).text_size(px(12.)).text_color(theme::text_dim()).truncate().child(labels::row_audience(r));
     let status = div().flex_none().w(px(STATUS_W)).child(labels::status(r.status));
 
     let sw_id = SharedString::from(format!("md-src-on-{id}"));

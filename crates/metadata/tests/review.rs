@@ -390,7 +390,13 @@ fn searching_every_source_groups_the_hits_by_game() {
     json_store::write(&s.paths.collection_settings(), &json!({"metadata": {}})).unwrap();
     let keyless = s.svc.search_sources("Portal 2", None);
     assert_eq!(keyless.needs_key, ["igdb"]);
-    assert!(s.svc.sources().descriptors().filter(|d| d.searchable).all(|d| ["igdb", "steam", "lutris", "vndb"].contains(&d.id.as_str())));
+    assert!(s
+        .svc
+        .sources()
+        .descriptors()
+        .filter(|d| d.searchable)
+        .all(|d| ["igdb", "steam", "lutris", "vndb", "launchbox"].contains(&d.id.as_str())));
+    assert!(!keyless.asked.contains(&"launchbox".to_string()), "searchable, but not asked before its download");
 }
 
 #[test]
@@ -501,7 +507,12 @@ fn the_preview_says_what_each_source_did() {
     let preview = s.svc.preview_game_metadata(&args("doom", "Doom")).unwrap();
     assert_eq!(preview.review, Some(ReviewReason::SourcesDisagree));
     let states: Vec<(&str, &SourceAnswer)> = preview.sources.iter().map(|st| (st.source.as_str(), &st.answer)).collect();
-    assert_eq!(states.iter().map(|s| s.0).collect::<Vec<_>>(), ["igdb", "steam", "store", "lutris", "vndb"], "Playnite is hidden");
+    assert_eq!(
+        states.iter().map(|s| s.0).collect::<Vec<_>>(),
+        ["igdb", "steam", "store", "lutris", "vndb", "launchbox"],
+        "Playnite is hidden"
+    );
+    assert_eq!(*states[5].1, SourceAnswer::NotAsked { why: NotAsked::NotForThisGame }, "LaunchBox is for emulated games");
     assert!(
         matches!(states[0].1, SourceAnswer::Found { used: false, pinned: false, hit } if hit.matched_by == Some(MatchedBy::FuzzyTitle))
     );

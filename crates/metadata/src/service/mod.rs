@@ -93,6 +93,8 @@ pub struct MetadataService {
     review_revision: AtomicU64,
     /// The Steam tags file, read when a fallback source looks for its kind of game.
     steam_tags: gather::SteamTagsCache,
+    /// The sources' downloads running now, by source id.
+    downloads: source_settings::Downloads,
 }
 
 impl MetadataService {
@@ -111,6 +113,7 @@ impl MetadataService {
             stores: Arc::new(StoreLibraries::default()),
             playnite: playnite.clone(),
             vndb: Arc::new(crate::vndb::Vndb::new()),
+            launchbox: Arc::new(crate::launchbox::LaunchBox::new()),
         });
         Self {
             paths,
@@ -128,6 +131,7 @@ impl MetadataService {
             rating_fill: AtomicBool::new(false),
             review_revision: AtomicU64::new(0),
             steam_tags: Default::default(),
+            downloads: Default::default(),
         }
     }
 

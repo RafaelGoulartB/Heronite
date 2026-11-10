@@ -1,7 +1,8 @@
-//! An open source row: a line about it, its options as the descriptor lists
-//! them (text and secret inputs, selects, switches, with their help and
-//! link), "Test" where it has one, and "Fills": a chip per field, which a
-//! click switches off for this source where the merge honours it.
+//! An open source row: a line about it, its database when it downloads one
+//! (`download.rs`), its options as the descriptor lists them (text and
+//! secret inputs, selects, switches, with their help and link), "Test"
+//! where it has one, and "Fills": a chip per field, which a click switches
+//! off for this source where the merge honours it.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -9,7 +10,7 @@ use heronite_i18n::tr;
 use heronite_metadata::sources::{OptionKind, OptionRow, OptionValue, SourceRow};
 
 use super::super::SettingsPage;
-use super::{labels, set_option, test};
+use super::{download, labels, set_option, test};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{action_button, toggle_row, ButtonKind};
@@ -28,6 +29,9 @@ pub(super) fn body(d: &SettingsPage, r: &SourceRow, indent: f32, cx: &mut Contex
         [labels::about(&r.descriptor).map(str::to_owned), labels::when_asked(&r.descriptor)].into_iter().flatten().collect::<Vec<_>>();
     if !about.is_empty() {
         col = col.child(div().flex().flex_col().gap(px(4.)).children(about.into_iter().map(meta_text)));
+    }
+    if let Some(row) = &r.download {
+        col = col.child(download::block(id, row, cx));
     }
 
     let mut fields = div().flex().flex_wrap().gap_x(px(12.)).gap_y(px(12.));

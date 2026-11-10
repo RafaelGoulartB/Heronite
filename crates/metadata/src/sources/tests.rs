@@ -10,6 +10,7 @@ use crate::igdb::Igdb;
 use crate::providers::StoreLibraries;
 use crate::steam::SteamState;
 use crate::types::{MatchedBy, MetadataApplyArgs};
+use heronite_data::source_prefs;
 
 fn registry() -> SourceRegistry {
     SourceRegistry::builtin(Shared {
@@ -18,6 +19,7 @@ fn registry() -> SourceRegistry {
         stores: Arc::new(StoreLibraries::default()),
         playnite: Arc::new(RwLock::new(None)),
         vndb: Arc::new(crate::vndb::Vndb::new()),
+        launchbox: Arc::new(crate::launchbox::LaunchBox::new()),
     })
 }
 
@@ -29,10 +31,23 @@ fn ids<'a>(list: impl Iterator<Item = &'a SourceDescriptor>) -> Vec<&'a str> {
 fn lookups_keep_the_provider_order() {
     let reg = registry();
     let lookups: Vec<&str> = reg.lookups().map(|s| s.descriptor().id.as_str()).collect();
-    assert_eq!(lookups, ["igdb", "steam", "store", "lutris", "playnite", "vndb", "steamgriddb"]);
+    assert_eq!(lookups, ["igdb", "steam", "store", "lutris", "playnite", "vndb", "launchbox", "steamgriddb"]);
     assert_eq!(
         ids(reg.descriptors()),
-        ["igdb", "steam", "store", "lutris", "playnite", "vndb", "steamgriddb", "webimages", "howlongtobeat", "steamtags", "protondb"]
+        [
+            "igdb",
+            "steam",
+            "store",
+            "lutris",
+            "playnite",
+            "vndb",
+            "launchbox",
+            "steamgriddb",
+            "webimages",
+            "howlongtobeat",
+            "steamtags",
+            "protondb"
+        ]
     );
     assert_eq!(ids(reg.descriptors()), ids(builtin_descriptors().iter()));
     let unique: BTreeSet<_> = reg.descriptors().map(|d| d.id.as_str()).collect();
@@ -56,10 +71,10 @@ fn details_sources_and_steamgriddb_have_a_lookup() {
 
 #[test]
 fn offered_details_sources_leave_playnite_out() {
-    assert_eq!(ids(offered(SourceKind::Details)), ["igdb", "steam", "store", "lutris", "vndb"]);
+    assert_eq!(ids(offered(SourceKind::Details)), ["igdb", "steam", "store", "lutris", "vndb", "launchbox"]);
     assert!(registry().get("playnite").is_some_and(|d| d.hidden));
     let names: Vec<&str> = offered(SourceKind::Details).map(|d| d.name.as_str()).collect();
-    assert_eq!(names, ["IGDB", "Steam", "Store", "Lutris", "VNDB"]);
+    assert_eq!(names, ["IGDB", "Steam", "Store", "Lutris", "VNDB", "LaunchBox"]);
 }
 
 #[test]
@@ -73,10 +88,10 @@ fn network_sources_are_igdb_steam_lutris_vndb_and_steamgriddb() {
 fn cover_families_by_source() {
     let reg = registry();
     let gives = |field: &str| reg.descriptors().filter(|d| d.provides(field)).map(|d| d.id.as_str()).collect::<Vec<_>>();
-    assert_eq!(gives("coverSquare"), ["steamgriddb"]);
+    assert_eq!(gives("coverSquare"), ["launchbox", "steamgriddb"]);
     assert_eq!(gives("coverWide"), ["steam", "store", "steamgriddb"]);
     // The tall cover keeps its sources; IGDB and Lutris give only that one.
-    assert_eq!(gives("cover"), ["igdb", "steam", "store", "lutris", "playnite", "vndb", "steamgriddb", "webimages"]);
+    assert_eq!(gives("cover"), ["igdb", "steam", "store", "lutris", "playnite", "vndb", "launchbox", "steamgriddb", "webimages"]);
 }
 
 /// `heronite_data::settings` keeps the ids of the default priorities and of
@@ -116,22 +131,22 @@ fn overlay(f: impl FnOnce(&mut LocalGameMeta)) -> LocalGameMeta {
 #[test]
 fn source_game_takes_the_steam_id_from_the_overlay_when_missing() {
     let o = overlay(|m| m.steam_app_id = Some("620".into()));
-    assert_eq!(SourceGame::new(&args(None), Some(&o)).steam_app_id.as_deref(), Some("620"));
-    assert_eq!(SourceGame::new(&args(Some("")), Some(&o)).steam_app_id.as_deref(), Some("620"));
-    assert_eq!(SourceGame::new(&args(Some("400")), Some(&o)).steam_app_id.as_deref(), Some("400"));
-    assert_eq!(SourceGame::new(&args(Some("")), None).steam_app_id, None);
+    assert_eq!(SourceGame::new(&args(None), Some(&o), &[]).steam_app_id.as_deref(), Some("620"));
+    assert_eq!(SourceGame::new(&args(Some("")), Some(&o), &[]).steam_app_id.as_deref(), Some("620"));
+    assert_eq!(SourceGame::new(&args(Some("400")), Some(&o), &[]).steam_app_id.as_deref(), Some("400"));
+    assert_eq!(SourceGame::new(&args(Some("")), None, &[]).steam_app_id, None);
 }
 
 #[test]
 fn applies_to_answers_for_a_game() {
-    let plain = SourceGame::new(&args(None), None);
-    let steam = SourceGame::new(&args(Some("620")), None);
+    let plain = SourceGame::new(&args(None), None, &[]);
+    let steam = SourceGame::new(&args(Some("620")), None, &[]);
     let rom = overlay(|m| {
         m.source = "emulator".into();
         m.launch_kind = "emulator".into();
         m.platform_id = Some("snes".into());
     });
-    let emulated = SourceGame::new(&args(None), Some(&rom));
+    let emulated = SourceGame::new(&args(None), Some(&rom), &[]);
     let epic = SourceGame { runner: "legendary".into(), ..plain.clone() };
 
     assert!(AppliesTo::All.matches(&plain));
@@ -142,10 +157,77 @@ fn applies_to_answers_for_a_game() {
     let stores = AppliesTo::Stores(vec!["legendary".into(), "emulator".into()]);
     assert!(stores.matches(&epic) && stores.matches(&emulated) && !stores.matches(&plain));
 
+    assert!(AppliesTo::Pc.matches(&plain) && !AppliesTo::Pc.matches(&emulated));
+
     let reg = registry();
     let steam_source = reg.get("steam").unwrap();
     assert!(!steam_source.applies_to.matches(&plain) && steam_source.applies_to.matches(&steam));
-    assert!(!reg.needs_overlay());
+    // LaunchBox is for emulated games: the overlay says which.
+    assert!(reg.needs_overlay());
+}
+
+/// Real Collection entries: a Playnite import without a platform id, a scan
+/// with `other`, a game that is not emulated.
+#[test]
+fn emulated_games_carry_their_platform_and_rom() {
+    let sotn = overlay(|m| {
+        m.source = "emulator".into();
+        m.launch_kind = "emulator".into();
+        m.emulator_name = Some("Duckstation".into());
+        m.windows_install_directory = Some("D:\\Games\\_PSS\\PS_Games\\SOTN".into());
+        m.roms = Some(vec![heronite_data::models::LocalGameRom {
+            name: None,
+            path: "{InstallDir}\\Castlevania - Symphony of the Night (USA).cue".into(),
+            extra: Default::default(),
+        }]);
+    });
+    let game = SourceGame::new(&args(None), Some(&sotn), &[]);
+    assert!(game.emulated);
+    assert_eq!(game.platform.as_deref(), Some("sony_playstation"));
+    assert_eq!(game.rom_file.as_deref(), Some("Castlevania - Symphony of the Night (USA).cue"));
+    assert!(game.rom_hashes.is_empty(), "nothing is hashed for a lookup");
+    let psx = AppliesTo::Platforms(vec!["sony_playstation".into()]);
+    assert!(psx.matches(&game) && AppliesTo::Emulated.matches(&game));
+
+    // `source: emulator` with an executable launch is still emulated; `other` is no platform.
+    let scanned = overlay(|m| {
+        m.source = "emulator".into();
+        m.launch_kind = "executable".into();
+        m.platform_id = Some("other".into());
+    });
+    let game = SourceGame::new(&args(None), Some(&scanned), &["PlayStation 2".to_string()]);
+    assert!(game.emulated);
+    assert_eq!(game.platform.as_deref(), Some("sony_playstation2"), "the record says it");
+    assert_eq!(SourceGame::new(&args(None), Some(&scanned), &[]).platform, None);
+
+    // A PC game has no platform even when its record names some.
+    let pc = SourceGame::new(&args(None), Some(&overlay(|m| m.source = "steam".into())), &["PlayStation 2".to_string()]);
+    assert!(!pc.emulated && pc.platform.is_none() && pc.rom_file.is_none());
+}
+
+#[test]
+fn launchbox_is_for_emulated_games_and_pc_games_on_request() {
+    let reg = registry();
+    let dir = tempfile::tempdir().unwrap();
+    let paths = DataPaths::at(dir.path());
+    let lb = reg.get("launchbox").unwrap();
+    assert_eq!((lb.needs, lb.network, lb.searchable), (Needs::Download, false, true));
+    assert_eq!(lb.download.as_ref().map(|d| d.refresh_days), Some(7));
+    let rom = overlay(|m| {
+        m.source = "emulator".into();
+        m.launch_kind = "emulator".into();
+    });
+    let emulated = SourceGame::new(&args(None), Some(&rom), &[]);
+    let pc = SourceGame::new(&args(Some("620")), None, &[]);
+    let mut m = settings::normalize_metadata(None);
+    assert!(reg.applies(&paths, &m, lb, &emulated));
+    assert!(!reg.applies(&paths, &m, lb, &pc), "not for PC games by default");
+    source_prefs::set_option(&mut m, "launchbox", "pcGames", Some(serde_json::json!(true)));
+    assert!(reg.applies(&paths, &m, lb, &pc));
+    // Not downloaded: it cannot be asked, and says so.
+    assert!(!reg.downloaded(&paths, "launchbox") && reg.downloaded(&paths, "igdb"));
+    assert_eq!(reg.download_state(&paths, "launchbox"), Some(DownloadState::default()));
+    assert_eq!(reg.download_state(&paths, "igdb"), None);
 }
 
 #[test]

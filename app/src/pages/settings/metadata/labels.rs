@@ -5,7 +5,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::source_prefs::ids;
 use heronite_i18n::{tr, trn};
-use heronite_metadata::sources::{extra_fields, AppliesTo, SourceDescriptor, SourceStatus};
+use heronite_metadata::sources::{extra_fields, AppliesTo, SourceDescriptor, SourceRow, SourceStatus};
 
 use crate::dialogs::metadata::field_label as details_field_label;
 use crate::icons::Icon;
@@ -127,15 +127,32 @@ pub(super) fn audience(d: &SourceDescriptor) -> String {
     if let Some(kind) = &d.game_kind {
         return tr(&kind.name).to_owned();
     }
-    match &d.applies_to {
+    audience_of(&d.applies_to)
+}
+
+fn audience_of(a: &AppliesTo) -> String {
+    match a {
         AppliesTo::All => tr!("All games").into(),
         AppliesTo::HasSteamId => tr!("Games found on Steam").into(),
         AppliesTo::Emulated => tr!("Emulated games").into(),
+        AppliesTo::Pc => tr!("PC games").into(),
         AppliesTo::Stores(list) => {
             let stores = list.iter().map(|s| store_name(s)).collect::<Vec<_>>().join(", ");
             tr!("Games from {stores}", stores)
         }
         AppliesTo::Platforms(list) => trn!(list.len(), "Emulated games of {n} platform", "Emulated games of {n} platforms"),
+    }
+}
+
+/// [`audience`] of a row: with the games its option adds while that is on
+/// ("Emulated and PC games").
+pub(super) fn row_audience(r: &SourceRow) -> String {
+    let d = &r.descriptor;
+    let widened = d.also_for.as_ref().filter(|a| r.options.iter().any(|o| o.option.key == a.option && o.value.as_bool()));
+    match (widened, &d.applies_to) {
+        (Some(a), AppliesTo::Emulated) if a.applies_to == AppliesTo::Pc => tr!("Emulated and PC games").into(),
+        (Some(a), _) => format!("{}, {}", audience(d), audience_of(&a.applies_to)),
+        (None, _) => audience(d),
     }
 }
 

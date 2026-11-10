@@ -106,3 +106,46 @@ fn live_vndb() {
     assert!(md.cover_url.as_deref().is_some_and(|u| u.starts_with("https://")) && md.hero_url.is_some());
     assert!(!md.developers.is_empty() && !md.themes.is_empty() && md.critic_score.is_some());
 }
+
+/// The real LaunchBox archive (about 105 MB) downloaded into a temporary
+/// data folder and built into an index; three games looked up by the file
+/// names their dumps have. Prints the sizes and times.
+#[test]
+fn live_launchbox() {
+    if !enabled() {
+        return;
+    }
+    let (_d, svc) = service();
+    let start = std::time::Instant::now();
+    svc.download_source("launchbox").expect("LaunchBox download");
+    let state = svc.source_download_state("launchbox").unwrap();
+    assert!(state.ready);
+    eprintln!("LaunchBox: downloaded and built in {:?}, index {} MB", start.elapsed(), state.size_on_disk / 1_000_000);
+    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+        eprintln!("{}", status.lines().filter(|l| l.starts_with("VmHWM")).collect::<String>());
+    }
+    let ctx = SourceContext::new(&svc.paths, &svc.http);
+    let lb = svc.sources().lookups().find(|s| s.descriptor().id == "launchbox").unwrap();
+    let cases = [
+        ("nintendo_super_nes", "Legend of Zelda, The - A Link to the Past (USA).sfc", "The Legend of Zelda: A Link to the Past"),
+        ("sony_playstation", "Castlevania - Symphony of the Night (USA) (Track 1).bin", "Castlevania: Symphony of the Night"),
+        ("sega_genesis", "Sonic The Hedgehog 2 (World) (Rev A).md", "Sonic the Hedgehog 2"),
+    ];
+    for (platform, rom, name) in cases {
+        let game = SourceGame {
+            app_name: "a".into(),
+            runner: "sideload".into(),
+            title: "?".into(),
+            emulated: true,
+            platform: Some(platform.into()),
+            rom_file: Some(rom.into()),
+            ..Default::default()
+        };
+        let _ = lb.lookup(&ctx, &game);
+        let t = std::time::Instant::now();
+        let c = lb.lookup(&ctx, &game).into_option().expect(rom);
+        eprintln!("{rom}: {:?} by {:?} in {:?}", c.match_name, c.matched_by, t.elapsed());
+        assert_eq!((c.match_name.as_deref(), c.matched_by), (Some(name), Some(MatchedBy::ExactTitle)));
+        assert!(c.metadata.cover_url.as_deref().is_some_and(|u| u.starts_with("https://images.launchbox-app.com/")));
+    }
+}

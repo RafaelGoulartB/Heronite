@@ -122,8 +122,9 @@ impl MetadataService {
         Ok(ReviewEntry::new(&game.app_name, runner, &game.title, reason, &self.review_candidates(&gathered.candidates)))
     }
 
-    /// Searches every source that can search and is on (or those of
-    /// `only`) for `query`, at once, and groups the hits by game.
+    /// Searches every source that can search, is on and has its database
+    /// when it needs one (or those of `only`) for `query`, at once, and
+    /// groups the hits by game.
     pub fn search_sources(&self, query: &str, only: Option<&[String]>) -> SourceSearch {
         let ctx = SourceContext::new(&self.paths, &self.http);
         let settings = ctx.settings();
@@ -132,6 +133,8 @@ impl MetadataService {
             .lookups()
             .map(|s| s.descriptor())
             .filter(|d| d.searchable && is_on(settings, &d.id) && only.is_none_or(|o| o.contains(&d.id)))
+            // Not asked before the user downloads its database.
+            .filter(|d| self.sources.downloaded(&self.paths, &d.id))
             .map(|d| d.id.as_str())
             .collect();
         let answers: Vec<(&str, Lookup<_>)> = std::thread::scope(|scope| {

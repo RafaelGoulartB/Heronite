@@ -48,12 +48,21 @@ impl MetadataDialog {
     fn source_row(&self, state: &SourceState, cx: &mut Context<Self>) -> Stateful<Div> {
         let id = state.source.clone();
         let name = words::source_name(&self.service, &id);
-        let searchable = self.service.sources().get(&id).is_some_and(|d| d.searchable);
+        let descriptor = self.service.sources().get(&id);
+        let searchable = descriptor.is_some_and(|d| d.searchable);
+        // A source of emulated games matches on a platform: it shows which.
+        let by_platform = descriptor.is_some_and(|d| {
+            matches!(d.applies_to, heronite_metadata::sources::AppliesTo::Emulated | heronite_metadata::sources::AppliesTo::Platforms(_))
+        });
         let review = self.preview.as_ref().is_some_and(|p| p.review.is_some());
         let (detail, amber, action): (String, bool, Option<&'static str>) = match &state.answer {
             SourceAnswer::Found { hit, used, .. } => {
-                let mut text =
-                    [hit.title.clone(), hit.year.map(|y| y.to_string())].into_iter().flatten().collect::<Vec<_>>().join(" \u{b7} ");
+                let platform = hit.platform.clone().filter(|_| by_platform);
+                let mut text = [hit.title.clone(), hit.year.map(|y| y.to_string()), platform]
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>()
+                    .join(" \u{b7} ");
                 if let Some(by) = hit.matched_by.and_then(words::matched_by) {
                     text = format!("{text} \u{b7} {by}");
                 }
@@ -134,7 +143,7 @@ impl MetadataDialog {
                 .map(|s| words::source_name(&self.service, &s.source))
                 .collect::<Vec<_>>()
         };
-        [NotAsked::NotForThisGame, NotAsked::Off, NotAsked::NeedsKey, NotAsked::NotChosen]
+        [NotAsked::NotForThisGame, NotAsked::Off, NotAsked::NeedsKey, NotAsked::NeedsDownload, NotAsked::NotChosen]
             .into_iter()
             .filter_map(|why| {
                 let list = names(why);
@@ -146,6 +155,7 @@ impl MetadataDialog {
                     NotAsked::NotForThisGame => tr!("Not for this game: {sources}", sources),
                     NotAsked::Off => tr!("Off: {sources}", sources),
                     NotAsked::NeedsKey => tr!("Needs a key: {sources}", sources),
+                    NotAsked::NeedsDownload => tr!("Needs a download: {sources}", sources),
                     NotAsked::NotChosen | NotAsked::Fallback => tr!("Not asked: {sources}", sources),
                 }))
             })

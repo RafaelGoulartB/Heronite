@@ -10,18 +10,21 @@ use heronite_i18n::n_;
 use parking_lot::RwLock;
 
 use super::descriptor::extra_fields::{LINUX_RATING, STEAM_TAGS as STEAM_TAGS_FIELD, TIME_TO_BEAT};
+use super::download::SourceDownload;
 use super::options::{OptionChoice, OptionKind, OptionValue, SourceOption};
 use super::{
-    AppliesTo, Asked, Entry, GameKind, MetadataSource, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind, SourceRegistry,
-    SourceTest,
+    AlsoFor, AppliesTo, Asked, Entry, GameKind, MetadataSource, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind,
+    SourceRegistry, SourceTest,
 };
 use crate::covers::{find_steamgrid_game, search_steam, steamgrid_api_key, steamgrid_pictures};
 use crate::igdb::{Igdb, IgdbCredentials};
+use crate::launchbox::{self, map as lb_map, LaunchBox};
 use crate::lutris::{fetch_lutris_metadata, search_lutris};
 use crate::providers::{fetch_playnite_metadata, metadata_from_store_game, PlayniteSource, StoreLibraries};
 use crate::steam::{self, SteamState};
 use crate::types::{ArtKind, Lookup, MatchedBy, MetadataCandidate, SourceHit};
 use crate::vndb::{self, Vndb, VndbOptions};
+use launchbox_source::{region_label, LaunchBoxSource};
 
 const IGDB: &str = "igdb";
 const STEAM: &str = "steam";
@@ -29,9 +32,15 @@ const STORE: &str = "store";
 const LUTRIS: &str = "lutris";
 const PLAYNITE: &str = "playnite";
 const VNDB: &str = vndb::SOURCE;
+const LAUNCHBOX: &str = launchbox::SOURCE;
+
+mod launchbox_source;
 /// VNDB's options.
 const TITLE_ORDER: &str = "titleOrder";
 const SCREENSHOT_BACKGROUND: &str = "screenshotBackground";
+/// LaunchBox's options.
+const BOX_REGION: &str = "boxRegion";
+const PC_GAMES: &str = "pcGames";
 
 /// The service's state the adapters share with its other entry points
 /// (IGDB token and queue, Steam caches, parsed store libraries, Playnite).
@@ -41,6 +50,7 @@ pub(crate) struct Shared {
     pub stores: Arc<StoreLibraries>,
     pub playnite: Arc<RwLock<Option<Arc<dyn PlayniteSource>>>>,
     pub vndb: Arc<Vndb>,
+    pub launchbox: Arc<LaunchBox>,
 }
 
 fn strings(list: &[&str]) -> Vec<String> {
@@ -65,6 +75,9 @@ fn source(id: &str, name: &str, kind: SourceKind, provides: &[&str]) -> SourceDe
         asked: Asked::Always,
         game_kind: None,
         about: None,
+        download: None,
+        also_for: None,
+        leads_for: None,
     }
 }
 
@@ -189,6 +202,57 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
                 &["description", "releaseDate", "developers", "genres", "themes", "criticScore", "cover", "hero"],
             )
         },
+        // Asked from a database downloaded once (about 105 MB), never before
+        // the user asks for it. For emulated games: off for PC games unless
+        // the user turns that on (Steam and IGDB know them better, and
+        // LaunchBox's Windows list has fan ports named like the console
+        // games). An emulated game it finds by platform and dump name goes
+        // ahead of the sources that found it only by title.
+        SourceDescriptor {
+            applies_to: AppliesTo::Emulated,
+            finds_by: vec![SourceId, SteamId, ExactTitle, FuzzyTitle],
+            needs: Needs::Download,
+            network: false,
+            searchable: true,
+            download: Some(SourceDownload { size_mb: 105, refresh_days: 7 }),
+            also_for: Some(AlsoFor { option: PC_GAMES.into(), applies_to: AppliesTo::Pc }),
+            leads_for: Some(AppliesTo::Emulated),
+            about: Some(n_!(
+                "The LaunchBox Games Database (gamesdb.launchbox-app.com), made for emulated games: it knows each platform's games by their dump names, with box art by region. Downloaded once to this PC and refreshed every week while it is on. Heronite is not affiliated with LaunchBox."
+            )
+            .into()),
+            options: vec![
+                SourceOption {
+                    choices: std::iter::once(OptionChoice { value: lb_map::AUTO_REGION.into(), label: n_!("Automatic").into() })
+                        .chain(lb_map::REGIONS.iter().map(|r| OptionChoice { value: (*r).into(), label: region_label(r).into() }))
+                        .collect(),
+                    help: Some(n_!("Automatic follows the interface language. Box art made for every region comes next.").into()),
+                    ..option(BOX_REGION, n_!("Box art region"), OptionKind::Select)
+                },
+                SourceOption {
+                    help: Some(n_!("Look up games that are not emulated in its Windows and DOS lists too.").into()),
+                    ..option(PC_GAMES, n_!("Also for PC games"), OptionKind::Switch)
+                },
+            ],
+            ..source(
+                LAUNCHBOX,
+                "LaunchBox",
+                Details,
+                &[
+                    "description",
+                    "releaseDate",
+                    "developers",
+                    "publishers",
+                    "genres",
+                    "gameModes",
+                    "platforms",
+                    "criticScore",
+                    "cover",
+                    "hero",
+                    "coverSquare",
+                ],
+            )
+        },
         SourceDescriptor {
             finds_by: vec![SteamId, FuzzyTitle],
             needs: Needs::ApiKey,
@@ -244,6 +308,7 @@ pub(super) fn registry(shared: Shared) -> SourceRegistry {
             LUTRIS => Entry::Lookup(Box::new(LutrisSource { d })),
             PLAYNITE => Entry::Lookup(Box::new(PlayniteDump { d, source: shared.playnite.clone() })),
             VNDB => Entry::Lookup(Box::new(VndbSource { d, client: shared.vndb.clone() })),
+            LAUNCHBOX => Entry::Lookup(Box::new(LaunchBoxSource { d, db: shared.launchbox.clone() })),
             STEAMGRIDDB => Entry::Lookup(Box::new(SteamGridSource { d })),
             _ => Entry::DescriptorOnly(Box::new(d.clone())),
         })

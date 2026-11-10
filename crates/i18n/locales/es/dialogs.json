@@ -538,5 +538,7 @@
   "Cover · Square": "Portada · Cuadrada",
   "Cover · Wide": "Portada · Panorámica",
   "Choose covers…": "Elegir portadas…",
-  "Not asked: the others found it": "Sin consultar: las otras lo encontraron"
+  "Not asked: the others found it": "Sin consultar: las otras lo encontraron",
+  "Needs a download: {sources}": "Necesita una descarga: {sources}",
+  "Download its database in Settings → Metadata first: {sources}.": "Descarga antes su base de datos en Ajustes → Metadatos: {sources}."
 }

@@ -1,0 +1,108 @@
+<?xml version="1.0" standalone="yes"?>
+<LaunchBox>
+  <File>
+    <Platform>Arcade</Platform>
+    <FileName>sfa2</FileName>
+    <GameName>Street Fighter Alpha 2 (Euro 960229)</GameName>
+  </File>
+  <File>
+    <Platform>Arcade</Platform>
+    <FileName>sfa2u</FileName>
+    <GameName>Street Fighter Alpha 2 (USA 960430)</GameName>
+  </File>
+  <File>
+    <Platform>Nintendo Game Boy Advance</Platform>
+    <FileName>Metroid Fusion (USA, Australia)</FileName>
+    <GameName>Metroid Fusion (USA, Australia)</GameName>
+  </File>
+  <File>
+    <Platform>Sega Genesis</Platform>
+    <FileName>Sonic the Hedgehog 2 (World)</FileName>
+    <GameName>Sonic the Hedgehog 2 (World)</GameName>
+  </File>
+  <File>
+    <Platform>Sega Genesis</Platform>
+    <FileName>Street Fighter II' - Special Champion Edition (USA)</FileName>
+    <GameName>Street Fighter II' - Special Champion Edition (USA)</GameName>
+  </File>
+  <File>
+    <Platform>Sega Genesis</Platform>
+    <FileName>Streets of Rage 2 (USA)</FileName>
+    <GameName>Streets of Rage 2 (USA)</GameName>
+  </File>
+  <File>
+    <Platform>Sony Playstation</Platform>
+    <FileName>Castlevania - Symphony of the Night (USA)</FileName>
+    <GameName>Castlevania - Symphony of the Night (USA)</GameName>
+  </File>
+  <File>
+    <Platform>Sony Playstation</Platform>
+    <FileName>Final Fantasy VI (Europe, Australia)</FileName>
+    <GameName>Final Fantasy VI (Europe, Australia)</GameName>
+  </File>
+  <File>
+    <Platform>Sony Playstation</Platform>
+    <FileName>Final Fantasy VII (USA) (Disc 1)</FileName>
+    <GameName>Final Fantasy VII (USA) (Disc 1)</GameName>
+  </File>
+  <File>
+    <Platform>Sony Playstation</Platform>
+    <FileName>Final Fantasy VII (USA) (Disc 2)</FileName>
+    <GameName>Final Fantasy VII (USA) (Disc 2)</GameName>
+  </File>
+  <File>
+    <Platform>Sony Playstation</Platform>
+    <FileName>Final Fantasy VII (USA) (Disc 3)</FileName>
+    <GameName>Final Fantasy VII (USA) (Disc 3)</GameName>
+  </File>
+  <File>
+    <Platform>Sony Playstation</Platform>
+    <FileName>Metal Gear Solid (USA) (Disc 1)</FileName>
+    <GameName>Metal Gear Solid (USA) (Disc 1)</GameName>
+  </File>
+  <File>
+    <Platform>Sony Playstation</Platform>
+    <FileName>Metal Gear Solid (USA) (Disc 2)</FileName>
+    <GameName>Metal Gear Solid (USA) (Disc 2)</GameName>
+  </File>
+  <File>
+    <Platform>Super Nintendo Entertainment System</Platform>
+    <FileName>Chrono Trigger (USA)</FileName>
+    <GameName>Chrono Trigger (USA)</GameName>
+  </File>
+  <File>
+    <Platform>Super Nintendo Entertainment System</Platform>
+    <FileName>Final Fantasy III (USA)</FileName>
+    <GameName>Final Fantasy III (USA)</GameName>
+  </File>
+  <File>
+    <Platform>Super Nintendo Entertainment System</Platform>
+    <FileName>Final Fantasy VI (Japan) (Translated En)</FileName>
+    <GameName>Final Fantasy VI (Japan) (Translated En)</GameName>
+  </File>
+  <File>
+    <Platform>Super Nintendo Entertainment System</Platform>
+    <FileName>Legend of Zelda, The - A Link to the Past (USA)</FileName>
+    <GameName>Legend of Zelda, The - A Link to the Past (USA)</GameName>
+  </File>
+  <File>
+    <Platform>Super Nintendo Entertainment System</Platform>
+    <FileName>Street Fighter II Turbo (USA)</FileName>
+    <GameName>Street Fighter II Turbo (USA)</GameName>
+  </File>
+  <File>
+    <Platform>Super Nintendo Entertainment System</Platform>
+    <FileName>Street Fighter II (USA)</FileName>
+    <GameName>Street Fighter II (USA)</GameName>
+  </File>
+  <File>
+    <Platform>Super Nintendo Entertainment System</Platform>
+    <FileName>Super Mario World (USA)</FileName>
+    <GameName>Super Mario World (USA)</GameName>
+  </File>
+  <File>
+    <Platform>Super Nintendo Entertainment System</Platform>
+    <FileName>Super Metroid (Japan, USA)</FileName>
+    <GameName>Super Metroid (Japan, USA)</GameName>
+  </File>
+</LaunchBox>

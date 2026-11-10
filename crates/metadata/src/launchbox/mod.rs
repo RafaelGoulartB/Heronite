@@ -1,0 +1,293 @@
+//! The LaunchBox Games Database (gamesdb.launchbox-app.com): every game of
+//! every platform LaunchBox knows, published as one archive
+//! (`Metadata.zip`, about 105 MB, refreshed daily) with no API and no
+//! account. Its pictures are served by file name from
+//! `images.launchbox-app.com`.
+//!
+//! Nothing is fetched until the user downloads the database from the
+//! source's row in Settings ([`LaunchBox::download`]); then it is refreshed
+//! at most weekly by the idle maintenance, or by hand. The archive becomes
+//! a local index ([`index`], built by [`build`] from the XML read as a
+//! stream) that a lookup queries in well under a millisecond.
+//!
+//! A lookup of an emulated game stays on its platform: the dump's file
+//! name in LaunchBox's own file table, then that name cleaned the way dump
+//! names are written ([`crate::rom_names`]) against the names and
+//! alternate names, then the game's title; an exact match of one game is
+//! [`MatchedBy::ExactTitle`], anything looser [`MatchedBy::FuzzyTitle`]. A
+//! PC game is looked up on LaunchBox's PC platforms, by its Steam id first.
+//! Only a search by hand looks at every platform.
+
+mod build;
+mod fetch;
+pub mod index;
+pub mod map;
+mod parse;
+#[cfg(test)]
+mod tests;
+
+use std::path::PathBuf;
+use std::time::SystemTime;
+
+use anyhow::Result;
+use heronite_data::paths::DataPaths;
+use parking_lot::Mutex;
+
+pub use build::{build, Built};
+use fetch::{drop_archive, fetch_archive, now_secs, Archive, Files, Stored};
+use index::{Index, LbGame, NameHit};
+
+use crate::http::Http;
+use crate::platforms::{self, Database, LAUNCHBOX_PC};
+use crate::rom_names::{match_key, shorter_keys, strip_extension};
+use crate::sources::download::{is_cancelled, DownloadProgress, DownloadState};
+use crate::sources::SourceGame;
+use crate::types::{Lookup, MatchedBy};
+use crate::util::score_title;
+
+pub const SOURCE: &str = "launchbox";
+/// The archive under [`Endpoints::launchbox`](crate::http::Endpoints).
+pub const ARCHIVE: &str = "Metadata.zip";
+/// Games a search by hand shows at most.
+const SEARCH_RESULTS: usize = 20;
+/// Names a search looks through before ranking them.
+const SEARCH_SCAN: usize = 300;
+/// The shortest key a loose match starts from: shorter ones begin too many names.
+const MIN_LOOSE_KEY: usize = 5;
+
+/// The index in use, opened once and again when its file changes.
+struct Opened {
+    stamp: (Option<SystemTime>, u64),
+    index: Index,
+}
+
+/// The source's state: the index it has open.
+#[derive(Default)]
+pub struct LaunchBox {
+    open: Mutex<Option<Opened>>,
+}
+
+impl LaunchBox {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn files(paths: &DataPaths) -> Files {
+        Files::new(paths.source_cache_dir(SOURCE))
+    }
+
+    /// Where the index is (whether it exists or not).
+    pub fn index_path(paths: &DataPaths) -> PathBuf {
+        Self::files(paths).index()
+    }
+
+    /// Whether the database is downloaded, when, and how big its index is.
+    pub fn state(&self, paths: &DataPaths) -> DownloadState {
+        Self::files(paths).download_state()
+    }
+
+    /// Runs `f` on the index; `None` when there is none (not downloaded).
+    fn with_index<T>(&self, paths: &DataPaths, f: impl FnOnce(&Index) -> Result<T>) -> Option<Result<T>> {
+        let path = Self::files(paths).index();
+        let meta = std::fs::metadata(&path).ok()?;
+        let stamp = (meta.modified().ok(), meta.len());
+        let mut open = self.open.lock();
+        if open.as_ref().is_none_or(|o| o.stamp != stamp) {
+            *open = None;
+            match Index::open(&path) {
+                Ok(index) => *open = Some(Opened { stamp, index }),
+                Err(e) => return Some(Err(e)),
+            }
+        }
+        open.as_ref().map(|o| f(&o.index))
+    }
+
+    /// The game of the database `game` is, and how it was found.
+    /// [`Lookup::Skipped`] without a database; [`Lookup::NotFound`] for an
+    /// emulated game of a platform LaunchBox does not have.
+    pub fn lookup(&self, paths: &DataPaths, game: &SourceGame) -> Lookup<(LbGame, MatchedBy)> {
+        let found = self.with_index(paths, |index| {
+            let Some((id, by)) = find(index, game)? else { return Ok(None) };
+            Ok(index.game(id)?.map(|g| (g, by)))
+        });
+        answer(found, &game.title)
+    }
+
+    /// Its game `id` (a DatabaseID).
+    pub fn by_id(&self, paths: &DataPaths, id: &str) -> Lookup<LbGame> {
+        let Ok(id) = id.trim().parse::<i64>() else { return Lookup::NotFound };
+        answer(self.with_index(paths, |index| index.game(id)), &id.to_string())
+    }
+
+    /// Games of any platform whose name is like `query`, best first; a
+    /// number is a DatabaseID.
+    pub fn search(&self, paths: &DataPaths, query: &str) -> Lookup<Vec<LbGame>> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Lookup::Found(Vec::new());
+        }
+        if query.bytes().all(|b| b.is_ascii_digit()) {
+            return self.by_id(paths, query).map(|g| vec![g]);
+        }
+        let found = self.with_index(paths, |index| {
+            let mut games: Vec<LbGame> =
+                index.containing(&match_key(query), SEARCH_SCAN)?.into_iter().filter_map(|id| index.game(id).ok().flatten()).collect();
+            games.sort_by_key(|g| (std::cmp::Reverse(score_title(query, &g.name)), std::cmp::Reverse(g.detail.votes), g.id));
+            games.truncate(SEARCH_RESULTS);
+            Ok(games)
+        });
+        match found {
+            None => Lookup::Skipped,
+            Some(Ok(games)) => Lookup::Found(games),
+            Some(Err(e)) => {
+                log::warn!("LaunchBox search of {query} failed: {e:#}");
+                Lookup::NotFound
+            }
+        }
+    }
+
+    /// Downloads the archive (only when it changed since the index in use
+    /// was built), builds a new index and swaps it in. The old index stays
+    /// until then: a failed or cancelled download changes nothing. Blocking.
+    pub fn download(&self, paths: &DataPaths, http: &Http, progress: &DownloadProgress) -> Result<()> {
+        let files = Self::files(paths);
+        let current = files.stored().filter(|_| files.index().exists());
+        let url = format!("{}/{ARCHIVE}", http.endpoints.launchbox.trim_end_matches('/'));
+        let (etag, last_modified) = match fetch_archive(&files, http, &url, current.as_ref().and_then(|s| s.etag.as_deref()), progress)? {
+            Archive::Unchanged => {
+                let stored = Stored { refreshed_at: now_secs(), ..current.unwrap_or_default() };
+                return files.store(&stored);
+            }
+            Archive::Whole { etag, last_modified } => (etag, last_modified),
+        };
+        let part = files.index_part();
+        let built = build(&files.archive_part(), &part, progress).and_then(|built| {
+            // Only an index that opens and has games replaces the one in use.
+            let games = Index::open(&part)?.game_count()?;
+            anyhow::ensure!(games > 0, "the new LaunchBox index has no games");
+            Ok(built)
+        });
+        let built = match built {
+            Ok(built) => built,
+            Err(e) => {
+                let _ = std::fs::remove_file(&part);
+                // A cancelled build keeps the whole archive for the next try;
+                // one that does not read is downloaded again.
+                if !is_cancelled(&e) {
+                    drop_archive(&files);
+                }
+                return Err(e);
+            }
+        };
+        {
+            let mut open = self.open.lock();
+            *open = None;
+            std::fs::rename(&part, files.index())?;
+        }
+        files.store(&Stored { refreshed_at: now_secs(), etag, last_modified, games: built.games })?;
+        drop_archive(&files);
+        log::info!(
+            "LaunchBox Games Database: {} games, {} names, {} files, {} pictures",
+            built.games,
+            built.names,
+            built.files,
+            built.images
+        );
+        Ok(())
+    }
+
+    /// Removes the index and whatever a download left: the source needs a
+    /// download again.
+    pub fn remove(&self, paths: &DataPaths) -> Result<()> {
+        let mut open = self.open.lock();
+        *open = None;
+        Self::files(paths).remove_all()
+    }
+}
+
+/// A lookup's answer: no index is "not asked", a broken one "not found".
+fn answer<T>(found: Option<Result<Option<T>>>, what: &str) -> Lookup<T> {
+    match found {
+        None => Lookup::Skipped,
+        Some(Ok(Some(t))) => Lookup::Found(t),
+        Some(Ok(None)) => Lookup::NotFound,
+        Some(Err(e)) => {
+            log::warn!("LaunchBox lookup of {what} failed: {e:#}");
+            Lookup::NotFound
+        }
+    }
+}
+
+/// LaunchBox's platforms a game is looked up on: an emulated game's own
+/// (none when its platform is unknown), a PC game's PC platforms.
+fn platform_names(game: &SourceGame) -> Vec<&'static str> {
+    if !game.emulated {
+        return LAUNCHBOX_PC.to_vec();
+    }
+    game.platform.as_deref().and_then(platforms::by_id).map(|p| p.names_in(Database::LaunchBox).to_vec()).unwrap_or_default()
+}
+
+/// The game among `hits`: own names before alternate names, then the
+/// platform first in `order`; and whether it is the only game at that rank.
+fn choose(hits: &[NameHit], order: &[i64]) -> Option<(i64, bool)> {
+    let rank = |h: &NameHit| (h.alt, order.iter().position(|p| *p == h.platform).unwrap_or(order.len()));
+    let best = hits.iter().min_by_key(|h| (rank(h), h.game))?;
+    let alone = !hits.iter().any(|h| h.game != best.game && rank(h) == rank(best));
+    Some((best.game, alone))
+}
+
+/// The game named exactly `key` on `platforms`: sure when it is the only one.
+fn exact(index: &Index, platforms: &[i64], key: &str) -> Result<Option<(i64, MatchedBy)>> {
+    let hits = index.by_key(platforms, key)?;
+    Ok(choose(&hits, platforms).map(|(game, alone)| (game, if alone { MatchedBy::ExactTitle } else { MatchedBy::FuzzyTitle })))
+}
+
+/// How `game` is found in the index (see the module docs).
+fn find(index: &Index, game: &SourceGame) -> Result<Option<(i64, MatchedBy)>> {
+    let platforms = index.platform_ids(&platform_names(game))?;
+    if platforms.is_empty() {
+        return Ok(None);
+    }
+    if !game.emulated {
+        if let Some(steam) = game.steam_app_id.as_deref().and_then(|s| s.trim().parse::<i64>().ok()) {
+            if let [only] = index.by_steam_id(&platforms, steam)?.as_slice() {
+                return Ok(Some((*only, MatchedBy::SteamId)));
+            }
+        }
+    }
+    let rom = game.rom_file.as_deref().filter(|_| game.emulated).filter(|f| !f.trim().is_empty());
+    let mut names: Vec<&str> = rom.into_iter().collect();
+    names.push(&game.title);
+    if let Some(file) = rom {
+        if let Some(key) = index.file_key(&platforms, strip_extension(file))? {
+            if let Some(found) = exact(index, &platforms, &key)? {
+                return Ok(Some(found));
+            }
+        }
+    }
+    for name in &names {
+        if let Some(found) = exact(index, &platforms, &match_key(name))? {
+            return Ok(Some(found));
+        }
+    }
+    // Looser: a longer name of LaunchBox's starting with the whole name
+    // (`Metal Gear Solid 2` → `… 2: Sons of Liberty`), else the name without
+    // its last words (`Gran Turismo 4 Spec II` → `Gran Turismo 4`).
+    for name in &names {
+        let key = match_key(name);
+        if key.chars().count() >= MIN_LOOSE_KEY {
+            let hits = index.by_prefix(&platforms, &key)?;
+            if let Some((game, _)) = choose(&hits, &platforms) {
+                return Ok(Some((game, MatchedBy::FuzzyTitle)));
+            }
+        }
+    }
+    for name in &names {
+        for key in shorter_keys(name).iter().filter(|k| k.chars().count() >= MIN_LOOSE_KEY) {
+            if let Some((game, _)) = choose(&index.by_key(&platforms, key)?, &platforms) {
+                return Ok(Some((game, MatchedBy::FuzzyTitle)));
+            }
+        }
+    }
+    Ok(None)
+}

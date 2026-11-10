@@ -161,6 +161,44 @@ impl MetadataService {
             .collect()
     }
 
+    /// The order of each field for this game: the settings' orders, with a
+    /// source that leads for this game's audience and found it surely
+    /// ahead of the sources that found it only by title (now, or the first
+    /// time, for a match found again by its id)
+    /// ([`SourceRegistry::field_orders_led`](crate::sources::SourceRegistry::field_orders_led)).
+    fn game_orders(
+        &self,
+        args: &MetadataApplyArgs,
+        current: Option<&CollectionGameMetadata>,
+        candidates: &[MetadataCandidate],
+        settings: &MetadataSettings,
+    ) -> IndexMap<String, Vec<String>> {
+        let leads = |c: &&MetadataCandidate| {
+            c.matched_by.is_some_and(MatchedBy::is_sure) && self.sources.get(&c.source).is_some_and(|d| d.leads_for.is_some())
+        };
+        if !candidates.iter().any(|c| leads(&c)) {
+            return self.sources.field_orders(settings);
+        }
+        let game = self.source_game(args, current);
+        let leaders: Vec<String> = candidates
+            .iter()
+            .filter(leads)
+            .filter(|c| self.sources.get(&c.source).and_then(|d| d.leads_for.as_ref()).is_some_and(|a| a.matches(&game)))
+            .map(|c| c.source.clone())
+            .collect();
+        // Found by title now, or again by the id a match by title stored
+        // (not one the user pinned).
+        let title = |by: Option<MatchedBy>| matches!(by, Some(MatchedBy::ExactTitle | MatchedBy::FuzzyTitle));
+        let by_title = |c: &&MetadataCandidate| {
+            title(c.matched_by)
+                || (c.matched_by == Some(MatchedBy::SourceId)
+                    && current.and_then(|md| record::source_match(md, &c.source)).is_some_and(|m| !m.pinned && title(m.matched_by)))
+        };
+        let title_found: Vec<String> =
+            candidates.iter().filter(by_title).filter(|c| !leaders.contains(&c.source)).map(|c| c.source.clone()).collect();
+        self.sources.field_orders_led(settings, &leaders, &title_found)
+    }
+
     /// The merge of `candidates` (those to save) into `current`, with the
     /// locked fields kept, the locks of the arguments set, and the matches
     /// of the candidates recorded.
@@ -174,7 +212,7 @@ impl MetadataService {
         let overwrite = args.overwrite_existing != Some(false);
         let preserve_manual = if has_picks { false } else { args.preserve_manual.unwrap_or(args.overwrite_existing == Some(false)) };
         let settings = self.metadata_settings();
-        let priority = with_preferred_source(&self.sources.field_orders(&settings), args.source.as_deref());
+        let priority = with_preferred_source(&self.game_orders(args, current, candidates, &settings), args.source.as_deref());
         let usable = Self::usable(&settings, candidates);
         let merge_candidates: Vec<MergeCandidate<'_>> = usable.iter().map(|(source, md)| MergeCandidate { source, metadata: md }).collect();
         // A field the user picked a source for is merged, kept family or not.

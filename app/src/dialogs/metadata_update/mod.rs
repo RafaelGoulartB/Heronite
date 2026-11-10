@@ -18,6 +18,7 @@ pub mod family_notice;
 mod games;
 pub mod hub;
 mod results;
+pub mod source_downloads;
 mod what;
 pub(crate) mod words;
 

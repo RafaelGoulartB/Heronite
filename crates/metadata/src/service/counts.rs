@@ -92,11 +92,9 @@ impl MetadataService {
         let fields: Vec<&'static str> = METADATA_FIELDS.iter().copied().chain(families.kept_extra_fields()).collect();
         let fillable = self.fillable_fields(&settings, &fields, None);
         let tags = is_on(&settings, ids::STEAM_TAGS).then(|| SteamTagsFile::load(&self.paths));
-        let overlay = sources
-            .iter()
-            .any(|d| d.applies_to.needs_overlay())
-            .then(|| json_store::read::<LocalMetaFile>(&self.paths.local_meta()).ok())
-            .flatten();
+        let overlay = self.sources.needs_overlay().then(|| json_store::read::<LocalMetaFile>(&self.paths.local_meta()).ok()).flatten();
+        let needs_download: Vec<String> =
+            sources.iter().filter(|d| !self.sources.downloaded(&self.paths, &d.id)).map(|d| d.id.clone()).collect();
 
         let art: ArtFile = json_store::read(&self.paths.art())?;
         let attention = classify(games, &records, &review::load(&self.paths), &art, &families.in_use());
@@ -114,6 +112,7 @@ impl MetadataService {
             needs_attention: attention.all().len(),
             missing_by_field: bulk_fields().into_iter().map(|f| (f, 0)).collect(),
             reach: sources.iter().map(|d| (d.id.clone(), 0)).collect(),
+            needs_download: needs_download.clone(),
             ..Default::default()
         };
         for game in games {
@@ -139,9 +138,10 @@ impl MetadataService {
                 steam_app_id: steam_id,
                 ..Default::default()
             };
-            let view = SourceGame::new(&args, overlay.as_ref().and_then(|o| o.games.get(&game.app_name)));
-            for d in &sources {
-                if d.applies_to.matches(&view) {
+            let platforms = md.map_or(&[][..], |m| m.platforms.as_slice());
+            let view = SourceGame::new(&args, overlay.as_ref().and_then(|o| o.games.get(&game.app_name)), platforms);
+            for d in sources.iter().filter(|d| !needs_download.contains(&d.id)) {
+                if self.sources.applies(&self.paths, &settings, d, &view) {
                     *counts.reach.entry(d.id.clone()).or_default() += 1;
                 }
             }

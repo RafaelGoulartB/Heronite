@@ -3869,17 +3869,21 @@ version = "1.5.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "flate2",
  "heronite-data",
  "heronite-i18n",
  "indexmap",
  "log",
  "parking_lot",
+ "quick-xml",
  "regex",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
  "ureq",
  "url",
+ "zip",
 ]
 
 [[package]]

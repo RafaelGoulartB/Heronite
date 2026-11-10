@@ -9,6 +9,7 @@ use heronite_data::paths::DataPaths;
 use heronite_data::source_prefs::{is_field_on, is_on};
 use parking_lot::Mutex;
 
+use super::download::{DownloadState, SourceDownload};
 use super::options::{option_values, OptionValue, SourceOption};
 use super::{Needs, SourceDescriptor, SourceKind, SourceRegistry};
 
@@ -34,19 +35,31 @@ pub enum SourceStatus {
 }
 
 /// `d`'s status. `last_test`: the outcome of its last test with the current
-/// option values, `None` when not tested since they changed.
+/// option values, `None` when not tested since they changed. A source that
+/// needs a download needs it here: see [`status_with`].
 pub fn status(d: &SourceDescriptor, on: bool, options: &[(SourceOption, OptionValue)], last_test: Option<bool>) -> SourceStatus {
+    status_with(d, on, options, last_test, None)
+}
+
+/// [`status`] knowing where its download stands (`None`: not downloaded).
+pub fn status_with(
+    d: &SourceDescriptor,
+    on: bool,
+    options: &[(SourceOption, OptionValue)],
+    last_test: Option<bool>,
+    download: Option<&DownloadState>,
+) -> SourceStatus {
     if !d.available_here() {
         return SourceStatus::Unavailable;
     }
     if !on {
         return SourceStatus::Off;
     }
-    // No built-in source signs in or downloads yet: nothing can say it is done.
+    // No built-in source signs in yet: nothing can say it is done.
     match d.needs {
         Needs::Account => return SourceStatus::NeedsSignIn,
-        Needs::Download => return SourceStatus::NeedsDownload,
-        Needs::ApiKey | Needs::Nothing => {}
+        Needs::Download if !download.is_some_and(|s| s.ready) => return SourceStatus::NeedsDownload,
+        Needs::Download | Needs::ApiKey | Needs::Nothing => {}
     }
     if options.iter().any(|(o, v)| o.missing(v)) {
         return SourceStatus::NeedsKey;
@@ -82,6 +95,13 @@ pub struct FieldRow {
     pub switchable: bool,
 }
 
+/// The database a source downloads, as its row shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DownloadRow {
+    pub download: SourceDownload,
+    pub state: DownloadState,
+}
+
 /// One source as Settings → Metadata shows it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SourceRow {
@@ -96,6 +116,8 @@ pub struct SourceRow {
     /// Whether dragging it changes anything: only the details sources'
     /// order feeds the merge.
     pub reorderable: bool,
+    /// Its database, when it downloads one (whether the source is on or not).
+    pub download: Option<DownloadRow>,
 }
 
 /// The outcome of each source's last test, remembered with the option
@@ -133,8 +155,11 @@ impl SourceRegistry {
                 let values = option_values(paths, m, d);
                 let enabled = is_on(m, &d.id);
                 let switchable = d.kind == SourceKind::Details;
+                let download =
+                    d.download.clone().and_then(|download| Some(DownloadRow { download, state: self.download_state(paths, &d.id)? }));
                 SourceRow {
-                    status: status(d, enabled, &values, tests.get(&d.id, &values)),
+                    status: status_with(d, enabled, &values, tests.get(&d.id, &values), download.as_ref().map(|r| &r.state)),
+                    download,
                     enabled,
                     options: values.into_iter().map(|(option, value)| OptionRow { option, value }).collect(),
                     fields: d.provides.iter().map(|f| FieldRow { field: f.clone(), on: is_field_on(m, &d.id, f), switchable }).collect(),
@@ -200,7 +225,10 @@ mod tests {
         set_field_on(&mut m, "steam", "cover", false);
         let rows = reg.rows(&paths, &m, &TestResults::default());
         let ids: Vec<&str> = rows.iter().map(|r| r.descriptor.id.as_str()).collect();
-        assert_eq!(ids, ["igdb", "steam", "store", "lutris", "vndb", "steamgriddb", "webimages", "howlongtobeat", "steamtags", "protondb"]);
+        assert_eq!(
+            ids,
+            ["igdb", "steam", "store", "lutris", "vndb", "launchbox", "steamgriddb", "webimages", "howlongtobeat", "steamtags", "protondb"]
+        );
         let status = |id| row(&rows, id).status;
         assert_eq!(status("steam"), SourceStatus::On);
         assert_eq!(status("vndb"), SourceStatus::On);
@@ -226,6 +254,11 @@ mod tests {
         assert_eq!(status(&d, false, &[], None), SourceStatus::Off);
         d.needs = Needs::Download;
         assert_eq!(status(&d, true, &[], None), SourceStatus::NeedsDownload);
+        let mut state = DownloadState::default();
+        assert_eq!(status_with(&d, true, &[], None, Some(&state)), SourceStatus::NeedsDownload);
+        state.ready = true;
+        assert_eq!(status_with(&d, true, &[], None, Some(&state)), SourceStatus::On);
+        assert_eq!(status_with(&d, false, &[], None, Some(&state)), SourceStatus::Off, "off keeps the database, and says off");
         d.needs = Needs::Nothing;
         assert_eq!(status(&d, true, &[], Some(false)), SourceStatus::TestFailed);
         d.only_on = vec!["no-such-os".into()];

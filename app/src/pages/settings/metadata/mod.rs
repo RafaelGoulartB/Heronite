@@ -11,10 +11,13 @@
 //! section shows and after a change (`stale`), never per frame.
 //!
 //! Debug: `HERONITE_DEBUG_METADATA_OPEN=<source id>[,<source id>…]` opens
-//! those rows (`advanced`: the order of each field) and scrolls to the last.
+//! those rows (`advanced`: the order of each field) and scrolls to the last;
+//! `HERONITE_DEBUG_SOURCE_DOWNLOAD` shows a source's database in a made-up
+//! state (`dialogs/metadata_update/source_downloads.rs`).
 
 mod arrive;
 mod console;
+mod download;
 mod field_order;
 pub(crate) mod labels;
 mod shapes;
@@ -32,13 +35,13 @@ use heronite_data::models::MetadataSettings;
 use heronite_data::settings::{self, EffectiveSettings, METADATA_FIELDS};
 use heronite_data::source_prefs::ids;
 use heronite_i18n::tr;
-use heronite_metadata::sources::{builtin_descriptors, OptionKind, OptionValue, SourceRow};
+use heronite_metadata::sources::{builtin_descriptors, OptionKind, OptionValue, SourceRow, SourceStatus};
 use heronite_metadata::MetadataService;
 
 pub(super) use console::{console_apply, console_rows};
 
 use super::SettingsPage;
-use crate::dialogs::metadata_wizard::{hub, HubGlobal};
+use crate::dialogs::metadata_wizard::{hub, HubEvent, HubGlobal};
 use crate::ui::fields::on_commit;
 
 /// One field's sources, first to last, as the merge asks them.
@@ -80,6 +83,8 @@ pub struct State {
     shapes: Option<shapes::Shapes>,
     /// `HERONITE_DEBUG_METADATA_OPEN` was applied.
     debug_done: bool,
+    /// Follows the hub: a database download's progress, and its end.
+    hub_watch: Option<Subscription>,
 }
 
 impl State {
@@ -98,9 +103,27 @@ fn service(cx: &App) -> Option<Arc<MetadataService>> {
     cx.has_global::<HubGlobal>().then(|| hub(cx).read(cx).service.clone())
 }
 
+/// Redraws while a source's database downloads, and reads the rows again
+/// once one was downloaded or removed.
+fn watch_hub(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
+    if d.metadata.hub_watch.is_some() || !cx.has_global::<HubGlobal>() {
+        return;
+    }
+    let entity = hub(cx);
+    let watch = cx.subscribe(&entity, |d: &mut SettingsPage, _, ev: &HubEvent, cx| {
+        if let HubEvent::SourceDownloaded = ev {
+            d.metadata.stale = true;
+            cx.notify();
+        }
+    });
+    cx.observe(&entity, |_, _, cx| cx.notify()).detach();
+    d.metadata.hub_watch = Some(watch);
+}
+
 /// The section is on screen: its rows, and the count of the summary.
 pub(super) fn shown(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) {
     d.metadata.stale = true;
+    watch_hub(d, cx);
     ensure_rows(d, window, cx);
     summary::count(d, cx);
     if !d.metadata.debug_done {
@@ -125,7 +148,8 @@ pub(super) fn ensure_rows(d: &mut SettingsPage, window: &mut Window, cx: &mut Co
     let Some(service) = service(cx) else { return };
     d.metadata.stale = false;
     let m: &MetadataSettings = &d.settings.metadata;
-    let rows = service.source_rows(m);
+    let mut rows = service.source_rows(m);
+    debug_download(&mut rows, cx);
     // Only the sources shown as rows: a hidden one (Playnite) or one this
     // build does not know keeps its place when the order is saved.
     let shown = |id: &String| rows.iter().any(|r| r.descriptor.id == *id);
@@ -273,6 +297,21 @@ pub(super) fn reveal(d: &mut SettingsPage, label: &str) {
     let holder = builtin_descriptors().iter().find(|s| s.name == label || s.options.iter().any(|o| o.label == label));
     if let Some(s) = holder {
         d.metadata.open.insert(s.id.clone());
+    }
+}
+
+/// `HERONITE_DEBUG_SOURCE_DOWNLOAD`: the row of the source it names shows
+/// the made-up state, whatever is on disk.
+fn debug_download(rows: &mut [SourceRow], cx: &App) {
+    let hub = hub(cx);
+    for r in rows.iter_mut() {
+        let Some(state) = hub.read(cx).fake_download_state(&r.descriptor.id) else { continue };
+        if let Some(download) = r.download.as_mut() {
+            download.state = state.clone();
+            if r.enabled {
+                r.status = if state.ready { SourceStatus::On } else { SourceStatus::NeedsDownload };
+            }
+        }
     }
 }
 

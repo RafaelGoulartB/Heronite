@@ -77,14 +77,16 @@ impl MetadataService {
     }
 
     /// `game` as the sources see it. The overlay is read only when needed:
-    /// for the Steam id the arguments lack, or for a source's audience.
-    pub(super) fn source_game(&self, args: &MetadataApplyArgs) -> SourceGame {
+    /// for the Steam id the arguments lack, or for a source's audience (an
+    /// emulated game's platform and ROM). `current`: its record, whose
+    /// platforms are the last word on an emulated game's platform.
+    pub(super) fn source_game(&self, args: &MetadataApplyArgs, current: Option<&CollectionGameMetadata>) -> SourceGame {
         let has_steam_id = args.steam_app_id.as_deref().is_some_and(|s| !s.is_empty());
         let overlay = (!has_steam_id || self.sources.needs_overlay())
             .then(|| json_store::read::<LocalMetaFile>(&self.paths.local_meta()).ok())
             .flatten()
             .and_then(|mut file| file.games.shift_remove(&args.app_name));
-        SourceGame::new(args, overlay.as_ref())
+        SourceGame::new(args, overlay.as_ref(), current.map_or(&[], |md| md.platforms.as_slice()))
     }
 
     /// `gatherCandidates`: asks every provider that is on and applies to the
@@ -127,7 +129,7 @@ impl MetadataService {
             game.igdb_id.or_else(|| current.as_ref().and_then(|c| c.igdb_id).map(|n| n.get() as i64).filter(|_| !unpinned("igdb")));
         with_ids.lutris_slug =
             game.lutris_slug.clone().or_else(|| current.as_ref().and_then(|c| c.lutris_slug.clone()).filter(|_| !unpinned("lutris")));
-        let game_view = self.source_game(&with_ids);
+        let game_view = self.source_game(&with_ids, current.as_ref());
         let ctx = SourceContext::new(&self.paths, &self.http);
         let settings = ctx.settings();
         let fields = self.fetch_fields(game);
@@ -166,8 +168,12 @@ impl MetadataService {
                 if !Self::wanted(d, game, game_view) {
                     return Plan::Not(NotAsked::NotChosen);
                 }
-                if pin.is_none() && !d.applies_to.matches(game_view) {
+                if pin.is_none() && !self.sources.applies(&self.paths, settings, d, game_view) {
                     return Plan::Not(NotAsked::NotForThisGame);
+                }
+                // Never asked, not even for a pinned game, before the user downloads its database.
+                if !self.sources.downloaded(&self.paths, &d.id) {
+                    return Plan::Not(NotAsked::NeedsDownload);
                 }
                 if !d.is_fallback() || pin.is_some() {
                     return Plan::Ask(pin);
@@ -260,7 +266,11 @@ impl MetadataService {
                 Lookup::NotFound => SourceAnswer::NotFound,
                 Lookup::Unreachable => SourceAnswer::Unreachable,
                 Lookup::Skipped => SourceAnswer::NotAsked {
-                    why: why.unwrap_or(if d.needs == Needs::Nothing { NotAsked::NotForThisGame } else { NotAsked::NeedsKey }),
+                    why: why.unwrap_or(match d.needs {
+                        Needs::ApiKey | Needs::Account => NotAsked::NeedsKey,
+                        Needs::Download => NotAsked::NeedsDownload,
+                        Needs::Nothing => NotAsked::NotForThisGame,
+                    }),
                 },
             };
             // The per-game dialog lists the details sources: a pictures
