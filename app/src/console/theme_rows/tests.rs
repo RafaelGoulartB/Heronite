@@ -8,6 +8,7 @@ fn data() -> Data {
         facts: Facts {
             statuses: vec![("playing".into(), "Playing".into())],
             categories: vec!["Co-op".into()],
+            smart: vec![("g1".into(), "Unplayed".into())],
             platforms: vec!["PC".into(), "PlayStation 2".into()],
             stores: vec!["Steam".into()],
             genres: vec!["Adventure".into()],
@@ -385,4 +386,15 @@ fn choosing_a_picture_makes_it_the_background() {
     let mut p = classic();
     assert!(run(&mut p, &Command::new("background.image", Arg::Text("/x/wall.png".into())), &data()));
     assert_eq!(p.theme.background.source, heronite_data::console_theme::BackgroundSource::Image);
+}
+
+#[test]
+fn smart_categories_can_be_shelves_and_tabs() {
+    let d = data();
+    let prefs = ConsolePrefs::default();
+    let cx = Ctx { prefs: &prefs, data: &d };
+    let kinds = addable_kinds(&cx);
+    assert!(kinds.iter().any(|(_, k, n)| k == "smart:g1" && n == "Unplayed"), "{kinds:?}");
+    assert_eq!(kind_label("smart:g1", |k| d.facts.status_name(k)), "Unplayed");
+    assert!(source_options(&d.facts, "all").iter().any(|(k, _)| k == "smart:g1"));
 }

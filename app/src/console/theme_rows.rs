@@ -32,6 +32,7 @@ use heronite_data::console_theme::{
     MenuStyle, Motion, OpenIn, ShelfSpec, Side, Size3, SpotActions, StartOn, TabBar, TabSpec, TileShape, TileSize, TileTitles, WheelItems,
     MAX_TABS, MENU_LOCKED,
 };
+use heronite_data::smart_groups::SmartGroups;
 use heronite_data::{CollectionGame, Library};
 use heronite_i18n::{n_, tr, trc};
 
@@ -48,6 +49,8 @@ pub struct Facts {
     /// default statuses, the id of a custom one).
     pub statuses: Vec<(String, String)>,
     pub categories: Vec<String>,
+    /// The smart categories, `(id, name)`, in their order.
+    pub smart: Vec<(String, String)>,
     pub platforms: Vec<String>,
     pub stores: Vec<String>,
     pub genres: Vec<String>,
@@ -55,7 +58,7 @@ pub struct Facts {
 
 impl Facts {
     /// `platform` gives the platform a game is shown under.
-    pub fn build(lib: &Library, categories: &Categories, platform: impl Fn(&CollectionGame) -> String) -> Self {
+    pub fn build(lib: &Library, categories: &Categories, smart: &SmartGroups, platform: impl Fn(&CollectionGame) -> String) -> Self {
         let (mut stores, mut platforms, mut genres) = (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
         for g in &lib.games {
             stores.insert(g.source_label.to_string());
@@ -75,14 +78,19 @@ impl Facts {
         Self {
             statuses,
             categories: categories.names().map(str::to_owned).collect(),
+            smart: smart.groups.iter().map(|g| (g.id.clone(), g.name.clone())).collect(),
             platforms: platforms.into_iter().collect(),
             stores: stores.into_iter().collect(),
             genres: genres.into_iter().collect(),
         }
     }
 
-    /// The name of the status `key` (the key itself when the library has no such status).
+    /// The name of the status `key` (the key itself when the library has no
+    /// such status), or of a whole `smart:<id>` kind.
     pub fn status_name(&self, key: &str) -> String {
+        if let Some(id) = key.strip_prefix("smart:") {
+            return self.smart.iter().find(|(k, _)| k == id).map_or_else(|| id.to_string(), |(_, n)| n.clone());
+        }
         self.statuses.iter().find(|(k, _)| k == key).map_or_else(|| key.to_string(), |(_, n)| n.clone())
     }
 }
@@ -351,6 +359,7 @@ pub fn source_options(facts: &Facts, current: &str) -> Vec<(String, String)> {
     ];
     v.extend(facts.statuses.iter().map(|(k, n)| (format!("status:{k}"), tr!("Status: {name}", name = n))));
     v.extend(facts.categories.iter().map(|c| (format!("category:{c}"), tr!("Category: {name}", name = c))));
+    v.extend(facts.smart.iter().map(|(id, n)| (format!("smart:{id}"), tr!("Category: {name}", name = n))));
     v.extend(facts.stores.iter().map(|s| (format!("store:{s}"), tr!("Store: {name}", name = s))));
     v.extend(facts.platforms.iter().map(|s| (format!("platform:{s}"), tr!("Platform: {name}", name = s))));
     if !v.iter().any(|(k, _)| k == current) {
@@ -360,7 +369,8 @@ pub fn source_options(facts: &Facts, current: &str) -> Vec<(String, String)> {
 }
 
 /// The name a shelf kind shows when it has no title of its own;
-/// `status_name` gives that of a status (by its slug or id).
+/// `status_name` gives that of a status (by its slug or id), or of a
+/// smart category given its whole `smart:<id>` kind.
 pub fn kind_label(kind: &str, status_name: impl Fn(&str) -> String) -> String {
     let (k, value) = kind.split_once(':').unwrap_or((kind, ""));
     match k {
@@ -374,6 +384,7 @@ pub fn kind_label(kind: &str, status_name: impl Fn(&str) -> String) -> String {
         "statuses" => tr!("One per status").into(),
         "status" => status_name(value),
         "category" if value == UNCATEGORIZED => tr!("Uncategorized").into(),
+        "smart" => status_name(kind),
         _ => value.to_string(),
     }
 }
@@ -432,6 +443,7 @@ pub fn addable_kinds(cx: &Ctx) -> Vec<(&'static str, String, String)> {
     out.extend(f.stores.iter().map(|n| (tr!("Store"), format!("store:{n}"), n.clone())));
     out.extend(f.genres.iter().map(|n| (tr!("Genre"), format!("genre:{n}"), n.clone())));
     out.extend(f.categories.iter().map(|n| (tr!("Category"), format!("category:{n}"), n.clone())));
+    out.extend(f.smart.iter().map(|(id, n)| (tr!("Smart category"), format!("smart:{id}"), n.clone())));
     out.retain(|(_, k, _)| !have.contains(k.as_str()));
     out
 }

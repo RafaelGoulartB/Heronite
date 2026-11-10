@@ -4,7 +4,8 @@
 //! pinned ones sit in the header. Nothing of it shows until the user makes a
 //! group.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
+use std::rc::Rc;
 
 use gpui_kit::*;
 use heronite_data::models::CompletionStatus;
@@ -44,26 +45,34 @@ impl CollectionView {
         }
     }
 
-    /// The game is in one of the picked groups (or none is picked).
-    pub(super) fn in_picked_groups(&self, g: &CollectionGame, statuses: &[CompletionStatus]) -> bool {
-        if self.ui.smart_groups.is_empty() {
+    /// The game is in one of the picked categories, manual or smart (or
+    /// none is picked): they share one section, so they add up as the
+    /// manual ones do among themselves.
+    pub(super) fn in_picked_categories(&self, g: &CollectionGame) -> bool {
+        let (manual, smart) = (&self.ui.categories, &self.ui.smart_groups);
+        if manual.is_empty() && smart.is_empty() {
             return true;
         }
-        let facts = self.group_facts(statuses);
-        self.ui.smart_groups.iter().filter_map(|id| self.smart_groups.get(id)).any(|group| group.matches(g, &facts))
+        (!manual.is_empty() && self.categories.matches(manual, &g.runner, &g.app_name))
+            || smart.iter().filter_map(|id| self.smart_groups.get(id)).any(|group| self.group_members(group).contains(&g.key))
     }
 
-    /// Games of the library in `group`, counted once until the list is
-    /// built again.
-    pub(super) fn group_count(&self, group: &SmartGroup) -> usize {
-        if let Some(n) = self.group_counts.borrow().get(&group.id) {
-            return *n;
+    /// Keys of the library's games in `group`, worked out once until the
+    /// list is built again (for its count, the covers and Group by).
+    pub(super) fn group_members(&self, group: &SmartGroup) -> Rc<HashSet<String>> {
+        if let Some(keys) = self.group_members.borrow().get(&group.id) {
+            return keys.clone();
         }
-        let Some(lib) = self.lib.as_deref() else { return 0 };
+        let Some(lib) = self.lib.as_deref() else { return Rc::default() };
         let facts = self.group_facts(&lib.statuses);
-        let n = lib.games.iter().filter(|g| group.matches(g, &facts)).count();
-        self.group_counts.borrow_mut().insert(group.id.clone(), n);
-        n
+        let keys: Rc<HashSet<String>> = Rc::new(lib.games.iter().filter(|g| group.matches(g, &facts)).map(|g| g.key.clone()).collect());
+        self.group_members.borrow_mut().insert(group.id.clone(), keys.clone());
+        keys
+    }
+
+    /// Games of the library in `group`.
+    pub(super) fn group_count(&self, group: &SmartGroup) -> usize {
+        self.group_members(group).len()
     }
 
     /// Some group asks whether a game has an update: keep the list current
@@ -106,20 +115,9 @@ impl CollectionView {
         cx.notify();
     }
 
-    /// Shows only the games of `id` (a click on a pinned group): picking the
-    /// one already shown alone drops it.
-    pub(super) fn show_only_group(&mut self, id: &str, cx: &mut Context<Self>) {
-        let alone = self.ui.smart_groups.len() == 1 && self.ui.smart_groups.contains(id);
-        self.ui.smart_groups = if alone { BTreeSet::new() } else { BTreeSet::from([id.to_owned()]) };
-        self.save_ui();
-        self.refresh_groups();
-        self.scroll_list_to_top();
-        cx.notify();
-    }
-
     fn write_groups(&mut self, result: anyhow::Result<()>, cx: &mut Context<Self>) {
         if let Err(err) = result {
-            self.show_toast(tr!("Could not save the groups: {err}", err = format!("{err:#}")), true, cx);
+            self.show_toast(tr!("Could not save the smart categories: {err}", err = format!("{err:#}")), true, cx);
         }
         self.reload_smart_groups(cx);
     }

@@ -20,6 +20,7 @@ use gpui_kit::*;
 use heronite_data::{GroupBy, InstallFilter};
 use heronite_i18n::{tr, trc};
 
+use super::category_kinds::CategoryRef;
 use super::header::{install_label, Menu};
 use super::view_filters::Only;
 use super::view_menu::organize::{group_label, sort_direction, sort_direction_icon, sort_icon, sort_label};
@@ -144,7 +145,7 @@ pub(super) struct Widths {
     group: f32,
     preset: f32,
     presets: bool,
-    /// The pinned smart groups' segments, in their order.
+    /// The pinned categories' segments, in their order.
     pins: Vec<f32>,
 }
 
@@ -269,10 +270,12 @@ impl CollectionView {
     }
 
     /// A filter chip the toolbar already carries: its control, or the pin of
-    /// its group.
+    /// its category.
     pub(super) fn chip_shown_elsewhere(&self, pick: &Pick, shown: Shown) -> bool {
+        let pinned = |r: CategoryRef| self.pinned_categories().into_iter().take(shown.pins).any(|c| c.r == r);
         match pick {
-            Pick::Group(id) => self.smart_groups.pinned().take(shown.pins).any(|g| g.id == *id),
+            Pick::Group(id) => pinned(CategoryRef::Smart(id.clone())),
+            Pick::Category(name) => pinned(CategoryRef::Manual(name.clone())),
             _ => covers(pick, shown.controls),
         }
     }

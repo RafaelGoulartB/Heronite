@@ -136,7 +136,27 @@ impl CollectionView {
             .collect()
     }
 
-    /// The categories list with its help line and "Manage categories…".
+    /// The smart categories some of `games` are in: "Unplayed (3 of 7)", or
+    /// the name alone when all are.
+    fn batch_smart_names(&self, games: &[Arc<CollectionGame>]) -> Vec<String> {
+        let total = games.len();
+        self.smart_groups
+            .groups
+            .iter()
+            .filter_map(|s| {
+                let keys = self.group_members(s);
+                let n = games.iter().filter(|g| keys.contains(&g.key)).count();
+                match n {
+                    0 => None,
+                    n if n == total => Some(s.name.clone()),
+                    n => Some(format!("{} ({})", s.name, tr!("{n} of {total}", n, total))),
+                }
+            })
+            .collect()
+    }
+
+    /// The manual categories list with its help line, the smart ones some of
+    /// the games are in (read only) and "Manage categories…".
     pub(super) fn batch_categories_body(&self, games: &[Arc<CollectionGame>], prefix: &str, cx: &mut Context<Self>) -> Div {
         let mut list =
             div().id(SharedString::from(format!("{prefix}-cat-list"))).flex().flex_col().gap(px(2.)).overflow_y_scroll().max_h(px(300.));
@@ -163,6 +183,10 @@ impl CollectionView {
                         .text_color(theme::text_dim())
                         .child(tr!("A dash means only some of them have it. Each click: add to all, remove from all, back as it was.")),
                 )
+            })
+            .children({
+                let names = self.batch_smart_names(games);
+                (!names.is_empty()).then(|| super::context_menu::smart_in_line(SharedString::from(format!("{prefix}-smart-in")), &names))
             })
             .child(
                 item(SharedString::from(format!("{prefix}-cat-manage")))
@@ -296,7 +320,7 @@ impl CollectionView {
             .child(count)
             .child(div().w(px(1.)).h(px(24.)).mx(px(4.)).flex_none().bg(theme::glass_border()))
             .child(self.dock_pop_button(DockPop::Status, "dock-status", Icon::Flag, status_label, &games, cx))
-            .child(self.dock_pop_button(DockPop::Categories, "dock-cats", Icon::Label, tr!("Categories").into_any_element(), &games, cx))
+            .child(self.dock_pop_button(DockPop::Categories, "dock-cats", Icon::Label, tr!("Add to").into_any_element(), &games, cx))
             .child(
                 dock_button(
                     "dock-fav",

@@ -203,24 +203,6 @@ impl CollectionView {
         self.with_context_menu(key, el, cx)
     }
 
-    /// The categories of the game under `key` (and, while copies are
-    /// grouped, of its other copies), each once, by name.
-    pub(super) fn card_categories(&self, key: &str) -> Vec<super::category_badges::CategoryBadge> {
-        if self.categories.is_empty() {
-            return Vec::new();
-        }
-        let mut found = std::collections::BTreeSet::new();
-        for g in self.with_copies(key) {
-            found.extend(self.categories.of_game(&g.runner, &g.app_name));
-        }
-        self.categories
-            .names()
-            .enumerate()
-            .filter(|(_, n)| found.contains(n))
-            .map(|(i, n)| super::category_badges::CategoryBadge::new(n, i))
-            .collect()
-    }
-
     /// The logos of the stores of the game under `key`, its emulator's for
     /// a ROM (and, with "Show
     /// every store a game is in" while copies are grouped, of its other

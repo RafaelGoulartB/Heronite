@@ -159,7 +159,8 @@ impl CollectionView {
         }
         v.extend(self.page_commands(cx).iter().map(|(page, c)| sources::page_entry(*page, c)));
         let Some(lib) = self.lib.clone() else { return v };
-        v.extend(sources::view_entries(&self.ui, &collect_facet_options(&lib.games), &self.categories));
+        let smart: Vec<(String, String)> = self.smart_groups.groups.iter().map(|g| (g.id.clone(), g.name.clone())).collect();
+        v.extend(sources::view_entries(&self.ui, &collect_facet_options(&lib.games), &self.categories, &smart));
         let mut games: Vec<_> = lib.games.iter().collect();
         games.sort_by(|a, b| a.title_lower.cmp(&b.title_lower).then(a.key.cmp(&b.key)));
         v.reserve(games.len());
@@ -346,6 +347,7 @@ impl CollectionView {
             ViewCmd::ClearFilters => {
                 self.ui.clear_facets();
                 self.ui.categories.clear();
+                self.ui.smart_groups.clear();
                 self.ui.statuses.clear();
                 self.save_ui();
                 self.refresh_groups();
@@ -354,7 +356,9 @@ impl CollectionView {
             ViewCmd::SortDirection => self.toggle_sort_direction(cx),
             ViewCmd::Only(only, on) => self.set_only(only, on, cx),
             ViewCmd::Category(name) => self.toggle_category_filter(&name, cx),
+            ViewCmd::SmartCategory(id) => self.toggle_smart_group_filter(&id, cx),
             ViewCmd::ManageCategories => self.open_manage_categories(window, cx),
+            ViewCmd::NewSmartCategory => self.open_group_editor(None, None, window, cx),
         }
         self.reveal_selected();
         cx.notify();

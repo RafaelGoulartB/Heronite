@@ -7,6 +7,7 @@ use heronite_data::categories::{self, Categories, UNCATEGORIZED};
 use heronite_data::field_names::Field;
 use heronite_i18n::tr;
 
+use super::category_kinds::CategoryRef;
 use super::CollectionView;
 use crate::dialogs::manage_fields::{ManageFieldsDialog, NamesChanged};
 use crate::services::downloads::Downloads;
@@ -120,11 +121,41 @@ impl CollectionView {
         self.reload_categories(cx);
     }
 
+    /// The categories manager: both kinds, with the manual ones' colours and
+    /// pins and the smart ones' counts.
     pub(super) fn open_manage_categories(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use crate::dialogs::manage_categories::{CategoryAction, Looks, ManageCategoriesDialog, SmartRow};
         let Some(ctx) = self.dialog_ctx() else { return };
         self.open_menu = None;
         self.context_menu = None;
-        let view = cx.new(|cx| crate::dialogs::manage_categories::ManageCategoriesDialog::new(ctx, window, cx));
+        let smart = self
+            .smart_groups
+            .groups
+            .iter()
+            .map(|g| SmartRow {
+                id: g.id.clone(),
+                name: g.name.clone(),
+                colour: super::smart_groups::group_colour(g),
+                pinned: g.pinned,
+                games: self.group_count(g),
+            })
+            .collect();
+        let looks = Looks { manual: self.ui.category_looks.clone(), smart };
+        let view = cx.new(|cx| ManageCategoriesDialog::new(ctx, looks, window, cx));
+        cx.subscribe_in(&view, window, |this, _, ev: &CategoryAction, window, cx| match ev {
+            CategoryAction::Colour { name, colour } => this.set_manual_colour(name, colour.clone(), cx),
+            CategoryAction::Pin { smart, key, pinned } => {
+                let r = if *smart { CategoryRef::Smart(key.clone()) } else { CategoryRef::Manual(key.clone()) };
+                this.set_category_pinned(&r, *pinned, cx);
+            }
+            CategoryAction::EditSmart(id) => this.open_group_editor(id.as_deref(), None, window, cx),
+            CategoryAction::Removed(name) => {
+                if this.ui.forget_category(name) {
+                    this.save_ui();
+                }
+            }
+        })
+        .detach();
         // Before the reload that follows the rename prunes the old name.
         cx.subscribe(&view, |this, _, ev: &crate::dialogs::manage_categories::CategoryRenamed, cx| {
             if this.ui.rename_category(&ev.from, &ev.to) {

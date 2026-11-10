@@ -7,6 +7,7 @@ mod age_rows;
 mod backdrop;
 mod card;
 pub(crate) mod category_badges;
+mod category_kinds;
 mod clients;
 mod console;
 mod context_menu;
@@ -147,7 +148,7 @@ pub struct CollectionView {
     group_today: std::cell::Cell<Option<chrono::NaiveDate>>,
     /// Games per smart group (by id) for the View menu, until the list is
     /// built again.
-    group_counts: std::cell::RefCell<std::collections::HashMap<String, usize>>,
+    group_members: std::cell::RefCell<std::collections::HashMap<String, std::rc::Rc<std::collections::HashSet<String>>>>,
     /// Dates added, sizes and systems the extra sorts and groups read (`organize.rs`).
     game_extras: Arc<heronite_data::organize::GameExtras>,
     /// The actions users added to their games, by game key, loaded with the library.
@@ -368,7 +369,7 @@ impl CollectionView {
             categories: Default::default(),
             smart_groups: Default::default(),
             group_today: Default::default(),
-            group_counts: Default::default(),
+            group_members: Default::default(),
             game_extras: Default::default(),
             user_actions: Default::default(),
             update_apps: Default::default(),

@@ -1,19 +1,20 @@
-//! The View menu's parts that pick what shows: the smart groups select next
-//! to the presets one, the "Filter" block (Show with "Include hidden", the
-//! "Only" switches, "Filter by" with the other kinds and "Ages up to" in its
-//! "More" list) and the footer's "Manage" list.
+//! The View menu's parts that pick what shows: the "Filter" block (Show with
+//! "Include hidden", the "Only" switches, the Categories of both kinds,
+//! "Filter by" with the other kinds and "Ages up to" in its "More" list) and
+//! the footer's "Manage" list.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::FacetKind;
-use heronite_i18n::{tr, trc, trn};
+use heronite_i18n::{tr, trc};
 
-use super::super::smart_groups::group_colour;
-use super::super::view_filters::Only;
+use heronite_data::categories::UNCATEGORIZED;
+
+use super::super::view_filters::{category_label, Only};
 use super::super::CollectionView;
 use super::choices::{self, Kind};
 use super::organize::More;
-use super::render::{check, control, control_hover, count_label, dot, pill, section_head, Density};
+use super::render::{check, control, control_hover, count_label, dot, hint_text, pill, section_head};
 use super::Pick;
 use crate::icons::Icon;
 use crate::theme;
@@ -21,7 +22,47 @@ use crate::ui::dropdown::{menu_item, menu_panel, menu_separator};
 use crate::ui::icon;
 
 /// Kinds with a pill of their own in "Filter by"; the others are in its "More" list.
-const FILTER_BY: [Kind; 4] = [Kind::Facet(FacetKind::Genre), Kind::Facet(FacetKind::Store), Kind::Status, Kind::Category];
+/// Categories have a section of their own.
+const FILTER_BY: [Kind; 3] = [Kind::Facet(FacetKind::Genre), Kind::Facet(FacetKind::Store), Kind::Status];
+
+/// Rows of category chips shown before "Show all": a long list would push
+/// Filter by, Sort and Group by out of the panel.
+pub(super) const CATEGORY_ROWS: usize = 5;
+/// Space between the category chips.
+const CHIP_GAP: f32 = 6.;
+
+/// The end of the first rows of a wrapping row of chips.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct RowsCut {
+    /// Height of those rows.
+    height: f32,
+    /// Chips in them (the first ones, in order).
+    shown: usize,
+}
+
+/// Where the first `rows` rows of chips laid out at `bounds` end, or `None`
+/// when there are no more rows than that.
+fn rows_cut(bounds: &[Bounds<Pixels>], rows: usize) -> Option<RowsCut> {
+    if rows == 0 {
+        return None;
+    }
+    let first = bounds.iter().map(|b| f32::from(b.top())).reduce(f32::min)?;
+    let mut tops: Vec<f32> = Vec::new();
+    for b in bounds {
+        let top = f32::from(b.top());
+        if !tops.iter().any(|t| (t - top).abs() < 1.) {
+            tops.push(top);
+        }
+    }
+    if tops.len() <= rows {
+        return None;
+    }
+    tops.sort_by(f32::total_cmp);
+    let last = tops[rows - 1];
+    let in_rows = |b: &&Bounds<Pixels>| f32::from(b.top()) < last + 1.;
+    let bottom = bounds.iter().filter(in_rows).map(|b| f32::from(b.bottom())).reduce(f32::max)?;
+    Some(RowsCut { height: bottom - first, shown: bounds.iter().filter(in_rows).count() })
+}
 
 impl CollectionView {
     /// A block's title: a short bold word and a line to the panel's edge.
@@ -38,103 +79,130 @@ impl CollectionView {
             .child(div().flex_1().h(px(1.)).bg(theme::ink_a(0.08)))
     }
 
-    /// The smart groups select, beside the presets one: the picked group (or
-    /// how many), and a list to pick, pin, edit and make groups.
-    pub(super) fn vm_groups_select(&self, d: Density, cx: &mut Context<Self>) -> Div {
-        let open = self.view_menu.more == Some(More::Groups);
-        let picked: Vec<_> = self.ui.smart_groups.iter().filter_map(|id| self.smart_groups.get(id)).collect();
-        let label: SharedString = match picked.as_slice() {
-            [] => tr!("None").into(),
-            [one] => one.name.clone().into(),
-            many => trn!(many.len(), "{n} group", "{n} groups").into(),
-        };
-        let trigger = div()
-            .id("vm-groups-select")
-            .flex()
-            .items_center()
-            .gap(px(8.))
-            .h(px(d.row_h))
-            .pl(px(12.))
-            .pr(px(9.))
-            .rounded_full()
-            .map(control)
-            .when(open, |s| s.bg(control_hover()))
+    /// The Categories section: a chip for every category, manual ones (their
+    /// colour's dot) then smart ones (the sparkle), each with its games;
+    /// "Uncategorized"; "Manage…" in the title, and "Save filters as smart
+    /// category…" while other filters are on.
+    pub(super) fn vm_categories(&self, cx: &mut Context<Self>) -> Div {
+        let d = self.vm_density();
+        let entries = self.category_entries();
+        let manage = div()
+            .id("vm-cats-manage")
             .cursor_pointer()
-            .hover(|s| s.bg(control_hover()))
-            .text_size(px(d.text))
-            .text_color(if picked.is_empty() { theme::text_muted() } else { theme::text_primary() })
-            .children(picked.first().filter(|_| picked.len() == 1).map(|g| dot(group_colour(g))))
-            .children((picked.len() > 1).then(|| icon(Icon::AutoAwesome, px(14.), theme::accent())))
-            .child(div().flex_1().min_w_0().truncate().child(label))
-            .child(icon(Icon::ExpandMore, px(16.), if open { theme::text_primary() } else { theme::text_dim() }))
-            .on_click(cx.listener(|this, _, _, cx| this.toggle_more(More::Groups, cx)));
-        let list = open.then(|| self.vm_groups_list(cx));
-        div().relative().child(trigger).children(list)
-    }
-
-    /// Every group: a click shows its games (several add up), the pin puts it
-    /// in the header, the pencil edits it. Then "New" and "Save filters as".
-    fn vm_groups_list(&self, cx: &mut Context<Self>) -> Deferred {
-        let mut list = menu_panel(300.).w(px(300.));
-        for (i, g) in self.smart_groups.groups.iter().enumerate() {
-            let on = self.ui.smart_groups.contains(&g.id);
-            let (id, pin_id, edit_id, pinned) = (g.id.clone(), g.id.clone(), g.id.clone(), g.pinned);
-            list = list.child(
-                menu_item(("vm-group", i), false)
-                    .child(check(on))
-                    .child(dot(group_colour(g)))
-                    .child(div().flex_1().min_w_0().truncate().when(on, |d| d.text_color(theme::text_bright())).child(g.name.clone()))
-                    .child(count_label(self.group_count(g)))
-                    .child(
-                        round(("vm-group-pin", i))
-                            .child(if pinned {
-                                icon(Icon::PushPin, px(15.), theme::accent())
-                            } else {
-                                icon(Icon::PushPinOutlined, px(15.), theme::text_dim())
-                            })
-                            .tooltip(crate::ui::tooltip(if pinned { tr!("Unpin from the header") } else { tr!("Pin to the header") }))
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                cx.stop_propagation();
-                                this.set_group_pinned(&pin_id, !pinned, cx);
-                            })),
-                    )
-                    .child(
-                        round(("vm-group-edit", i))
-                            .child(icon(Icon::Edit, px(15.), theme::text_muted()))
-                            .tooltip(crate::ui::tooltip(tr!("Edit rules")))
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                cx.stop_propagation();
-                                this.open_group_editor(Some(&edit_id), None, window, cx);
-                            })),
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| this.toggle_smart_group_filter(&id, cx))),
-            );
-        }
-        if self.smart_groups.is_empty() {
-            list = list.child(
-                div()
-                    .px(px(10.))
-                    .py(px(6.))
-                    .text_size(px(12.5))
-                    .text_color(theme::text_dim())
-                    .child(tr!("A smart group keeps itself up to date: games join and leave it as they match its rules.")),
-            );
-        }
-        list = list.child(menu_separator()).child(
-            menu_item("vm-group-new", false)
-                .child(icon(Icon::Add, px(16.), theme::text_muted()))
-                .child(div().flex_1().child(tr!("New smart group…")))
-                .on_click(cx.listener(|this, _, window, cx| this.open_group_editor(None, None, window, cx))),
-        );
-        if self.ui.active_filters() > self.ui.smart_groups.len() {
-            list = list.child(
-                menu_item("vm-group-save", false)
-                    .child(icon(Icon::AutoAwesome, px(16.), theme::text_muted()))
-                    .child(div().flex_1().child(tr!("Save filters as smart group…")))
-                    .on_click(cx.listener(|this, _, window, cx| this.save_filters_as_group(window, cx))),
-            );
-        }
-        popover("vm-groups-list", list, |el| el.top(relative(1.)).right_0().pt(px(4.)), cx)
+            .text_color(theme::accent())
+            .hover(|s| s.text_color(theme::text_bright()))
+            .child(tr!("Manage…"))
+            .on_click(cx.listener(|this, _, window, cx| this.open_manage_categories(window, cx)));
+        let chip = |id: ElementId, on: bool| {
+            pill(id, d).when(on, |s| s.bg(theme::accent_tint()).border_color(theme::accent_tint_border()).text_color(theme::text_bright()))
+        };
+        // Chip `i`: a category of `entries`, or "Uncategorized" after them.
+        let uncategorized = !self.categories.is_empty();
+        let count = entries.len() + usize::from(uncategorized);
+        let picks: Vec<bool> = entries
+            .iter()
+            .map(|c| self.category_on(&c.r))
+            .chain(uncategorized.then(|| self.ui.categories.contains(UNCATEGORIZED)))
+            .collect();
+        let make = |i: usize, id: ElementId| -> Stateful<Div> {
+            let Some(c) = entries.get(i) else {
+                return chip(id, picks[i])
+                    .child(icon(Icon::Label, px(13.), theme::text_muted()))
+                    .child(category_label(UNCATEGORIZED))
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_category_filter(UNCATEGORIZED, cx)));
+            };
+            let r = c.r.clone();
+            chip(id, picks[i])
+                .child(if c.smart() {
+                    icon(Icon::AutoAwesome, px(13.), c.colour).into_any_element()
+                } else {
+                    dot(c.colour).into_any_element()
+                })
+                .child(div().min_w_0().truncate().child(c.name.clone()))
+                .child(count_label(self.category_count(&c.r)))
+                .when(c.smart(), |el| {
+                    el.tooltip(crate::ui::tooltip(tr!("Smart category: games join and leave it as they match its rules.")))
+                })
+                .on_click(cx.listener(move |this, _, _, cx| this.toggle_category_ref(&r, cx)))
+        };
+        let chips: Vec<Stateful<Div>> =
+            (0..count).map(|i| make(i, if i < entries.len() { ("vm-cat", i).into() } else { "vm-cat-none".into() })).collect();
+        let picked = self.ui.categories.len() + self.ui.smart_groups.len();
+        let save = (self.ui.active_filters() > picked).then(|| {
+            div()
+                .id("vm-cats-save")
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .px(px(4.))
+                .cursor_pointer()
+                .text_size(px(12.))
+                .text_color(theme::accent())
+                .hover(|s| s.text_color(theme::text_bright()))
+                .child(icon(Icon::AutoAwesome, px(13.), theme::accent()))
+                .child(tr!("Save filters as smart category…"))
+                .on_click(cx.listener(|this, _, window, cx| this.save_filters_as_group(window, cx)))
+        });
+        // Past CATEGORY_ROWS rows the chips are cut off until "Show all"; the
+        // picked ones that are cut off show after the rows, so a filter on
+        // never hides. The rows are only known once laid out: each frame
+        // measures them, and a change draws once more.
+        let measured = self.view_menu.cats_cut.clone();
+        let cut = measured.get();
+        let all = self.view_menu.cats_all;
+        let folded = cut.filter(|_| !all);
+        let wrap = (count > 0).then(|| {
+            div()
+                .flex()
+                .flex_wrap()
+                .gap(px(CHIP_GAP))
+                .children(chips)
+                .on_children_prepainted(move |bounds, window, _| {
+                    let rows = rows_cut(&bounds, CATEGORY_ROWS);
+                    if measured.get() != rows {
+                        measured.set(rows);
+                        window.request_animation_frame();
+                    }
+                })
+                .when_some(folded, |el, c| el.max_h(px(c.height)).overflow_hidden())
+        });
+        let cut_picks: Vec<usize> = folded.map(|c| (c.shown..count).filter(|i| picks[*i]).collect()).unwrap_or_default();
+        let picked_after = (!cut_picks.is_empty())
+            .then(|| div().flex().flex_wrap().gap(px(CHIP_GAP)).children(cut_picks.into_iter().map(|i| make(i, ("vm-cat-cut", i).into()))));
+        let more = cut.is_some().then(|| {
+            div()
+                .id("vm-cats-more")
+                .flex()
+                .items_center()
+                .gap(px(4.))
+                .px(px(4.))
+                .cursor_pointer()
+                .text_size(px(12.))
+                .text_color(theme::accent())
+                .hover(|s| s.text_color(theme::text_bright()))
+                .child(if all { tr!("Show fewer").to_string() } else { tr!("Show all ({count})", count = count) })
+                .child(
+                    icon(Icon::ExpandMore, px(14.), theme::accent())
+                        .when(all, |i| i.with_transformation(Transformation::rotate(percentage(0.5)))),
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.view_menu.cats_all = !this.view_menu.cats_all;
+                    cx.notify();
+                }))
+        });
+        let empty = entries.is_empty().then(|| {
+            hint_text(tr!("Sort games your own way: pick them by hand, or let a smart category gather them by its rules.")).px(px(4.))
+        });
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(d.head_gap))
+            .child(section_head(tr!("Categories")).child(manage))
+            .children(empty)
+            .children(wrap)
+            .children(picked_after)
+            .children(more)
+            .children(save)
     }
 
     /// "Include hidden", in the Show row's title.
@@ -179,8 +247,7 @@ impl CollectionView {
     /// them once picked or while it filters.
     pub(super) fn vm_filter_by(&self, cx: &mut Context<Self>) -> Div {
         let d = self.vm_density();
-        let shown = |k: &Kind| *k != Kind::Category || !self.categories.is_empty();
-        let pills = FILTER_BY.into_iter().filter(shown).enumerate().map(|(i, kind)| {
+        let pills = FILTER_BY.into_iter().enumerate().map(|(i, kind)| {
             pill(("vm-filter-by", i), d).child(icon(kind.icon(), px(14.), theme::text_muted())).child(kind.label()).on_click(cx.listener(
                 move |this, _, window, cx| {
                     let text = choices::scoped_query(kind, "");
@@ -208,7 +275,7 @@ impl CollectionView {
     }
 
     fn vm_filter_more_list(&self, cx: &mut Context<Self>) -> Deferred {
-        let kinds = Kind::ALL.into_iter().filter(|k| !matches!(k, Kind::Only | Kind::Group) && !FILTER_BY.contains(k));
+        let kinds = Kind::ALL.into_iter().filter(|k| !matches!(k, Kind::Only | Kind::Group | Kind::Category) && !FILTER_BY.contains(k));
         let mut list = menu_panel(240.).w(px(240.));
         for (i, kind) in kinds.enumerate() {
             list = list.child(
@@ -272,17 +339,15 @@ impl CollectionView {
                         this.open_manage_statuses(window, cx);
                     })),
             );
-            if !self.categories.is_empty() {
-                list = list.child(
-                    menu_item("vm-manage-categories", false)
-                        .child(icon(Icon::Label, px(16.), theme::text_muted()))
-                        .child(tr!("Manage categories…"))
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            close(this);
-                            this.open_manage_categories(window, cx);
-                        })),
-                );
-            }
+            list = list.child(
+                menu_item("vm-manage-categories", false)
+                    .child(icon(Icon::Label, px(16.), theme::text_muted()))
+                    .child(tr!("Manage categories…"))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        close(this);
+                        this.open_manage_categories(window, cx);
+                    })),
+            );
             list = list.child(
                 menu_item("vm-manage-fields", false)
                     .child(icon(Icon::CallMerge, px(16.), theme::text_muted()))
@@ -304,12 +369,6 @@ impl CollectionView {
                         })),
                 );
             }
-            list = list.child(
-                menu_item("vm-manage-group", false)
-                    .child(icon(Icon::AutoAwesome, px(16.), theme::text_muted()))
-                    .child(tr!("New smart group…"))
-                    .on_click(cx.listener(|this, _, window, cx| this.open_group_editor(None, None, window, cx))),
-            );
             popover("vm-manage-list", list, |el| el.bottom(relative(1.)).right_0().pb(px(4.)), cx)
         });
         div().relative().child(button).children(list)
@@ -322,20 +381,6 @@ fn popover(id: &'static str, list: Div, place: impl FnOnce(Stateful<Div>) -> Sta
     deferred(place(el).child(list)).with_priority(40)
 }
 
-/// 26px round button inside a list row (the row keeps its own click).
-fn round(id: impl Into<ElementId>) -> Stateful<Div> {
-    div()
-        .id(id)
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .size(px(26.))
-        .rounded_full()
-        .cursor_pointer()
-        .hover(|s| s.bg(theme::ink_a(0.1)))
-}
-
 /// The word over the "Filter" block.
 pub(super) fn filter_block() -> &'static str {
     trc!("view menu block", "Filter")
@@ -344,4 +389,39 @@ pub(super) fn filter_block() -> &'static str {
 /// The word over the "Organize" block.
 pub(super) fn organize_block() -> &'static str {
     trc!("view menu block", "Organize")
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui_kit::{point, px, size, Bounds, Pixels};
+
+    use super::{rows_cut, RowsCut};
+
+    fn chip(x: f32, y: f32, w: f32) -> Bounds<Pixels> {
+        Bounds::new(point(px(x), px(y)), size(px(w), px(30.)))
+    }
+
+    /// Three chips a row, `rows` rows, 6px apart, from y = 100.
+    fn grid(rows: usize) -> Vec<Bounds<Pixels>> {
+        (0..rows).flat_map(|r| (0..3).map(move |c| chip(c as f32 * 90., 100. + r as f32 * 36., 84.))).collect()
+    }
+
+    #[test]
+    fn rows_cut_ends_after_the_last_row_shown() {
+        assert_eq!(rows_cut(&[], 5), None);
+        assert_eq!(rows_cut(&grid(5), 5), None, "five rows fit");
+        assert_eq!(rows_cut(&grid(7), 5), Some(RowsCut { height: 4. * 36. + 30., shown: 15 }));
+        assert_eq!(rows_cut(&grid(2), 0), None);
+    }
+
+    #[test]
+    fn rows_cut_counts_a_short_last_row_and_rounding() {
+        // Sub-pixel tops in one row are one row; the cut row is partly full.
+        let mut b = grid(5);
+        b[1].origin.y += px(0.4);
+        b.truncate(13);
+        b.push(chip(0., 100. + 5. * 36., 84.));
+        assert_eq!(rows_cut(&b, 5), Some(RowsCut { height: 4. * 36. + 30., shown: 13 }));
+        assert_eq!(rows_cut(&b, 6), None);
+    }
 }
