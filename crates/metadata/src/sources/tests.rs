@@ -31,7 +31,7 @@ fn ids<'a>(list: impl Iterator<Item = &'a SourceDescriptor>) -> Vec<&'a str> {
 fn lookups_keep_the_provider_order() {
     let reg = registry();
     let lookups: Vec<&str> = reg.lookups().map(|s| s.descriptor().id.as_str()).collect();
-    assert_eq!(lookups, ["igdb", "steam", "store", "lutris", "playnite", "vndb", "launchbox", "steamgriddb"]);
+    assert_eq!(lookups, ["igdb", "steam", "store", "lutris", "playnite", "vndb", "launchbox", "steamgriddb", "libretro"]);
     assert_eq!(
         ids(reg.descriptors()),
         [
@@ -43,6 +43,7 @@ fn lookups_keep_the_provider_order() {
             "vndb",
             "launchbox",
             "steamgriddb",
+            "libretro",
             "webimages",
             "howlongtobeat",
             "steamtags",
@@ -55,12 +56,17 @@ fn lookups_keep_the_provider_order() {
 }
 
 #[test]
-fn details_sources_and_steamgriddb_have_a_lookup() {
+fn details_sources_and_two_pictures_sources_have_a_lookup() {
     let reg = registry();
     for d in reg.descriptors() {
-        assert_eq!(reg.has_lookup(&d.id), d.kind == SourceKind::Details || d.id == "steamgriddb", "{}", d.id);
+        assert_eq!(
+            reg.has_lookup(&d.id),
+            d.kind == SourceKind::Details || ["steamgriddb", "libretro"].contains(&d.id.as_str()),
+            "{}",
+            d.id
+        );
     }
-    for id in ["steamgriddb", "webimages"] {
+    for id in ["steamgriddb", "libretro", "webimages"] {
         assert_eq!(reg.get(id).map(|d| d.kind), Some(SourceKind::Pictures));
     }
     for id in ["howlongtobeat", "steamtags", "protondb"] {
@@ -78,20 +84,25 @@ fn offered_details_sources_leave_playnite_out() {
 }
 
 #[test]
-fn network_sources_are_igdb_steam_lutris_vndb_and_steamgriddb() {
+fn network_sources_are_igdb_steam_lutris_vndb_steamgriddb_and_libretro() {
     let reg = registry();
     let online: Vec<&str> = reg.lookups().map(|s| s.descriptor()).filter(|d| d.network).map(|d| d.id.as_str()).collect();
-    assert_eq!(online, ["igdb", "steam", "lutris", "vndb", "steamgriddb"]);
+    assert_eq!(online, ["igdb", "steam", "lutris", "vndb", "steamgriddb", "libretro"]);
 }
 
 #[test]
 fn cover_families_by_source() {
     let reg = registry();
     let gives = |field: &str| reg.descriptors().filter(|d| d.provides(field)).map(|d| d.id.as_str()).collect::<Vec<_>>();
-    assert_eq!(gives("coverSquare"), ["launchbox", "steamgriddb"]);
-    assert_eq!(gives("coverWide"), ["steam", "store", "steamgriddb"]);
+    assert_eq!(gives("coverSquare"), ["launchbox", "steamgriddb", "libretro"]);
+    assert_eq!(gives("coverWide"), ["steam", "store", "steamgriddb", "libretro"]);
     // The tall cover keeps its sources; IGDB and Lutris give only that one.
-    assert_eq!(gives("cover"), ["igdb", "steam", "store", "lutris", "playnite", "vndb", "launchbox", "steamgriddb", "webimages"]);
+    assert_eq!(
+        gives("cover"),
+        ["igdb", "steam", "store", "lutris", "playnite", "vndb", "launchbox", "steamgriddb", "libretro", "webimages"]
+    );
+    // No background: its screenshots are 240 to 512 px wide.
+    assert!(!gives("hero").contains(&"libretro"));
 }
 
 /// `heronite_data::settings` keeps the ids of the default priorities and of
@@ -203,6 +214,31 @@ fn emulated_games_carry_their_platform_and_rom() {
     // A PC game has no platform even when its record names some.
     let pc = SourceGame::new(&args(None), Some(&overlay(|m| m.source = "steam".into())), &["PlayStation 2".to_string()]);
     assert!(!pc.emulated && pc.platform.is_none() && pc.rom_file.is_none());
+}
+
+#[test]
+fn libretro_is_for_the_emulated_games_of_platforms_with_a_folder() {
+    let reg = registry();
+    let d = reg.get("libretro").unwrap();
+    assert_eq!((d.kind, d.needs, d.network, d.searchable, d.hidden), (SourceKind::Pictures, Needs::Nothing, true, false, false));
+    assert!(d.options.is_empty() && d.download.is_none() && d.also_for.is_none() && !d.manual_only && d.asked == Asked::Always);
+    assert_eq!(d.provides, ["cover", "coverSquare", "coverWide"], "no background: its screenshots are small");
+    assert_eq!(d.finds_by, [MatchedBy::ExactTitle, MatchedBy::FuzzyTitle]);
+    assert_eq!(d.leads_for, Some(AppliesTo::Emulated));
+    let game = |platform: Option<&str>, emulated: bool| SourceGame {
+        emulated,
+        platform: platform.map(Into::into),
+        ..SourceGame::new(&args(None), None, &[])
+    };
+    assert!(d.applies_to.matches(&game(Some("nintendo_super_nes"), true)));
+    assert!(d.applies_to.matches(&game(Some("sony_playstation"), true)));
+    assert!(!d.applies_to.matches(&game(Some("sony_playstation3"), true)), "a platform without a folder");
+    assert!(!d.applies_to.matches(&game(Some("arcade"), true)));
+    assert!(!d.applies_to.matches(&game(None, true)), "no platform");
+    assert!(!d.applies_to.matches(&game(None, false)), "a PC game");
+    let AppliesTo::Platforms(list) = &d.applies_to else { panic!("a platform list") };
+    assert_eq!(list.len(), 43);
+    assert!(!reg.get("libretro").unwrap().searchable && reg.has_lookup("libretro"));
 }
 
 #[test]

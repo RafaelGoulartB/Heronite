@@ -4,8 +4,9 @@
 //! store not for this game, VNDB not asked (the others found the game),
 //! genres locked and the release date picked from Steam; `vndb`: as `fake`,
 //! with VNDB asked and found by its title; `emulated`: as `fake` for an
-//! emulated game, Steam not for it and the LaunchBox Games Database found
-//! by the dump's name on its platform; `none`: no source found the
+//! emulated game, Steam not for it, the LaunchBox Games Database found
+//! by the dump's name on its platform and libretro-thumbnails (a pictures
+//! source: no match to show) giving its box art; `none`: no source found the
 //! game; `offline`: none could be reached; `nokey`: as `fake`, without an
 //! IGDB key; `covers`: as `fake`, scrolled to the cover rows. SteamGridDB
 //! gives a cover of each shape. The pictures are covers the Collection
@@ -105,6 +106,11 @@ impl FakePreview {
                 m.platforms = strings(&["PlayStation"]);
                 m.critic_score = Some(JsNum(94.));
                 m.cover_url = self.thumb(4);
+            }));
+            candidates.push(self.candidate("libretro", t, "", MatchedBy::ExactTitle, "", |m| {
+                m.release_date = None;
+                m.cover_url = self.thumb(2);
+                m.cover_wide_url = self.thumb(3);
             }));
         }
         if self.state == "vndb" {

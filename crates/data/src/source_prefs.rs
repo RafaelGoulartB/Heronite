@@ -158,6 +158,15 @@ mod tests {
         // A list saved before VNDB was a source is still the default.
         let m = read(r#"{"metadata":{"fieldPriority":{"cover":["igdb","steam","lutris","playnite","store"],"hero":["vndb","igdb"]}}}"#);
         assert!(!is_field_customised(&m, "cover") && is_field_customised(&m, "hero"));
+        // Nor is a list saved when LaunchBox was the last one added, before libretro-thumbnails.
+        let m = read(
+            r#"{"metadata":{"fieldPriority":{"cover":["igdb","steam","lutris","playnite","store","vndb","launchbox"],
+                "coverSquare":["steamgriddb","launchbox"],"coverWide":["steam","store","steamgriddb"]}}}"#,
+        );
+        assert!(["cover", "coverSquare", "coverWide"].iter().all(|f| !is_field_customised(&m, f)));
+        assert_eq!(m.field_priority["coverWide"], ["steam", "store", "steamgriddb"], "the saved list is kept as it is");
+        let m = read(r#"{"metadata":{"fieldPriority":{"coverWide":["steamgriddb","steam","store"]}}}"#);
+        assert!(is_field_customised(&m, "coverWide"));
         // No metadata at all: defaults, nothing customised.
         let m = read("{}");
         assert!(METADATA_FIELDS.iter().all(|f| !is_field_customised(&m, f)));

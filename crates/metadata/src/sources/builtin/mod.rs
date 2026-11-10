@@ -19,12 +19,14 @@ use super::{
 use crate::covers::{find_steamgrid_game, search_steam, steamgrid_api_key, steamgrid_pictures};
 use crate::igdb::{Igdb, IgdbCredentials};
 use crate::launchbox::{self, map as lb_map, LaunchBox};
+use crate::libretro;
 use crate::lutris::{fetch_lutris_metadata, search_lutris};
 use crate::providers::{fetch_playnite_metadata, metadata_from_store_game, PlayniteSource, StoreLibraries};
 use crate::steam::{self, SteamState};
 use crate::types::{ArtKind, Lookup, MatchedBy, MetadataCandidate, SourceHit};
 use crate::vndb::{self, Vndb, VndbOptions};
 use launchbox_source::{region_label, LaunchBoxSource};
+use libretro_source::LibretroSource;
 
 const IGDB: &str = "igdb";
 const STEAM: &str = "steam";
@@ -33,8 +35,10 @@ const LUTRIS: &str = "lutris";
 const PLAYNITE: &str = "playnite";
 const VNDB: &str = vndb::SOURCE;
 const LAUNCHBOX: &str = launchbox::SOURCE;
+const LIBRETRO: &str = libretro::SOURCE;
 
 mod launchbox_source;
+mod libretro_source;
 /// VNDB's options.
 const TITLE_ORDER: &str = "titleOrder";
 const SCREENSHOT_BACKGROUND: &str = "screenshotBackground";
@@ -265,6 +269,20 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
             )],
             ..source(STEAMGRIDDB, "SteamGridDB", Pictures, &["cover", "hero", "coverSquare", "coverWide"])
         },
+        // Box art by the dump's own file name: for the emulated games of the
+        // platforms that have a folder on the server. It goes ahead of the
+        // sources that found such a game only by its title. It has no
+        // background: its screenshots are 240 to 512 px wide.
+        SourceDescriptor {
+            applies_to: AppliesTo::Platforms(libretro_platforms()),
+            finds_by: vec![ExactTitle, FuzzyTitle],
+            leads_for: Some(AppliesTo::Emulated),
+            about: Some(n_!(
+                "The box art RetroArch uses (thumbnails.libretro.com), found by each game's dump file name on its platform. No key or account. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Heronite is not affiliated with libretro."
+            )
+            .into()),
+            ..source(LIBRETRO, "Libretro", Pictures, &["cover", "coverSquare", "coverWide"])
+        },
         SourceDescriptor {
             finds_by: vec![FuzzyTitle],
             manual_only: true,
@@ -288,6 +306,15 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
     ]
 });
 
+/// The platforms that have a system folder on libretro's server.
+fn libretro_platforms() -> Vec<String> {
+    crate::platforms::PLATFORMS
+        .iter()
+        .filter(|p| !p.names_in(crate::platforms::Database::Libretro).is_empty())
+        .map(|p| p.id.to_owned())
+        .collect()
+}
+
 /// Every built-in source, in registry order.
 pub fn builtin_descriptors() -> &'static [SourceDescriptor] {
     &BUILTIN
@@ -310,6 +337,7 @@ pub(super) fn registry(shared: Shared) -> SourceRegistry {
             VNDB => Entry::Lookup(Box::new(VndbSource { d, client: shared.vndb.clone() })),
             LAUNCHBOX => Entry::Lookup(Box::new(LaunchBoxSource { d, db: shared.launchbox.clone() })),
             STEAMGRIDDB => Entry::Lookup(Box::new(SteamGridSource { d })),
+            LIBRETRO => Entry::Lookup(Box::new(LibretroSource { d })),
             _ => Entry::DescriptorOnly(Box::new(d.clone())),
         })
         .collect();

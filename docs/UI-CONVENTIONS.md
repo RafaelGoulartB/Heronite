@@ -641,7 +641,8 @@ source…"), and again after a match is pinned and after "Search every source ag
 `HERONITE_DEBUG_DIALOG=metadata:<state>` opens the selected game's "Metadata" over a made-up preview: `fake` (a pinned
 match, a match left out, a locked field, a field picked from another source, VNDB not asked), `vndb` (as `fake`, with
 VNDB found by name), `emulated` (an emulated game: Steam not for it, LaunchBox found by the dump's name, its line with
-the platform: a source of emulated games says which platform it matched on), `change` (the same with "Change" open),
+the platform: a source of emulated games says which platform it matched on; libretro-thumbnails gives box art and, a
+pictures source, has no row there), `change` (the same with "Change" open),
 `none` (no source found the game), `offline`, `nokey` (no IGDB key), `covers` (as `fake`, scrolled to the cover rows);
 plain `metadata` asks the sources for real.
 `HERONITE_DEBUG_DIALOG=covers[:<state>]` opens the selected game's "Covers" over made-up searches (pictures the

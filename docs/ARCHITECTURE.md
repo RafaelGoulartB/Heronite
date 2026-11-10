@@ -590,14 +590,35 @@ text size) and applies it.
   the players). `platforms` is the table of the app's platform ids (the
   emulator catalog's and Playnite's), how the Collection names them and
   how each database a source reads names them (a column per database:
-  LaunchBox's so far), plus `resolve`, an emulated game's platform from
+  LaunchBox's and libretro's folders), plus `resolve`, an emulated game's platform from
   its entry (the `platformId`, else the ROM's extension, the emulator's
   name, the ROM's folders, the record's platforms) and `rom_file`, the
   file its dump is named by (the folder above a boot file such as
   `EBOOT.BIN`). `rom_names` cleans No-Intro / Redump / TOSEC names (tags,
   "Legend of Zelda, The", discs, safe roman numerals). `SourceGame`
   carries `emulated`, `platform`, `rom_file` and `rom_hashes` (empty: the
-  app keeps no ROM hash yet; a lookup never hashes a file). A descriptor
+  app keeps no ROM hash yet; a lookup never hashes a file). `libretro` is
+  libretro-thumbnails (`thumbnails.libretro.com/<System>/Named_Boxarts/<Game>.png`,
+  the box art RetroArch uses: no API, key, account or search, 512 px wide at
+  most): a pictures source for the emulated games of the 43 platforms that
+  have a system folder (the `platforms` column; PlayStation 3 / 4, Vita,
+  Xbox 360 have under 70 pictures, arcade is named by MAME's descriptions,
+  DOS and ScummVM by titles, so they have none). `libretro::names` makes
+  the file names: the dump's own (extension off, the characters RetroArch scrubs, `& * / : ` " < > ? \ |`, as `_`),
+  then without the tags after region and languages, with the region alone,
+  the title (article last, `: ` as ` - `: the file's own, or the game's when
+  the file has no tags) with each region of the interface language, the title
+  alone (RetroArch's own tries are the file's name, the playlist label and the
+  title before the first ` (`). A try is one `Range: bytes=0-31` GET: 404 for a
+  missing file, 206 with the PNG's header for a picture, whose size picks the
+  cover family (`family_of`: width/height under 0.85 tall, under 1.33 square,
+  else wide: Genesis and NES boxes are tall, PlayStation, Game Boy Advance and
+  Dreamcast square, Super Nintendo and Nintendo 64 landscape); the dump's own
+  name is asked on each folder the ROM's extension may be of, the others on
+  the first, and a game costs 8 requests at most (`MAX_REQUESTS`). The dump's
+  own name is `ExactTitle`, any other `FuzzyTitle`; a 429 or 5xx is
+  unreachable. It has no background (its screenshots are 240 to 512 px wide).
+  It leads for emulated games like LaunchBox (after it in each order). A descriptor
   may say a source needs a download (`needs: download`, `download`:
   its size and refresh days); `sources/download` is the contract
   (`DownloadState`, `DownloadProgress` with cancel, the trait's
@@ -631,7 +652,9 @@ text size) and applies it.
   the next source fills the picture and none is shown or downloaded; saved
   pictures stay. A source added after `fieldPriority` lists were saved is
   in `heronite_data::settings::ADDED_SOURCES`: the old default list still
-  reads as the default, and a list the user set gets it at its end. SteamGridDB, web images, HowLongToBeat,
+  reads as the default, and a list the user set gets it at its end (a
+  pictures source too: libretro-thumbnails is in `ADDED_SOURCES` and in the
+  covers' default orders, not in `SOURCE_IDS`). SteamGridDB, web images, HowLongToBeat,
   Steam tags and ProtonDB are listed as descriptors only and still run on
   their own paths (`covers`, `web_images`, `hltb`, `steam_tags`,
   `protondb`), but SteamGridDB also has a lookup: a pictures source asked
@@ -645,7 +668,9 @@ text size) and applies it.
   view that starts using a family queues) fill one for the games lacking
   it; `family_lack` lists those games (and whether a source that gives the
   family can be asked now) whatever the automatic download says, for the
-  notices and the "Download <family> covers" rows. `service` asks the sources that apply to a game in parallel,
+  notices and the "Download <family> covers" rows (a source counts only when
+  it is for some game: a Collection without emulated games is not offered
+  libretro's covers). `service` asks the sources that apply to a game in parallel,
   marks a fetch offline when every network source asked was unreachable,
   and `merge` combines the candidates field by field
   (`settings.metadata.fieldPriority`, whose defaults stay in
@@ -700,7 +725,7 @@ text size) and applies it.
   cropped are listed apart, per family, and are not a reason to need
   attention).
 
-  *Adding a built-in source* (what VNDB and LaunchBox needed; no screen code):
+  *Adding a built-in source* (what VNDB, LaunchBox and libretro-thumbnails needed; no screen code):
   1. A provider module (`crates/metadata/src/<source>.rs`, or a folder
      when it has a local database: `launchbox/`): the client (base URLs in
      `http::Endpoints`, and their test prefixes in `tests/common`'s
@@ -729,14 +754,22 @@ text size) and applies it.
      `match_id` set, `adult_pictures` / `thumb_adult` when the source rates
      its pictures, and `download_state` / `download` / `remove_download`
      for a database; listed in `builtin::registry` (shared client state
-     goes in `Shared`, and `SourceRegistry::for_tests`).
-  4. `heronite_data::settings`: the id in `SOURCE_IDS` (a details source),
-     in `default_field_priority` for each field it fills, and at the end of
-     `ADDED_SOURCES` (in the order sources were added: a list saved between
-     two of them still reads as the default); the registry tests check the
-     two agree. Expect the tests that list the sources or a field's order
-     (`sources/tests`, `order`, `rows`, `merge`, `settings`, `bulk_jobs`,
-     `review`, `sources`) to change on purpose.
+     goes in `Shared`, and `SourceRegistry::for_tests`). A pictures source
+     answers only for the fields asked of it (`SourceGame::fields`: the
+     covers kept), picks the cover family from the picture itself when the
+     source has pictures of several shapes, has no "Found as" row (only
+     details sources are listed) and is not searchable.
+  4. `heronite_data::settings`: the id in `SOURCE_IDS` (a details source;
+     a pictures source is not), in `default_field_priority` for each field it
+     fills, and at the end of `ADDED_SOURCES` (in the order sources were
+     added: a list saved between two of them still reads as the default);
+     the registry tests check the two agree. A pictures source also needs
+     its place in the registry's order (`BUILTIN`: after SteamGridDB), its
+     lookup in the registry (`has_lookup` is true for it), and a check that a
+     source with a narrow audience does not make `family_askable` say yes
+     for a Collection it is not for. Expect the tests that list the sources
+     or a field's order (`sources/tests`, `order`, `rows`, `merge`, `settings`, `bulk_jobs`,
+     `review`, `sources`, `cover_families`) to change on purpose.
   5. A monogram colour in `theme::source_colour` (or a logo in
      `pages/settings/metadata/labels::logo`), the de / es / pt-BR
      translations of its descriptor's strings (reusing the words already

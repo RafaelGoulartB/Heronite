@@ -140,7 +140,7 @@ fn audience_of(a: &AppliesTo) -> String {
             let stores = list.iter().map(|s| store_name(s)).collect::<Vec<_>>().join(", ");
             tr!("Games from {stores}", stores)
         }
-        AppliesTo::Platforms(list) => trn!(list.len(), "Emulated games of {n} platform", "Emulated games of {n} platforms"),
+        AppliesTo::Platforms(list) => trn!(list.len(), "{n} emulated platform", "{n} emulated platforms"),
     }
 }
 

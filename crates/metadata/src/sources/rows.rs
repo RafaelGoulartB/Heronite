@@ -227,7 +227,20 @@ mod tests {
         let ids: Vec<&str> = rows.iter().map(|r| r.descriptor.id.as_str()).collect();
         assert_eq!(
             ids,
-            ["igdb", "steam", "store", "lutris", "vndb", "launchbox", "steamgriddb", "webimages", "howlongtobeat", "steamtags", "protondb"]
+            [
+                "igdb",
+                "steam",
+                "store",
+                "lutris",
+                "vndb",
+                "launchbox",
+                "steamgriddb",
+                "libretro",
+                "webimages",
+                "howlongtobeat",
+                "steamtags",
+                "protondb"
+            ]
         );
         let status = |id| row(&rows, id).status;
         assert_eq!(status("steam"), SourceStatus::On);
@@ -238,6 +251,10 @@ mod tests {
         assert_eq!(options, [("titleOrder", &OptionValue::Text("latin".into())), ("screenshotBackground", &OptionValue::Switch(true))]);
         assert_eq!(status("steamgriddb"), SourceStatus::NeedsKey);
         assert_eq!(status("webimages"), SourceStatus::ByHandOnly);
+        let libretro = row(&rows, "libretro");
+        assert_eq!(libretro.status, SourceStatus::On, "no key, no download, no option");
+        assert!(libretro.options.is_empty() && libretro.download.is_none() && !libretro.can_test && !libretro.reorderable);
+        assert_eq!(libretro.fields.iter().map(|f| f.field.as_str()).collect::<Vec<_>>(), ["cover", "coverSquare", "coverWide"]);
         assert_eq!(status("protondb"), SourceStatus::On);
         let steam = row(&rows, "steam");
         assert!(steam.fields.iter().all(|f| f.switchable && f.on == (f.field != "cover")));

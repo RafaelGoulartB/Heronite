@@ -495,8 +495,8 @@
   "Details and pictures for your games": "Detalles e imágenes de tus juegos",
   "Drag to change the order": "Arrastra para cambiar el orden",
   "Each field asks its sources from left to right. Drag a source to change the order for that field only.": "Cada campo consulta sus fuentes de izquierda a derecha. Arrastra una fuente para cambiar el orden solo de ese campo.",
-  "Emulated games of {n} platform": "Juegos emulados de {n} plataforma",
-  "Emulated games of {n} platforms": "Juegos emulados de {n} plataformas",
+  "{n} emulated platform": "{n} plataforma emulada",
+  "{n} emulated platforms": "{n} plataformas emuladas",
   "Extras": "Extras",
   "Fills": "Rellena",
   "Game details": "Detalles del juego",
@@ -575,5 +575,6 @@
   "Remove the database": "Quitar la base de datos",
   "Download the database ({size})": "Descargar la base de datos ({size})",
   "Nothing is downloaded before you ask. The database stays on this PC and is refreshed {every} while this source is on.": "No se descarga nada antes de que lo pidas. La base de datos se queda en este PC y se actualiza {every} mientras esta fuente está activada.",
-  "The last download failed: {error}": "La última descarga falló: {error}"
+  "The last download failed: {error}": "La última descarga falló: {error}",
+  "The box art RetroArch uses (thumbnails.libretro.com), found by each game's dump file name on its platform. No key or account. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Heronite is not affiliated with libretro.": "Las portadas que usa RetroArch (thumbnails.libretro.com), halladas por el nombre de archivo del volcado de cada juego en su plataforma. Sin clave ni cuenta. Cada portada conserva su forma: las cajas apaisadas llenan la portada panorámica y las cajas de CD la cuadrada. Heronite no está afiliado a libretro."
 }

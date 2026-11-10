@@ -328,6 +328,7 @@ pub fn source_colour(id: &str) -> Rgba {
         "protondb" => rgb(0xf0727a),
         "vndb" => rgb(0xe56fb1),
         "launchbox" => rgb(0x8bc34a),
+        "libretro" => rgb(0xe8845a),
         _ => {
             let i = id.bytes().fold(0usize, |h, b| h.wrapping_mul(31).wrapping_add(b as usize)) % GROUP_COLOURS.len();
             parse_hex(GROUP_COLOURS[i]).unwrap_or_else(|| rgb(0x9085e9))

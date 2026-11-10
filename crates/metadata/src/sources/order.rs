@@ -218,12 +218,12 @@ mod tests {
             let base = reg.base_order(&m, field);
             assert!(base.iter().all(|id| reg.has_lookup(id) && reg.get(id).unwrap().provides(field)), "{field}");
         }
-        assert_eq!(reg.field_order(&m, "cover"), ["lutris", "igdb", "steam", "store", "playnite", "vndb", "launchbox"]);
+        assert_eq!(reg.field_order(&m, "cover"), ["lutris", "igdb", "steam", "store", "playnite", "vndb", "launchbox", "libretro"]);
         assert_eq!(reg.field_order(&m, "gameModes"), ["igdb", "launchbox"]);
         // SteamGridDB joins only the families whose default names it.
         assert_eq!(reg.field_order(&m, "hero"), ["lutris", "igdb", "steam", "store", "playnite", "vndb", "launchbox"]);
-        assert_eq!(reg.field_order(&m, "coverWide"), ["steam", "store", "steamgriddb"]);
-        assert_eq!(reg.field_order(&m, "coverSquare"), ["launchbox", "steamgriddb"]);
+        assert_eq!(reg.field_order(&m, "coverWide"), ["steam", "store", "steamgriddb", "libretro"]);
+        assert_eq!(reg.field_order(&m, "coverSquare"), ["launchbox", "steamgriddb", "libretro"]);
 
         // Pictures and extras keep their own places; moving back is the default again.
         assert_eq!(m.source_order.len(), reg.descriptors().count());
@@ -242,11 +242,11 @@ mod tests {
         m.source_order = vec!["elsewhere".into(), "igdb".into()];
         assert!(!reg.is_order_customised(&m), "an unknown id alone is not a move");
         moved(&reg, &mut m, "webimages", 0);
-        assert_eq!(ids(&reg.ordered(&m, SourceKind::Pictures)), ["webimages", "steamgriddb"]);
+        assert_eq!(ids(&reg.ordered(&m, SourceKind::Pictures)), ["webimages", "steamgriddb", "libretro"]);
         assert_eq!(ids(&reg.ordered(&m, SourceKind::Details)), ["igdb", "steam", "store", "lutris", "playnite", "vndb", "launchbox"]);
         assert_eq!(m.source_order.first().map(String::as_str), Some("elsewhere"));
         // Back in order, the unknown id still keeps the list.
-        moved(&reg, &mut m, "webimages", 1);
+        moved(&reg, &mut m, "webimages", 2);
         assert_eq!(m.source_order.first().map(String::as_str), Some("elsewhere"));
         assert!(!reg.is_order_customised(&m));
         // Past the end: last.
@@ -275,14 +275,14 @@ mod tests {
         let mut m = untouched();
         set_on(&mut m, "store", false);
         let shown = reg.field_order(&m, "cover");
-        assert_eq!(shown, ["igdb", "steam", "lutris", "playnite", "vndb", "launchbox"]);
+        assert_eq!(shown, ["igdb", "steam", "lutris", "playnite", "vndb", "launchbox", "libretro"]);
         let list = reg.field_list_to_save(&m, "cover", &["lutris".into(), "steam".into()]);
-        assert_eq!(list, ["lutris", "steam", "igdb", "playnite", "store", "vndb", "launchbox"]);
+        assert_eq!(list, ["lutris", "steam", "igdb", "playnite", "store", "vndb", "launchbox", "libretro"]);
         m.field_priority.insert("cover".into(), list);
         assert!(is_field_customised(&m, "cover"));
-        assert_eq!(reg.field_order(&m, "cover"), ["lutris", "steam", "igdb", "playnite", "vndb", "launchbox"]);
+        assert_eq!(reg.field_order(&m, "cover"), ["lutris", "steam", "igdb", "playnite", "vndb", "launchbox", "libretro"]);
         set_on(&mut m, "store", true);
-        assert_eq!(reg.field_order(&m, "cover"), ["lutris", "steam", "igdb", "playnite", "store", "vndb", "launchbox"]);
+        assert_eq!(reg.field_order(&m, "cover"), ["lutris", "steam", "igdb", "playnite", "store", "vndb", "launchbox", "libretro"]);
         reset_field(&mut m, "cover");
         assert!(!is_field_customised(&m, "cover"));
         assert_eq!(reg.field_order(&m, "cover"), default_field_priority("cover"));
@@ -298,27 +298,52 @@ mod tests {
         assert_eq!(reg.field_order(&m, "cover"), default_field_priority("cover"));
         // A list the user set then: VNDB joins its end, and only where it fills.
         m.field_priority.insert("cover".into(), ["store", "igdb"].map(String::from).to_vec());
-        assert_eq!(reg.field_order(&m, "cover"), ["store", "igdb", "vndb", "launchbox"]);
+        assert_eq!(reg.field_order(&m, "cover"), ["store", "igdb", "vndb", "launchbox", "libretro"]);
         m.field_priority.insert("series".into(), ["playnite", "igdb"].map(String::from).to_vec());
         assert_eq!(reg.field_order(&m, "series"), ["playnite", "igdb"]);
         // Placed by the user: kept where it is.
         m.field_priority.insert("cover".into(), ["vndb", "igdb"].map(String::from).to_vec());
-        assert_eq!(reg.field_order(&m, "cover"), ["vndb", "igdb", "launchbox"]);
+        assert_eq!(reg.field_order(&m, "cover"), ["vndb", "igdb", "launchbox", "libretro"]);
     }
 
     #[test]
     fn a_list_saved_before_launchbox_still_follows_the_default() {
         let reg = SourceRegistry::for_tests();
         let mut m = untouched();
-        // What the build with VNDB saved: its default, without LaunchBox.
-        let vndb_build: Vec<String> = default_field_priority("cover").into_iter().filter(|id| id != "launchbox").collect();
+        // What the build with VNDB saved: its default, without LaunchBox and libretro.
+        let vndb_build: Vec<String> =
+            default_field_priority("cover").into_iter().filter(|id| id != "launchbox" && id != "libretro").collect();
         assert_eq!(vndb_build.last().map(String::as_str), Some("vndb"));
         m.field_priority.insert("cover".into(), vndb_build);
         assert!(!is_field_customised(&m, "cover"));
         assert_eq!(reg.field_order(&m, "cover"), default_field_priority("cover"));
         m.field_priority.insert("coverSquare".into(), vec!["steamgriddb".into()]);
         assert!(!is_field_customised(&m, "coverSquare"));
-        assert_eq!(reg.field_order(&m, "coverSquare"), ["steamgriddb", "launchbox"]);
+        assert_eq!(reg.field_order(&m, "coverSquare"), ["steamgriddb", "launchbox", "libretro"]);
+    }
+
+    #[test]
+    fn a_list_saved_before_libretro_still_follows_the_default() {
+        let reg = SourceRegistry::for_tests();
+        let mut m = untouched();
+        // What the build with LaunchBox saved: its defaults, without libretro.
+        for (field, saved) in [
+            ("cover", &["igdb", "steam", "lutris", "playnite", "store", "vndb", "launchbox"][..]),
+            ("coverSquare", &["steamgriddb", "launchbox"]),
+            ("coverWide", &["steam", "store", "steamgriddb"]),
+        ] {
+            m.field_priority.insert(field.into(), strings(saved));
+            assert!(!is_field_customised(&m, field), "{field}");
+            assert_eq!(reg.field_order(&m, field), default_field_priority(field), "{field}");
+        }
+        // A list the user set then gets it at its end, only where it fills.
+        m.field_priority.insert("coverWide".into(), strings(&["steamgriddb", "steam"]));
+        assert_eq!(reg.field_order(&m, "coverWide"), ["steamgriddb", "steam", "libretro"]);
+        m.field_priority.insert("hero".into(), strings(&["steam"]));
+        assert_eq!(reg.field_order(&m, "hero"), ["steam", "vndb", "launchbox"], "libretro has no background");
+        // Placed by the user: kept where it is.
+        m.field_priority.insert("coverSquare".into(), strings(&["libretro", "steamgriddb"]));
+        assert_eq!(reg.field_order(&m, "coverSquare"), ["libretro", "steamgriddb", "launchbox"]);
     }
 
     fn strings(list: &[&str]) -> Vec<String> {
@@ -335,12 +360,21 @@ mod tests {
         // IGDB and Lutris found it by title: LaunchBox goes just before IGDB.
         let orders = led(&m, &["igdb", "lutris"]);
         assert_eq!(orders["description"], ["launchbox", "igdb", "steam", "store", "lutris", "playnite", "vndb"]);
-        assert_eq!(orders["cover"], ["launchbox", "igdb", "steam", "lutris", "playnite", "store", "vndb"]);
+        assert_eq!(orders["cover"], ["launchbox", "igdb", "steam", "lutris", "playnite", "store", "vndb", "libretro"]);
         assert_eq!(orders["gameModes"], ["launchbox", "igdb"]);
-        assert_eq!(orders["coverSquare"], ["steamgriddb", "launchbox"], "SteamGridDB did not match by title here");
+        assert_eq!(orders["coverSquare"], ["steamgriddb", "launchbox", "libretro"], "SteamGridDB did not match by title here");
         assert_eq!(orders["themes"], default_field_priority("themes"), "LaunchBox does not fill it");
         // SteamGridDB matched by title too: LaunchBox's square cover first.
-        assert_eq!(led(&m, &["steamgriddb"])["coverSquare"], ["launchbox", "steamgriddb"]);
+        assert_eq!(led(&m, &["steamgriddb"])["coverSquare"], ["launchbox", "steamgriddb", "libretro"]);
+        // libretro-thumbnails leads too, and follows LaunchBox (registry order) ahead of the title matches.
+        let both = reg.field_orders_led(&m, &strings(&["launchbox", "libretro"]), &strings(&["igdb", "steamgriddb"]));
+        assert_eq!(both["cover"], ["launchbox", "libretro", "igdb", "steam", "lutris", "playnite", "store", "vndb"]);
+        assert_eq!(both["coverSquare"], ["launchbox", "libretro", "steamgriddb"]);
+        assert_eq!(both["coverWide"], ["steam", "store", "libretro", "steamgriddb"]);
+        assert_eq!(both["hero"].first().map(String::as_str), Some("launchbox"), "no background from libretro");
+        // Alone, it goes ahead of IGDB without LaunchBox.
+        let alone = reg.field_orders_led(&m, &strings(&["libretro"]), &strings(&["igdb"]));
+        assert_eq!(alone["cover"], ["libretro", "igdb", "steam", "lutris", "playnite", "store", "vndb", "launchbox"]);
         // Only Steam (by its id) found it: nothing found by title, nothing moves.
         assert_eq!(led(&m, &[]), reg.field_orders(&m));
         // Not a leader (a PC game, or not sure): the orders of the settings.

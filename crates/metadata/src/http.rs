@@ -33,6 +33,8 @@ pub struct Endpoints {
     pub launchbox: String,
     /// Where LaunchBox's pictures are, by file name.
     pub launchbox_images: String,
+    /// libretro-thumbnails (`/<system>/Named_Boxarts/<game>.png`).
+    pub libretro_thumbnails: String,
     pub steamgriddb: String,
     pub bottles_steamgrid: String,
     pub hltb: String,
@@ -56,6 +58,7 @@ impl Default for Endpoints {
             vndb: "https://api.vndb.org/kana".into(),
             launchbox: "https://gamesdb.launchbox-app.com".into(),
             launchbox_images: "https://images.launchbox-app.com".into(),
+            libretro_thumbnails: "https://thumbnails.libretro.com".into(),
             steamgriddb: "https://www.steamgriddb.com/api/v2".into(),
             bottles_steamgrid: "https://steamgrid.usebottles.com".into(),
             hltb: "https://howlongtobeat.com".into(),

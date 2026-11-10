@@ -149,3 +149,41 @@ fn live_launchbox() {
         assert!(c.metadata.cover_url.as_deref().is_some_and(|u| u.starts_with("https://images.launchbox-app.com/")));
     }
 }
+
+/// libretro-thumbnails' real server: three well-known games on three
+/// platforms, by the file names their dumps typically have (one with a
+/// revision the collection lacks). Prints the requests each cost.
+#[test]
+fn live_libretro() {
+    if !enabled() {
+        return;
+    }
+    use heronite_data::cover_family::CoverFamily::{Square, Tall, Wide};
+    let (_d, svc) = service();
+    let cases = [
+        ("nintendo_super_nes", "Super Metroid (Japan, USA) (En,Ja).sfc", MatchedBy::ExactTitle, Wide),
+        ("sega_genesis", "Sonic The Hedgehog 2 (World) (Rev C).md", MatchedBy::FuzzyTitle, Tall),
+        ("sony_playstation", "Castlevania - Symphony of the Night (USA).cue", MatchedBy::ExactTitle, Square),
+    ];
+    for (platform, rom, by, family) in cases {
+        let game = SourceGame {
+            app_name: "a".into(),
+            runner: "sideload".into(),
+            title: "?".into(),
+            emulated: true,
+            platform: Some(platform.into()),
+            rom_file: Some(rom.into()),
+            ..Default::default()
+        };
+        let found =
+            heronite_metadata::libretro::find(&svc.http, &game, heronite_i18n::Lang::En, &[Tall, Square, Wide]).into_option().expect(rom);
+        eprintln!("{rom}: {} by {:?} as {:?} in {} request(s): {}", found.name, found.matched_by, found.family, found.requests, found.url);
+        assert_eq!((found.matched_by, found.family), (by, family), "{rom}");
+        let picture = svc.http.get(&found.url).send().expect("the picture");
+        assert!(picture.ok() && picture.content_type.starts_with("image/png"));
+        assert_eq!(
+            heronite_metadata::libretro::png_size(&picture.body).map(|(w, h)| heronite_metadata::libretro::family_of(w, h)),
+            Some(family)
+        );
+    }
+}

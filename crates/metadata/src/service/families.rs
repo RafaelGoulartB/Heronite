@@ -12,9 +12,9 @@ use heronite_data::status::STATUS_ONLY_KEY;
 
 use super::counts::missing_details;
 use super::MetadataService;
-use crate::sources::SourceStatus;
+use crate::sources::{AppliesTo, SourceDescriptor, SourceGame, SourceStatus};
 use crate::store::{as_runner, get_all_game_metadata};
-use crate::types::{ArtKind, BulkArgs, BulkItem};
+use crate::types::{ArtKind, BulkArgs, BulkItem, MetadataApplyArgs};
 
 impl MetadataService {
     /// Which cover families this installation keeps and which some view
@@ -42,14 +42,50 @@ impl MetadataService {
     }
 
     /// Whether a source of `family`'s order can be asked now (on, its key
-    /// set): a download of its covers can find something.
+    /// set) and is for some game of the Collection (a source of emulated
+    /// games asks nothing of a Collection without any): a download of its
+    /// covers can find something.
     pub fn can_download_family(&self, family: CoverFamily) -> bool {
+        self.family_askable(family, None)
+    }
+
+    /// [`can_download_family`](Self::can_download_family) for `games` (`None`:
+    /// every game of the Collection).
+    fn family_askable(&self, family: CoverFamily, games: Option<&[BulkItem]>) -> bool {
         let settings = self.metadata_settings();
-        let ready = |id: &String| {
-            self.sources.has_lookup(id)
-                && self.source_status(&settings, id).is_some_and(|s| matches!(s, SourceStatus::On | SourceStatus::Connected))
-        };
-        self.sources.field_order(&settings, family.field()).iter().any(ready)
+        let ready: Vec<&SourceDescriptor> = self
+            .sources
+            .field_order(&settings, family.field())
+            .iter()
+            .filter(|id| {
+                self.sources.has_lookup(id)
+                    && self.source_status(&settings, id).is_some_and(|s| matches!(s, SourceStatus::On | SourceStatus::Connected))
+            })
+            .filter_map(|id| self.sources.get(id))
+            .collect();
+        if ready.iter().any(|d| d.applies_to == AppliesTo::All) {
+            return true;
+        }
+        if ready.is_empty() {
+            return false;
+        }
+        let Ok(overlay) = json_store::read::<LocalMetaFile>(&self.paths.local_meta()) else { return false };
+        let views: Vec<SourceGame> = overlay
+            .games
+            .values()
+            .filter(|m| games.is_none_or(|list| list.iter().any(|g| g.app_name == m.app_name && g.runner == m.runner)))
+            .map(|m| {
+                let args = MetadataApplyArgs {
+                    app_name: m.app_name.clone(),
+                    runner: m.runner.clone(),
+                    title: m.title.clone(),
+                    steam_app_id: m.steam_app_id.clone(),
+                    ..Default::default()
+                };
+                SourceGame::new(&args, Some(m), &[])
+            })
+            .collect();
+        ready.iter().any(|d| views.iter().any(|g| self.sources.applies(&self.paths, &settings, d, g)))
     }
 
     /// The games of `games` (`None`: every game of the Collection) that have
@@ -59,7 +95,7 @@ impl MetadataService {
     /// family. `None` when the files cannot be read. Reads the records and
     /// `art.json`, asks no source.
     pub fn family_lack(&self, family: CoverFamily, games: Option<Vec<BulkItem>>) -> Option<FamilyLack> {
-        let can_download = family != CoverFamily::Tall && self.can_download_family(family);
+        let can_download = family != CoverFamily::Tall && self.family_askable(family, games.as_deref());
         if family == CoverFamily::Tall {
             return Some(FamilyLack { games: Vec::new(), can_download });
         }

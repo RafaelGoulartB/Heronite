@@ -17,6 +17,8 @@ use heronite_data::models::LocalGameMeta;
 pub enum Database {
     /// The LaunchBox Games Database (`<Platform>` of `Metadata.xml`).
     LaunchBox,
+    /// libretro-thumbnails (a folder of `thumbnails.libretro.com`).
+    Libretro,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -33,6 +35,12 @@ pub struct Platform {
     extensions: &'static [&'static str],
     /// LaunchBox's platforms, the main one first.
     launchbox: &'static [&'static str],
+    /// libretro-thumbnails' systems (folder names), the main one first.
+    /// Empty: no system, or one with too few pictures to be worth asking
+    /// (PlayStation 3 and 4, Vita, Xbox 360 have under 70), or one named by
+    /// something other than the dump (arcade: MAME's descriptions; DOS and
+    /// ScummVM: titles, while the game's file is an executable).
+    libretro: &'static [&'static str],
 }
 
 impl Platform {
@@ -41,6 +49,7 @@ impl Platform {
     pub fn names_in(&self, db: Database) -> &'static [&'static str] {
         match db {
             Database::LaunchBox => self.launchbox,
+            Database::Libretro => self.libretro,
         }
     }
 }
@@ -51,8 +60,9 @@ const fn p(
     aliases: &'static [&'static str],
     extensions: &'static [&'static str],
     launchbox: &'static [&'static str],
+    libretro: &'static [&'static str],
 ) -> Platform {
-    Platform { id, name, aliases, extensions, launchbox }
+    Platform { id, name, aliases, extensions, launchbox, libretro }
 }
 
 /// Every platform the app knows. An extension is listed only for the one
@@ -64,6 +74,7 @@ pub static PLATFORMS: &[Platform] = &[
         &["nes", "famicom", "fc", "familycomputer", "nintendoentertainmentsystem", "nintendones", "nestopia", "fceux", "fceumm"],
         &["nes", "unf", "unif", "fds"],
         &["Nintendo Entertainment System", "Nintendo Famicom Disk System"],
+        &["Nintendo - Nintendo Entertainment System", "Nintendo - Family Computer Disk System"],
     ),
     p(
         "nintendo_super_nes",
@@ -71,6 +82,7 @@ pub static PLATFORMS: &[Platform] = &[
         &["snes", "sfc", "supernintendo", "superfamicom", "supernes", "supernintendoentertainmentsystem", "snes9x", "bsnes", "zsnes"],
         &["sfc", "smc", "swc", "fig", "bs"],
         &["Super Nintendo Entertainment System", "Nintendo Satellaview"],
+        &["Nintendo - Super Nintendo Entertainment System", "Nintendo - Satellaview"],
     ),
     p(
         "nintendo_gameboy",
@@ -78,6 +90,7 @@ pub static PLATFORMS: &[Platform] = &[
         &["gb", "gbc", "gameboy", "gameboycolor", "nintendogameboy", "nintendogameboycolor", "gambatte", "sameboy"],
         &["gb", "gbc", "sgb"],
         &["Nintendo Game Boy", "Nintendo Game Boy Color"],
+        &["Nintendo - Game Boy", "Nintendo - Game Boy Color"],
     ),
     p(
         "nintendo_gameboyadvance",
@@ -85,6 +98,7 @@ pub static PLATFORMS: &[Platform] = &[
         &["gba", "gameboyadvance", "nintendogameboyadvance"],
         &["gba", "agb"],
         &["Nintendo Game Boy Advance"],
+        &["Nintendo - Game Boy Advance"],
     ),
     p(
         "nintendo_64",
@@ -92,6 +106,7 @@ pub static PLATFORMS: &[Platform] = &[
         &["n64", "nintendo64", "mupen64plus", "m64py", "gopher64", "project64", "simple64"],
         &["n64", "v64", "z64"],
         &["Nintendo 64", "Nintendo 64DD"],
+        &["Nintendo - Nintendo 64"],
     ),
     p(
         "nintendo_ds",
@@ -99,6 +114,7 @@ pub static PLATFORMS: &[Platform] = &[
         &["nds", "ds", "nintendods", "nintendodsi", "dsi", "melonds", "desmume", "drastic"],
         &["nds", "dsi", "ids", "srl"],
         &["Nintendo DS"],
+        &["Nintendo - Nintendo DS", "Nintendo - Nintendo DSi"],
     ),
     p(
         "nintendo_3ds",
@@ -106,50 +122,77 @@ pub static PLATFORMS: &[Platform] = &[
         &["3ds", "n3ds", "nintendo3ds", "azahar", "citra", "lime3ds"],
         &["3ds", "3dsx", "cci", "cxi", "cia"],
         &["Nintendo 3DS"],
+        &["Nintendo - Nintendo 3DS"],
     ),
-    p("nintendo_gamecube", "Nintendo GameCube", &["gc", "gamecube", "ngc", "nintendogamecube"], &["gcm"], &["Nintendo GameCube"]),
-    p("nintendo_wii", "Wii", &["wii", "nintendowii"], &["wbfs"], &["Nintendo Wii"]),
-    p("nintendo_wiiu", "Wii U", &["wiiu", "nintendowiiu", "cemu"], &["wud", "wux", "rpx"], &["Nintendo Wii U"]),
+    p(
+        "nintendo_gamecube",
+        "Nintendo GameCube",
+        &["gc", "gamecube", "ngc", "nintendogamecube"],
+        &["gcm"],
+        &["Nintendo GameCube"],
+        &["Nintendo - GameCube"],
+    ),
+    p("nintendo_wii", "Wii", &["wii", "nintendowii"], &["wbfs"], &["Nintendo Wii"], &["Nintendo - Wii"]),
+    p("nintendo_wiiu", "Wii U", &["wiiu", "nintendowiiu", "cemu"], &["wud", "wux", "rpx"], &["Nintendo Wii U"], &["Nintendo - Wii U"]),
     p(
         "nintendo_switch",
         "Nintendo Switch",
         &["switch", "nintendoswitch", "ryujinx", "yuzu", "suyu", "sudachi", "citron", "eden"],
         &["nsp", "xci", "nca", "nro", "nso"],
         &["Nintendo Switch"],
+        &[],
     ),
-    p("nintendo_virtualboy", "Virtual Boy", &["virtualboy", "vb", "nintendovirtualboy"], &["vb", "vboy"], &["Nintendo Virtual Boy"]),
+    p(
+        "nintendo_virtualboy",
+        "Virtual Boy",
+        &["virtualboy", "vb", "nintendovirtualboy"],
+        &["vb", "vboy"],
+        &["Nintendo Virtual Boy"],
+        &["Nintendo - Virtual Boy"],
+    ),
     p(
         "sega_genesis",
         "Sega Mega Drive/Genesis",
         &["genesis", "megadrive", "md", "segagenesis", "segamegadrive", "segamegadrivegenesis", "megadrivegenesis", "blastem"],
         &["md", "gen", "smd"],
         &["Sega Genesis"],
+        &["Sega - Mega Drive - Genesis"],
     ),
-    p("sega_32x", "Sega 32X", &["32x", "sega32x"], &["32x"], &["Sega 32X"]),
-    p("sega_cd", "Sega CD", &["segacd", "megacd", "segamegacd"], &[], &["Sega CD"]),
+    p("sega_32x", "Sega 32X", &["32x", "sega32x"], &["32x"], &["Sega 32X"], &["Sega - 32X"]),
+    p("sega_cd", "Sega CD", &["segacd", "megacd", "segamegacd"], &[], &["Sega CD"], &["Sega - Mega-CD - Sega CD"]),
     p(
         "sega_master_system",
         "Sega Master System/Mark III",
         &["mastersystem", "sms", "segamastersystem", "segamastersystemmarkiii", "markiii"],
         &["sms"],
         &["Sega Master System"],
+        &["Sega - Master System - Mark III"],
     ),
-    p("sega_gamegear", "Sega Game Gear", &["gamegear", "gg", "segagamegear"], &["gg"], &["Sega Game Gear"]),
-    p("sega_saturn", "Sega Saturn", &["saturn", "segasaturn", "yabause", "kronos", "yabasanshiro"], &[], &["Sega Saturn"]),
+    p("sega_gamegear", "Sega Game Gear", &["gamegear", "gg", "segagamegear"], &["gg"], &["Sega Game Gear"], &["Sega - Game Gear"]),
+    p(
+        "sega_saturn",
+        "Sega Saturn",
+        &["saturn", "segasaturn", "yabause", "kronos", "yabasanshiro"],
+        &[],
+        &["Sega Saturn"],
+        &["Sega - Saturn"],
+    ),
     p(
         "sega_dreamcast",
         "Dreamcast",
         &["dreamcast", "dc", "segadreamcast", "flycast", "redream", "reicast", "demul"],
         &["gdi", "cdi"],
         &["Sega Dreamcast"],
+        &["Sega - Dreamcast"],
     ),
-    p("sega_sg1000", "SG-1000", &["sg1000", "segasg1000"], &["sg"], &["Sega SG-1000"]),
+    p("sega_sg1000", "SG-1000", &["sg1000", "segasg1000"], &["sg"], &["Sega SG-1000"], &["Sega - SG-1000"]),
     p(
         "sony_playstation",
         "PlayStation",
         &["psx", "ps1", "playstation", "sonyplaystation", "playstation1", "duckstation", "epsxe", "pcsxrearmed", "swanstation"],
         &[],
         &["Sony Playstation"],
+        &["Sony - PlayStation"],
     ),
     p(
         "sony_playstation2",
@@ -157,15 +200,17 @@ pub static PLATFORMS: &[Platform] = &[
         &["ps2", "playstation2", "sonyplaystation2", "pcsx2", "aethersx2", "nethersx2"],
         &[],
         &["Sony Playstation 2"],
+        &["Sony - PlayStation 2"],
     ),
-    p("sony_playstation3", "PlayStation 3", &["ps3", "playstation3", "sonyplaystation3", "rpcs3"], &[], &["Sony Playstation 3"]),
-    p("sony_playstation4", "PlayStation 4", &["ps4", "playstation4", "sonyplaystation4", "shadps4"], &[], &["Sony Playstation 4"]),
+    p("sony_playstation3", "PlayStation 3", &["ps3", "playstation3", "sonyplaystation3", "rpcs3"], &[], &["Sony Playstation 3"], &[]),
+    p("sony_playstation4", "PlayStation 4", &["ps4", "playstation4", "sonyplaystation4", "shadps4"], &[], &["Sony Playstation 4"], &[]),
     p(
         "sony_psp",
         "PlayStation Portable",
         &["psp", "playstationportable", "sonypsp", "sonyplaystationportable", "ppsspp"],
         &["cso"],
         &["Sony PSP", "Sony PSP Minis"],
+        &["Sony - PlayStation Portable"],
     ),
     p(
         "sony_psvita",
@@ -173,48 +218,74 @@ pub static PLATFORMS: &[Platform] = &[
         &["psvita", "vita", "playstationvita", "sonyplaystationvita", "vita3k"],
         &["vpk"],
         &["Sony Playstation Vita"],
+        &[],
     ),
-    p("microsoft_xbox", "Xbox", &["xbox", "microsoftxbox", "xemu", "xqemu"], &["xiso"], &["Microsoft Xbox"]),
-    p("microsoft_xbox360", "Xbox 360", &["xbox360", "microsoftxbox360", "xenia"], &["xex"], &["Microsoft Xbox 360"]),
+    p("microsoft_xbox", "Xbox", &["xbox", "microsoftxbox", "xemu", "xqemu"], &["xiso"], &["Microsoft Xbox"], &["Microsoft - Xbox"]),
+    p("microsoft_xbox360", "Xbox 360", &["xbox360", "microsoftxbox360", "xenia"], &["xex"], &["Microsoft Xbox 360"], &[]),
     p(
         "nec_turbografx_16",
         "TurboGrafx-16/PC Engine",
         &["pcengine", "tg16", "turbografx16", "pce", "turbografx16pcengine", "necturbografx16", "pcenginecd", "turbografxcd", "tgcd"],
         &["pce", "sgx"],
         &["NEC TurboGrafx-16", "NEC TurboGrafx-CD", "PC Engine SuperGrafx"],
+        &["NEC - PC Engine - TurboGrafx 16", "NEC - PC Engine CD - TurboGrafx-CD", "NEC - PC Engine SuperGrafx"],
     ),
-    p("nec_pcfx", "PC-FX", &["pcfx", "necpcfx"], &[], &["NEC PC-FX"]),
+    p("nec_pcfx", "PC-FX", &["pcfx", "necpcfx"], &[], &["NEC PC-FX"], &["NEC - PC-FX"]),
     p(
         "snk_neogeopocket",
         "Neo Geo Pocket",
         &["ngp", "ngpc", "neogeopocket", "neogeopocketcolor", "snkneogeopocket"],
         &["ngp", "ngc", "ngpc"],
         &["SNK Neo Geo Pocket", "SNK Neo Geo Pocket Color"],
+        &["SNK - Neo Geo Pocket", "SNK - Neo Geo Pocket Color"],
     ),
-    p("snk_neogeo_cd", "Neo Geo CD", &["neogeocd", "snkneogeocd"], &[], &["SNK Neo Geo CD"]),
+    p("snk_neogeo_cd", "Neo Geo CD", &["neogeocd", "snkneogeocd"], &[], &["SNK Neo Geo CD"], &["SNK - Neo Geo CD"]),
     p(
         "bandai_wonderswan",
         "WonderSwan",
         &["wonderswan", "wonderswancolor", "wswan", "wswanc", "ws", "wsc", "bandaiwonderswan"],
         &["ws", "wsc"],
         &["WonderSwan", "WonderSwan Color"],
+        &["Bandai - WonderSwan", "Bandai - WonderSwan Color"],
     ),
-    p("atari_2600", "Atari 2600", &["atari2600", "a2600", "stella"], &["a26"], &["Atari 2600"]),
-    p("atari_5200", "Atari 5200", &["atari5200", "a5200"], &["a52"], &["Atari 5200"]),
-    p("atari_7800", "Atari 7800", &["atari7800", "a7800"], &["a78"], &["Atari 7800"]),
-    p("atari_lynx", "Atari Lynx", &["lynx", "atarilynx", "handy"], &["lnx", "lyx"], &["Atari Lynx"]),
-    p("atari_jaguar", "Atari Jaguar", &["jaguar", "atarijaguar", "jaguarcd"], &["j64", "jag"], &["Atari Jaguar", "Atari Jaguar CD"]),
-    p("atari_st", "Atari ST/STE", &["atarist", "hatari"], &["st", "stx", "msa"], &["Atari ST"]),
-    p("coleco_vision", "ColecoVision", &["colecovision", "coleco"], &["col"], &["ColecoVision"]),
-    p("mattel_intellivision", "Intellivision", &["intellivision", "mattelintellivision"], &["int"], &["Mattel Intellivision"]),
-    p("vectrex", "Vectrex", &["vectrex", "gcevectrex"], &["vec"], &["GCE Vectrex"]),
-    p("3do", "3DO Interactive Multiplayer", &["3do", "panasonic3do", "3dointeractivemultiplayer"], &[], &["3DO Interactive Multiplayer"]),
+    p("atari_2600", "Atari 2600", &["atari2600", "a2600", "stella"], &["a26"], &["Atari 2600"], &["Atari - 2600"]),
+    p("atari_5200", "Atari 5200", &["atari5200", "a5200"], &["a52"], &["Atari 5200"], &["Atari - 5200"]),
+    p("atari_7800", "Atari 7800", &["atari7800", "a7800"], &["a78"], &["Atari 7800"], &["Atari - 7800"]),
+    p("atari_lynx", "Atari Lynx", &["lynx", "atarilynx", "handy"], &["lnx", "lyx"], &["Atari Lynx"], &["Atari - Lynx"]),
+    p(
+        "atari_jaguar",
+        "Atari Jaguar",
+        &["jaguar", "atarijaguar", "jaguarcd"],
+        &["j64", "jag"],
+        &["Atari Jaguar", "Atari Jaguar CD"],
+        &["Atari - Jaguar"],
+    ),
+    p("atari_st", "Atari ST/STE", &["atarist", "hatari"], &["st", "stx", "msa"], &["Atari ST"], &["Atari - ST"]),
+    p("coleco_vision", "ColecoVision", &["colecovision", "coleco"], &["col"], &["ColecoVision"], &["Coleco - ColecoVision"]),
+    p(
+        "mattel_intellivision",
+        "Intellivision",
+        &["intellivision", "mattelintellivision"],
+        &["int"],
+        &["Mattel Intellivision"],
+        &["Mattel - Intellivision"],
+    ),
+    p("vectrex", "Vectrex", &["vectrex", "gcevectrex"], &["vec"], &["GCE Vectrex"], &["GCE - Vectrex"]),
+    p(
+        "3do",
+        "3DO Interactive Multiplayer",
+        &["3do", "panasonic3do", "3dointeractivemultiplayer"],
+        &[],
+        &["3DO Interactive Multiplayer"],
+        &["The 3DO Company - 3DO"],
+    ),
     p(
         "arcade",
         "Arcade",
         &["arcade", "mame", "fbneo", "fba", "finalburn", "neogeo", "cps1", "cps2", "cps3"],
         &[],
         &["Arcade", "SNK Neo Geo AES", "SNK Neo Geo MVS"],
+        &[],
     ),
     p(
         "commodore_64",
@@ -222,6 +293,7 @@ pub static PLATFORMS: &[Platform] = &[
         &["c64", "commodore64", "vice"],
         &["d64", "t64", "prg", "crt"],
         &["Commodore 64", "Commodore 128"],
+        &["Commodore - 64"],
     ),
     p(
         "commodore_amiga",
@@ -229,20 +301,36 @@ pub static PLATFORMS: &[Platform] = &[
         &["amiga", "commodoreamiga", "amigacd32", "cd32", "fsuae", "winuae"],
         &["adf", "adz", "hdf"],
         &["Commodore Amiga", "Commodore Amiga CD32"],
+        &["Commodore - Amiga", "Commodore - CD32"],
     ),
-    p("amstrad_cpc", "Amstrad CPC", &["amstradcpc", "cpc"], &[], &["Amstrad CPC"]),
+    p("amstrad_cpc", "Amstrad CPC", &["amstradcpc", "cpc"], &[], &["Amstrad CPC"], &["Amstrad - CPC"]),
     p(
         "sinclair_zxspectrum",
         "ZX Spectrum",
         &["zxspectrum", "spectrum", "sinclairzxspectrum", "zx"],
         &["tzx", "z80", "sna"],
         &["Sinclair ZX Spectrum"],
+        &["Sinclair - ZX Spectrum"],
     ),
-    p("microsoft_msx", "MSX", &["msx", "msx2", "microsoftmsx"], &["mx1", "mx2"], &["Microsoft MSX", "Microsoft MSX2", "Microsoft MSX2+"]),
-    p("pc_dos", "DOS", &["dos", "msdos", "pcdos", "dosbox"], &[], &["MS-DOS"]),
-    p("pc_windows", "PC (Microsoft Windows)", &["windows", "pcwindows", "pcmicrosoftwindows", "win"], &[], &["Windows", "Windows 3.X"]),
+    p(
+        "microsoft_msx",
+        "MSX",
+        &["msx", "msx2", "microsoftmsx"],
+        &["mx1", "mx2"],
+        &["Microsoft MSX", "Microsoft MSX2", "Microsoft MSX2+"],
+        &["Microsoft - MSX", "Microsoft - MSX2"],
+    ),
+    p("pc_dos", "DOS", &["dos", "msdos", "pcdos", "dosbox"], &[], &["MS-DOS"], &[]),
+    p(
+        "pc_windows",
+        "PC (Microsoft Windows)",
+        &["windows", "pcwindows", "pcmicrosoftwindows", "win"],
+        &[],
+        &["Windows", "Windows 3.X"],
+        &[],
+    ),
     // The emulator catalog's ScummVM profile.
-    p("pc", "PC", &["scummvm"], &["scummvm"], &["ScummVM", "MS-DOS", "Windows"]),
+    p("pc", "PC", &["scummvm"], &["scummvm"], &["ScummVM", "MS-DOS", "Windows"], &[]),
 ];
 
 /// LaunchBox's platforms of a game that is not emulated (a PC game).

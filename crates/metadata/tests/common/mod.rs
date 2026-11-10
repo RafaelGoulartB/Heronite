@@ -113,6 +113,7 @@ impl Server {
             vndb: format!("{b}/vndb/kana"),
             launchbox: format!("{b}/launchbox"),
             launchbox_images: format!("{b}/lbimages"),
+            libretro_thumbnails: format!("{b}/libretro"),
             steamgriddb: format!("{b}/sgdb/api/v2"),
             bottles_steamgrid: format!("{b}/bottles"),
             hltb: format!("{b}/hltb"),
@@ -177,6 +178,17 @@ fn serve(mut stream: TcpStream, handler: &dyn Fn(&Req) -> Resp, log: &Mutex<Vec<
 
 pub fn fixture(name: &str) -> String {
     std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)).unwrap()
+}
+
+/// The first bytes of a PNG of `w` x `h` (signature and `IHDR`: all a
+/// source reads to learn a picture's shape), padded to `len` bytes.
+pub fn png_of(w: u32, h: u32, len: usize) -> Vec<u8> {
+    let mut v = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, b'I', b'H', b'D', b'R'];
+    v.extend(w.to_be_bytes());
+    v.extend(h.to_be_bytes());
+    v.extend([8, 6, 0, 0, 0]);
+    v.resize(len.max(v.len()), 7);
+    v
 }
 
 pub fn png() -> Vec<u8> {
