@@ -6,9 +6,15 @@
 //! `store_cache/extension-lists/` with the time it was read, so the gallery
 //! opens offline with that copy.
 //!
-//! Installing an entry downloads its two files, checks both SHA-256 against
-//! the list, then goes through the same `inspect` → `install` path as a
-//! file: [`prepare`] gives the [`PackageInfo`] the user confirms, refusing a
+//! A list may also be a file on this computer ([`ListLocation::File`]: a
+//! debug build's own list is the repository's `extensions/index.json`, and
+//! `HERONITE_EXTENSIONS_INDEX` may name one). It is read as strictly, without
+//! the network and without a kept copy, and its entries' files come from
+//! the folders beside it, never from their `url`s.
+//!
+//! Installing an entry downloads its two files (or reads them beside a
+//! list on this computer), checks both SHA-256 and sizes against the list,
+//! then goes through the same `inspect` → `install` path as a file: [`prepare`] gives the [`PackageInfo`] the user confirms, refusing a
 //! manifest that is not what the entry says (another id, version or kind,
 //! more fields, a host the entry does not list, adult while the entry is
 //! not); [`install_prepared`] installs it and records the list it came
@@ -17,6 +23,7 @@
 //!
 //! Everything is blocking (network, files): call it from a worker thread.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -27,6 +34,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::index::{self, https_url, Index, IndexEntry, IndexError, IndexFile, MAX_INDEX_BYTES};
+use crate::manifest::valid_id;
 use crate::package::{MANIFEST, SCRIPT};
 use crate::service::{self, Approval, ExtensionsExt, InstallOutcome, InstalledExtension, PackageInfo};
 use crate::ExtensionError;
@@ -55,6 +63,9 @@ pub enum ListError {
     AlreadyAdded,
     /// Saving the settings failed.
     Io(String),
+    /// A list on this computer cannot be opened or read; the text says
+    /// which file and why.
+    NoFile(String),
 }
 
 impl std::fmt::Display for ListError {
@@ -67,6 +78,7 @@ impl std::fmt::Display for ListError {
             Self::Invalid(e) => write!(f, "{e}"),
             Self::AlreadyAdded => write!(f, "already in use"),
             Self::Io(m) => write!(f, "{m}"),
+            Self::NoFile(m) => write!(f, "cannot read {m}"),
         }
     }
 }
@@ -76,6 +88,8 @@ impl std::error::Error for ListError {}
 /// One list in use, as last read.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListCopy {
+    /// Its address, or its path for a list on this computer
+    /// ([`ListLocation::key`]).
     pub url: String,
     /// The app's own list (it cannot be removed).
     pub builtin: bool,
@@ -107,13 +121,58 @@ fn sha256(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))
 }
 
+/// Where a list is read from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ListLocation {
+    /// An address (read only when `https`).
+    Address(String),
+    /// An `index.json` on this computer. Its entries' files are the
+    /// folders beside it (`<id>/source.toml`, `<id>/source.js`).
+    File(PathBuf),
+}
+
+impl ListLocation {
+    /// A list as it is written (the settings, `install.json`'s `list`,
+    /// `HERONITE_EXTENSIONS_INDEX`): a `file://` address or a path is a
+    /// file, anything else with `://` an address. No file is touched.
+    pub fn of(text: &str) -> Self {
+        let text = text.trim();
+        if text.starts_with("file://") {
+            if let Some(path) = url::Url::parse(text).ok().and_then(|u| u.to_file_path().ok()) {
+                return Self::File(path);
+            }
+        }
+        if text.contains("://") {
+            Self::Address(text.to_owned())
+        } else {
+            Self::File(PathBuf::from(text))
+        }
+    }
+
+    /// The text the list is known by: [`ListCopy::url`], and the `list`
+    /// recorded for what is installed from it.
+    pub fn key(&self) -> String {
+        match self {
+            Self::Address(url) => url.clone(),
+            Self::File(path) => path.display().to_string(),
+        }
+    }
+}
+
+/// Whether the list known by `url` is a file on this computer.
+pub fn is_local(url: &str) -> bool {
+    matches!(ListLocation::of(url), ListLocation::File(_))
+}
+
 /// The host of `url`, for "From example.org".
 pub fn host_of(url: &str) -> String {
     url::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_owned)).unwrap_or_else(|| url.to_owned())
 }
 
 /// Reads the lists named in the settings, the app's own first. `builtin`
-/// is the app's list address (an environment switch may change it).
+/// is the app's list: [`HERONITE_LIST`], or what a debug build or an
+/// environment switch reads instead (an address, or a path,
+/// [`ListLocation::key`]).
 #[derive(Debug, Clone)]
 pub struct Lists {
     pub builtin: String,
@@ -168,15 +227,26 @@ impl Lists {
         copy
     }
 
-    /// The lists as last read, without the network.
+    /// The lists as last read, without the network (a list on this
+    /// computer is read now).
     pub fn cached(&self, service: &MetadataService) -> Vec<ListCopy> {
-        self.in_use(service).into_iter().map(|(url, builtin)| Self::read_cache(service, &url, builtin)).collect()
+        self.in_use(service)
+            .into_iter()
+            .map(|(url, builtin)| match ListLocation::of(&url) {
+                ListLocation::File(path) => local_copy(&url, builtin, &path),
+                ListLocation::Address(_) => Self::read_cache(service, &url, builtin),
+            })
+            .collect()
     }
 
     /// Reads one list from the network and keeps it; when that fails, the
-    /// copy kept from before with why.
+    /// copy kept from before with why. A list on this computer is read
+    /// from its file, and no copy of it is kept.
     pub fn read(&self, service: &MetadataService, url: &str) -> ListCopy {
         let builtin = self.is_builtin(url);
+        if let ListLocation::File(path) = ListLocation::of(url) {
+            return local_copy(url, builtin, &path);
+        }
         match fetch_list(&service.http, url) {
             Ok((body, index)) => {
                 let now = SystemTime::now();
@@ -241,10 +311,25 @@ impl Lists {
     }
 }
 
+/// A list on this computer, read now. No copy is kept: the file is always
+/// at hand, and a copy would only hide that it changed or went.
+fn local_copy(url: &str, builtin: bool, path: &Path) -> ListCopy {
+    match read_list_file(path) {
+        Ok((_, index)) => ListCopy { url: url.to_owned(), builtin, index: Some(index), read_at: Some(SystemTime::now()), error: None },
+        Err(e) => {
+            log::info!("The list of extensions {url} could not be read: {}", crate::manifest::one_line(&e.to_string()));
+            ListCopy { url: url.to_owned(), builtin, index: None, read_at: None, error: Some(e) }
+        }
+    }
+}
+
 /// [`Lists::origin`] knowing the lists in use.
 pub fn origin_among(lists: &Lists, in_use: &[(String, bool)], list: Option<&str>) -> Origin {
     match list {
         None => Origin::File,
+        // Before the app's own: a debug build's own list is a file, and
+        // what came from it is not from the Heronite list.
+        Some(u) if is_local(u) => Origin::Local(u.to_owned()),
         Some(u) if lists.is_builtin(u) => Origin::Heronite,
         Some(u) if in_use.iter().any(|(x, _)| x == u) => Origin::List(u.to_owned()),
         Some(u) => Origin::GoneList(u.to_owned()),
@@ -263,6 +348,9 @@ pub enum Origin {
     List(String),
     /// A list the user removed since.
     GoneList(String),
+    /// A list on this computer (its path): a debug build's copy of the
+    /// repository's, or one `HERONITE_EXTENSIONS_INDEX` names.
+    Local(String),
 }
 
 /// GETs `url` with the app's user agent, at most `max` bytes, without
@@ -287,7 +375,23 @@ pub fn fetch_list(http: &Http, url: &str) -> Result<(String, Index), ListError> 
     if !https_url(url) {
         return Err(ListError::NotHttps);
     }
-    let body = get(http, url, MAX_INDEX_BYTES)?;
+    checked(get(http, url, MAX_INDEX_BYTES)?)
+}
+
+/// Reads and checks the list at `path` on this computer, as strictly as
+/// one downloaded: its text and what it says.
+pub fn read_list_file(path: &Path) -> Result<(String, Index), ListError> {
+    let no_file = |e: std::io::Error| ListError::NoFile(format!("{}: {e}", path.display()));
+    let file = std::fs::File::open(path).map_err(no_file)?;
+    let mut body = Vec::new();
+    file.take(MAX_INDEX_BYTES + 1).read_to_end(&mut body).map_err(no_file)?;
+    if body.len() as u64 > MAX_INDEX_BYTES {
+        return Err(ListError::TooLarge);
+    }
+    checked(body)
+}
+
+fn checked(body: Vec<u8>) -> Result<(String, Index), ListError> {
     let index = index::parse(&body).map_err(ListError::Invalid)?;
     let text = String::from_utf8(body).map_err(|_| ListError::Invalid(IndexError::NotJson("not UTF-8".into())))?;
     Ok((text, index))
@@ -327,10 +431,11 @@ pub fn updates(copies: &[ListCopy], installed: &[InstalledExtension]) -> Vec<Ava
 #[derive(Debug)]
 pub struct Prepared {
     pub info: PackageInfo,
-    /// The list's address.
+    /// The list's address (or path, [`ListLocation::key`]).
     pub list: String,
     dir: Folder,
-    /// The address of its manifest, recorded as where it came from.
+    /// The address (or path) of its manifest, recorded as where it came
+    /// from.
     from: String,
 }
 
@@ -352,10 +457,75 @@ fn download(http: &Http, file: &IndexFile, name: &str) -> Result<Vec<u8>, Extens
         Err(ListError::TooLarge) => return Err(ExtensionError::Checksum(name.to_owned())),
         Err(e) => return Err(ExtensionError::Download(format!("{name}: {e}"))),
     };
-    if bytes.len() as u64 != file.size || sha256(&bytes) != file.sha256 {
+    as_listed(&bytes, file, name)?;
+    Ok(bytes)
+}
+
+/// Whether `bytes` are the file the list names: its size and SHA-256.
+fn as_listed(bytes: &[u8], file: &IndexFile, name: &str) -> Result<(), ExtensionError> {
+    if bytes.len() as u64 != file.size || sha256(bytes) != file.sha256 {
         return Err(ExtensionError::Checksum(name.to_owned()));
     }
+    Ok(())
+}
+
+/// `<the list's folder>/<id>`, where a list on this computer keeps an
+/// entry's files. The id must be one plain name: the list's parser lets
+/// only valid ids through, checked again here because a path is built of it.
+fn entry_folder(index: &Path, id: &str) -> Result<PathBuf, ExtensionError> {
+    let outside = || ExtensionError::UnsafePath(format!("the id \"{id}\" is not a folder beside the list"));
+    let plain = valid_id(id) && matches!(Path::new(id).components().collect::<Vec<_>>()[..], [std::path::Component::Normal(_)]);
+    if !plain {
+        return Err(outside());
+    }
+    Ok(index.parent().ok_or_else(outside)?.join(id))
+}
+
+/// Reads `name` in `dir` for a list on this computer whose folder is
+/// `root` (links resolved), and checks it as a download is checked.
+/// Nothing outside `root` is read, a link that leaves it included, and
+/// nothing but a plain file (a pipe would never end).
+fn read_beside(root: &Path, dir: &Path, file: &IndexFile, name: &str) -> Result<Vec<u8>, ExtensionError> {
+    let path = dir.join(name);
+    let missing = |e: std::io::Error| {
+        log::info!("{} could not be read: {e}", path.display());
+        ExtensionError::MissingFile(name.to_owned())
+    };
+    let real = path.canonicalize().map_err(missing)?;
+    if !real.starts_with(root) {
+        return Err(ExtensionError::UnsafePath(format!("{} leaves the list's folder", path.display())));
+    }
+    if !real.metadata().map_err(missing)?.is_file() {
+        return Err(ExtensionError::UnexpectedFile(path.display().to_string()));
+    }
+    let mut bytes = Vec::new();
+    // One byte over: a longer file is caught without reading it whole.
+    std::fs::File::open(&real).and_then(|f| f.take(file.size + 1).read_to_end(&mut bytes)).map_err(missing)?;
+    as_listed(&bytes, file, name)?;
     Ok(bytes)
+}
+
+/// The two files of `entry` of the list at `list`, checked, and where its
+/// manifest came from.
+fn entry_files(service: &MetadataService, list: &str, entry: &IndexEntry) -> Result<(Vec<u8>, Vec<u8>, String), ExtensionError> {
+    match ListLocation::of(list) {
+        ListLocation::Address(_) => Ok((
+            download(&service.http, &entry.manifest, MANIFEST)?,
+            download(&service.http, &entry.script, SCRIPT)?,
+            entry.manifest.url.clone(),
+        )),
+        ListLocation::File(index) => {
+            let index = std::path::absolute(&index).unwrap_or(index);
+            let dir = entry_folder(&index, &entry.id)?;
+            let root = index
+                .parent()
+                .and_then(|p| p.canonicalize().ok())
+                .ok_or_else(|| ExtensionError::MissingFile(index.display().to_string()))?;
+            let manifest = read_beside(&root, &dir, &entry.manifest, MANIFEST)?;
+            let script = read_beside(&root, &dir, &entry.script, SCRIPT)?;
+            Ok((manifest, script, dir.join(MANIFEST).display().to_string()))
+        }
+    }
 }
 
 /// Whether the package read from the files is what `entry` says.
@@ -390,14 +560,15 @@ fn stamp() -> String {
     format!("{}-{nanos}", std::process::id())
 }
 
-/// Downloads `entry` of the list at `list`, checks both files against it
-/// and reads the package as a file would be ([`ExtensionsExt::inspect_extension`]).
+/// Downloads `entry` of the list at `list` (or reads it beside a list on
+/// this computer), checks both files against it and reads the package as a
+/// file would be ([`ExtensionsExt::inspect_extension`]). The files checked
+/// are copied aside, so what is installed is what was checked.
 pub fn prepare(service: &MetadataService, list: &str, entry: &IndexEntry) -> Result<Prepared, ExtensionError> {
     if !entry.supported() {
         return Err(ExtensionError::NewerApi(entry.api));
     }
-    let manifest = download(&service.http, &entry.manifest, MANIFEST)?;
-    let script = download(&service.http, &entry.script, SCRIPT)?;
+    let (manifest, script, from) = entry_files(service, list, entry)?;
     let dir = Folder(service.paths.extension_lists_cache_dir().join("downloads").join(format!("{}-{}", entry.id, stamp())));
     let io = |e: std::io::Error| ExtensionError::Io(e.to_string());
     std::fs::create_dir_all(&dir.0).map_err(io)?;
@@ -405,7 +576,7 @@ pub fn prepare(service: &MetadataService, list: &str, entry: &IndexEntry) -> Res
     std::fs::write(dir.0.join(SCRIPT), script).map_err(io)?;
     let info = service.inspect_extension(&dir.0)?;
     check_as_listed(&info, entry)?;
-    Ok(Prepared { info, list: list.to_owned(), dir, from: entry.manifest.url.clone() })
+    Ok(Prepared { info, list: list.to_owned(), dir, from })
 }
 
 /// Installs what [`prepare`] checked; the same or an older version than

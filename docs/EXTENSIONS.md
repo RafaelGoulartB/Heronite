@@ -408,6 +408,17 @@ installed from a list stays installed). The last good copy of each list is
 kept in `store_cache/extension-lists/`, so the gallery opens offline with
 it and says how old it is.
 
+A list can also be a file on this computer: the path of an `index.json`
+(or a `file://` address). It is read as strictly as a downloaded one, and
+each entry's files are read from the folder beside it,
+`<the list's folder>/<id>/source.toml` and `source.js`, ignoring their
+`url`s; their SHA-256 and sizes are checked all the same, and nothing
+outside that folder is read. No copy of it is kept: it is read each time.
+What is installed from it is shown as "From a list on this computer",
+never as from the Heronite list, and is offered updates only by that same
+list (the Heronite list does not update it, even once it lists the same
+extension: remove it and install it from there).
+
 Installing from a list downloads the entry's `source.toml` and
 `source.js`, checks that the SHA-256 and the size of each are the ones the
 list gives, then shows the same installer as a file. The manifest must be
@@ -517,6 +528,17 @@ checks above, how the match was found). `--platform` (an id, name or short
 name, read as the app's id) makes the game an emulated one, and `--file`
 gives its `fileName`. Set `RUST_LOG=info` to see the
 script's `ctx.log` lines and errors. The path may be the folder or its zip.
+
+To try it in the app, through the gallery as users will install it: a
+debug build (`cargo run -p heronite`) reads the repository's own
+`extensions/index.json` as the app's list, so the folders of `extensions/`
+install before they are merged (the gallery says "From this copy of the
+repository"; a release build always reads the list on GitHub). Add your
+folder and run `python3 scripts/extensions-index.py` first, or the list
+names other files and the install is refused. To read another list
+instead, in any build, set `HERONITE_EXTENSIONS_INDEX` to its `https`
+address or to the path of an `index.json` (one written with `--out`, its
+folders beside it).
 
 For tests in this repository, `crates/metadata-ext/tests/examples.rs` shows
 how to serve recorded answers to an extension: the test HTTP client maps

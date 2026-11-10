@@ -49,12 +49,14 @@ fn action_label(state: &OfferState, version: &str) -> (String, bool) {
 }
 
 /// "From the Heronite list · read today" (and "could not be read now"
-/// when the copy shown is an older one).
-pub(super) fn source_line(copies: &[ListCopy], now: SystemTime) -> Option<String> {
+/// when the copy shown is an older one). `checkout`: the key of the app's
+/// own list when it is this repository's ("From this copy of the
+/// repository").
+pub(super) fn source_line(copies: &[ListCopy], now: SystemTime, checkout: Option<&str>) -> Option<String> {
     let read: Vec<&ListCopy> = copies.iter().filter(|c| c.index.is_some()).collect();
     let oldest = read.iter().filter_map(|c| c.read_at).min()?;
     let from = match read.as_slice() {
-        [one] => words::origin(&words::list_origin(&one.url, one.builtin)),
+        [one] => words::list_from(&one.url, one.builtin, checkout == Some(one.url.as_str())),
         many => tr!("From {n} lists", n = many.len()),
     };
     let mut parts = vec![from, words::read_ago(oldest, now)];
@@ -318,9 +320,9 @@ impl ExtensionsDialog {
     }
 
     pub(super) fn render_gallery(&mut self, height: f32, cx: &mut Context<Self>) -> Div {
-        let (snapshot, reading) = {
+        let (snapshot, reading, checkout) = {
             let ext = &self.hub.read(cx).extensions;
-            (ext.snapshot.clone(), ext.reading)
+            (ext.snapshot.clone(), ext.reading, ext.checkout.clone())
         };
         let offers = snapshot.offers();
         let query = self.query.read(cx).value().to_string();
@@ -333,7 +335,7 @@ impl ExtensionsDialog {
             .child(meta_text(tr!("Sources made by the community. Once installed, a source sits in your lists like any other.")))
             .children(snapshot.copies.iter().filter(|c| c.index.is_some() && c.error.is_some()).map(|c| {
                 let e = c.error.as_ref().map(words::list_error).unwrap_or_default();
-                let list = if c.builtin { tr!("The Heronite list").to_string() } else { heronite_metadata_ext::lists::host_of(&c.url) };
+                let list = words::list_name(&c.url, c.builtin, checkout.as_deref() == Some(c.url.as_str()));
                 div().text_size(px(12.)).text_color(theme::readable(theme::warning())).child(tr!(
                     "{list}: {why} Showing the copy read before.",
                     list,
@@ -362,11 +364,15 @@ impl ExtensionsDialog {
     }
 
     pub(super) fn render_gallery_footer(&mut self, cx: &mut Context<Self>) -> Div {
-        let (copies, reading) = {
+        let (copies, reading, checkout) = {
             let ext = &self.hub.read(cx).extensions;
-            (ext.snapshot.copies.clone(), ext.reading)
+            (ext.snapshot.copies.clone(), ext.reading, ext.checkout.clone())
         };
-        let line = if reading { Some(tr!("Reading the lists\u{2026}").to_string()) } else { source_line(&copies, SystemTime::now()) };
+        let line = if reading {
+            Some(tr!("Reading the lists\u{2026}").to_string())
+        } else {
+            source_line(&copies, SystemTime::now(), checkout.as_deref())
+        };
         div()
             .flex()
             .flex_1()
@@ -451,20 +457,31 @@ mod tests {
         let now = SystemTime::now();
         let index = Some(index::parse(br#"{"index": 1, "extensions": []}"#).unwrap());
         let own = ListCopy { url: "https://own".into(), builtin: true, index: index.clone(), read_at: Some(now), error: None };
-        assert_eq!(source_line(std::slice::from_ref(&own), now).as_deref(), Some("From the Heronite list \u{b7} read today"));
+        assert_eq!(source_line(std::slice::from_ref(&own), now, None).as_deref(), Some("From the Heronite list \u{b7} read today"));
         let old = ListCopy {
             read_at: Some(now - Duration::from_secs(3 * 86_400)),
             error: Some(ListError::Unreachable("x".into())),
             ..own.clone()
         };
         assert_eq!(
-            source_line(std::slice::from_ref(&old), now).as_deref(),
+            source_line(std::slice::from_ref(&old), now, None).as_deref(),
             Some("From the Heronite list \u{b7} read 3 days ago \u{b7} could not be read now")
         );
         let other = ListCopy { url: "https://lists.example.net/x.json".into(), builtin: false, index, read_at: Some(now), error: None };
-        assert_eq!(source_line(&[own.clone(), other], now).as_deref(), Some("From 2 lists \u{b7} read today"));
+        assert_eq!(source_line(&[own.clone(), other], now, None).as_deref(), Some("From 2 lists \u{b7} read today"));
+        // A debug build's own list: this repository's, on this computer.
+        let path = "/src/heronite/extensions/index.json";
+        let checkout = ListCopy { url: path.into(), ..own.clone() };
+        assert_eq!(
+            source_line(std::slice::from_ref(&checkout), now, Some(path)).as_deref(),
+            Some("From this copy of the repository \u{b7} read today")
+        );
+        assert_eq!(
+            source_line(std::slice::from_ref(&checkout), now, None).as_deref(),
+            Some("From a list on this computer \u{b7} read today")
+        );
         let none = ListCopy { index: None, read_at: None, error: Some(ListError::Status(404)), ..own };
-        assert_eq!(source_line(&[none], now), None);
+        assert_eq!(source_line(&[none], now, None), None);
     }
 
     #[test]

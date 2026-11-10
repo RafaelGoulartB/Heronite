@@ -13,7 +13,7 @@ use std::time::SystemTime;
 use heronite_i18n::{tr, trn};
 use heronite_metadata::SourceKind;
 use heronite_metadata_ext::index::IndexError;
-use heronite_metadata_ext::lists::{host_of, ListError, Origin};
+use heronite_metadata_ext::lists::{host_of, is_local, ListError, Origin};
 use heronite_metadata_ext::ExtensionError;
 
 /// What went wrong with a package, in a sentence.
@@ -36,7 +36,7 @@ pub fn error(e: &ExtensionError) -> String {
         ExtensionError::NotInstalled(_) => tr!("This extension is not installed any more.").into(),
         ExtensionError::Io(_) => tr!("It could not be saved in the data folder.").into(),
         ExtensionError::Download(_) => tr!("Its files could not be downloaded. Check your connection and try again.").into(),
-        ExtensionError::Checksum(_) => tr!("A file downloaded is not the one the list names, so nothing was installed.").into(),
+        ExtensionError::Checksum(_) => tr!("A file of this source is not the one the list names, so nothing was installed.").into(),
         ExtensionError::NotAsListed(_) => {
             tr!("It is not what the list says it is (its name, version, fields or hosts differ), so nothing was installed.").into()
         }
@@ -66,13 +66,14 @@ pub fn list_error(e: &ListError) -> String {
         ListError::Invalid(IndexError::Invalid(_)) => tr!("The list has mistakes, so it is not used.").into(),
         ListError::AlreadyAdded => tr!("This list is in use already.").into(),
         ListError::Io(_) => tr!("The list could not be saved.").into(),
+        ListError::NoFile(_) => tr!("The list's file could not be opened.").into(),
     }
 }
 
 /// The technical words of a list's error worth showing (a list's mistake).
 pub fn list_detail(e: &ListError) -> Option<String> {
     match e {
-        ListError::Invalid(IndexError::Invalid(m)) => Some(m.clone()),
+        ListError::Invalid(IndexError::Invalid(m)) | ListError::NoFile(m) => Some(m.clone()),
         _ => None,
     }
 }
@@ -84,6 +85,7 @@ pub fn origin(o: &Origin) -> String {
         Origin::List(url) => tr!("From {host}", host = host_of(url)),
         Origin::GoneList(url) => tr!("From {host}, a list you removed", host = host_of(url)),
         Origin::File => tr!("Installed from a file: nobody checked this source").into(),
+        Origin::Local(_) => tr!("From a list on this computer").into(),
     }
 }
 
@@ -96,6 +98,10 @@ pub fn guarantee(o: &Origin) -> String {
         )
         .into(),
         Origin::File => tr!("Install it only if you trust where the file comes from.").into(),
+        Origin::Local(_) => {
+            tr!("Its files are read from the folder of this list and checked against it (SHA-256). Nobody else checked them: install only what you trust.")
+                .into()
+        }
     }
 }
 
@@ -106,10 +112,34 @@ pub fn cautious(o: &Origin) -> bool {
 
 /// The origin of a list's entry.
 pub fn list_origin(url: &str, builtin: bool) -> Origin {
-    if builtin {
+    if is_local(url) {
+        Origin::Local(url.to_owned())
+    } else if builtin {
         Origin::Heronite
     } else {
         Origin::List(url.to_owned())
+    }
+}
+
+/// What a list is called: "The Heronite list", its host, or, for a list
+/// on this computer, "This copy of the repository" (`checkout`, a debug
+/// build's own list) or "A list on this computer".
+pub fn list_name(url: &str, builtin: bool, checkout: bool) -> String {
+    match list_origin(url, builtin) {
+        Origin::Local(_) if checkout => tr!("This copy of the repository").into(),
+        Origin::Local(_) => tr!("A list on this computer").into(),
+        Origin::Heronite => tr!("The Heronite list").into(),
+        _ => host_of(url),
+    }
+}
+
+/// Where the entries of one list come from, for the gallery's footer
+/// ("From the Heronite list", "From this copy of the repository").
+pub fn list_from(url: &str, builtin: bool, checkout: bool) -> String {
+    if checkout && is_local(url) {
+        tr!("From this copy of the repository").into()
+    } else {
+        origin(&list_origin(url, builtin))
     }
 }
 
@@ -137,7 +167,8 @@ mod tests {
     use std::time::Duration;
 
     use super::{
-        cautious, error, list_detail, list_error, list_origin, origin, read_ago, ExtensionError, IndexError, ListError, Origin, SystemTime,
+        cautious, error, guarantee, list_detail, list_error, list_from, list_name, list_origin, origin, read_ago, ExtensionError,
+        IndexError, ListError, Origin, SystemTime,
     };
 
     /// Every variant, once. The `match` has no `_`: a new variant fails to
@@ -210,6 +241,7 @@ mod tests {
             ListError::Invalid(IndexError::Invalid("wikipedia: no files".into())),
             ListError::AlreadyAdded,
             ListError::Io("x".into()),
+            ListError::NoFile("/x/index.json: No such file or directory".into()),
         ];
         for e in &all {
             match e {
@@ -219,13 +251,15 @@ mod tests {
                 | ListError::TooLarge
                 | ListError::Invalid(_)
                 | ListError::AlreadyAdded
-                | ListError::Io(_) => {}
+                | ListError::Io(_)
+                | ListError::NoFile(_) => {}
             }
             let s = list_error(e);
             assert!(s.ends_with('.') && s.len() > 15, "{e:?}: {s}");
         }
         assert_eq!(list_detail(&all[7]).as_deref(), Some("wikipedia: no files"));
         assert!(list_error(&ListError::Status(500)).contains("500"));
+        assert_eq!(list_detail(&all[10]).as_deref(), Some("/x/index.json: No such file or directory"), "which file, and why");
     }
 
     #[test]
@@ -236,6 +270,23 @@ mod tests {
         assert_eq!(origin(&Origin::File), "Installed from a file: nobody checked this source");
         assert!(!cautious(&Origin::Heronite) && cautious(&Origin::File) && cautious(&Origin::List(String::new())));
         assert_eq!(list_origin("https://a", true), Origin::Heronite);
+    }
+
+    #[test]
+    fn a_list_on_this_computer_is_never_the_heronite_list() {
+        let path = "/src/heronite/extensions/index.json";
+        // Even as the app's own list (a debug build's).
+        assert_eq!(list_origin(path, true), Origin::Local(path.into()));
+        let local = Origin::Local(path.into());
+        assert_eq!(origin(&local), "From a list on this computer");
+        assert!(cautious(&local) && guarantee(&local) != guarantee(&Origin::Heronite));
+        assert_eq!(list_name(path, true, true), "This copy of the repository");
+        assert_eq!(list_name(path, true, false), "A list on this computer");
+        assert_eq!(list_name("https://a.example.org/x.json", true, false), "The Heronite list");
+        assert_eq!(list_name("https://a.example.org/x.json", false, false), "a.example.org");
+        assert_eq!(list_from(path, true, true), "From this copy of the repository");
+        assert_eq!(list_from(path, true, false), "From a list on this computer");
+        assert_eq!(list_from("https://a.example.org/x.json", true, true), "From the Heronite list");
     }
 
     #[test]

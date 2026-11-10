@@ -1284,9 +1284,12 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   Heronite), `update` (the installed extensions count as from the app's list, which offers Wikipedia 1.1.0), `old`
   (a copy 3 days old, not readable now), `offline`, `404`, `invalid`, `empty`, `other` (a list the user added), `lists`
   (the "Lists…" manager open), `pick:<id>`, `busy` / `error` (the picked entry installing, or its install failed;
-  installing from a made-up list always fails as a download would). `HERONITE_EXTENSIONS_INDEX=<https address>`
-  replaces the app's own list (`heronite_metadata_ext::lists::HERONITE_LIST`, which answers 404 until this list is
-  published on the main branch).
+  installing from a made-up list always fails as a download would). `HERONITE_EXTENSIONS_INDEX=<https address|path
+  of an index.json>` replaces the app's own list in any build (an entry of a list on this computer is read from
+  `<its folder>/<id>/`). Without it a debug build reads the repository's `extensions/index.json` (found from the `app`
+  crate's folder; "From this copy of the repository") and a release build
+  `heronite_metadata_ext::lists::HERONITE_LIST` (which answers 404 until the list is published on the main branch);
+  with `HERONITE_DEBUG_EXTENSIONS` the made-up lists stand for that one.
 - Main Collection screen: compare with the reference PNG (crop the same region with PIL, view both). Dialogs/menus/settings: one sanity check is enough — they need to work and be consistent, not pixel-identical (user decision).
 - Anything that WRITES data must be exercised only against a copy:
   `HERONITE_DATA_DIR=/tmp/heronite-fixture-<you> scripts/shot.sh …`

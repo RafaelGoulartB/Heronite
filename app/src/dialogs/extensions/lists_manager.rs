@@ -8,7 +8,6 @@ use std::time::SystemTime;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::tr;
-use heronite_metadata_ext::lists::host_of;
 
 use super::{words, ExtensionsDialog, Snapshot};
 use crate::icons::Icon;
@@ -28,7 +27,7 @@ impl ExtensionsDialog {
             }
             _ => tr!("Not read yet").into(),
         };
-        let name = if builtin { tr!("The Heronite list").to_string() } else { host_of(url) };
+        let name = words::list_name(url, builtin, self.hub.read(cx).extensions.is_checkout(url));
         let remove = (!builtin).then(|| {
             let url = url.to_string();
             action_button(

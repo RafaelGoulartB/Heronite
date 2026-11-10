@@ -9,7 +9,7 @@ use heronite_i18n::{tr, trn};
 
 use super::super::SettingsPage;
 use super::extension::pick_file;
-use heronite_metadata_ext::lists::host_of;
+use heronite_metadata_ext::lists::{host_of, is_local};
 
 use crate::dialogs::extensions::SourcesRequest;
 use crate::dialogs::metadata_wizard::{hub, HubGlobal};
@@ -18,15 +18,20 @@ use crate::theme;
 use crate::ui::controls::{icon_action_button, ButtonKind};
 use crate::ui::icon;
 
-/// "2 more from the Heronite list", "5 more from your lists", or nothing
+/// "2 more from the Heronite list", "5 more from your lists", "2 more from
+/// this copy of the repository" (a debug build's own list), or nothing
 /// without a copy of a list.
 fn count_line(cx: &App) -> Option<String> {
     if !cx.has_global::<HubGlobal>() {
         return None;
     }
-    let h = hub(cx);
-    let (n, single) = h.read(cx).extensions.snapshot.more()?;
+    let ext = &hub(cx).read(cx).extensions;
+    let (n, single) = ext.snapshot.more()?;
     Some(match single {
+        Some(copy) if ext.is_checkout(&copy.url) => {
+            trn!(n, "{n} more from this copy of the repository", "{n} more from this copy of the repository")
+        }
+        Some(copy) if is_local(&copy.url) => trn!(n, "{n} more from a list on this computer", "{n} more from a list on this computer"),
         Some(copy) if copy.builtin => trn!(n, "{n} more from the Heronite list", "{n} more from the Heronite list"),
         Some(copy) => trn!(n, "{n} more from {host}", "{n} more from {host}", host = host_of(&copy.url)),
         None if n == 0 => tr!("Nothing new on your lists").into(),

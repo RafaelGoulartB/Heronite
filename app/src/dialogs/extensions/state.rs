@@ -5,12 +5,14 @@
 //! Settings → Metadata shows, the network when the gallery opens or is
 //! refreshed.
 
+#[cfg(debug_assertions)]
+use std::path::Path;
 use std::path::PathBuf;
 
 use gpui_kit::*;
 use heronite_metadata::MetadataService;
 use heronite_metadata_ext::index::IndexEntry;
-use heronite_metadata_ext::lists::{self, Available, ListCopy, Lists, Origin};
+use heronite_metadata_ext::lists::{self, Available, ListCopy, ListLocation, Lists, Origin, HERONITE_LIST};
 use heronite_metadata_ext::{ExtensionsExt, InstalledExtension};
 
 use super::fake::Fake;
@@ -133,20 +135,62 @@ pub struct ExtensionsState {
     pub reading: bool,
     /// `HERONITE_DEBUG_EXTENSIONS`: made-up lists (`fake.rs`).
     pub fake: Option<Fake>,
+    /// The app's own list when it is this repository's
+    /// `extensions/index.json` ([`own_list`]), by its key: the gallery says
+    /// it reads "this copy of the repository".
+    pub checkout: Option<String>,
     /// Bumped by each read, so an older one that ends later is dropped.
     generation: u64,
 }
 
+/// Where the app's own list is read from:
+/// - `HERONITE_EXTENSIONS_INDEX` (`env`) when set: an `https` address or
+///   the path of an `index.json` (a test list, a branch's list before it
+///   is merged, an author's own);
+/// - else, in a debug build, the repository's `extensions/index.json`
+///   (`checkout_index`, when it is there), so its examples install before
+///   they are published;
+/// - else [`HERONITE_LIST`]: always in a release build.
+pub(crate) fn own_list(debug: bool, env: Option<String>, checkout_index: Option<PathBuf>) -> ListLocation {
+    match (env, checkout_index) {
+        (Some(text), _) => match ListLocation::of(&text) {
+            // A relative path is taken from where the app was started.
+            ListLocation::File(path) => ListLocation::File(std::path::absolute(&path).unwrap_or(path)),
+            address => address,
+        },
+        (None, Some(index)) if debug => ListLocation::File(index),
+        _ => ListLocation::Address(HERONITE_LIST.to_owned()),
+    }
+}
+
+/// The repository's `extensions/index.json`, beside the `app` crate this
+/// build was made from, when it is still there. A release build neither
+/// looks nor carries the path.
+#[cfg(debug_assertions)]
+fn checkout_index() -> Option<PathBuf> {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../extensions/index.json").canonicalize().ok().filter(|p| p.is_file())
+}
+
+#[cfg(not(debug_assertions))]
+fn checkout_index() -> Option<PathBuf> {
+    None
+}
+
 impl ExtensionsState {
-    /// The app's list, unless `HERONITE_EXTENSIONS_INDEX=<https address>`
-    /// replaces it (a test list, or the list of a branch before it is
-    /// merged).
+    /// The app's own list as [`own_list`] picks it.
     pub fn from_env() -> Self {
-        let lists = match crate::env::value("HERONITE_EXTENSIONS_INDEX") {
-            Some(url) => Lists::new(url),
-            None => Lists::default(),
-        };
-        Self { lists, snapshot: Snapshot::default(), reveal: None, reading: false, fake: Fake::from_env(), generation: 0 }
+        let fake = Fake::from_env();
+        let checkout = checkout_index();
+        // The made-up lists stand for the Heronite list.
+        let debug = cfg!(debug_assertions) && fake.is_none();
+        let own = own_list(debug, crate::env::value("HERONITE_EXTENSIONS_INDEX"), checkout.clone()).key();
+        let checkout = checkout.map(|p| ListLocation::File(p).key()).filter(|k| *k == own);
+        Self { lists: Lists::new(own), snapshot: Snapshot::default(), reveal: None, reading: false, fake, checkout, generation: 0 }
+    }
+
+    /// Whether the list known by `url` is this repository's own.
+    pub fn is_checkout(&self, url: &str) -> bool {
+        self.checkout.as_deref() == Some(url)
     }
 }
 
@@ -193,10 +237,33 @@ impl MetadataHub {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use heronite_metadata_ext::index;
     use heronite_metadata_ext::lists::ListError;
 
-    use super::{lists, InstalledExtension, ListCopy, OfferState, Snapshot};
+    use super::{lists, own_list, InstalledExtension, ListCopy, ListLocation, OfferState, Snapshot, HERONITE_LIST};
+
+    #[test]
+    fn a_debug_build_reads_the_repository_list_and_a_release_build_never_does() {
+        let checkout = Some(PathBuf::from("/src/heronite/extensions/index.json"));
+        let heronite = ListLocation::Address(HERONITE_LIST.into());
+        assert_eq!(own_list(false, None, checkout.clone()), heronite, "a release build: always the Heronite list");
+        assert_eq!(own_list(false, None, None), heronite);
+        assert_eq!(own_list(true, None, checkout.clone()), ListLocation::File("/src/heronite/extensions/index.json".into()));
+        assert_eq!(own_list(true, None, None), heronite, "a debug build away from its repository");
+        // The switch wins in any build: an address or a path.
+        let branch = "https://raw.githubusercontent.com/someone/Heronite/branch/extensions/index.json";
+        for debug in [false, true] {
+            assert_eq!(own_list(debug, Some(branch.into()), checkout.clone()), ListLocation::Address(branch.into()));
+            assert_eq!(
+                own_list(debug, Some("/home/me/list/index.json".into()), checkout.clone()),
+                ListLocation::File("/home/me/list/index.json".into())
+            );
+        }
+        let relative = own_list(false, Some("list/index.json".into()), None);
+        assert_eq!(relative, ListLocation::File(std::env::current_dir().unwrap().join("list/index.json")), "taken from where it started");
+    }
 
     fn copy(url: &str, builtin: bool, json: &str) -> ListCopy {
         ListCopy { url: url.into(), builtin, index: Some(index::parse(json.as_bytes()).unwrap()), read_at: None, error: None }
