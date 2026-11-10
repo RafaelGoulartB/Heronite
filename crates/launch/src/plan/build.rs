@@ -340,8 +340,8 @@ pub(crate) fn native_plan(
     if let Err(err) = crate::lsfg::apply(&mut env, &settings.lsfg, &ctx.global, probe) {
         return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
     }
-    // Windows runs Windows games directly: the DLL alone loads ReShade.
-    notes.extend(crate::reshade::apply(&mut env, &ctx.paths, &game.app_name, &settings.reshade, false));
+    // Windows runs Windows games directly: the DLLs alone load the mods.
+    notes.extend(crate::gfxmods::apply(&mut env, &ctx.paths, &game.app_name, settings, false));
     let sandbox = match native_sandbox(ctx, probe, game, settings, &crate::wine::game_folder(game, executable), &env) {
         Ok(p) => p,
         Err(e) => return LaunchPlan::Unavailable(e),

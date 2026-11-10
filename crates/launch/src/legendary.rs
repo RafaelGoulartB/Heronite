@@ -224,7 +224,7 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
     if let Err(err) = crate::lsfg::apply(&mut env, &s.lsfg, &ctx.global, probe) {
         return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
     }
-    let reshade = crate::reshade::apply(&mut env, &ctx.paths, app, &s.reshade, true);
+    let reshade = crate::gfxmods::apply(&mut env, &ctx.paths, app, s, true);
     env.insert("LEGENDARY_CONFIG_PATH".into(), ctx.paths.legendary_config_dir().to_string_lossy().into_owned());
 
     // legendary stays outside the sandbox (it signs in to Epic); the game

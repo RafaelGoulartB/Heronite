@@ -21,6 +21,7 @@ pub mod epic_native_setup;
 pub mod first_launch;
 pub mod fps_limit;
 pub mod galaxy;
+pub mod gfxmods;
 pub mod gog;
 pub mod gpu;
 pub mod host;

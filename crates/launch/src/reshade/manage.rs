@@ -12,15 +12,10 @@ use super::fetch::{is_known_compiler, repo_zip_url, sha256_file, Cache};
 use super::ini::Ini;
 use super::install::{config_text, copy_preset, install_archive, now, ours, Journal, Ops, Step, COMPILER, CONFIG};
 use super::manifest::{self, join, Kind, Manifest, ADOPTED};
+use crate::gfxmods::journal::journaled;
 
 fn load(paths: &DataPaths, game_id: &str) -> Result<Manifest, String> {
     manifest::load(paths, game_id).ok_or_else(|| "ReShade is not installed for this game".to_string())
-}
-
-/// Runs `f` with a journal; undoes its writes when it fails.
-fn journaled<T>(f: impl FnOnce(&mut Journal) -> Result<T, String>) -> Result<T, String> {
-    let mut j = Journal::default();
-    f(&mut j).inspect_err(|_| j.rollback())
 }
 
 /// Renames the DLL: Windows loads any DLL in the game's folder, and under
