@@ -71,7 +71,7 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   card asks to close it.
   Metadata (`metadata/`, drawn from the metadata service's source registry: a new source needs no code here) opens with
   a summary card ("{n} of {total} games have details" with a progress bar, counted off the UI thread; "Update metadata…"
-  opens the metadata wizard). Below, the sources are rows in three captioned cards by kind: Game details (IGDB, Steam,
+  opens the "Update metadata" dialog on the games on screen, or on the results of the update that runs). Below, the sources are rows in three captioned cards by kind: Game details (IGDB, Steam,
   Store, Lutris), Pictures (SteamGridDB, From the web) and Extras (HowLongToBeat, Steam tags, ProtonDB); a kind with no
   source is left out. A closed row shows a drag handle (details sources only), the source's tile (its logo, else two
   letters in its colour), its name over what it gives ("Text · Scores · Covers"), the games it is for ("All games",
@@ -398,14 +398,95 @@ the cards from the last one clicked, Ctrl A selects every card on screen, and th
 games are selected do the cards get a round tick on the top-right (filled = selected, the others dimmed, no play bar),
 a plain click ticks or unticks, group headers get "Select group", the grid's drawer steps aside, and the dock floats at
 the bottom: × (or Esc) ends it, the count and "Select all N", Status ▾ and Categories ▾ (popovers above the dock),
-Favourite, Hide, Metadata (the metadata wizard on the selection) and Edit (F3). Right-clicking a selected card opens
-the same actions as a menu. Categories have three states (round tick: all, dash: some, ring: none); each click moves
+Favourite, Hide, Metadata ▾ (a popover above the dock, see below) and Edit (F3). Right-clicking a selected card opens
+the same actions as a menu, its Metadata row a flyout with the popover's rows. Categories have three states (round tick: all, dash: some, ring: none); each click moves
 some → all → none → as it was (Playnite's assign / remove / leave alone), the next step shows under the pointer. Every
 batch change writes off the UI thread and its toast offers Undo (also Ctrl Z, 20 steps). F3 opens
 `dialogs/batch_edit.rs`: a drawer with the series and the tag fields of all the selected games; a tag only some have is
 dashed with "3/7" (click: give it to all), × takes one out of all, typing + Enter adds one to all; nothing is written
-until "Apply". Debug: `HERONITE_DEBUG_MULTI=<n>`, `HERONITE_DEBUG_DOCK=status|categories`,
-`HERONITE_DEBUG_DIALOG=batchedit`, `HERONITE_DEBUG_BATCH=status:<id>,cat:<name>,fav,hide,undo` (data copy only).
+until "Apply". Debug: `HERONITE_DEBUG_MULTI=<n>`, `HERONITE_DEBUG_DOCK=status|categories|metadata`,
+`HERONITE_DEBUG_DIALOG=batchedit`, `HERONITE_DEBUG_BATCH=status:<id>,cat:<name>,fav,hide,undo` (data copy only),
+`HERONITE_DEBUG_MENU_METADATA=1` (with `HERONITE_DEBUG_MENU` on a selected game: the batch menu's Metadata flyout).
+
+The **Metadata popover** (`collection/metadata_menu.rs`, 300px, above the dock's Metadata button; the dock's button
+toggles it and Esc closes it) opens with the selection's count ("12 games") and has two rows, an icon and a title over a
+hint. "Fill what is missing" (accent icon) starts an update of the selected games at once and closes the popover: every
+empty field of theirs, extras included, from every source that is on (`BulkArgs::fill_missing`); no dialog opens, the
+header pill follows it. Its hint says what it would write ("34 fields in 12 games"), "Counting…" while that is read off
+the UI thread (once per selection, when the menu first opens), or "Nothing is missing" with the row dimmed and
+disabled. Enter does it while the popover is open (the dock's rows show the key; the context menu's do not).
+"More options…" (hint "Pick the games, fields and sources") opens "Update metadata" on the selection. The selection's
+context menu has the same two rows in its "Metadata" flyout (hover or click, like Status and Categories).
+
+**Update metadata** (`dialogs/metadata_update/`: `mod.rs` the dialog and its stepper, `games.rs`, `what.rs` and
+`results.rs` the three steps, `words.rs` how an outcome reads, shared with the pill, `hub.rs` the owner of the jobs,
+`fake.rs` the debug jobs): one dialog, 760px, to update the details and pictures of several games. It opens from the
+Metadata popover's "More options…" (on the selection), from the palette's "Update metadata…" (Actions; on the selection
+when games are selected, else on the games on screen) and from Settings → Metadata's "Update metadata…" (on the games on
+screen); opened while an update runs, or from the pill's "See all", it goes straight to step 3. A stepper of three
+numbered pills (Games, What to update, Update) heads it: the active one is tinted and any other is clicked when it can be
+shown (What to update needs games, Update a job). Esc closes a question first (below), then the dialog. Hiding the dialog
+never stops a job.
+- **1 · Games** (`games.rs`): a radio card per set, its count on the right: "Selected games" ("The games ticked in the
+  Collection", only when it was opened from a selection, and then the default), "Games on screen" ("What the list shows
+  now", or "…now, with its filters: “zelda”, Platform: PlayStation 2" when a search or a filter is on; the default
+  otherwise), "Whole Collection" and "Games that need attention" ("No details yet, or the last try found nothing",
+  counted off the UI thread, with chips "No details 14" and "Failed last time 3" under it). A strip of the first ten
+  covers and "N games" sits under the cards. Footer: the count, Cancel, Next (off with no game).
+- **2 · What to update** (`what.rs`): "How", three cards in a row, one picked (Fill what is empty is the default), each
+  with its consequence: Fill what is empty ("Nothing you have changes"), Refresh ("What you edited by hand stays"),
+  Replace everything ("Your edits too"). A card of fields in three columns, Details (its ticks in two columns), Pictures and
+  Extras, a round tick per field (all on to start) and an "All" link per column that turns the column off, or on again.
+  "From": a chip per source the job may ask, with its mark (`labels::mark`), in the order of Settings → Metadata; a click
+  leaves one out (struck through), and a source with nothing for the chosen games (counted without network, off the UI
+  thread) is dimmed, cannot be clicked and is named in the line beside "From" ("In your order. Click one to leave it out
+  of this update. Nothing for these games: Lutris."). The footer sums the choice up ("7 games · empty fields only ·
+  15 fields · 5 sources"; "keeps hand edits", "replaces hand edits") beside Back and "Update 7 games", which is off
+  without a game, a field or a source. While another update runs the summary reads "It starts after the update running
+  now": the job waits its turn. Replace everything asks once: the footer turns into a warning line ("This replaces what
+  you edited by hand in these 7 games.") with Cancel and a red "Replace in 7 games"; choosing another mode or Esc
+  closes it, and once confirmed it is not asked again by that dialog.
+- **3 · Update** (`results.rs`): the line "3 of 7 games" (after it ended, "Updated 5 of 7 games"), a progress bar
+  (accent; amber when games need a look; green otherwise) and the pills of the results: "All 7" and one per outcome
+  that has games, with its count (Updated, No change, Not found, Failed, Not done), which filter the list. While it
+  runs a tinted row shows the game being fetched ("Fetching…", "Stopping after this game…" after Stop). The list is a
+  `uniform_list` of 48px rows, so only the rows in view are built (a job of 2,000 games stays cheap): the cover, the
+  title, the fields that changed as chips with their source's mark (three, then "+2"), or why nothing did ("Nothing was
+  missing", "The sources had nothing new", "No source found this game", "Could not reach the sources", "Could not be
+  saved" with the error in a tooltip, "Already had details", "No source is for this game", "The update stopped before
+  it"), and the outcome's dot and word. While it runs the footer says "The update keeps going when this is hidden"
+  beside Stop and Hide; Stop finishes the game in hand and leaves the rest as "Not done". Once it ended: "Done in 2 min 05 s ·
+  31 fields updated" ("filled" for a Fill; "Stopped after 4 of 7 games · …" after a Stop), "Undo this update" (only when
+  the job changed something and can still be undone), "Update again" (back to step 2) and Done. Undo asks first, in the
+  footer: "Put back what this update changed in 5 games? Changes made since stay." with Cancel and a red Undo; it works
+  off the UI thread ("Undoing…"), then the line reads "Undone: 5 games put back" and a toast says "Update undone: 5
+  games put back". A job that
+  waits behind the running one shows "Waiting for the update running now" and "It starts after N more games.", with
+  "Clear the queue" (back to step 2) and Hide; the running job's step 3 lists "N more updates waiting" and "Clear the
+  queue" too. With no job at all, step 3 says "No update has run yet."
+One job runs at a time and the rest queue in order; Undo takes back the last job only (`MetadataHub::can_undo`).
+
+**Metadata pill** (`collection/metadata_pill.rs`, `Menu::Metadata`, modelled on the downloads pill): in the Collection
+header's right cluster, between the Focus / Grid switch and the window controls, like the downloads pill a hover or a
+click opens its popover. It exists only for a bulk update (the Metadata popover's fill, or the dialog's), not for the
+idle fill. Running: a ring with the percent, "Metadata", the percent and "+2" when updates wait. Ended: a full ring
+with "Metadata ·" and a short result, in amber with a warning glyph and an amber border when games need a look ("3 not
+found" when all of them were not found, "3 failed" when none was, "3 need a look" otherwise), or green with a
+check ("12 updated", or "nothing new"). It stays after the end until its popover is opened or the dialog showed the
+results; then it goes, and the next update brings it back. The popover (360px) has the title ("Updating 7 games",
+"Updated 5 of 7 games"), a line under it ("3 done · now: Hades", "Stopping after this game…", "Done in 2 min 05 s · 31 fields
+updated", "Undone: 5 games put back"), a round Stop while it runs, the progress bar and three results as in step 3
+(the last ones while it runs; the games that need a look when the update ended with some; else the last ones). Below:
+"N more updates waiting" when any, Undo (as in the dialog but without the question) and "See all", which opens the
+dialog on the results. A one-click fill (the Metadata popover's) also says how it ended with a toast: "Updated 12
+games" with Undo (while the update can still be undone), "3 games were not found" when nothing was updated and some
+games were not found or failed, or "Nothing new for these games". The dialog's updates show no toast,
+only the pill. Debug: `HERONITE_DEBUG_DIALOG=wizard[:<step>[:<state>]]` opens "Update metadata" (on the selection when
+`HERONITE_DEBUG_MULTI` made one) at step `1`, `2`, `2:replace` (Replace everything with its question), `3` or `3:undo`
+(the undo's question); `HERONITE_DEBUG_WIZARD_LIMIT=<n>` starts a real update of the first n games on screen (data copy
+only); `HERONITE_DEBUG_METADATA_JOB=running|done|clean[+queued]` makes every bulk job up (no network, nothing written:
+held at ~60% with a game "being fetched", ended with games not found and failed, or ended clean; `+queued` adds one
+waiting) and starts one over the games on screen; `HERONITE_DEBUG_DROPDOWN=metadata` opens the pill's popover.
 
 **Menus** (`ui::dropdown`): `menu_panel(min_w)`, `menu_item(id, active)` (radius 10,
 14px, hover .07, active = accent tint), `menu_separator()`, `dropdown(..)`. The
@@ -853,7 +934,7 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   off-screen), prints PSS and closes it. Never open windows anywhere else,
   never switch workspaces, never move/click the real mouse.
 - Debug hooks (env, via `SHOT_ENV="..."`): `HERONITE_DEBUG_SELECT=<runner_appName>`,
-  `HERONITE_DEBUG_MENU=<key>` (context menu), `HERONITE_DEBUG_DROPDOWN=view|view:<text>|nav|downloads`,
+  `HERONITE_DEBUG_MENU=<key>` (context menu), `HERONITE_DEBUG_DROPDOWN=view|view:<text>|nav|downloads|metadata`,
   `HERONITE_DEBUG_DIALOG=settings|statuses|gamesettings:<tab>|onboarding[:<step>]|achievements` (extend the match in
   `CollectionView::render` for new dialogs; `settings:<section>` opens that Settings section,
   `onboarding:<step>` "Getting started" where that step lives: `steam`, `stores` or `emulators` open its games view, `appearance` its look view, any other step the three cards).

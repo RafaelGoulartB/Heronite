@@ -34,6 +34,8 @@ fn debug_flyout() -> Flyout {
         Flyout::Shortcuts
     } else if on("HERONITE_DEBUG_MENU_HELP") {
         Flyout::Help
+    } else if on("HERONITE_DEBUG_MENU_METADATA") {
+        Flyout::Metadata
     } else {
         Flyout::Status
     }
@@ -43,7 +45,8 @@ impl CollectionView {
     /// `HERONITE_DEBUG_MENU=<card key>` opens its context menu (with the
     /// status flyout; `HERONITE_DEBUG_MENU_CATEGORIES=1` for the categories
     /// one, `HERONITE_DEBUG_MENU_MANAGE=1` for Manage installation's,
-    /// `HERONITE_DEBUG_MENU_SAVES=1` for the saves'), `HERONITE_DEBUG_DROPDOWN=view|nav|downloads|update|display` opens a header menu
+    /// `HERONITE_DEBUG_MENU_SAVES=1` for the saves', `HERONITE_DEBUG_MENU_METADATA=1`
+    /// for a selection's Metadata one), `HERONITE_DEBUG_DROPDOWN=view|nav|downloads|update|display` opens a header menu
     /// (`facets`, `categories`, `stores` or `view:<text>`: the View menu with
     /// that search typed; `views`: its views in edit mode; `views-select`:
     /// their select open; `more-group` / `more-sort` / `more-filters`: the "More" list of
@@ -55,7 +58,10 @@ impl CollectionView {
     ///
     /// `HERONITE_DEBUG_MULTI=<n>` selects the first n games shown (a
     /// selection: the dock, the tick circles); `HERONITE_DEBUG_DOCK=status|
-    /// categories` opens that dock popover. With a selection,
+    /// categories|metadata` opens that dock popover.
+    /// `HERONITE_DEBUG_METADATA_JOB` makes up a bulk metadata job (see
+    /// `dialogs/metadata_update/fake.rs`); `HERONITE_DEBUG_DROPDOWN=metadata`
+    /// opens the header pill's popover. With a selection,
     /// `HERONITE_DEBUG_MENU` on a selected game opens the batch menu and
     /// `HERONITE_DEBUG_DIALOG=batchedit` the fields editor, `batchremove` the
     /// removal confirmation, and
@@ -66,10 +72,18 @@ impl CollectionView {
             self.sel.pop = match crate::env::value("HERONITE_DEBUG_DOCK").as_deref() {
                 Some("status") => Some(super::selection::DockPop::Status),
                 Some("categories") => Some(super::selection::DockPop::Categories),
+                Some("metadata") => {
+                    self.ensure_meta_counts(cx);
+                    Some(super::selection::DockPop::Metadata)
+                }
                 _ => None,
             };
         }
+        self.debug_metadata_job(cx);
         if let Some(key) = crate::env::value("HERONITE_DEBUG_MENU") {
+            if debug_flyout() == Flyout::Metadata {
+                self.ensure_meta_counts(cx);
+            }
             self.context_menu = Some(context_menu::ContextMenuState {
                 batch: self.sel.contains(&key),
                 key: key.into(),
@@ -128,6 +142,7 @@ impl CollectionView {
                 "downloads" => Some(Menu::Downloads),
                 "update" => Some(Menu::Update),
                 "steam" => Some(Menu::Steam),
+                "metadata" => Some(Menu::Metadata),
                 "display" => Some(Menu::Display),
                 m if m.starts_with("quick-") => quick_menu(&m[6..]).map(Menu::Quick),
                 _ if query.is_some() => Some(Menu::View),
@@ -323,6 +338,7 @@ impl CollectionView {
             "metadata" | "gamesettings" | "gamesettings:details" | "gamesettings:launch" | "webimage" | "wizard" => {
                 self.open_metadata_debug(which.as_str(), window, cx)
             }
+            w if w.starts_with("wizard:") => self.open_metadata_debug(w, window, cx),
             w if w.starts_with("launch-problem:") => self.debug_launch_problem(&w["launch-problem:".len()..], false, cx),
             w if w.starts_with("launch-problem-toast:") => self.debug_launch_problem(&w["launch-problem-toast:".len()..], true, cx),
             // troubleshoot[:<log>]: "Troubleshoot", reading that log.

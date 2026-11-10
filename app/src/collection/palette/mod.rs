@@ -310,6 +310,9 @@ impl CollectionView {
             Act::Shortcuts => self.open_shortcuts(cx),
             Act::ManageStatuses => self.open_manage_statuses(window, cx),
             Act::ManageFields => self.open_manage_fields(None, window, cx),
+            Act::UpdateMetadata => {
+                self.open_metadata_update(true, window, cx);
+            }
             // The quit question needs the window: ask once this update ended.
             Act::Quit => cx.defer(crate::system::request_quit),
             Act::View(cmd) => self.run_view_cmd(cmd, window, cx),

@@ -60,6 +60,8 @@ mod updates;
 pub use advanced::open_folder;
 pub use backup::format_time;
 pub use launchers::launcher_icon;
+/// How a metadata source reads on screen (its mark, name, the fields it fills).
+pub(crate) use metadata::labels as metadata_labels;
 pub use section::Section;
 
 use std::collections::HashMap;

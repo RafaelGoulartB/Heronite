@@ -42,6 +42,8 @@ mod list_row;
 mod list_view;
 mod load;
 mod look;
+mod metadata_menu;
+mod metadata_pill;
 mod metadata_ui;
 mod nav;
 mod onboarding;
@@ -119,6 +121,8 @@ enum ToastAction {
     LaunchProblem(std::sync::Arc<crate::diagnosis::Report>),
     /// Shows the age ratings just hidden again.
     ShowAgeRatings,
+    /// Undoes the last bulk metadata update.
+    UndoMetadata,
 }
 
 pub struct CollectionView {
@@ -218,6 +222,8 @@ pub struct CollectionView {
     selected: Option<SharedString>,
     /// Several games picked at once (`selection.rs`, the dock in `dock.rs`).
     sel: selection::Selection,
+    /// The counts of the selection's Metadata menu (`metadata_menu.rs`).
+    meta_menu: metadata_menu::MetaMenu,
     hovered: Option<SharedString>,
     leaving: Option<SharedString>,
     focus: Option<FocusVm>,
@@ -404,6 +410,7 @@ impl CollectionView {
             stuck_group: None,
             selected: None,
             sel: Default::default(),
+            meta_menu: Default::default(),
             hovered: None,
             leaving: None,
             focus: None,
@@ -442,7 +449,13 @@ impl CollectionView {
 
 impl CollectionView {
     fn render_toast(&self, cx: &mut Context<Self>) -> Option<Div> {
-        let action = self.toast_action.clone().filter(|a| !matches!(a, ToastAction::Undo) || self.sel.can_undo());
+        let metadata_undo = cx.has_global::<crate::dialogs::metadata_update::hub::HubGlobal>()
+            && crate::dialogs::metadata_update::hub::hub(cx).read(cx).can_undo();
+        let action = self.toast_action.clone().filter(|a| match a {
+            ToastAction::Undo => self.sel.can_undo(),
+            ToastAction::UndoMetadata => metadata_undo,
+            _ => true,
+        });
         self.toast.clone().map(|(text, error)| {
             div().absolute().bottom(px(84.)).left_0().right_0().flex().justify_center().child(
                 div()
@@ -481,7 +494,8 @@ impl CollectionView {
                                 ToastAction::Undo
                                 | ToastAction::RestoreNote(..)
                                 | ToastAction::RestoreLeftOff(..)
-                                | ToastAction::ShowAgeRatings => {
+                                | ToastAction::ShowAgeRatings
+                                | ToastAction::UndoMetadata => {
                                     heronite_i18n::tr!("Undo")
                                 }
                                 ToastAction::ViewLog(_) => heronite_i18n::tr!("View log"),
@@ -523,6 +537,10 @@ impl CollectionView {
                                         this.journal_restore_left_off(key.clone(), (**left).clone(), cx);
                                     }
                                     ToastAction::ShowAgeRatings => this.set_age_ratings_shown(true, cx),
+                                    ToastAction::UndoMetadata => {
+                                        this.toast = None;
+                                        crate::dialogs::metadata_update::hub::hub(cx).update(cx, |h, cx| h.undo(cx));
+                                    }
                                 }
                                 cx.notify();
                             }))

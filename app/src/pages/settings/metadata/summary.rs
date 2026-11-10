@@ -1,5 +1,6 @@
 //! The card at the top of Settings → Metadata: how many of the Collection's
-//! games have details, and "Update metadata…".
+//! games have details, and "Update metadata…" (the dialog on the games on
+//! screen).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -69,7 +70,7 @@ pub(super) fn card(d: &SettingsPage) -> Div {
     };
     let update = icon_action_button("md-update", ButtonKind::Primary, Icon::CloudDownload, tr!("Update metadata\u{2026}"), |_, _, cx| {
         if cx.has_global::<HubGlobal>() {
-            hub(cx).update(cx, |h, cx| h.request_wizard(cx));
+            hub(cx).update(cx, |h, cx| h.request_update(cx));
         }
     });
     card_box().flex_row().items_center().gap(px(14.)).py(px(14.)).child(icon_badge(Icon::TravelExplore)).child(text).child(update)

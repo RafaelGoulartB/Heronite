@@ -51,6 +51,8 @@ pub(super) enum Act {
     ManageStatuses,
     /// The library fields manager (genres, companies...).
     ManageFields,
+    /// "Update metadata" (the selection's games, else the games on screen).
+    UpdateMetadata,
     Quit,
     /// Sort, filters and grouping of the Collection list.
     View(ViewCmd),
@@ -389,6 +391,14 @@ pub(super) fn static_entries() -> Vec<Entry> {
         tr!("Merge, rename or remove genres, companies and more"),
         Icon::CallMerge,
         "fields names duplicates merge rename genres companies developers publishers series themes features platforms clean campos nomes duplicados mesclar renomear generos empresas plataformas limpar",
+    ));
+    v.push(action(
+        Act::UpdateMetadata,
+        "update-metadata",
+        tr!("Update metadata\u{2026}"),
+        tr!("Fill or refresh the details and pictures of many games"),
+        Icon::CloudDownload,
+        "metadata details covers pictures bulk download fill refresh igdb steamgriddb metadados detalhes capas baixar atualizar",
     ));
     v.push(action(
         Act::Console,
@@ -862,6 +872,7 @@ mod tests {
             Act::YearReview,
             Act::ManageStatuses,
             Act::ManageFields,
+            Act::UpdateMetadata,
             Act::Console,
             Act::Quit,
         ] {

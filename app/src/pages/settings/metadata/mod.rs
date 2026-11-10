@@ -15,7 +15,7 @@
 mod arrive;
 mod console;
 mod field_order;
-mod labels;
+pub(crate) mod labels;
 mod source_body;
 mod sources;
 mod summary;

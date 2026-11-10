@@ -2,7 +2,7 @@
 //! search pill and the View button (its menu is `view_menu/`, its hover
 //! arrow shows or hides the quick toolbar); then the quick toolbar when on and
 //! there is room, and the active filters it does not already show; right: the view switches
-//! and bulk metadata (refresh is on the ☰ menu's Collection row).
+//! and the metadata pill (refresh is on the ☰ menu's Collection row).
 
 use std::time::Duration;
 
@@ -31,6 +31,8 @@ pub(super) enum Menu {
     Update,
     /// The Steam pill's restart (`steam_pill.rs`).
     Steam,
+    /// The metadata pill's update (`metadata_pill.rs`).
+    Metadata,
     /// The active view mode's options (`view_mode.rs`); opens on click only.
     Display,
     /// Space-dependent Collection shortcuts (`toolbar`).
@@ -269,7 +271,7 @@ impl CollectionView {
             .children(self.update_pill(cx))
             .children(self.downloads_pill(window, cx))
             .child(self.view_mode_controls(window, cx))
-            .children(self.bulk_chip(cx).map(|chip| div().flex().flex_none().items_center().gap(px(2.)).child(chip)))
+            .children(self.metadata_pill(window, cx))
             .children(window_controls::controls(window, cx))
     }
 

@@ -38,6 +38,8 @@ pub(super) enum Flyout {
     Shortcuts,
     /// "Help": the game's log and Troubleshoot.
     Help,
+    /// "Metadata" of a selection (`metadata_menu.rs`).
+    Metadata,
 }
 
 /// Groups of a game's context menu, in order: play, organize (status,
@@ -177,6 +179,9 @@ impl CollectionView {
             m.open = which;
             cx.notify();
         }
+        if which == Some(Flyout::Metadata) {
+            self.ensure_meta_counts(cx);
+        }
     }
 
     /// Sets the status of the game under `key` (of every copy while they are grouped).
@@ -290,6 +295,7 @@ impl CollectionView {
             div().id("cm-b-st-list").flex().flex_col().gap(px(2.)).overflow_y_scroll().children(self.batch_status_rows(&games, "cm-b", cx)),
         );
         let cats_fly = paper().w(px(320.)).child(self.batch_categories_body(&games, "cm-b", cx));
+        let meta_fly = paper().w(px(300.)).children(self.metadata_rows("cm-b", false, cx));
         let fold = |which: Option<Flyout>| {
             cx.listener(move |this: &mut Self, h: &bool, _, cx: &mut Context<Self>| {
                 if *h {
@@ -319,6 +325,14 @@ impl CollectionView {
             open == Some(Flyout::Categories),
             cats_fly,
             fold(Some(Flyout::Categories)),
+        );
+        let meta = sub(
+            "cm-b-meta",
+            Icon::CloudDownload,
+            tr!("Metadata").into(),
+            open == Some(Flyout::Metadata),
+            meta_fly,
+            fold(Some(Flyout::Metadata)),
         );
         let all_fav = games.iter().all(|g| g.favourite);
         let all_hidden = games.iter().all(|g| g.hidden);
@@ -352,11 +366,7 @@ impl CollectionView {
                 .on_hover(fold(None))
                 .on_click(cx.listener(|this, _, _, cx| this.batch_hide(cx))),
             )
-            .child(
-                plain("cm-b-meta", Icon::CloudDownload, tr!("Download metadata"))
-                    .on_hover(fold(None))
-                    .on_click(cx.listener(|this, _, _, cx| this.batch_metadata(cx))),
-            )
+            .child(meta)
             .child(
                 plain("cm-b-edit", Icon::Edit, tr!("Edit fields…"))
                     .child(div().flex_1())

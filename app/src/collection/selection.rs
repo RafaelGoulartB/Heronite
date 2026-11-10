@@ -1,7 +1,8 @@
 //! Several games at once: picking them (Ctrl / Shift click, Ctrl A, the
 //! context menu's "Select multiple") and the batch changes the dock
 //! (`dock.rs`) and the context menu make to all of them (status, categories,
-//! favourite, hide, metadata, fields), each with an Undo.
+//! favourite, hide, fields), each with an Undo; their Metadata menu is
+//! `metadata_menu.rs`.
 //!
 //! Selecting is a mode: while games are selected the cards show a tick
 //! circle, a plain click ticks or unticks one, the cards' play bar and the
@@ -28,6 +29,8 @@ use crate::dialogs::DialogEvent;
 pub(super) enum DockPop {
     Status,
     Categories,
+    /// "Fill what is missing" and "More options…" (`metadata_menu.rs`).
+    Metadata,
 }
 
 /// How many of the selected games are in a category.
@@ -525,16 +528,6 @@ impl CollectionView {
         self.run_batch(undo, message, move |p| heronite_data::config_games::set_hidden(p, &writes).map(|_| None), cx);
     }
 
-    /// The metadata wizard on the selected games only.
-    pub(super) fn batch_metadata(&mut self, cx: &mut Context<Self>) {
-        self.context_menu = None;
-        self.sel.pop = None;
-        let games = self.selected_games();
-        if !games.is_empty() {
-            self.open_wizard_for(games.iter().map(|g| super::metadata_ui::bulk_item(g)).collect(), cx);
-        }
-    }
-
     /// The selected games "Remove from Collection" can take out, and how
     /// many of the others stay.
     pub(super) fn removable_selection(&self) -> (Vec<Arc<CollectionGame>>, usize) {
@@ -694,7 +687,8 @@ impl CollectionView {
     }
 
     /// Keys of the selection mode: Esc ends it, Ctrl A selects every game on
-    /// screen, Ctrl Z undoes the last batch change, F3 edits the fields of the
+    /// screen, Enter fills what is missing while the dock's Metadata menu is
+    /// open, Ctrl Z undoes the last batch change, F3 edits the fields of the
     /// selected games (the focused game's details when none is). True when
     /// the key was used.
     pub(super) fn selection_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) -> bool {
@@ -712,6 +706,9 @@ impl CollectionView {
         let ctrl = (m.control || m.platform) && !m.alt && !m.shift;
         match ev.keystroke.key.as_str() {
             "escape" if self.sel.pop.is_some() => self.sel.pop = None,
+            "enter" if self.sel.pop == Some(DockPop::Metadata) && !m.modified() => {
+                self.fill_selection(cx);
+            }
             "escape" if self.sel.active() => self.clear_selection(),
             "a" if ctrl && self.lib.is_some() => self.select_all_shown(),
             "z" if ctrl => return self.undo_batch(cx),

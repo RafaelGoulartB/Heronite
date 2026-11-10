@@ -16,7 +16,7 @@ use crate::ui::icon;
 pub(super) const TILE: f32 = 32.;
 
 /// A source's name as shown: proper nouns as they are, the others translated.
-pub(super) fn name(raw: &str) -> &str {
+pub(crate) fn name(raw: &str) -> &str {
     tr(raw)
 }
 
@@ -45,15 +45,20 @@ fn monogram(name: &str) -> String {
 
 /// The source's tile: its logo on a faint well, else its monogram in its colour.
 pub(super) fn tile(id: &str, name: &str) -> Div {
-    let base = div().flex().flex_none().items_center().justify_center().size(px(TILE)).rounded(px(9.));
+    mark(id, name, TILE)
+}
+
+/// A [`tile`] of `size` px (the bulk update's chips draw small ones).
+pub(crate) fn mark(id: &str, name: &str, size: f32) -> Div {
+    let base = div().flex().flex_none().items_center().justify_center().size(px(size)).rounded(px(size * 0.28));
     match logo(id) {
-        Some(ic) => base.bg(theme::ink_a(0.07)).child(icon(ic, px(17.), theme::text_primary())),
+        Some(ic) => base.bg(theme::ink_a(0.07)).child(icon(ic, px(size * 0.53), theme::text_primary())),
         None => {
             let c: Hsla = theme::source_colour(id).into();
             base.bg(Hsla { a: 0.16, ..c })
                 .border_1()
                 .border_color(Hsla { a: 0.3, ..c })
-                .text_size(px(11.))
+                .text_size(px((size * 0.34).max(8.)))
                 .font_weight(theme::W_BOLD)
                 .text_color(theme::readable(c))
                 .child(monogram(name))
@@ -131,7 +136,7 @@ pub(super) fn audience(a: &AppliesTo) -> String {
 }
 
 /// A field a source fills, as its chip says it.
-pub(super) fn field_name(field: &str) -> &str {
+pub(crate) fn field_name(field: &str) -> &str {
     match field {
         extra_fields::TIME_TO_BEAT => tr!("Time to beat"),
         extra_fields::STEAM_TAGS => tr!("Steam tags"),

@@ -33,7 +33,7 @@ pub mod manage_categories;
 pub mod manage_fields;
 pub mod manage_statuses;
 pub mod metadata;
-pub mod metadata_wizard;
+pub mod metadata_update;
 pub mod onboarding;
 pub mod pick_rom;
 pub mod quit_confirm;
@@ -51,6 +51,9 @@ pub mod store_import;
 pub mod store_install;
 pub mod web_image;
 pub mod whats_new;
+
+/// The metadata hub, where the other modules reach it.
+pub use metadata_update::hub as metadata_wizard;
 
 use std::sync::Arc;
 
@@ -93,6 +96,9 @@ pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool 
         return d.update(cx, |d, cx| d.on_escape(cx));
     }
     if let Ok(d) = view.clone().downcast::<client_settings::ClientSettingsDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
+    if let Ok(d) = view.clone().downcast::<metadata_update::MetadataUpdate>() {
         return d.update(cx, |d, cx| d.on_escape(cx));
     }
     false
