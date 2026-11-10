@@ -10,7 +10,7 @@
 //! - Storage: what the games take on disk and cleaning it up (`storage/`).
 //! - Advanced extras: folders, cache, copy settings (`advanced.rs`).
 //! - Appearance, Metadata, Screenshots, Backups: Collection settings, backed
-//!   by `local_library/settings.json` (`appearance.rs`, `metadata.rs`,
+//!   by `local_library/settings.json` (`appearance.rs`, `metadata/`,
 //!   `screenshots.rs`, `saves.rs` + `backup/`). Any write ends in
 //!   [`SettingsPage::saved`].
 //! - Integrations: Sunshine, for Moonlight (`integrations.rs`,
@@ -204,7 +204,6 @@ impl SettingsPage {
         let appearance = appearance::State::new(&ctx, &settings, chain, window, cx);
         let screenshots = screenshots::State::new(&ctx, &settings, window, cx);
         let achievements = achievements::State::new(window, cx);
-        let metadata = metadata::State::new(&ctx, &settings, window, cx);
         let backup = backup::State::new(&ctx, &settings, window, cx);
         let saves = saves::State::new(&ctx, &settings, window, cx);
         let cloud = cloud::State::new(&ctx, window, cx);
@@ -235,7 +234,7 @@ impl SettingsPage {
             appearance,
             screenshots,
             achievements,
-            metadata,
+            metadata: Default::default(),
             backup,
             saves,
             saves_restore: Default::default(),
@@ -353,6 +352,7 @@ impl SettingsPage {
             if let Ok(fresh) = cx.background_spawn(async move { store::load(&data_paths) }).await {
                 this.update(cx, |this, cx| {
                     this.settings = fresh;
+                    this.metadata.settings_changed();
                     cx.notify();
                 })
                 .ok();
@@ -376,6 +376,9 @@ impl SettingsPage {
     pub fn set_library(&mut self, offer: LibraryOffer, cx: &mut Context<Self>) {
         let changed = self.storage.set_library(offer.lib, offer.chains, offer.stages);
         console_mode::library_changed(self);
+        if changed {
+            metadata::library_changed(self, cx);
+        }
         if changed && self.section == Section::Storage {
             storage::State::shown(self, cx);
         }
@@ -387,6 +390,7 @@ impl SettingsPage {
         match result {
             Ok(s) => {
                 self.settings = s;
+                self.metadata.settings_changed();
                 self.error = None;
                 cx.emit(PageEvent::LibraryChanged);
             }
@@ -441,6 +445,7 @@ impl SettingsPage {
             Section::Backups => backup::shown(self, cx),
             Section::Cloud => cloud::shown(self, window, cx),
             Section::ConsoleMode => console_mode::shown(self, window, cx),
+            Section::Metadata => metadata::shown(self, window, cx),
             _ => {}
         }
     }
@@ -656,6 +661,9 @@ impl SettingsPage {
         }
         if section == Section::Replay {
             replay::reveal(self, setting.label);
+        }
+        if section == Section::Metadata {
+            metadata::reveal(self, setting.label);
         }
         crate::ui::find::set_target(tr(setting.label).to_string());
         self.find_frames = FIND_FRAMES;

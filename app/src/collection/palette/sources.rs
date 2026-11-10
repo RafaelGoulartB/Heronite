@@ -192,7 +192,7 @@ fn section_help(s: Section) -> &'static str {
         Section::Storage => tr!("Disk space of games, prefixes, Proton, caches"),
         Section::Overlay => crate::overlay::labels::palette_help(),
         Section::Replay => tr!("Last seconds of a game, saved with Guide + X"),
-        Section::Metadata => tr!("IGDB keys, covers, field sources"),
+        Section::Metadata => tr!("Sources of details and pictures, their order and keys"),
         Section::Achievements => tr!("RetroAchievements account, Steam key, notifications"),
         Section::Screenshots => tr!("Folder, capture shortcut, preview cache"),
         Section::Saves => tr!("Ludusavi save backups and restoring them"),

@@ -49,7 +49,7 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   Collection (Library, Metadata, Achievements), While playing (Overlay, Screenshots, Replay), Data (Storage, Saves,
   Backups), System (Advanced, Logs, About). A section = title + lead (`Section::blurb`) +
   captioned cards of rows. The Collection sections live in `app/src/pages/settings/<section>.rs`
-  (`appearance`, `metadata`, `screenshots`, `saves` + `backup/` for Backups: settings, what goes in, then the restore list
+  (`appearance`, `metadata/`, `screenshots`, `saves` + `backup/` for Backups: settings, what goes in, then the restore list
   with each backup's parts and an inline "Restore and restart" confirmation; `HERONITE_DEBUG_SETTINGS_ACTION=backup-now|backup-open:<n>|backup-confirm:<n>`) with `State::new(&PageCtx, &EffectiveSettings, …)`
   and `render(&mut SettingsPage, …)`; save with `heronite_data::settings::*` and call `d.saved(result, cx)`
   (updates the page copy of `settings.json` and emits `PageEvent::LibraryChanged`). Work that spawns a process or
@@ -69,6 +69,31 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   games, shown only for the launchers found with games and not imported yet. On Windows Playnite's games come in only
   from this section (`launcher_imports::OFFERED_ELSEWHERE`); while Playnite runs it holds its library open, and the
   card asks to close it.
+  Metadata (`metadata/`, drawn from the metadata service's source registry: a new source needs no code here) opens with
+  a summary card ("{n} of {total} games have details" with a progress bar, counted off the UI thread; "Update metadata…"
+  opens the metadata wizard). Below, the sources are rows in three captioned cards by kind: Game details (IGDB, Steam,
+  Store, Lutris), Pictures (SteamGridDB, From the web) and Extras (HowLongToBeat, Steam tags, ProtonDB); a kind with no
+  source is left out. A closed row shows a drag handle (details sources only), the source's tile (its logo, else two
+  letters in its colour), its name over what it gives ("Text · Scores · Covers"), the games it is for ("All games",
+  "Games found on Steam"…), its status (a dot and a word: Off, On, Connected, Add a key, Could not connect, Sign in,
+  Needs a download, Not on this system, By hand only), its switch and a chevron. A source on but waiting for a key shows
+  its switch grey; one not on this system has its switch locked. A click on the row opens it in place (several can be
+  open); the switch does not. An open row has a line about the source, its options as the source's descriptor lists
+  them (text inputs, secrets masked, selects, switches, each with its help or link), "Test" where the source has one
+  (it saves what was typed first, runs off the UI thread and shows what came back beside the button: "ProtonDB answered." or the error) and
+  "Fills": a chip per field the source provides. A chip of a details source can be clicked to stop taking that field
+  from it (struck through); the other sources' chips are plain, because only the merge honours the switch. Dragging a
+  details row onto another moves it, and the order is what the merge asks first (the hint "Drag to change the order"
+  sits by the caption). Under the cards, "When details arrive" holds the switches that belong to no source: fill
+  missing metadata in the background, copy covers to disk, show age ratings, and the rating board shown first. Last,
+  "Order for one field (advanced)" is a collapsed block with a line per field and its sources as chips, first to last,
+  the first one accented: dragging a chip onto another of the same field puts it there for that field only, and the line
+  then offers "Reset" (back to following the list above), else it says "List order". A source that is off, or whose
+  field is switched off, is not in the line. Console mode lists the same without dragging or chips: per kind a header,
+  a switch per source (status and games in its description) followed by its options (text opens the on-screen
+  keyboard), "Place in the list" for details sources and "Test"; then "When details arrive", then "Source asked first
+  for each field", one choice per field between "List order" and the details sources that fill it. The Settings search
+  finds the sources, their options and "Order for one field (advanced)" and opens the row that holds them.
 - Command palette (Ctrl K, `app/src/collection/palette/`): it reads the app's own lists, so a new feature reaches it
   without palette code. A game action goes in `collection/game_actions.rs` (`GameAction`, listed by
   `CollectionView::game_actions`, run by `run_game_action`): the card's context menu draws the same list. A page action
@@ -833,6 +858,8 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   `CollectionView::render` for new dialogs; `settings:<section>` opens that Settings section,
   `onboarding:<step>` "Getting started" where that step lives: `steam`, `stores` or `emulators` open its games view, `appearance` its look view, any other step the three cards).
   `scripts/shot.sh` sets `HERONITE_NO_ONBOARDING=1`: "Getting started" does not open by itself on a new state folder.
+  Settings → Metadata (`pages/settings/metadata/`): `HERONITE_DEBUG_METADATA_OPEN=<source id>[,<source id>…]` opens
+  those sources' rows (`advanced`: "Order for one field") and scrolls to the last; with `HERONITE_DEBUG_PAGE=settings:metadata`.
 - Main Collection screen: compare with the reference PNG (crop the same region with PIL, view both). Dialogs/menus/settings: one sanity check is enough — they need to work and be consistent, not pixel-identical (user decision).
 - Anything that WRITES data must be exercised only against a copy:
   `HERONITE_DATA_DIR=/tmp/heronite-fixture-<you> scripts/shot.sh …`

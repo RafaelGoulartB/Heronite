@@ -20,7 +20,6 @@
   "Cloud saves synced": "Guardados en la nube sincronizados",
   "Cloud saves: {title}": "Guardados en la nube: {title}",
   "Collection list": "Lista de la Colección",
-  "Collection uses IGDB first, then Steam and store pages to fill covers, descriptions and tags.": "La Colección usa primero IGDB, luego Steam y páginas de tiendas para rellenar portadas, descripciones y etiquetas.",
   "Controller-first TV layout": "Diseño para TV pensado para mando",
   "Could not create the shortcuts for {title}: {error}": "No se pudieron crear los accesos directos de {title}: {error}",
   "Could not launch {title}: {error}": "No se pudo iniciar {title}: {error}",
@@ -49,7 +48,6 @@
   "Go to": "Ir a",
   "Hidden games, favourites, recent games": "Juegos ocultos, favoritos, juegos recientes",
   "Hide {title}": "Ocultar {title}",
-  "IGDB keys, covers, field sources": "Claves de IGDB, portadas, fuentes de los campos",
   "Importing": "Importando",
   "Install folder in the file manager": "Carpeta de instalación en el gestor de archivos",
   "Install the game": "Instalar el juego",
@@ -241,5 +239,6 @@
   "Open right now: close it to read its games": "Abierto ahora: ciérralo para leer sus juegos",
   "Bring in games from Heroic and Playnite": "Importar juegos de Heroic y Playnite",
   "Bring in the games of Heroic and Playnite. While on, a game added there shows up here too.": "Importa los juegos de Heroic y Playnite. Mientras esté activado, un juego añadido allí aparece también aquí.",
-  "Backed up {name} while playing": "Copia de {name} hecha mientras jugabas"
+  "Backed up {name} while playing": "Copia de {name} hecha mientras jugabas",
+  "Sources of details and pictures, their order and keys": "Fuentes de detalles e imágenes, su orden y claves"
 }
