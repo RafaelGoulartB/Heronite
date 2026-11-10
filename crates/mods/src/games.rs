@@ -5,6 +5,7 @@
 //! manager, [`GameLinks::mod_root`]).
 
 use crate::model::GameLinks;
+use crate::support::{Block, Fit, Step};
 
 /// How a game loads mods.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +53,8 @@ pub struct KnownGame {
     /// Loose files by extension (without the dot) and the folder they go to,
     /// relative to the game folder (Cyberpunk's `archive` -> `archive/pc/mod`).
     pub loose: &'static [(&'static str, &'static str)],
+    /// What to expect of the game's mods here ([`crate::support`]).
+    pub fit: Fit,
 }
 
 const SKYRIM_SE_MASTERS: &[&str] = &["Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm"];
@@ -84,6 +87,7 @@ const fn bethesda(
         plugins: Some(plugins),
         markers: &[],
         loose: &[],
+        fit: Fit::Steps(Step::ScriptExtender),
     }
 }
 
@@ -104,6 +108,7 @@ const fn bepinex(
         plugins: None,
         markers: &[],
         loose: &[],
+        fit: Fit::Folder,
     }
 }
 
@@ -119,11 +124,16 @@ const fn generic(name: &'static str, steam_app_ids: &'static [&'static str], nex
         plugins: None,
         markers: &[],
         loose: &[],
+        fit: Fit::Folder,
     }
 }
 
 const fn with_markers(game: KnownGame, markers: &'static [&'static str]) -> KnownGame {
     KnownGame { markers, ..game }
+}
+
+const fn with_fit(game: KnownGame, fit: Fit) -> KnownGame {
+    KnownGame { fit, ..game }
 }
 
 /// Game folders of the RE Engine; REFramework sits next to them.
@@ -216,21 +226,26 @@ pub const KNOWN: &[KnownGame] = &[
         plugins: None,
         markers: &[],
         loose: &[],
+        fit: Fit::Steps(Step::PluginList),
     },
-    generic("The Elder Scrolls IV: Oblivion Remastered", &["2623190"], "oblivionremastered", ""),
+    with_fit(generic("The Elder Scrolls IV: Oblivion Remastered", &["2623190"], "oblivionremastered", ""), Fit::Steps(Step::PluginList)),
     KnownGame {
         loose: &[("archive", "archive/pc/mod"), ("xl", "archive/pc/mod")],
+        fit: Fit::Steps(Step::RedMod),
         ..with_markers(generic("Cyberpunk 2077", &["1091500"], "cyberpunk2077", ""), &["archive", "r6", "red4ext", "bin", "engine", "mods"])
     },
     with_markers(generic("Control", &["870780"], "control", ""), &["data_pc"]),
-    with_markers(generic("The Witcher 3: Wild Hunt", &["292030"], "witcher3", "Mods"), &["bin", "dlc", "mods"]),
-    generic("Baldur's Gate 3", &["1086940"], "baldursgate3", ""),
-    generic("Stardew Valley", &["413150"], "stardewvalley", "Mods"),
-    generic("Elden Ring", &["1245620"], "eldenring", "Game"),
-    generic("Dark Souls III", &["374320"], "darksouls3", "Game"),
+    with_fit(
+        with_markers(generic("The Witcher 3: Wild Hunt", &["292030"], "witcher3", "Mods"), &["bin", "dlc", "mods"]),
+        Fit::Steps(Step::ScriptMerger),
+    ),
+    with_fit(generic("Baldur's Gate 3", &["1086940"], "baldursgate3", ""), Fit::Blocked(Block::OutsideFolder)),
+    with_fit(generic("Stardew Valley", &["413150"], "stardewvalley", "Mods"), Fit::Steps(Step::Smapi)),
+    with_fit(generic("Elden Ring", &["1245620"], "eldenring", "Game"), Fit::Steps(Step::ModEngine)),
+    with_fit(generic("Dark Souls III", &["374320"], "darksouls3", "Game"), Fit::Steps(Step::ModEngine)),
     generic("Sekiro: Shadows Die Twice", &["814380"], "sekiro", ""),
     with_markers(generic("Monster Hunter: World", &["582010"], "monsterhunterworld", ""), &["nativePC"]),
-    with_markers(generic("Monster Hunter Rise", &["1446780"], "monsterhunterrise", ""), RE_ENGINE),
+    with_fit(with_markers(generic("Monster Hunter Rise", &["1446780"], "monsterhunterrise", ""), RE_ENGINE), Fit::Steps(Step::ReFramework)),
     generic("Mount & Blade II: Bannerlord", &["261550"], "mountandblade2bannerlord", "Modules"),
     generic("Mount & Blade: Warband", &["48700"], "mbwarband", "Modules"),
     generic("Kingdom Come: Deliverance", &["379430"], "kingdomcomedeliverance", "Mods"),
@@ -240,15 +255,21 @@ pub const KNOWN: &[KnownGame] = &[
     generic("No Man's Sky", &["275850"], "nomanssky", "GAMEDATA/MODS"),
     generic("RimWorld", &["294100"], "rimworld", "Mods"),
     generic("Kenshi", &["233860"], "kenshi", "mods"),
-    generic("Dragon Age: Origins", &["17450", "47810"], "dragonage", ""),
-    generic("Mass Effect Legendary Edition", &["1328670"], "masseffectlegendaryedition", ""),
-    generic("Divinity: Original Sin 2", &["435150"], "divinityoriginalsin2definitiveedition", ""),
+    with_fit(generic("Dragon Age: Origins", &["17450", "47810"], "dragonage", ""), Fit::Blocked(Block::OutsideFolder)),
+    with_fit(generic("Mass Effect Legendary Edition", &["1328670"], "masseffectlegendaryedition", ""), Fit::Blocked(Block::OwnTool)),
+    with_fit(
+        generic("Divinity: Original Sin 2", &["435150"], "divinityoriginalsin2definitiveedition", ""),
+        Fit::Blocked(Block::OutsideFolder),
+    ),
     generic("Darkest Dungeon", &["262060"], "darkestdungeon", "mods"),
     generic("Subnautica", &["264710"], "subnautica", ""),
-    with_markers(generic("Resident Evil 4", &["2050650"], "residentevil42023", ""), RE_ENGINE),
-    with_markers(generic("Resident Evil 2", &["883710"], "residentevil22019", ""), RE_ENGINE),
-    with_markers(generic("Resident Evil 3", &["952060"], "residentevil32020", ""), RE_ENGINE),
-    with_markers(generic("Resident Evil Village", &["1196590"], "residentevilvillage", ""), RE_ENGINE),
+    with_fit(with_markers(generic("Resident Evil 4", &["2050650"], "residentevil42023", ""), RE_ENGINE), Fit::Steps(Step::ReFramework)),
+    with_fit(with_markers(generic("Resident Evil 2", &["883710"], "residentevil22019", ""), RE_ENGINE), Fit::Steps(Step::ReFramework)),
+    with_fit(with_markers(generic("Resident Evil 3", &["952060"], "residentevil32020", ""), RE_ENGINE), Fit::Steps(Step::ReFramework)),
+    with_fit(
+        with_markers(generic("Resident Evil Village", &["1196590"], "residentevilvillage", ""), RE_ENGINE),
+        Fit::Steps(Step::ReFramework),
+    ),
     generic("Starbound", &["211820"], "starbound", "mods"),
     bepinex("Lethal Company", &["1966720"], "lethal-company", Some("lethalcompany")),
     bepinex("Risk of Rain 2", &["632360"], "riskofrain2", Some("riskofrain2")),
@@ -271,7 +292,24 @@ pub const KNOWN: &[KnownGame] = &[
 pub fn normalize_title(title: &str) -> String {
     let lower = title.to_lowercase().replace('&', " and ").replace(['™', '®'], "");
     let words: Vec<String> = lower.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_string).collect();
-    const NOISE: &[&str] = &["the", "edition", "goty", "game", "of", "year", "definitive", "enhanced", "complete", "remastered"];
+    // Not "special" or "anniversary": those tell one Skyrim from another.
+    const NOISE: &[&str] = &[
+        "the",
+        "edition",
+        "goty",
+        "game",
+        "of",
+        "year",
+        "definitive",
+        "enhanced",
+        "complete",
+        "remastered",
+        "deluxe",
+        "ultimate",
+        "digital",
+        "standard",
+        "gold",
+    ];
     let kept: Vec<&str> = words.iter().map(String::as_str).filter(|w| !NOISE.contains(w)).collect();
     if kept.is_empty() {
         words.concat()
@@ -361,6 +399,11 @@ mod tests {
         assert_eq!(normalize_title("Mount & Blade II: Bannerlord"), normalize_title("Mount and Blade II Bannerlord"));
         assert_eq!(normalize_title("The Witcher 3: Wild Hunt - Game of the Year Edition"), normalize_title("The Witcher 3: Wild Hunt"));
         assert_eq!(normalize_title("The Game"), "thegame", "only noise words: keep them all");
+        // A store's edition of a game is the game (imports have no Steam id to go by).
+        assert_eq!(find(None, "Baldur's Gate 3: Deluxe Edition").map(|g| g.name), Some("Baldur's Gate 3"));
+        assert_eq!(find(None, "Cyberpunk 2077: Ultimate Edition").map(|g| g.name), Some("Cyberpunk 2077"));
+        assert_eq!(find(None, "The Elder Scrolls V: Skyrim Special Edition").map(|g| g.name), Some("Skyrim Special Edition"));
+        assert_eq!(find(None, "The Elder Scrolls V: Skyrim").map(|g| g.name), Some("Skyrim"));
     }
 
     #[test]

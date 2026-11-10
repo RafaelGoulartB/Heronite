@@ -8,7 +8,7 @@
 //! * [`install`] turns an archive or a folder into a mod ([`layout`] finds
 //!   where its files go; [`fomod`] runs FOMOD installers).
 //! * [`conflicts`] says which mod wins each file; [`plugins`] writes
-//!   Bethesda's `Plugins.txt`.
+//!   Bethesda's `Plugins.txt`; [`support`] says what to expect of a game's mods.
 //! * [`deploy`] mounts and unmounts the layers ([`tool`] finds or downloads
 //!   `fuse-overlayfs`); [`apply`] is what a launch calls.
 //! * [`nexus`] and [`thunderstore`] talk to the sites, [`download`] fetches
@@ -36,6 +36,7 @@ pub mod overwrite;
 pub mod paths;
 pub mod plugins;
 pub mod store;
+pub mod support;
 pub mod thunderstore;
 pub mod tool;
 
