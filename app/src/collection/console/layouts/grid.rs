@@ -655,4 +655,19 @@ mod tests {
         assert_eq!(jump_letter(&l, 0, false), 0);
         assert_eq!(jump_letter(&[], 0, true), 0);
     }
+
+    /// The Category choice goes through "any", the manual categories and
+    /// "Uncategorized" (4 here), then the smart ones; only one kind is set.
+    #[test]
+    fn the_category_choice_runs_through_manual_then_smart() {
+        let mut f = Filters { category: 2, ..Default::default() };
+        assert_eq!(f.category_pick(4), 2);
+        f.set_category_pick(4, 4);
+        assert_eq!((f.category, f.group), (0, 1), "the first smart category");
+        assert_eq!(f.category_pick(4), 4);
+        f.set_category_pick(5, 4);
+        assert_eq!((f.category, f.group), (0, 2));
+        f.set_category_pick(3, 4);
+        assert_eq!((f.category, f.group), (3, 0), "back to a manual one");
+    }
 }
