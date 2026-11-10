@@ -18,9 +18,12 @@ use heronite_data::library::metadata_key;
 use heronite_data::models::LocalMetaFile;
 use heronite_data::status::STATUS_ONLY_KEY;
 
+use super::fetch::NoSourceAsked;
+use super::job_run::result_of;
 use super::undo::UndoLog;
 use super::{is_offline, is_sent_to_review, tag_fill, MetadataService};
-use crate::job::QueuedJob;
+use crate::job::{GameOutcome, QueuedJob, SkipReason};
+use crate::sources::is_on;
 use crate::store::get_all_game_metadata;
 use crate::types::*;
 use crate::util::now_ms;
@@ -87,15 +90,14 @@ impl MetadataService {
 
     /// Stores `next` (with the queue and the undo as they are now) and
     /// hands it to `on_progress`, outside the lock.
-    pub(super) fn publish(&self, mut next: BulkProgress, on_progress: &dyn Fn(&BulkProgress)) -> BulkProgress {
+    pub(super) fn publish(&self, next: &mut BulkProgress, on_progress: &dyn Fn(&BulkProgress)) {
         {
             let mut jobs = self.jobs.lock();
             next.queued = jobs.queued();
             next.can_undo = jobs.undo.is_some() && !next.is_running();
             jobs.progress = next.clone();
         }
-        on_progress(&next);
-        next
+        on_progress(next);
     }
 
     /// Whether a job runs or waits (the idle fills give way to it).
@@ -148,26 +150,37 @@ impl MetadataService {
         args: BulkArgs,
         on_progress: impl Fn(&BulkProgress) + Send + Sync + 'static,
     ) -> BulkProgress {
+        self.start_bulk_job(args, on_progress).1
+    }
+
+    /// [`start_bulk_metadata`](Self::start_bulk_metadata), with the new
+    /// job's id. The progress alone cannot tell it: right after a job ends
+    /// with others waiting it is that job's `Done`.
+    pub fn start_bulk_job(
+        self: &Arc<Self>,
+        args: BulkArgs,
+        on_progress: impl Fn(&BulkProgress) + Send + Sync + 'static,
+    ) -> (u64, BulkProgress) {
         let on_progress: OnProgress = Arc::new(on_progress);
-        let (first, now) = {
+        let (id, first, mut now) = {
             let mut jobs = self.jobs.lock();
             let id = jobs.take_id();
             if jobs.running {
                 jobs.queue.push_back(Queued { id, args, on_progress: on_progress.clone() });
-                (None, jobs.progress.clone())
+                (id, None, jobs.progress.clone())
             } else {
                 jobs.running = true;
                 let p = initial(id, &args);
                 jobs.progress = p.clone();
-                (Some(Queued { id, args, on_progress: on_progress.clone() }), p)
+                (id, Some(Queued { id, args, on_progress: on_progress.clone() }), p)
             }
         };
-        let now = self.publish(now, &*on_progress);
+        self.publish(&mut now, &*on_progress);
         if let Some(first) = first {
             let this = Arc::clone(self);
             std::thread::Builder::new().name("metadata-bulk".into()).spawn(move || this.work(first)).expect("spawn bulk thread");
         }
-        now
+        (id, now)
     }
 
     /// Blocking variant of [`start_bulk_metadata`](Self::start_bulk_metadata)
@@ -183,9 +196,11 @@ impl MetadataService {
             jobs.running = true;
             jobs.take_id()
         };
-        let _release = Release(self);
+        // The caller sees a panic of its own job.
+        let mut release = Release { service: self, current: None };
         let (done, mut next) = self.finish(self.run_job(id, args, on_progress), on_progress);
         while let Some(job) = next {
+            release.current = Some((job.id, job.on_progress.clone()));
             next = self.finish(self.run_job(job.id, &job.args, &*job.on_progress), &*job.on_progress).1;
         }
         done
@@ -193,9 +208,10 @@ impl MetadataService {
 
     /// The job thread: runs `first`, then the queue until it is empty.
     fn work(&self, first: Queued) {
-        let _release = Release(self);
+        let mut release = Release { service: self, current: None };
         let mut next = Some(first);
         while let Some(job) = next {
+            release.current = Some((job.id, job.on_progress.clone()));
             next = self.finish(self.run_job(job.id, &job.args, &*job.on_progress), &*job.on_progress).1;
         }
     }
@@ -232,8 +248,9 @@ impl MetadataService {
     /// fetches metadata for up to 40 overlay games that have none (or whose
     /// last attempt failed more than a week ago) and returns how many got
     /// data. Games waiting for review, or that the user said are in no
-    /// source (under their title), are left alone; a game the sources are
-    /// not sure about goes to review. Stops at the first game when offline
+    /// source (under their title), are left alone, as are those no source
+    /// that is on is for; a game the sources are not sure about goes to
+    /// review. Stops at the first game when offline
     /// (nothing is saved, so the next call tries again). Call it when the
     /// app is idle.
     pub fn refresh_missing_collection_metadata(&self) -> Result<usize> {
@@ -257,7 +274,8 @@ impl MetadataService {
         }
 
         let settings = self.metadata_settings();
-        if !settings.auto_fill_missing {
+        // With every source off there is nothing to ask.
+        if !settings.auto_fill_missing || !self.sources.lookups().any(|s| is_on(&settings, &s.descriptor().id)) {
             return Ok(0);
         }
         let overlay: LocalMetaFile = json_store::read(&self.paths.local_meta())?;
@@ -294,12 +312,12 @@ impl MetadataService {
             return Ok(0);
         }
         log::info!("Filling Collection metadata for {} game(s)", missing.len());
-        let mut filled = 0;
-        for meta in missing.into_iter().take(AUTO_FILL_BATCH) {
-            if should_stop() || self.job_pending() {
+        let (mut filled, mut tried) = (0, 0);
+        for meta in missing {
+            if tried == AUTO_FILL_BATCH || should_stop() || self.job_pending() {
                 break;
             }
-            let saved = match self.apply_game_metadata(&MetadataApplyArgs {
+            let fetched = self.apply_game_metadata(&MetadataApplyArgs {
                 app_name: meta.app_name.clone(),
                 runner: meta.runner.clone(),
                 title: meta.title.clone(),
@@ -309,7 +327,14 @@ impl MetadataService {
                 preserve_manual: Some(true),
                 download_images: Some(settings.download_images),
                 ..Default::default()
-            }) {
+            });
+            // No source is for this game: nothing was asked or saved, and it
+            // does not take a place in the batch.
+            if fetched.as_ref().is_err_and(|e| e.is::<NoSourceAsked>()) {
+                continue;
+            }
+            tried += 1;
+            let saved = match fetched {
                 Ok(saved) => saved,
                 // Offline: the other games would fail the same way. They stay
                 // unfetched, so the next start tries again.
@@ -328,17 +353,51 @@ impl MetadataService {
     }
 }
 
-/// Lets the queue go when the job thread panics, so later jobs can start.
-/// Every normal exit lets it go in `next_job`.
-struct Release<'a>(&'a MetadataService);
+/// When the job thread panics outside a job's games (those end the job as a
+/// stop does, see `run_job`): lets the queue go, so later jobs can start,
+/// and hands a `Done` to the running job's callback and to each waiting
+/// job's, so nothing goes on showing them as running. Every normal exit
+/// lets the queue go in `finish`. Only builds that unwind get here (debug,
+/// tests): the release profile aborts on a panic.
+struct Release<'a> {
+    service: &'a MetadataService,
+    /// The running job and its callback.
+    current: Option<(u64, OnProgress)>,
+}
 
 impl Drop for Release<'_> {
     fn drop(&mut self) {
-        if std::thread::panicking() {
-            let mut jobs = self.0.jobs.lock();
+        if !std::thread::panicking() {
+            return;
+        }
+        let (last, dropped) = {
+            let mut jobs = self.service.jobs.lock();
             jobs.running = false;
-            jobs.queue.clear();
-            jobs.progress.state = BulkState::Done;
+            let dropped: Vec<Queued> = jobs.queue.drain(..).collect();
+            let p = &mut jobs.progress;
+            if p.state != BulkState::Done {
+                p.finished_at_ms = now_ms();
+            }
+            p.state = BulkState::Done;
+            p.current_title = None;
+            p.queued.clear();
+            jobs.progress.can_undo = jobs.undo.is_some();
+            (jobs.progress.clone(), dropped)
+        };
+        if let Some((id, on_progress)) = &self.current {
+            // Before its first progress the last one stored is the job before.
+            let done = if last.job == *id {
+                last
+            } else {
+                BulkProgress { state: BulkState::Done, job: *id, finished_at_ms: now_ms(), ..Default::default() }
+            };
+            on_progress(&done);
+        }
+        for q in dropped {
+            let stopped = q.args.games.iter().map(|g| Arc::new(result_of(g, GameOutcome::Skipped(SkipReason::Stopped), Vec::new())));
+            let done =
+                BulkProgress { state: BulkState::Done, results: stopped.collect(), finished_at_ms: now_ms(), ..initial(q.id, &q.args) };
+            (q.on_progress)(&done);
         }
     }
 }

@@ -121,6 +121,7 @@ impl CollectionView {
     }
 
     pub(super) fn reload(&mut self, cx: &mut Context<Self>) {
+        self.forget_meta_counts(cx);
         if self.refreshing {
             // The running load may have read the files before this change.
             self.reload_again = true;

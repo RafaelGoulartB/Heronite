@@ -11,10 +11,14 @@
 //! Pictures in `metadata-art`: before the job may write a game's pictures,
 //! the files already there are hard-linked (copied where links fail) into
 //! `metadata-undo/`; a picture is always written as a new file renamed over
-//! the old one, so the link keeps the old picture. Undo then removes the
-//! pictures the job created that the record no longer points at, and puts
-//! back the replaced pictures the record points at again. No other file is
-//! removed. Steam tags are not undone: they are a cache of what Steam lists.
+//! the old one, so the link keeps the old picture. After the write the job
+//! notes which of those files it replaced with other bytes, and how it left
+//! each (size, time, file id). Undo then removes the pictures the job
+//! created that the record no longer points at, and puts back each picture
+//! the job replaced that the record points at and that is still as the job
+//! left it: a picture written since (a fetch, one chosen by hand; the file
+//! names never change) stays. No other file is removed. Steam tags are not
+//! undone: they are a cache of what Steam lists.
 //!
 //! The review queue: the entries the job added are removed and those it
 //! took out (games it saved) put back, each only while it is as the job
@@ -29,6 +33,7 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use anyhow::Result;
 use heronite_data::json_store;
@@ -54,14 +59,56 @@ pub(super) struct Pictures {
     kept: Vec<String>,
     /// Files the job added.
     created: Vec<String>,
+    /// Files of `kept` the job replaced with other bytes, as it left them.
+    replaced: Vec<(String, Stamp)>,
+}
+
+/// How a file was left. Every write here goes through a new file, so a
+/// later write changes it even when the size stays.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct Stamp {
+    len: u64,
+    modified: Option<SystemTime>,
+    /// The inode on Unix; 0 elsewhere.
+    id: u64,
+}
+
+fn stamp(path: &Path) -> Option<Stamp> {
+    let m = fs::metadata(path).ok()?;
+    #[cfg(unix)]
+    let id = std::os::unix::fs::MetadataExt::ino(&m);
+    #[cfg(not(unix))]
+    let id = 0;
+    Some(Stamp { len: m.len(), modified: m.modified().ok(), id })
 }
 
 impl Pictures {
-    /// Call after the write: notes the files the job added.
+    /// Call after the write: notes the files the job added and those it
+    /// replaced.
     pub(super) fn after(mut self, paths: &DataPaths) -> Self {
+        let dir = paths.metadata_art_dir().join(&self.folder);
+        let backup = paths.metadata_undo_dir().join(&self.folder);
         let before: HashSet<&String> = self.kept.iter().collect();
-        self.created = files_in(&paths.metadata_art_dir().join(&self.folder)).into_iter().filter(|f| !before.contains(f)).collect();
+        self.created = files_in(&dir).into_iter().filter(|f| !before.contains(f)).collect();
+        self.replaced = self
+            .kept
+            .iter()
+            .filter_map(|name| {
+                let (now, was) = (dir.join(name), backup.join(name));
+                let left = stamp(&now)?;
+                // Still the backup's own file (a hard link): untouched.
+                if stamp(&was) == Some(left) {
+                    return None;
+                }
+                (fs::read(&now).ok()? != fs::read(&was).ok()?).then(|| (name.clone(), left))
+            })
+            .collect();
         self
+    }
+
+    /// Whether the job replaced the picture `url` points at with another one.
+    pub(super) fn rewrote(&self, url: Option<&str>) -> bool {
+        url.is_some_and(|url| self.replaced.iter().any(|(name, _)| local_art_url("metadata-art", &[&self.folder, name]) == url))
     }
 }
 
@@ -112,7 +159,7 @@ impl UndoLog {
                 log::warn!("Undo cannot keep {}: {e}", dir.join(name).display());
             }
         }
-        Pictures { folder, existed: dir.is_dir(), kept, created: Vec::new() }
+        Pictures { folder, existed: dir.is_dir(), kept, created: Vec::new(), replaced: Vec::new() }
     }
 
     /// The job wrote `after` over `before`.
@@ -131,6 +178,13 @@ impl UndoLog {
                     let new: Vec<String> =
                         again.created.into_iter().filter(|f| !first.kept.contains(f) && !first.created.contains(f)).collect();
                     first.created.extend(new);
+                    // As the last write left them.
+                    for (name, left) in again.replaced {
+                        match first.replaced.iter_mut().find(|(n, _)| *n == name) {
+                            Some(r) => r.1 = left,
+                            None => first.replaced.push((name, left)),
+                        }
+                    }
                 } else {
                     entry.pictures = Some(again);
                 }
@@ -358,12 +412,13 @@ fn restore_pictures(paths: &DataPaths, p: &Pictures, record: Option<&CollectionG
             Err(e) => log::warn!("Undo could not remove {}: {e}", dir.join(name).display()),
         }
     }
-    for name in p.kept.iter().filter(|n| used(n)) {
+    for (name, left) in p.replaced.iter().filter(|(n, _)| p.kept.contains(n) && used(n)) {
         let (from, to) = (backup.join(name), dir.join(name));
-        let Ok(old) = fs::read(&from) else { continue };
-        if fs::read(&to).is_ok_and(|now| now == old) {
+        // Written again after the job: that picture stays.
+        if stamp(&to) != Some(*left) {
             continue;
         }
+        let Ok(old) = fs::read(&from) else { continue };
         let part = dir.join(format!("{name}.part"));
         match fs::create_dir_all(&dir).and_then(|_| fs::write(&part, &old)).and_then(|_| fs::rename(&part, &to)) {
             Ok(()) => report.files_restored += 1,

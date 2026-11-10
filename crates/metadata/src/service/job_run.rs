@@ -9,6 +9,7 @@
 //! not chosen are not asked.
 
 use std::collections::HashSet;
+use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
 
 use heronite_data::focus::steam_language;
@@ -91,11 +92,20 @@ impl Details {
 }
 
 /// The chosen fields whose value differs between `before` and `after`,
-/// with the source of the new value.
-fn changed_fields(before: Option<&CollectionGameMetadata>, after: &CollectionGameMetadata, fields: &[&str]) -> Vec<FieldChange> {
+/// with the source of the new value. A picture copied to disk keeps its
+/// URL when the job replaces it: those in `rewritten` changed too.
+fn changed_fields(
+    before: Option<&CollectionGameMetadata>,
+    after: &CollectionGameMetadata,
+    fields: &[&str],
+    rewritten: &[&str],
+) -> Vec<FieldChange> {
     fields
         .iter()
-        .filter(|f| (has_field_value(before, f) || has_field_value(Some(after), f)) && read_field(before, f) != read_field(Some(after), f))
+        .filter(|f| {
+            rewritten.contains(f)
+                || ((has_field_value(before, f) || has_field_value(Some(after), f)) && read_field(before, f) != read_field(Some(after), f))
+        })
         .map(|f| FieldChange { field: f.to_string(), source: after.field_sources.get(*f).cloned().unwrap_or_default() })
         .collect()
 }
@@ -142,38 +152,47 @@ impl MetadataService {
             self.jobs.lock().undo = None;
             clear_backups(&self.paths);
         }
-        let mut p = self.publish(initial(id, args), on_progress);
+        let mut p = initial(id, args);
+        self.publish(&mut p, on_progress);
         let total = args.games.len();
         if total == 0 {
             return BulkProgress { state: BulkState::Done, percent: 100, finished_at_ms: now_ms(), ..p };
         }
-        self.wait_for_idle_fill();
-        let settings = self.metadata_settings();
-        let plan = self.plan(args, &settings);
-        // One read for the decisions that need no fetch (skip, nothing
-        // missing); writes are mirrored into it.
-        let mut known = get_all_game_metadata(&self.paths);
-        let tags = if plan.tags { self.tag_pass(id, &plan, &args.games, &known) } else { TagPass::default() };
         let mut undo = UndoLog::new(id);
         let mut errors: Vec<String> = Vec::new();
+        // A panic (in builds that unwind) ends the job as a stop does: the
+        // games done keep their results and their undo, the others are
+        // listed as stopped.
+        let run = panic::catch_unwind(AssertUnwindSafe(|| {
+            self.wait_for_idle_fill();
+            let settings = self.metadata_settings();
+            let plan = self.plan(args, &settings);
+            // One read for the decisions that need no fetch (skip, nothing
+            // missing); writes are mirrored into it.
+            let mut known = get_all_game_metadata(&self.paths);
+            let tags = if plan.tags { self.tag_pass(id, &plan, &args.games, &known) } else { TagPass::default() };
 
-        for (index, game) in args.games.iter().enumerate() {
-            if self.stopping(id) {
-                break;
+            for (index, game) in args.games.iter().enumerate() {
+                if self.stopping(id) {
+                    break;
+                }
+                p.processed = index;
+                p.percent = (index as f64 / total as f64 * 100.0).round() as u32;
+                p.current_title = Some(game.title.clone());
+                p.errors = errors.iter().take(8).cloned().collect();
+                self.publish(&mut p, on_progress);
+                let (result, error) = self.job_game(&plan, game, &mut known, &mut undo, &tags);
+                match &result.outcome {
+                    GameOutcome::Updated | GameOutcome::NoChange(NoChangeReason::NothingNew) => p.updated += 1,
+                    GameOutcome::NoChange(_) | GameOutcome::Skipped(_) | GameOutcome::ToReview(_) => p.skipped += 1,
+                    GameOutcome::NotFound | GameOutcome::Offline | GameOutcome::Failed(_) => p.failed += 1,
+                }
+                errors.extend(error);
+                p.results.push(Arc::new(result));
             }
-            p.processed = index;
-            p.percent = (index as f64 / total as f64 * 100.0).round() as u32;
-            p.current_title = Some(game.title.clone());
-            p.errors = errors.iter().take(8).cloned().collect();
-            p = self.publish(p, on_progress);
-            let (result, error) = self.job_game(&plan, game, &mut known, &mut undo, &tags);
-            match &result.outcome {
-                GameOutcome::Updated | GameOutcome::NoChange(NoChangeReason::NothingNew) => p.updated += 1,
-                GameOutcome::NoChange(_) | GameOutcome::Skipped(_) | GameOutcome::ToReview(_) => p.skipped += 1,
-                GameOutcome::NotFound | GameOutcome::Offline | GameOutcome::Failed(_) => p.failed += 1,
-            }
-            errors.extend(error);
-            p.results.push(Arc::new(result));
+        }));
+        if run.is_err() {
+            log::error!("Metadata job {id} stopped: it panicked");
         }
         for game in &args.games[p.results.len()..] {
             p.results.push(Arc::new(result_of(game, GameOutcome::Skipped(SkipReason::Stopped), Vec::new())));
@@ -326,7 +345,7 @@ impl MetadataService {
             Ok(before) => before,
             Err(e) => return Details::failed(game, format!("{e:#}")),
         };
-        let Gathered { candidates, offline, .. } = self.gather(&args);
+        let Gathered { candidates, offline, asked, .. } = self.gather(&args);
         let mut write = |md: CollectionGameMetadata, pictures, undo: &mut UndoLog| -> anyhow::Result<CollectionGameMetadata> {
             let saved = upsert_game_metadata(&self.paths, md)?;
             undo.record(key.to_owned(), before.clone(), saved.clone(), pictures);
@@ -337,6 +356,10 @@ impl MetadataService {
         };
         if offline {
             return Details { outcome: GameOutcome::Offline, changes: Vec::new(), error: Some(format!("{}: {Offline}", game.title)) };
+        }
+        // Every source is off or not for this game: nothing is written.
+        if !asked {
+            return Details { outcome: GameOutcome::Skipped(SkipReason::NoSource), changes: Vec::new(), error: None };
         }
         if candidates.is_empty() {
             if ask.full {
@@ -364,6 +387,11 @@ impl MetadataService {
         let kept = (!pictures.is_empty()).then(|| undo.pictures_before(&self.paths, runner, &game.app_name));
         let saved = self.persist_chosen_images(proposed, plan.download, &pictures);
         let pictures = kept.map(|p| p.after(&self.paths));
+        let rewritten: Vec<&'static str> = [("cover", saved.cover_url.as_deref()), ("hero", saved.hero_url.as_deref())]
+            .into_iter()
+            .filter(|(_, url)| pictures.as_ref().is_some_and(|p| p.rewrote(*url)))
+            .map(|(f, _)| f)
+            .collect();
         match write(saved, pictures, undo) {
             Ok(saved) => {
                 // Saved with a sure match: it no longer waits for review.
@@ -372,7 +400,7 @@ impl MetadataService {
                     Ok(None) => {}
                     Err(e) => log::warn!("review queue: {e:#}"),
                 }
-                let changes = changed_fields(before.as_ref(), &saved, &plan.fields);
+                let changes = changed_fields(before.as_ref(), &saved, &plan.fields, &rewritten);
                 let outcome = if changes.is_empty() { GameOutcome::NoChange(NoChangeReason::NothingNew) } else { GameOutcome::Updated };
                 Details { outcome, changes, error: None }
             }
@@ -381,7 +409,7 @@ impl MetadataService {
     }
 }
 
-fn result_of(game: &BulkItem, outcome: GameOutcome, changes: Vec<FieldChange>) -> GameResult {
+pub(super) fn result_of(game: &BulkItem, outcome: GameOutcome, changes: Vec<FieldChange>) -> GameResult {
     let runner = as_runner(&game.runner);
     GameResult {
         key: metadata_key(runner, &game.app_name),

@@ -27,7 +27,7 @@ use heronite_i18n::tr;
 use heronite_images::ImageRef;
 use heronite_metadata::{BulkItem, GameCounts, SourceDescriptor, UpdateMode};
 
-use self::hub::{hub, MetadataHub};
+use self::hub::{hub, HubEvent, MetadataHub};
 use self::words::Bucket;
 use super::{DialogCtx, DialogEvent};
 use crate::services::widgets::Covers;
@@ -73,7 +73,8 @@ pub struct MetadataUpdate {
     attention: Option<Vec<BulkItem>>,
     /// Counts of the whole Collection, once read.
     all_counts: Option<GameCounts>,
-    /// Counts of the chosen games, once read.
+    /// Counts of the chosen games, once read. Read again, with the two
+    /// above, when the data changed (a job ended, an undo).
     counts: Option<(Scope, GameCounts)>,
     /// The sources a job may ask, in the user's order, once read.
     sources: Option<Vec<SourceDescriptor>>,
@@ -92,7 +93,7 @@ pub struct MetadataUpdate {
     covers: Covers,
     _tasks: Vec<Task<()>>,
     counts_task: Option<Task<()>>,
-    _sub: Subscription,
+    _subs: [Subscription; 2],
 }
 
 impl EventEmitter<DialogEvent> for MetadataUpdate {}
@@ -101,6 +102,14 @@ impl MetadataUpdate {
     pub fn new(ctx: DialogCtx, games: UpdateGames, cx: &mut Context<Self>) -> Self {
         let hub = hub(cx);
         let sub = cx.observe(&hub, |_, _, cx| cx.notify());
+        // A job ended or was undone: what the games lack changed.
+        let data = cx.subscribe(&hub, |this: &mut Self, _, ev: &HubEvent, cx| {
+            if matches!(ev, HubEvent::DataChanged) {
+                this.all_counts = None;
+                this.counts = None;
+                this.load(cx);
+            }
+        });
         let running = hub.read(cx).running();
         let scope = if games.selected.is_some() { Scope::Selected } else { Scope::Shown };
         let covers = Covers::new(&ctx.data_paths, &ctx.app, cx, |this: &mut Self| &mut this.covers);
@@ -126,7 +135,7 @@ impl MetadataUpdate {
             covers,
             _tasks: Vec::new(),
             counts_task: None,
-            _sub: sub,
+            _subs: [sub, data],
         };
         this.load(cx);
         this
@@ -151,6 +160,8 @@ impl MetadataUpdate {
                 this.sources = Some(sources);
                 this.attention = Some(attention);
                 this.all_counts = counts;
+                // Counted on the list read before, if any.
+                this.counts = this.counts.take().filter(|(s, _)| *s != Scope::Attention);
                 this.count_chosen(cx);
                 cx.notify();
             })

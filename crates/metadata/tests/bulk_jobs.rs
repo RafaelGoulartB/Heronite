@@ -223,8 +223,8 @@ fn only_the_chosen_sources_are_asked() {
     assert_eq!(md.field_sources["description"], "steam");
     assert!(done.results[0].changes.iter().all(|c| c.source == "steam"));
     assert_eq!(asked(&s.server, "/igdb/") + asked(&s.server, "/twitch/") + asked(&s.server, "/lutris/"), 0);
-    // Steam is not for a game without a Steam id: not found, nothing written.
-    assert_eq!(done.results[1].outcome, GameOutcome::NotFound);
+    // Steam is not for a game without a Steam id: no source, nothing written.
+    assert_eq!(done.results[1].outcome, GameOutcome::Skipped(SkipReason::NoSource));
     assert!(get(&s.svc, "plain").is_none(), "a narrowed job does not mark the game as failed");
 
     put(&s.paths, &mixed_portal());
@@ -689,4 +689,166 @@ fn fill_asks_only_the_sources_of_the_missing_fields() {
     let after = get(&s.svc, "steam_620").unwrap();
     assert_eq!(after.cover_url.as_deref(), Some("https://c"));
     assert_eq!(after.description.as_deref(), Some("hand text"));
+}
+
+/// Writes `bytes` over `path` as the app does: a new file renamed over it.
+fn replace_file(path: &Path, bytes: &[u8]) {
+    let part = path.with_extension("user.part");
+    fs::write(&part, bytes).unwrap();
+    fs::rename(&part, path).unwrap();
+}
+
+/// Portal 2 with a cover copied to disk (from the store) and a hero picked
+/// by hand, both in its `metadata-art` folder.
+fn portal_with_pictures(s: &Setup) -> std::path::PathBuf {
+    let art = s.paths.metadata_art_dir().join("sideload_steam_620");
+    fs::create_dir_all(&art).unwrap();
+    fs::write(art.join("cover.png"), b"old cover, not a real png").unwrap();
+    fs::write(art.join("hero.png"), b"old hero, not a real png").unwrap();
+    let mut md = mixed_portal();
+    md.cover_url = Some("localart://metadata-art/sideload_steam_620/cover.png".into());
+    md.field_sources.insert("cover".into(), "store".into());
+    md.hero_url = Some("localart://metadata-art/sideload_steam_620/hero.png".into());
+    md.field_sources.insert("hero".into(), "manual".into());
+    put(&s.paths, &md);
+    art
+}
+
+/// The store's cover of the games, copied to disk.
+fn store_cover(games: Vec<BulkItem>, mode: UpdateMode) -> BulkArgs {
+    BulkArgs { download_images: Some(true), ..BulkArgs::update(games, mode, Some(vec!["cover".into()]), Some(vec!["store".into()])) }
+}
+
+#[test]
+fn undo_leaves_the_pictures_written_after_the_job() {
+    let s = setup();
+    let art = portal_with_pictures(&s);
+    run(&s.svc, store_cover(vec![portal()], UpdateMode::Refresh));
+    assert_eq!(fs::read(art.join("cover.png")).unwrap(), png());
+    // Then the game's own dialog saves another cover and another hero: the
+    // record still points at the same files.
+    replace_file(&art.join("cover.png"), b"the user's cover");
+    replace_file(&art.join("hero.png"), b"the user's hero");
+
+    let report = s.svc.undo_bulk_metadata().unwrap().unwrap();
+    assert_eq!(report.files_restored, 0);
+    assert_eq!(fs::read(art.join("cover.png")).unwrap(), b"the user's cover");
+    assert_eq!(fs::read(art.join("hero.png")).unwrap(), b"the user's hero", "the job never wrote the hero");
+}
+
+#[test]
+fn a_picture_replaced_under_the_same_name_is_a_change() {
+    let s = setup();
+    let art = portal_with_pictures(&s);
+    let done = run(&s.svc, store_cover(vec![portal()], UpdateMode::Replace));
+    assert_eq!(fs::read(art.join("cover.png")).unwrap(), png());
+    assert_eq!(get(&s.svc, "steam_620").unwrap().cover_url.as_deref(), Some("localart://metadata-art/sideload_steam_620/cover.png"));
+    assert_eq!(done.results[0].outcome, GameOutcome::Updated);
+    assert_eq!(changed(&done.results[0]), ["cover"]);
+    assert_eq!(done.results[0].changes[0].source, "store");
+    assert_eq!(done.tally().updated, 1);
+    assert!(done.can_undo);
+
+    // The same picture again: nothing new.
+    let done = run(&s.svc, store_cover(vec![portal()], UpdateMode::Replace));
+    assert_eq!(done.results[0].outcome, GameOutcome::NoChange(NoChangeReason::NothingNew));
+}
+
+#[test]
+fn a_game_no_source_is_asked_for_is_not_marked_as_not_found() {
+    let off = |s: &Setup, keep: &[&str]| {
+        for d in sources::builtin_descriptors().iter().filter(|d| !keep.contains(&d.id.as_str())) {
+            s.svc.set_source_enabled(&d.id, false).ok();
+        }
+    };
+    let s = setup();
+    off(&s, &[]);
+    assert_eq!(s.svc.refresh_missing_collection_metadata().unwrap(), 0);
+    let done = run(&s.svc, BulkArgs::legacy(vec![plain()], false, true, false));
+    assert_eq!(done.results[0].outcome, GameOutcome::Skipped(SkipReason::NoSource));
+    let none = ["steam_620", "plain", "g3", "g4"].iter().all(|app| get(&s.svc, app).is_none());
+    assert!(none, "nothing written");
+    assert!(!done.can_undo);
+    assert!(s.server.log.lock().is_empty());
+
+    // Only Steam on: the three games not on Steam are left for later and
+    // do not take the place of the one it is for.
+    let s = setup();
+    off(&s, &["steam"]);
+    assert_eq!(s.svc.refresh_missing_collection_metadata().unwrap(), 1);
+    assert!(get(&s.svc, "steam_620").is_some_and(|md| md.fetch_error.is_none()));
+    assert!(get(&s.svc, "plain").is_none() && get(&s.svc, "g3").is_none());
+}
+
+#[test]
+fn a_panic_in_a_game_ends_the_job_with_what_it_did() {
+    let s = setup();
+    let panicked = AtomicUsize::new(0);
+    let done = s.svc.run_bulk_metadata(&BulkArgs::fill_missing(vec![portal(), plain()]), &|p| {
+        if p.current_title.as_deref() == Some("Plain Game") && panicked.fetch_add(1, Ordering::SeqCst) == 0 {
+            panic!("a bug while updating Plain Game");
+        }
+    });
+    assert_eq!(done.state, BulkState::Done);
+    assert_eq!(done.results[0].outcome, GameOutcome::Updated);
+    assert_eq!(done.results[1].outcome, GameOutcome::Skipped(SkipReason::Stopped));
+    assert!(done.can_undo && !s.svc.bulk_progress().is_running());
+    s.svc.undo_bulk_metadata().unwrap().unwrap();
+    assert!(get(&s.svc, "steam_620").is_none(), "what it wrote is undone");
+}
+
+#[test]
+fn a_panic_outside_the_games_ends_the_job_and_the_waiting_ones() {
+    let s = setup_with(Duration::from_millis(60));
+    let (a_events, a) = recorder();
+    let (b_events, b_record) = recorder();
+    let (c_events, c) = recorder();
+    let once = AtomicUsize::new(0);
+    // Job 2 panics as it starts (before its first game).
+    let b = move |p: &BulkProgress| {
+        b_record(p);
+        if p.job == 2 && p.state == BulkState::Running && once.fetch_add(1, Ordering::SeqCst) == 0 {
+            panic!("a bug as job 2 starts");
+        }
+    };
+    s.svc.start_bulk_metadata(BulkArgs::fill_missing(vec![plain()]), a);
+    s.svc.start_bulk_metadata(BulkArgs::fill_missing(vec![item("g3", "Third Game", None)]), b);
+    s.svc.start_bulk_metadata(BulkArgs::fill_missing(vec![item("g4", "Fourth Game", None), ghost()]), c);
+    wait_idle(&s.svc);
+
+    assert_eq!(last_done(&a_events).unwrap().job, 1);
+    assert_eq!(last_done(&b_events).map(|p| p.job), Some(2), "the job that panicked is told it ended");
+    let c_done = last_done(&c_events).expect("the waiting job is told it will not run");
+    assert_eq!((c_done.job, c_done.results.len()), (3, 2));
+    assert!(c_done.results.iter().all(|r| r.outcome == GameOutcome::Skipped(SkipReason::Stopped)));
+    assert!(!s.svc.bulk_progress().is_running());
+    // Later jobs still run.
+    assert_eq!(run(&s.svc, BulkArgs::fill_missing(vec![ghost()])).results[0].outcome, GameOutcome::NotFound);
+}
+
+#[test]
+fn a_job_started_as_the_one_before_ends_gets_its_own_id() {
+    let s = setup_with(Duration::from_millis(60));
+    let started: Arc<Mutex<Option<(u64, BulkProgress)>>> = Arc::default();
+    let (c_events, c) = recorder();
+    let c = Arc::new(Mutex::new(Some(c)));
+    let (svc, slot) = (s.svc.clone(), started.clone());
+    // Job 3 starts from job 1's last progress: job 2 waits to start then.
+    let a = move |p: &BulkProgress| {
+        if p.job == 1 && p.state == BulkState::Done {
+            if let Some(c) = c.lock().take() {
+                *slot.lock() = Some(svc.start_bulk_job(BulkArgs::fill_missing(vec![ghost()]), c));
+            }
+        }
+    };
+    s.svc.start_bulk_metadata(BulkArgs::fill_missing(vec![plain()]), a);
+    s.svc.start_bulk_metadata(BulkArgs::fill_missing(vec![item("g3", "Third Game", None)]), |_| {});
+    wait_idle(&s.svc);
+
+    let (id, now) = started.lock().clone().unwrap();
+    assert_eq!(id, 3);
+    // What the progress says then: the job before, done.
+    assert_eq!((now.job, now.state), (1, BulkState::Done));
+    let c_done = last_done(&c_events).unwrap();
+    assert_eq!((c_done.job, c_done.results[0].title.as_str()), (3, "Ghost Game"));
 }

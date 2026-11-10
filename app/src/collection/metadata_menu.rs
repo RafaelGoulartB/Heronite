@@ -3,14 +3,15 @@
 //! what is missing" runs at once (the header pill then shows it; Enter does
 //! it while the dock's menu is open); "More options…" opens the "Update
 //! metadata" dialog on the selection. What "Fill" would look at is counted
-//! off the UI thread when the menu opens, once per selection.
+//! off the UI thread when the menu opens, once per selection and again after
+//! the library reloads (a job, an undo or a settings change was saved).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::{tr, trn};
 use heronite_metadata::{BulkArgs, BulkItem, GameCounts};
 
-use super::context_menu::item;
+use super::context_menu::{item, Flyout};
 use super::metadata_ui::bulk_item;
 use super::selection::DockPop;
 use super::CollectionView;
@@ -20,12 +21,28 @@ use crate::theme;
 use crate::ui::controls::kbd;
 use crate::ui::icon;
 
-/// The counts of the selection, kept while it does not change.
+/// The counts of the selection, kept while it and the data do not change.
 #[derive(Default)]
 pub(super) struct MetaMenu {
     keys: Vec<SharedString>,
     counts: Option<GameCounts>,
     task: Option<Task<()>>,
+    /// The data changed since `counts` were read.
+    stale: bool,
+}
+
+impl MetaMenu {
+    /// Whether the counts of the selection `keys` must be read (again).
+    fn needs_count(&self, keys: &[SharedString]) -> bool {
+        self.stale || self.keys != keys
+    }
+
+    /// What was counted no longer holds.
+    fn forget(&mut self) {
+        self.stale = true;
+        self.counts = None;
+        self.task = None;
+    }
 }
 
 /// The rows of the menu, in order.
@@ -61,9 +78,10 @@ impl CollectionView {
     /// Counts the selection's missing fields unless they are counted (or
     /// being counted) already.
     pub(super) fn ensure_meta_counts(&mut self, cx: &mut Context<Self>) {
-        if self.meta_menu.keys == self.sel.keys || !cx.has_global::<HubGlobal>() {
+        if !self.meta_menu.needs_count(&self.sel.keys) || !cx.has_global::<HubGlobal>() {
             return;
         }
+        self.meta_menu.stale = false;
         self.meta_menu.keys = self.sel.keys.clone();
         self.meta_menu.counts = None;
         let service = hub(cx).read(cx).service.clone();
@@ -81,6 +99,15 @@ impl CollectionView {
             })
             .ok();
         }));
+    }
+
+    /// The library is read again: the counts are too, now when the menu shows.
+    pub(super) fn forget_meta_counts(&mut self, cx: &mut Context<Self>) {
+        self.meta_menu.forget();
+        let shown = self.sel.pop == Some(DockPop::Metadata) || self.context_menu.as_ref().is_some_and(|m| m.open == Some(Flyout::Metadata));
+        if shown {
+            self.ensure_meta_counts(cx);
+        }
     }
 
     /// The dock's Metadata button: opens or closes its menu.
@@ -171,5 +198,25 @@ impl CollectionView {
                 "{n} games"
             )))
             .children(self.metadata_rows("dock", true, cx))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Not `super::*`: GPUI's `test` attribute would replace the std one.
+    use super::MetaMenu;
+    use gpui_kit::SharedString;
+    use heronite_metadata::GameCounts;
+
+    #[test]
+    fn counts_are_read_again_once_the_data_changed() {
+        let keys = vec![SharedString::from("sideload:a")];
+        let mut menu = MetaMenu::default();
+        assert!(menu.needs_count(&keys));
+        menu.keys = keys.clone();
+        menu.counts = Some(GameCounts { fields_missing: 12, ..Default::default() });
+        assert!(!menu.needs_count(&keys), "the same selection is counted once");
+        menu.forget();
+        assert!(menu.needs_count(&keys) && menu.counts.is_none());
     }
 }

@@ -40,6 +40,19 @@ impl std::fmt::Display for SentToReview {
 
 impl std::error::Error for SentToReview {}
 
+/// An automatic fetch asked no source (each is off, or not for this game):
+/// nothing was saved, as when offline. A diagnostic.
+#[derive(Debug)]
+pub(super) struct NoSourceAsked;
+
+impl std::fmt::Display for NoSourceAsked {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "no metadata source was asked for this game")
+    }
+}
+
+impl std::error::Error for NoSourceAsked {}
+
 /// The reason, when `err` is [`SentToReview`].
 pub fn is_sent_to_review(err: &anyhow::Error) -> Option<ReviewReason> {
     err.downcast_ref::<SentToReview>().map(|s| s.0)
@@ -49,6 +62,8 @@ pub fn is_sent_to_review(err: &anyhow::Error) -> Option<ReviewReason> {
 pub(super) struct Gathered {
     pub(super) candidates: Vec<MetadataCandidate>,
     pub(super) offline: bool,
+    /// Some source was asked (not every one off, left out or not for this game).
+    pub(super) asked: bool,
     /// Every source with a lookup, in registry order (hidden ones only when
     /// they found the game).
     pub(super) states: Vec<SourceState>,
@@ -177,6 +192,7 @@ impl MetadataService {
         // Offline: every online provider that was asked failed to connect.
         let mut asked = lookups.iter().filter(|(s, _, l)| s.network && !matches!(l, Lookup::Skipped)).peekable();
         let offline = asked.peek().is_some() && asked.all(|(_, _, l)| matches!(l, Lookup::Unreachable));
+        let any_asked = lookups.iter().any(|(_, _, l)| !matches!(l, Lookup::Skipped));
         let mut candidates = Vec::new();
         let mut states = Vec::new();
         for (d, why, lookup) in lookups {
@@ -196,7 +212,7 @@ impl MetadataService {
                 states.push(SourceState { source: d.id.clone(), answer });
             }
         }
-        Gathered { candidates, offline, states }
+        Gathered { candidates, offline, asked: any_asked, states }
     }
 
     /// Whether the arguments' `only_sources` and `only_fields` leave `d` to ask.
@@ -278,11 +294,17 @@ impl MetadataService {
     /// would store (what an automatic update saves: only the sure part, see
     /// [`crate::confidence`]). Nothing is written.
     pub fn preview_game_metadata(&self, args: &MetadataApplyArgs) -> Result<MetadataPreview> {
+        self.preview(args).map(|(preview, _)| preview)
+    }
+
+    /// [`preview_game_metadata`](Self::preview_game_metadata), and whether
+    /// some source was asked.
+    fn preview(&self, args: &MetadataApplyArgs) -> Result<(MetadataPreview, bool)> {
         let runner = as_runner(&args.runner).to_owned();
         let current = get_game_metadata(&self.paths, &runner, &args.app_name)?;
         let mut args = args.clone();
         args.runner = runner;
-        let Gathered { candidates, offline, mut states } = self.gather(&args);
+        let Gathered { candidates, offline, asked, mut states } = self.gather(&args);
         let decision = decide(&candidates, current.as_ref());
         for state in &mut states {
             if let SourceAnswer::Found { used, .. } = &mut state.answer {
@@ -290,7 +312,7 @@ impl MetadataService {
             }
         }
         let proposed = self.propose(&args, current.as_ref(), &decision.used);
-        Ok(MetadataPreview {
+        let preview = MetadataPreview {
             app_name: args.app_name.clone(),
             locks: current.as_ref().map(record::locked_fields).unwrap_or_default(),
             current,
@@ -300,7 +322,8 @@ impl MetadataService {
             offline,
             sources: states,
             review: decision.review,
-        })
+        };
+        Ok((preview, asked))
     }
 
     /// `persistImages`.
@@ -343,14 +366,18 @@ impl MetadataService {
     /// `applyGameMetadata`: fetch, merge and store. When no provider answers
     /// the record is stored with `fetchError` so the idle fill retries after
     /// a week. When none could be reached at all nothing is stored
-    /// ([`Offline`]): local data alone must not count as a fetch. When the
-    /// sources are not sure which game it is, nothing is stored and the game
-    /// waits in the review queue ([`SentToReview`]).
+    /// ([`Offline`]): local data alone must not count as a fetch; nor when
+    /// none was asked (`NoSourceAsked`: each is off or not for the game).
+    /// When the sources are not sure which game it is, nothing is stored and
+    /// the game waits in the review queue ([`SentToReview`]).
     pub fn apply_game_metadata(&self, args: &MetadataApplyArgs) -> Result<CollectionGameMetadata> {
-        let preview = self.preview_game_metadata(args)?;
+        let (preview, asked) = self.preview(args)?;
         let runner = as_runner(&args.runner);
         if preview.offline {
             return Err(Offline.into());
+        }
+        if !asked {
+            return Err(NoSourceAsked.into());
         }
         if preview.candidates.is_empty() {
             let mut failed = current_or_blank(&self.paths, runner, &args.app_name)?;

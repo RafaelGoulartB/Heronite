@@ -154,9 +154,7 @@ impl MetadataHub {
         if self.fake.is_some() {
             return self.fake_start(args, cx);
         }
-        let p = self.service.start_bulk_metadata(args, self.sender());
-        // Queued: it is the last one waiting; else it is the one running.
-        let id = p.queued.last().map(|q| q.id).filter(|_| p.is_running()).unwrap_or(p.job);
+        let (id, p) = self.service.start_bulk_job(args, self.sender());
         if p.job != self.progress.job {
             self.undone = None;
         }
