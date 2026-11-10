@@ -35,6 +35,9 @@ pub enum ExtensionError {
     /// The package is not what its list's entry says (another id, version
     /// or kind, a host the entry does not list).
     NotAsListed(String),
+    /// The package found when installing is not the one the installer
+    /// showed (its SHA-256 differs): the file changed in between.
+    Changed,
 }
 
 impl std::fmt::Display for ExtensionError {
@@ -56,6 +59,7 @@ impl std::fmt::Display for ExtensionError {
             Self::Download(m) => write!(f, "could not download: {m}"),
             Self::Checksum(m) => write!(f, "{m} is not the file the list names (SHA-256 differs)"),
             Self::NotAsListed(m) => write!(f, "not what the list says: {m}"),
+            Self::Changed => write!(f, "the package changed after it was shown (SHA-256 differs)"),
         }
     }
 }

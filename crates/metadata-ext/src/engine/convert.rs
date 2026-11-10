@@ -4,6 +4,15 @@
 
 use rquickjs::{Ctx, Type, Value};
 
+/// `s` as Rust text when it is at most `max` bytes long (UTF-8), else
+/// `None`. The length is read before anything is copied out of the engine:
+/// the engine's own UTF-8 copy, if it needs one, counts against its memory
+/// limit.
+pub(super) fn text_within(s: &rquickjs::String<'_>, max: usize) -> rquickjs::Result<Option<String>> {
+    let c = s.clone().to_cstring()?;
+    Ok((c.len() <= max).then(|| c.as_str().to_owned()))
+}
+
 /// Depth of nested arrays and objects a script may return.
 const MAX_DEPTH: usize = 32;
 /// Values (each array, object, string, number...) a script may return.
@@ -18,6 +27,17 @@ pub(super) fn from_json<'js>(ctx: &Ctx<'js>, value: &serde_json::Value) -> rquic
 struct Budget {
     values: usize,
     text: usize,
+}
+
+impl Budget {
+    /// `s` copied out, counted in the text (keys too) before it is copied.
+    fn take(&mut self, s: &rquickjs::String<'_>) -> Result<String, String> {
+        let left = MAX_TEXT.saturating_sub(self.text);
+        let too_much = || format!("it returned more than {MAX_TEXT} bytes of text");
+        let text = text_within(s, left).map_err(|e| format!("reading what it returned failed: {e}"))?.ok_or_else(too_much)?;
+        self.text += text.len();
+        Ok(text)
+    }
 }
 
 /// `value` as JSON. `Err` when it is larger than a source may return, or a
@@ -41,14 +61,7 @@ fn walk(value: &Value<'_>, depth: usize, budget: &mut Budget) -> Result<Option<s
         Type::Bool => J::Bool(value.as_bool().unwrap_or(false)),
         Type::Int => J::from(value.as_int().unwrap_or(0)),
         Type::Float => serde_json::Number::from_f64(value.as_float().unwrap_or(f64::NAN)).map_or(J::Null, J::Number),
-        Type::String => {
-            let s = value.as_string().map(|s| s.to_string()).transpose().map_err(read)?.unwrap_or_default();
-            budget.text += s.len();
-            if budget.text > MAX_TEXT {
-                return Err(format!("it returned more than {MAX_TEXT} bytes of text"));
-            }
-            J::String(s)
-        }
+        Type::String => J::String(budget.take(value.as_string().ok_or("not a string")?)?),
         Type::Array => {
             let array = value.as_array().ok_or("not an array")?;
             let mut out = Vec::with_capacity(array.len().min(1024));
@@ -60,11 +73,11 @@ fn walk(value: &Value<'_>, depth: usize, budget: &mut Budget) -> Result<Option<s
         Type::Object | Type::Exception => {
             let object = value.as_object().ok_or("not an object")?;
             let mut out = serde_json::Map::new();
-            for key in object.keys::<String>() {
+            for key in object.keys::<rquickjs::String>() {
                 let key = key.map_err(read)?;
-                let item: Value = object.get(&key).map_err(read)?;
+                let item: Value = object.get(key.clone()).map_err(read)?;
                 if let Some(v) = walk(&item, depth + 1, budget)? {
-                    out.insert(key, v);
+                    out.insert(budget.take(&key)?, v);
                 }
             }
             J::Object(out)

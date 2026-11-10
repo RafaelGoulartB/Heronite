@@ -109,6 +109,10 @@ default = "us"
   that host. No IP addresses, ports or paths.
 - **adult = true**: every picture it gives counts as adult and is dropped
   unless the user allows adult covers.
+- **name**, **author**, a setting's **label** and the other short texts are
+  one line: no line breaks (only `description` may have them), no control
+  characters and no invisible formatting characters (direction overrides,
+  zero-width characters); a manifest with them is refused.
 - Unknown keys are refused in `[network]` and for `api`; anywhere else they
   are left out with a line in the log, so a manifest for a later minor
   version of the contract still loads.
@@ -149,6 +153,9 @@ How sure a match is decides whether it is saved or sent to review:
   normalised the app's way (`ctx.normalize`), and `confidence`, when given,
   is at least 0.75. A script cannot claim more. The record `fetch` returns
   should carry the same title; a different one makes the match a guess.
+  Several hits with the game's title are different games of one name
+  ("Doom" of 1993 and of 2016): they are guesses, unless the game's record
+  has a year and exactly one of them has that `year`.
 - `matchedBy: { id: "steam" }`: you found it by one of `game.ids` (name
   the key you used). Sure, if the game has that id.
 - `matchedBy: { hash: "md5" }`: by one of `game.hashes`. Sure, if the game
@@ -210,6 +217,10 @@ Every key is optional; what the manifest does not provide is left out.
 Pictures must be `https` addresses (or `http` where the manifest allows it)
 on the manifest's `hosts` or `images`; others are left out. The first
 picture of each kind and shape is used. `adult: true` flags one picture.
+The app keeps an extension's picture (and a hit's `thumb`) with the
+fragment `#heronite-extension`, any fragment it had replaced: whenever it
+downloads it, now or later, it reaches public addresses only and checks
+every redirect (see below).
 
 ### `test(ctx)`
 
@@ -245,11 +256,18 @@ ctx.log("found 3 pages");      // a line in the app's log, tagged with the exten
 ```
 
 `ctx.http` requests carry the app's user agent (`Heronite/<version>`; a
-script cannot set `User-Agent`, `Host` and the like), go out at the
-manifest's rate, and follow redirects only to the manifest's hosts. An HTTP
-error status is not an exception: check `r.status`. A request that cannot
-reach the service (offline, DNS, timeout) throws; if the call then fails,
-the game's lookup counts as "unreachable", not as a failure of the script.
+script cannot set `User-Agent`, `Host` and the like, nor a header name or
+value with line breaks), go out at the manifest's rate, and follow
+redirects only to the manifest's hosts. An HTTP error status is not an
+exception: check `r.status`. A request that cannot reach the service
+(offline, DNS, timeout, even one that used up the call's time) throws; if
+the call ends with that error, the game's lookup counts as "unreachable",
+not as a failure of the script. An error of the script's own after it
+(it caught the request's error and threw another, or ran until the time
+limit) is a failure. A request whose turn at the manifest's rate would
+come after the call's time is not sent: the call ends as "unreachable"
+and its turn is left for the next call, so a slow rate (`2/min`) makes
+calls wait their turn, never failures.
 
 ## Limits
 
@@ -266,13 +284,35 @@ Each call of an exported function (a `find`, a `fetch`, a `test`) may use:
 | Time of one request | 8 s (and never more than the call has left) |
 | Log lines | 20 (more are dropped) |
 | Hits of `find` | 25 |
-| Data returned | 100,000 values, 8 MB of text, 32 levels deep |
+| Data returned | 100,000 values, 8 MB of text (keys included), 32 levels deep |
+| A request's address | 8 KB |
+| A request's headers, query and form together | 64 KB |
+| HTML documents parsed (`ctx.html.parse`) | 8, 8 MB and 200,000 tags together; 4 MB each |
+| An array-like's `length` for the methods of `Array.prototype` | 2^24 |
 
 Going over a limit ends the call: the source answers "not found" for that
 game, and the fetch goes on with the other sources. After 5 failures in a
 row (errors and limits, not an unreachable network) the extension is
 stopped: Settings shows "Stopped after errors" with the last error, and it
 is not asked until the user switches it on again or installs an update.
+Messages, the log and the stored error show addresses without their query
+and fragment, which may hold a key.
+
+The time limit holds wherever the script is: at its module's top level
+(when it is inspected, installed or loaded) and in each exported function.
+Most code is stopped at the limit. Some work cannot be interrupted: a loop
+inside one of the engine's built-in functions, or the host's own work on
+what the script gave it (parsing a document nested tens of thousands of
+levels deep, or a tag with a hundred thousand attributes, takes far longer
+than the call). The app waits for such a call 2 s past its time limit at
+most, then leaves its thread running: the extension is stopped at once,
+Settings says that it ran past its time limit and could not be stopped,
+and it is not asked until the user switches it on again, installs an
+update, or restarts the app. That thread keeps a processor core busy, and
+its memory (32 MB at most), until it ends by itself or the app quits. At
+most one such thread per extension, and three in all, are left running:
+past that, the extension (or, at three, every extension) is not started
+again until the app restarts.
 
 ## What an extension can and cannot do
 
@@ -283,7 +323,14 @@ its own:
   over `https` (or `http` only where listed), at the manifest's rate. It
   cannot reach any other host, an IP address, a port, a name that leads to
   your computer or local network, or an address with a user and password.
-  The installer shows the hosts before you install.
+  A name is resolved once and the request goes to the address checked;
+  a name with any address that is not public (this computer, a private or
+  local network, link-local, unique-local, carrier-grade NAT, multicast,
+  documentation, benchmarking and the other special-purpose ranges of
+  IANA's IPv4 and IPv6 registries) is refused, and so is a proxy. The
+  pictures and thumbnails it names are downloaded the same way, every
+  redirect checked again. The installer shows the hosts before you
+  install.
 - It can read its own settings. It cannot read the app's settings, other
   sources' keys or settings, your library, your files, or anything about
   you beyond the game it is asked about (its title, platform, year, file
@@ -299,6 +346,23 @@ its own:
   and only the fields its manifest provides.
 - It cannot decide by itself that a match is sure by title: the app
   compares the titles.
+
+What it can still do, and what a careful user should know:
+
+- It sends what it is given (the game's title, ids...) and what you enter
+  in its settings, keys included, to its hosts: whoever runs those hosts
+  sees them. A host written as `*.example.org` is every subdomain, which
+  may belong to people other than the author on a shared service.
+- The addresses of the pictures it names can carry data to its picture
+  hosts (`images`) when the app downloads them, and a link in its
+  `websites` when you open it.
+- Its author can change what it does in an update; the installer says so
+  when an update is made by someone else or connects to new hosts, and
+  asks before your saved settings go to it. The author's name is the
+  author's own word: nothing proves who wrote a package.
+- A script that keeps the engine busy where it cannot be interrupted costs
+  a processor core until the app restarts (see Limits); the app stops the
+  extension and starts no more than a few such threads.
 
 Extensions are installed only by you, from a file you choose or from a
 list (below), after the installer has shown what the extension is, what
@@ -317,7 +381,14 @@ its bytes, in name order).
 
 Installing a newer version replaces the files and keeps what the user set
 (on or off, settings, order). The same version again, or an older one, asks
-first. Removing an extension keeps what the user set for it, for a later
+first. A package with the id of one installed (or removed with its
+settings kept) whose author differs, or that connects to hosts the other
+did not, is shown as such ("Made by someone other than the one installed",
+"Connects to new hosts: …"), and the installer asks whether what the user
+entered in its settings (keys included) goes to it: not by default. The
+app installs the package the installer showed, by its SHA-256: a file
+that changed in between is refused. Removing an extension keeps what the
+user set for it, and who made it and where it connected, for a later
 install, unless they choose to forget it.
 
 In the app, Settings → Metadata lists an installed extension with the

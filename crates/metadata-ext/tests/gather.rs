@@ -159,7 +159,11 @@ fn a_game_is_found_and_saved_from_the_extension() {
     assert_eq!(saved.description.as_deref(), Some("Think with portals."));
     assert_eq!(saved.release_date.as_deref(), Some("2011-04-18"));
     assert_eq!(saved.genres, ["Puzzle"]);
-    assert_eq!(saved.cover_url.as_deref(), Some("https://api.example.org/p2.jpg"));
+    assert_eq!(
+        saved.cover_url.as_deref(),
+        Some("https://api.example.org/p2.jpg#heronite-extension"),
+        "marked: downloaded from public addresses only"
+    );
     for field in ["description", "releaseDate", "genres", "cover"] {
         assert_eq!(saved.field_sources[field], "exampledb", "{field}");
     }
@@ -223,7 +227,7 @@ fn it_is_searched_like_a_built_in() {
     assert_eq!(found.asked, ["exampledb"]);
     let hit = &found.choices[0].hits[0];
     assert_eq!((hit.source.as_str(), hit.id.as_deref(), hit.title.as_deref()), ("exampledb", Some("p2"), Some("Portal 2")));
-    assert_eq!(hit.thumb_url.as_deref(), Some("https://api.example.org/p2.jpg"));
+    assert_eq!(hit.thumb_url.as_deref(), Some("https://api.example.org/p2.jpg#heronite-extension"));
     let hits = s.svc.sources().search(&SourceContext::new(&s.paths, &s.svc.http), "exampledb", "Portal");
     assert!(matches!(hits, Lookup::Found(h) if h.len() == 1));
 }
@@ -236,7 +240,7 @@ fn an_adult_picture_is_dropped_unless_allowed() {
     assert_eq!(saved.cover_url, None);
     write(&s.paths.collection_settings(), json!({"metadata": {"allowAdultCovers": true}}));
     let saved = s.svc.apply_game_metadata(&args("adult")).unwrap();
-    assert_eq!(saved.cover_url.as_deref(), Some("https://api.example.org/a.jpg"));
+    assert_eq!(saved.cover_url.as_deref(), Some("https://api.example.org/a.jpg#heronite-extension"));
 }
 
 #[test]

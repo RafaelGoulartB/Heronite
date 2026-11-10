@@ -28,7 +28,7 @@ use sha2::{Digest, Sha256};
 
 use crate::index::{self, https_url, Index, IndexEntry, IndexError, IndexFile, MAX_INDEX_BYTES};
 use crate::package::{MANIFEST, SCRIPT};
-use crate::service::{self, ExtensionsExt, InstallOutcome, InstalledExtension, PackageInfo};
+use crate::service::{self, Approval, ExtensionsExt, InstallOutcome, InstalledExtension, PackageInfo};
 use crate::ExtensionError;
 
 /// The app's own list: `extensions/index.json` on the repository's main
@@ -193,7 +193,7 @@ impl Lists {
                 ListCopy { url: url.to_owned(), builtin, index: Some(index), read_at: Some(now), error: None }
             }
             Err(e) => {
-                log::info!("The list of extensions {url} could not be read: {e}");
+                log::info!("The list of extensions {url} could not be read: {}", crate::manifest::one_line(&e.to_string()));
                 let mut copy = Self::read_cache(service, url, builtin);
                 copy.error = Some(e);
                 copy
@@ -411,5 +411,12 @@ pub fn prepare(service: &MetadataService, list: &str, entry: &IndexEntry) -> Res
 /// Installs what [`prepare`] checked; the same or an older version than
 /// the installed one needs `confirmed`, as for a file.
 pub fn install_prepared(service: &MetadataService, prepared: &Prepared, confirmed: bool) -> Result<InstallOutcome, ExtensionError> {
-    service::install(service, &prepared.dir.0, confirmed, &prepared.from, Some(&prepared.list))
+    service::install(service, &prepared.dir.0, confirmed, &prepared.from, Some(&prepared.list), None)
+}
+
+/// Installs what [`prepare`] checked and the user approved: the same files
+/// (by the SHA-256 shown), keeping or forgetting the saved settings as
+/// chosen.
+pub fn install_approved(service: &MetadataService, prepared: &Prepared, approval: &Approval) -> Result<InstallOutcome, ExtensionError> {
+    service::install(service, &prepared.dir.0, true, &prepared.from, Some(&prepared.list), Some(approval))
 }

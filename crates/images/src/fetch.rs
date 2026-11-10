@@ -100,6 +100,15 @@ fn agent(opts: &Opts) -> &'static ureq::Agent {
 }
 
 fn download(url: &str, opts: &Opts) -> Result<Vec<u8>> {
+    // A picture an extension named: public addresses only, each redirect
+    // checked (`public`).
+    if crate::public::is_extension_url(url) {
+        let bytes = crate::public::fetch(url, opts.max_download_bytes, opts.http_timeout).map_err(ImageError::Http)?;
+        if !sniff(&bytes) {
+            return Err(ImageError::NotAnImage(format!("{}: not a supported image ({} bytes)", strip(url), bytes.len())));
+        }
+        return Ok(bytes);
+    }
     let mut resp = agent(opts).get(url).call().map_err(|e| ImageError::Http(format!("{url}: {e}")))?; // 4xx/5xx are errors
     let status = resp.status();
     if !status.is_success() {
@@ -115,6 +124,11 @@ fn download(url: &str, opts: &Opts) -> Result<Vec<u8>> {
         return Err(ImageError::NotAnImage(format!("{url}: body is not a supported image ({} bytes)", bytes.len())));
     }
     Ok(bytes)
+}
+
+/// `url` without its query and fragment, for messages.
+fn strip(url: &str) -> &str {
+    url.split(['?', '#']).next().unwrap_or(url)
 }
 
 /// Write `bytes` to `path` via temp file + rename in the same directory.
@@ -207,6 +221,20 @@ mod tests {
 
         // second read is a pure cache hit (server is gone)
         assert_eq!(url_bytes(&ok, &opts).unwrap(), png);
+    }
+
+    #[test]
+    fn an_extensions_picture_never_comes_from_this_computer() {
+        let png = png_bytes();
+        let (base, h) = serve(vec![("/ok.png", 200, "image/png", png.clone())]);
+        let dir = tempfile::tempdir().unwrap();
+        let opts = Opts::new(dir.path().join("images-cache"), None);
+        let marked = crate::public::marked(&format!("{base}/ok.png"));
+        let e = url_bytes(&marked, &opts).unwrap_err();
+        assert!(e.to_string().contains("local network"), "{e}");
+        // The same address from a built-in source still loads.
+        assert_eq!(url_bytes(&format!("{base}/ok.png"), &opts).unwrap(), png);
+        h.join().unwrap();
     }
 
     #[test]

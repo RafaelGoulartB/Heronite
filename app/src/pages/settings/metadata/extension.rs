@@ -47,14 +47,25 @@ pub(super) fn pill(r: &SourceRow) -> Option<Div> {
 pub(super) fn problem_block(r: &SourceRow, cx: &mut Context<SettingsPage>) -> Option<Div> {
     let why = r.problem.clone()?;
     let id = r.descriptor.id.clone();
+    let stuck = heronite_metadata_ext::source::is_stuck(&why);
     let (text, action) = match r.status {
+        SourceStatus::LoadFailed if stuck => (
+            tr!("Its script ran past its time limit while loading and could not be stopped, so it is not loaded again. Install a version that works, or remove it."),
+            None,
+        ),
         SourceStatus::LoadFailed => {
             (tr!("Its files could not be loaded, so it is never asked. Install a version that works, or remove it."), None)
         }
         _ => (
-            tr!(
-                "It failed too many times in a row, so it is not asked for now. It is asked again once you try again or install an update."
-            ),
+            if stuck {
+                tr!(
+                    "It ran past its time limit and could not be stopped, so it is not asked for now. Restarting Heronite ends what it left running; it is asked again once you try again or install an update."
+                )
+            } else {
+                tr!(
+                    "It failed too many times in a row, so it is not asked for now. It is asked again once you try again or install an update."
+                )
+            },
             Some(button(SharedString::from(format!("md-ext-retry-{id}")), ButtonKind::Glass, tr!("Try again")).on_click(cx.listener(
                 move |d, _, _, cx| {
                     set_enabled(d, &id, true, cx);

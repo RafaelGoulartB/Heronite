@@ -8,6 +8,9 @@ description = "Collection metadata and artwork backend (IGDB, Steam, Lutris, VND
 [dependencies]
 heronite-data = { path = "../data" }
 heronite-i18n = { path = "../i18n" }
+# `public`: the resolver that keeps what an extension asks for on the
+# public internet, shared with the pictures it names.
+heronite-images = { path = "../images" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 anyhow = "1"

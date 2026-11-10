@@ -15,7 +15,7 @@ use rquickjs::function::Opt;
 use rquickjs::promise::PromiseState;
 use rquickjs::{Ctx, Exception, Function, Object, Value};
 
-use super::{convert, describe, html, request, CallError, Limit};
+use super::{convert, describe, html, request, CallError, Limit, Watch};
 use crate::limits::Limits;
 use crate::net::{HostRule, RateLimiter};
 
@@ -39,10 +39,14 @@ pub struct HostEnv {
 pub(super) struct Host {
     pub(super) env: HostEnv,
     deadline: Cell<Instant>,
+    /// The deadline as the session's caller sees it.
+    watch: Arc<Watch>,
     /// Set with `abort`: the interrupt handler ends the call.
     stopped: Cell<bool>,
     abort: RefCell<Option<CallError>>,
-    unreachable: RefCell<Option<String>>,
+    /// The last request that got no answer: why, and the message of the
+    /// error it threw to the script.
+    unreachable: RefCell<Option<(String, String)>>,
     pub(super) requests: Cell<u32>,
     pub(super) bytes: Cell<u64>,
     logs: Cell<u32>,
@@ -50,9 +54,10 @@ pub(super) struct Host {
 }
 
 impl Host {
-    pub(super) fn new(env: HostEnv) -> Self {
+    pub(super) fn new(env: HostEnv, watch: Arc<Watch>) -> Self {
         Self {
             deadline: Cell::new(Instant::now() + env.limits.time),
+            watch,
             env,
             stopped: Cell::new(false),
             abort: RefCell::new(None),
@@ -67,6 +72,7 @@ impl Host {
     /// A new call: its own time and budgets.
     pub(super) fn begin(&self) {
         self.deadline.set(Instant::now() + self.env.limits.time);
+        self.watch.set_deadline(self.deadline.get());
         self.stopped.set(false);
         self.abort.replace(None);
         self.unreachable.replace(None);
@@ -99,21 +105,32 @@ impl Host {
         self.abort.borrow().clone()
     }
 
-    pub(super) fn set_unreachable(&self, why: String) {
-        self.unreachable.replace(Some(why));
+    /// A request got no answer for `why`; it threw an error with `message`.
+    pub(super) fn set_unreachable(&self, why: String, message: String) {
+        self.unreachable.replace(Some((why, message)));
     }
 
     pub(super) fn unreachable(&self) -> Option<String> {
-        self.unreachable.borrow().clone()
+        self.unreachable.borrow().as_ref().map(|(why, _)| why.clone())
     }
 
-    /// What ended the call, given the engine's error `e`.
+    /// What ended the call, given the engine's error `e`. It is unreachable
+    /// only when the error is the one a request threw for it, even if the
+    /// wait for that request used up the call's time: an error of the
+    /// script's own after it, or code run until the time limit, is the
+    /// script's failure.
     pub(super) fn error(&self, ctx: &Ctx<'_>, e: rquickjs::Error) -> CallError {
         let text = describe(ctx, e);
         if let Some(a) = self.aborted() {
             return a;
         }
-        if Instant::now() >= self.deadline.get() || text.contains("interrupted") {
+        let interrupted = text.contains("interrupted");
+        if let Some((why, message)) = self.unreachable.borrow().as_ref() {
+            if !interrupted && text.lines().next() == Some(format!("Error: {message}").as_str()) {
+                return CallError::Unreachable(why.clone());
+            }
+        }
+        if Instant::now() >= self.deadline.get() || interrupted {
             return CallError::Limit(Limit::Time, format!("ran longer than {:?}", self.env.limits.time));
         }
         // Out of memory, QuickJS cannot even make the error and throws
@@ -124,10 +141,7 @@ impl Host {
         if text.contains("stack overflow") || text.contains("call stack size exceeded") {
             return CallError::Limit(Limit::Stack, "recursion too deep".into());
         }
-        match self.unreachable() {
-            Some(why) => CallError::Unreachable(why),
-            None => CallError::Script(text),
-        }
+        CallError::Script(text)
     }
 
     /// `value`, or what it settles to when it is a promise: runs the job
@@ -165,7 +179,10 @@ impl Host {
         if n > self.env.limits.log_lines {
             return;
         }
-        let line: String = message.chars().filter(|c| !c.is_control()).take(500).collect();
+        // No control or format characters: a line of the log stays one
+        // line, read in the order it is written.
+        let line: String = message.chars().filter(|c| !c.is_control() && !crate::manifest::is_format_char(*c)).take(500).collect();
+        let line = crate::net::scrub(&line);
         log::info!("[extension {}] {line}", self.env.id);
         if n == self.env.limits.log_lines {
             log::info!("[extension {}] more lines of this call are left out", self.env.id);
@@ -181,8 +198,8 @@ pub(super) fn api<'js>(ctx: &Ctx<'js>, host: &Rc<Host>) -> rquickjs::Result<Obje
     let http = Object::new(ctx.clone())?;
     for post in [false, true] {
         let h = host.clone();
-        let f = Function::new(ctx.clone(), move |ctx: Ctx<'js>, url: String, opts: Opt<Object<'js>>| {
-            request::send(&ctx, &h, post, &url, opts.0)
+        let f = Function::new(ctx.clone(), move |ctx: Ctx<'js>, url: rquickjs::String<'js>, opts: Opt<Object<'js>>| {
+            request::send(&ctx, &h, post, url, opts.0)
         })?;
         http.set(if post { "post" } else { "get" }, f)?;
     }
@@ -190,13 +207,13 @@ pub(super) fn api<'js>(ctx: &Ctx<'js>, host: &Rc<Host>) -> rquickjs::Result<Obje
 
     let html_api = Object::new(ctx.clone())?;
     let h = host.clone();
-    html_api.set("parse", Function::new(ctx.clone(), move |ctx: Ctx<'js>, text: String| html::parse(&ctx, &h, &text))?)?;
+    html_api.set("parse", Function::new(ctx.clone(), move |ctx: Ctx<'js>, text: rquickjs::String<'js>| html::parse(&ctx, &h, &text))?)?;
     api.set("html", html_api)?;
 
     let settings = Object::new(ctx.clone())?;
     let h = host.clone();
-    let get = Function::new(ctx.clone(), move |ctx: Ctx<'js>, key: String| -> rquickjs::Result<Value<'js>> {
-        match h.env.settings.get(&key) {
+    let get = Function::new(ctx.clone(), move |ctx: Ctx<'js>, key: rquickjs::String<'js>| -> rquickjs::Result<Value<'js>> {
+        match short(&key, 100)?.and_then(|key| h.env.settings.get(&key)) {
             Some(v) => convert::from_json(&ctx, v),
             None => Ok(Value::new_undefined(ctx)),
         }
@@ -205,19 +222,40 @@ pub(super) fn api<'js>(ctx: &Ctx<'js>, host: &Rc<Host>) -> rquickjs::Result<Obje
     api.set("settings", settings)?;
 
     let date = Object::new(ctx.clone())?;
-    date.set("parse", Function::new(ctx.clone(), |text: String| crate::record::parse_date(&text))?)?;
+    date.set(
+        "parse",
+        Function::new(ctx.clone(), |text: rquickjs::String<'js>| -> rquickjs::Result<Option<String>> {
+            Ok(short(&text, 200)?.and_then(|t| crate::record::parse_date(&t)))
+        })?,
+    )?;
     api.set("date", date)?;
 
     let h = host.clone();
     api.set(
         "log",
-        Function::new(ctx.clone(), move |message: rquickjs::Coerced<String>| {
-            h.log(&message.0);
+        Function::new(ctx.clone(), move |message: rquickjs::Coerced<rquickjs::String<'js>>| -> rquickjs::Result<()> {
+            // Only the start of a long message is copied out (a line keeps 500).
+            let c = message.0.to_cstring()?;
+            let text = c.as_str();
+            let end = (0..=text.len().min(2048)).rev().find(|i| text.is_char_boundary(*i)).unwrap_or(0);
+            h.log(&text[..end]);
+            Ok(())
         })?,
     )?;
-    api.set("normalize", Function::new(ctx.clone(), |title: String| normalize_title(&title))?)?;
+    api.set(
+        "normalize",
+        Function::new(ctx.clone(), |ctx: Ctx<'js>, title: rquickjs::String<'js>| -> rquickjs::Result<String> {
+            let title = short(&title, 2000)?.ok_or_else(|| type_error(&ctx, "the title is too long"))?;
+            Ok(normalize_title(&title))
+        })?,
+    )?;
     api.set("language", host.env.language.clone())?;
     Ok(api)
+}
+
+/// `s` copied out when it is at most `max` bytes, else `None`.
+fn short(s: &rquickjs::String<'_>, max: usize) -> rquickjs::Result<Option<String>> {
+    convert::text_within(s, max)
 }
 
 /// Throws a `TypeError` with `message`.

@@ -36,8 +36,43 @@ pub struct InstallRecord {
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
+/// Who made an extension removed with its settings kept, and where it
+/// connected: `<root>/.kept/<id>.json`. A later install of that id from
+/// someone else, or to other hosts, is shown as such before those settings
+/// reach it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Kept {
+    pub author: String,
+    /// `[network] hosts` and `images`, as the manifest wrote them.
+    pub hosts: Vec<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
 pub fn root(paths: &DataPaths) -> PathBuf {
     paths.metadata_extensions_dir()
+}
+
+fn kept_file(paths: &DataPaths, id: &str) -> Option<PathBuf> {
+    valid_id(id).then(|| root(paths).join(".kept").join(format!("{id}.json")))
+}
+
+pub fn read_kept(paths: &DataPaths, id: &str) -> Option<Kept> {
+    serde_json::from_str(&std::fs::read_to_string(kept_file(paths, id)?).ok()?).ok()
+}
+
+pub fn write_kept(paths: &DataPaths, id: &str, kept: &Kept) -> Result<(), ExtensionError> {
+    let Some(file) = kept_file(paths, id) else { return Ok(()) };
+    std::fs::create_dir_all(file.parent().unwrap_or(&root(paths))).map_err(io)?;
+    let text = serde_json::to_string_pretty(kept).map_err(|e| ExtensionError::Io(e.to_string()))?;
+    write_atomic(&file, text.as_bytes(), None).map_err(io)
+}
+
+pub fn delete_kept(paths: &DataPaths, id: &str) {
+    if let Some(file) = kept_file(paths, id) {
+        let _ = std::fs::remove_file(file);
+    }
 }
 
 fn io(e: std::io::Error) -> ExtensionError {
@@ -71,10 +106,12 @@ pub fn write_record(dir: &Path, record: &InstallRecord) -> Result<(), ExtensionE
     write_atomic(&dir.join(RECORD), text.as_bytes(), None).map_err(io)
 }
 
-/// Sets or clears the failure an installed extension was stopped with.
-pub fn set_failing(dir: &Path, failing: Option<&str>) {
-    let mut record = read_record(dir).unwrap_or_default();
-    if record.failing.as_deref() == failing {
+/// Sets or clears the failure an installed extension was stopped with,
+/// when the package installed there is still `sha256`: a lookup of a
+/// version removed or replaced meanwhile leaves the new one's record alone.
+pub fn set_failing(dir: &Path, sha256: &str, failing: Option<&str>) {
+    let Some(mut record) = read_record(dir) else { return };
+    if record.sha256 != sha256 || record.failing.as_deref() == failing {
         return;
     }
     record.failing = failing.map(str::to_owned);

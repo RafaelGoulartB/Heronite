@@ -9,7 +9,7 @@ use std::path::Path;
 use heronite_data::paths::DataPaths;
 use heronite_metadata::sources::{OptionValue, SourceStatus};
 use heronite_metadata::MetadataService;
-use heronite_metadata_ext::{ExtensionError, ExtensionState, ExtensionsExt, InstallAction, InstallOutcome};
+use heronite_metadata_ext::{Approval, ExtensionError, ExtensionState, ExtensionsExt, InstallAction, InstallOutcome};
 use support::{folder, manifest};
 
 const SCRIPT: &str = "export function find() { return []; }\nexport function fetch() { return null; }\n";
@@ -160,4 +160,119 @@ fn an_installed_extension_that_no_longer_loads_shows_why() {
     let v2 = package(pkgs.path(), "2.0.0");
     next.install_extension(&v2, false).unwrap();
     assert_eq!(next.source_status(&next.metadata_settings(), "mydb"), Some(SourceStatus::On));
+}
+
+/// `mydb` by `author`, connecting to `hosts`, with a secret setting.
+fn by(parent: &Path, version: &str, author: &str, hosts: &str) -> std::path::PathBuf {
+    let body = format!("[[settings]]\nkey = \"apiKey\"\nlabel = \"API key\"\ntype = \"secret\"\n\n[network]\nhosts = [{hosts}]");
+    let text =
+        manifest("mydb", version, "details", &["description"], &body).replace("author = \"tests\"", &format!("author = \"{author}\""));
+    folder(parent, &format!("{author}-{version}"), &text, SCRIPT)
+}
+
+fn key(svc: &MetadataService) -> String {
+    svc.metadata_settings().sources.get("mydb").and_then(|p| p.options.get("apiKey")).and_then(|v| v.as_str()).unwrap_or("").to_owned()
+}
+
+#[test]
+fn someone_elses_update_does_not_get_the_saved_keys_unasked() {
+    let data = tempfile::tempdir().unwrap();
+    let pkgs = tempfile::tempdir().unwrap();
+    let svc = MetadataService::new(DataPaths::at(data.path()));
+    svc.install_extension(&by(pkgs.path(), "1.0.0", "Alice", "\"api.example.org\""), false).unwrap();
+    let d = svc.sources().get("mydb").unwrap().clone();
+    heronite_metadata::sources::options::set_option_value(&svc.paths, &d, "apiKey", OptionValue::Text("alice-key".into())).unwrap();
+    assert_eq!(key(&svc), "alice-key");
+
+    // The same author, the same hosts: an update as before.
+    let same = svc.inspect_extension(&by(pkgs.path(), "1.1.0", "Alice", "\"api.example.org\"")).unwrap();
+    assert!(!same.author_changed && same.new_hosts.is_empty() && same.saved_settings);
+    assert!(!same.asks_about_settings() && same.keeps_settings_by_default());
+
+    // Another author, with a host of its own: said so, and the key is not
+    // handed over by default.
+    let evil = by(pkgs.path(), "9.0.0", "Mallory", "\"api.example.org\", \"collect.evil.example\"");
+    let info = svc.inspect_extension(&evil).unwrap();
+    assert_eq!(info.installed_author.as_deref(), Some("Alice"));
+    assert!(info.author_changed);
+    assert_eq!(info.new_hosts, ["collect.evil.example"]);
+    assert!(info.asks_about_settings() && !info.keeps_settings_by_default());
+    // Installing without the installer's approval forgets them.
+    svc.install_extension(&evil, false).unwrap();
+    assert_eq!(key(&svc), "", "the key did not reach the new package");
+
+    // Through the installer: the user's choice, for the package shown.
+    let d = svc.sources().get("mydb").unwrap().clone();
+    heronite_metadata::sources::options::set_option_value(&svc.paths, &d, "apiKey", OptionValue::Text("mine".into())).unwrap();
+    let next = by(pkgs.path(), "9.1.0", "Trudy", "\"api.example.org\"");
+    let shown = svc.inspect_extension(&next).unwrap();
+    assert!(shown.author_changed);
+    let keep = Approval { sha256: shown.sha256.clone(), keep_settings: true };
+    // The file changed after it was shown: refused.
+    let other = by(pkgs.path(), "9.2.0", "Trudy", "\"api.example.org\"");
+    std::fs::copy(other.join("source.toml"), next.join("source.toml")).unwrap();
+    assert_eq!(svc.install_approved(&next, &keep), Err(ExtensionError::Changed));
+    assert_eq!(svc.installed_extensions()[0].version, "9.0.0", "nothing was installed");
+    let shown = svc.inspect_extension(&next).unwrap();
+    svc.install_approved(&next, &Approval { sha256: shown.sha256.clone(), keep_settings: true }).unwrap();
+    assert_eq!(key(&svc), "mine", "kept, as chosen");
+
+    // Removed with its settings kept, then installed again from someone
+    // else: still said, still not handed over by default.
+    svc.remove_extension("mydb", false).unwrap();
+    let again = svc.inspect_extension(&by(pkgs.path(), "1.0.0", "Eve", "\"api.example.org\"")).unwrap();
+    assert_eq!(again.action, InstallAction::New);
+    assert_eq!(again.installed_author.as_deref(), Some("Trudy"));
+    assert!(again.author_changed && again.asks_about_settings() && !again.keeps_settings_by_default());
+    svc.install_approved(&by(pkgs.path(), "1.0.0", "Eve", "\"api.example.org\""), &Approval { sha256: again.sha256, keep_settings: false })
+        .unwrap();
+    assert_eq!(key(&svc), "");
+}
+
+#[test]
+fn a_lookup_of_a_replaced_version_leaves_the_new_ones_record_alone() {
+    use heronite_metadata::{MetadataSource, SourceContext, SourceGame};
+    let data = tempfile::tempdir().unwrap();
+    let pkgs = tempfile::tempdir().unwrap();
+    let paths = DataPaths::at(data.path());
+    let svc = MetadataService::new(paths.clone());
+    let throws = "export function find() { throw new Error('boom'); }\nexport function fetch() { return null; }\n";
+    let text = manifest("mydb", "1.0.0", "details", &["description"], "");
+    svc.install_extension(&folder(pkgs.path(), "v1", &text, throws), false).unwrap();
+    let dir = paths.metadata_extensions_dir().join("mydb");
+    // Version 1 as a lookup that started before the update holds it.
+    let limits = heronite_metadata_ext::Limits { failures_in_a_row: 1, ..Default::default() };
+    let m = heronite_metadata_ext::manifest::Manifest::parse(&text).unwrap();
+    let old = heronite_metadata_ext::source::ScriptSource::new(m, throws, limits, Some(dir.clone())).unwrap();
+    svc.install_extension(&package(pkgs.path(), "2.0.0"), false).unwrap();
+    let http = heronite_metadata::Http::default();
+    let game = SourceGame { title: "Doom".into(), ..Default::default() };
+    old.lookup(&SourceContext::new(&paths, &http), &game);
+    assert!(!old.health().is_ok(), "the old one stopped");
+    let record = heronite_metadata_ext::store::read_record(&dir).unwrap();
+    assert_eq!((record.version.as_str(), record.failing), ("2.0.0", None), "the new version is not marked");
+}
+
+#[test]
+fn a_key_in_an_address_never_reaches_the_record_or_settings() {
+    use heronite_metadata::sources::SourceHealth;
+    use heronite_metadata::{MetadataSource, SourceContext, SourceGame};
+    let data = tempfile::tempdir().unwrap();
+    let pkgs = tempfile::tempdir().unwrap();
+    let paths = DataPaths::at(data.path());
+    let svc = MetadataService::new(paths.clone());
+    let throws =
+        "export function find() { throw new Error('bad answer from https://api.example.org/s?api_key=secret#x'); }\nexport function fetch() {}\n";
+    let text = manifest("mydb", "1.0.0", "details", &["description"], "");
+    svc.install_extension(&folder(pkgs.path(), "v1", &text, throws), false).unwrap();
+    let dir = paths.metadata_extensions_dir().join("mydb");
+    let limits = heronite_metadata_ext::Limits { failures_in_a_row: 1, ..Default::default() };
+    let m = heronite_metadata_ext::manifest::Manifest::parse(&text).unwrap();
+    let source = heronite_metadata_ext::source::ScriptSource::new(m, throws, limits, Some(dir.clone())).unwrap();
+    let http = heronite_metadata::Http::default();
+    source.lookup(&SourceContext::new(&paths, &http), &SourceGame { title: "Doom".into(), ..Default::default() });
+    let SourceHealth::Failing(why) = source.health() else { panic!("{:?}", source.health()) };
+    assert!(why.contains("https://api.example.org/s") && !why.contains("secret"), "{why}");
+    let stored = heronite_metadata_ext::store::read_record(&dir).unwrap().failing.unwrap();
+    assert!(!stored.contains("secret"), "{stored}");
 }

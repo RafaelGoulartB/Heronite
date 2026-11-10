@@ -225,3 +225,28 @@ fn unknown_keys_are_refused_in_network_and_left_out_elsewhere() {
     assert_eq!(m.provides, ["description", "genres", "cover", "coverWide"]);
     assert!(m.warnings.iter().any(|w| w.contains("\"engine\"")));
 }
+
+#[test]
+fn text_shown_on_one_line_stays_on_one_line() {
+    // A line break only in the description.
+    for (from, to) in [
+        ("name = \"Example DB\"", "name = \"Example\\nDB\""),
+        ("author = \"Someone\"", "author = \"Someone\\n[INFO] Extension trusted\""),
+        ("label = \"API key\"", "label = \"API\\nkey\""),
+    ] {
+        assert!(error(&with(from, to)).contains("line breaks"), "{to}");
+    }
+    let m = Manifest::parse(&with("description = \"Games from Example DB.\"", "description = \"Games.\\nMore games.\"")).unwrap();
+    assert_eq!(m.description, "Games.\nMore games.");
+    // Invisible formatting: a direction override, a zero-width space.
+    for to in ["author = \"evil\u{202e}moc.elpmaxe\"", "name = \"Exam\u{200b}ple\"", "description = \"Games\u{2066}.\""] {
+        let from = to.split(" = ").next().unwrap();
+        let line = GOOD.lines().find(|l| l.starts_with(&format!("{from} = "))).unwrap();
+        assert!(error(&with(line, to)).contains("invisible"), "{to:?}");
+    }
+    // An unknown key is the author's text: escaped before it is logged.
+    let m = Manifest::parse(&with("adult = false", "adult = false\n\"x\\n[WARN] forged\" = 1\n\"y\u{202e}z\" = 2")).unwrap();
+    assert!(m.warnings.iter().all(|w| !w.contains('\n') && !w.contains('\u{202e}')), "{:?}", m.warnings);
+    assert!(m.warnings.iter().any(|w| w.contains("x\\n[WARN] forged")), "{:?}", m.warnings);
+    assert_eq!(one_line("a\nb\u{202e}c"), "a\\nb\\u{202e}c");
+}

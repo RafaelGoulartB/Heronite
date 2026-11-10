@@ -8,6 +8,9 @@ description = "Metadata sources the community writes: manifest, package, sandbox
 [dependencies]
 heronite-data = { path = "../data" }
 heronite-metadata = { path = "../metadata" }
+# The public-only resolver every request and picture of an extension goes
+# through (`heronite_images::public`).
+heronite-images = { path = "../images" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 anyhow = "1"

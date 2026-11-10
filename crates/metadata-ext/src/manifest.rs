@@ -119,11 +119,13 @@ impl<'a> Keys<'a> {
         Self { table, section, known }
     }
 
+    /// `key` of this table, escaped (an unknown key is the author's text and
+    /// goes to the log).
     fn name(&self, key: &str) -> String {
         if self.section.is_empty() {
-            key.to_owned()
+            escaped(key)
         } else {
-            format!("{}.{key}", self.section)
+            format!("{}.{}", self.section, escaped(key))
         }
     }
 
@@ -189,6 +191,38 @@ impl<'a> Keys<'a> {
     }
 }
 
+/// Whether `c` is an invisible Unicode format character (category Cf:
+/// direction overrides and isolates, zero-width characters, soft hyphen,
+/// tags...) or a line or paragraph separator: text that shows differently
+/// from what it is, or breaks a line of the log.
+pub fn is_format_char(c: char) -> bool {
+    matches!(
+        c as u32,
+        0xad | 0x600..=0x605
+            | 0x61c
+            | 0x6dd
+            | 0x70f
+            | 0x890..=0x891
+            | 0x8e2
+            | 0x180e
+            | 0x200b..=0x200f
+            | 0x2028..=0x202e
+            | 0x2060..=0x2064
+            | 0x2066..=0x206f
+            | 0xfeff
+            | 0xfff9..=0xfffb
+            | 0x110bd
+            | 0x110cd
+            | 0x13430..=0x1343f
+            | 0x1bca0..=0x1bca3
+            | 0x1d173..=0x1d17a
+            | 0xe0001
+            | 0xe0020..=0xe007f
+    )
+}
+
+/// Text of 1..=`max` characters, on one line (the `description` may have
+/// line breaks), without control or format characters.
 pub(crate) fn check_text(name: &str, value: &str, max: usize) -> Result<(), ExtensionError> {
     if value.is_empty() {
         return Err(err(format!("{name} is empty")));
@@ -196,10 +230,34 @@ pub(crate) fn check_text(name: &str, value: &str, max: usize) -> Result<(), Exte
     if value.chars().count() > max {
         return Err(err(format!("{name} is longer than {max} characters")));
     }
-    if value.chars().any(|c| c.is_control() && c != '\n') {
-        return Err(err(format!("{name} has control characters")));
+    let paragraph = name == "description";
+    if value.chars().any(|c| c.is_control() && !(paragraph && c == '\n')) {
+        return Err(err(format!("{name} has control characters or line breaks")));
+    }
+    if value.chars().any(is_format_char) {
+        return Err(err(format!("{name} has invisible formatting characters")));
     }
     Ok(())
+}
+
+/// `text` written by the author, as it may appear in the log: escaped, so
+/// it stays on one line and shows what it is.
+pub(crate) fn escaped(text: &str) -> String {
+    one_line(&text.chars().take(100).collect::<String>())
+}
+
+/// `text` (an author's or a script's) on one line of the log: line breaks,
+/// other control and format characters written as escapes.
+pub fn one_line(text: &str) -> String {
+    text.chars()
+        .flat_map(|c| -> Box<dyn Iterator<Item = char>> {
+            if c.is_control() || is_format_char(c) {
+                Box::new(c.escape_debug())
+            } else {
+                Box::new(std::iter::once(c))
+            }
+        })
+        .collect()
 }
 
 /// Whether `id` is lowercase letters and digits in groups joined by single
@@ -344,7 +402,7 @@ fn provides(top: &Keys<'_>, kind: SourceKind, warnings: &mut Vec<String>) -> Res
     let mut out: Vec<String> = Vec::new();
     for f in fields {
         if !ALL_FIELDS.contains(&f.as_str()) {
-            warnings.push(format!("provides.fields: unknown field \"{f}\" left out"));
+            warnings.push(format!("provides.fields: unknown field \"{}\" left out", escaped(&f)));
         } else if kind == SourceKind::Pictures && !PICTURE_FIELDS.contains(&f.as_str()) {
             return Err(err(format!("a pictures source provides pictures only, not \"{f}\"")));
         } else if !out.contains(&f) {
@@ -420,7 +478,7 @@ fn platform_ids(names: Vec<String>, warnings: &mut Vec<String>) -> Result<Vec<St
         match platforms::by_name(&name) {
             Some(p) if !ids.iter().any(|id| id == p.id) => ids.push(p.id.to_owned()),
             Some(_) => {}
-            None => warnings.push(format!("applies.platforms: unknown platform \"{name}\" left out")),
+            None => warnings.push(format!("applies.platforms: unknown platform \"{}\" left out", escaped(&name))),
         }
     }
     if ids.is_empty() {

@@ -28,7 +28,9 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-data       data folder files, paths, Heroic migration, safe writes, processes
  ├─ heronite-backup     backups of the data folder and app state:
  │                      incremental snapshots, retention, restore    → data
- ├─ heronite-images     decode/resize/blur pipeline and thumbnail cache (no GPUI)
+ ├─ heronite-images     decode/resize/blur pipeline and thumbnail cache (no GPUI);
+ │                      `public`: what an extension causes to be fetched
+ │                      reaches public addresses only
  ├─ heronite-sync       the cloud account: the library synced between PCs,
  │                      backups, game saves, screenshots (rclone)    → data, backup, metadata, launch
  ├─ heronite-launch     launch plans, game runtime, playtime, logs   → data
@@ -55,10 +57,10 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      read-only so far                             → platform
  ├─ heronite-metadata   registry of metadata sources (IGDB, Steam,
  │                      Lutris, VNDB, LaunchBox, HLTB, ...), the merge,
- │                      the review of unsure matches, artwork        → data
+ │                      the review of unsure matches, artwork        → data, images
  ├─ heronite-metadata-ext metadata sources as extensions: manifest,
  │                      package (folder / zip), installed ones, the
- │                      QuickJS sandbox that runs their scripts      → data, metadata
+ │                      QuickJS sandbox that runs their scripts      → data, metadata, images
  ├─ heronite-achievements achievements of Steam (the client's files),
  │                      GOG, Epic and RetroAchievements (ROM hashes
  │                      by the vendored rcheevos), and the local copy
@@ -835,27 +837,39 @@ text size) and applies it.
   (only the expected files, no links, no path out, size caps; SHA-256);
   `store` keeps the
   installed ones in `<data>/metadata-extensions/<id>/` with `install.json`,
-  replaced whole by renames; `engine` is the sandbox: QuickJS (`rquickjs`),
+  replaced whole by renames (`.kept/<id>.json`: who made one removed with
+  its settings kept, and its hosts); `engine` is the sandbox: QuickJS (`rquickjs`),
   the script compiled once to bytecode, each lookup in a fresh runtime on
   a thread of its own (memory, stack and time limits, no `eval`, no module
-  loader), `ctx` the only host object (`request`: the manifest's hosts
-  over https, checked again on every redirect, the app's user agent, the
-  manifest's rate, per-call request and byte budgets; `html`: CSS
-  selectors over `dom_query`); `record` checks and clamps what scripts
-  return like the built-in mappings; `source::ScriptSource` is the
+  loader; `arrays` wraps the generic `Array.prototype` methods against
+  array-likes the interrupt handler cannot stop), whose caller waits at
+  most each call's time and `GRACE`: past that the thread is left running
+  (`Limit::Stuck`, the extension stopped at once, a few such threads at
+  most per extension and in all), `ctx` the only host object (`request`:
+  the manifest's hosts over https, checked again on every redirect, sent
+  through `net::public_client`, which connects to public addresses only,
+  the app's user agent, the manifest's rate, per-call request and byte
+  budgets, every string copied out of the engine bounded first; `html`:
+  CSS selectors over `dom_query`, documents per call bounded); `record`
+  checks and clamps what scripts return like the built-in mappings, and
+  marks the pictures it names (`heronite_images::public::marked`) so the
+  images cache and the copy to `metadata-art` fetch them from public
+  addresses only; `source::ScriptSource` is the
   `MetadataSource` (failures in a row stop it, kept in `install.json`),
   `BrokenExtension` one that could not be loaded; `service::ExtensionsExt`
   is what the app calls on its `MetadataService` (`load_extensions` at
-  startup, `inspect_extension`, `install_extension`, `remove_extension`,
-  `installed_extensions`). `index` reads a list of extensions
+  startup, `inspect_extension`, `install_extension`, `install_approved`
+  — the package shown, by its SHA-256, its saved settings kept or not as
+  the user chose when its author or its hosts changed —,
+  `remove_extension`, `installed_extensions`). `index` reads a list of extensions
   (`index.json`, format 1, strictly: https only, sizes and ids checked);
   `lists` is the gallery's client: the app's list (`HERONITE_LIST`) and
   the user's (`settings.metadata.extensionLists`), fetched with the
   service's `Http`, the last good copy kept in
   `store_cache/extension-lists/`, `prepare` (both files downloaded and
   checked against the entry's SHA-256, then `inspect`, then the manifest
-  compared with the entry) and `install_prepared` (records the list in
-  `install.json`), `updates` (never applied by itself) and `Origin`
+  compared with the entry) and `install_prepared` / `install_approved`
+  (records the list in `install.json`), `updates` (never applied by itself) and `Origin`
   (file, the app's list, a list added, a list removed).
   `scripts/extensions-index.py` writes `extensions/index.json` from the
   folders; `tests/lists.rs` fails when it is out of date. The app's

@@ -221,7 +221,10 @@ impl<'a> Request<'a> {
             }
             req.call()
         }
-        .map_err(|e| anyhow::Error::new(Unreachable(format!("{}: {e}", self.url))))?;
+        .map_err(|e| match heronite_images::public::not_public(&e) {
+            Some(n) => anyhow::Error::new(n),
+            None => anyhow::Error::new(Unreachable(format!("{}: {e}", self.url))),
+        })?;
         let status = resp.status().as_u16();
         let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_owned);
         let content_type = header("content-type").unwrap_or_default();
@@ -339,16 +342,25 @@ impl Http {
 
 const MAX_REDIRECTS: u32 = 8;
 
+fn config() -> ureq::config::ConfigBuilder<ureq::typestate::AgentScope> {
+    ureq::Agent::config_builder()
+        .http_status_as_error(false)
+        .max_redirects(MAX_REDIRECTS)
+        .timeout_connect(Some(Duration::from_secs(10)))
+        .user_agent(BROWSER_UA)
+}
+
 impl Http {
     pub fn new(endpoints: Endpoints) -> Self {
-        let agent: ureq::Agent = ureq::Agent::config_builder()
-            .http_status_as_error(false)
-            .max_redirects(MAX_REDIRECTS)
-            .timeout_connect(Some(Duration::from_secs(10)))
-            .user_agent(BROWSER_UA)
-            .build()
-            .into();
-        Self { agent, endpoints }
+        Self { agent: config().build().into(), endpoints }
+    }
+
+    /// The same client, connecting to public addresses only and never
+    /// through a proxy (`heronite_images::public`): for what an extension
+    /// asks. A name that leads elsewhere fails with
+    /// [`heronite_images::public::NotPublic`].
+    pub fn public_only(&self) -> Self {
+        Self { agent: heronite_images::public::agent(config()), endpoints: self.endpoints.clone() }
     }
 
     pub fn get(&self, url: impl Into<String>) -> Request<'_> {

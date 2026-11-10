@@ -9,12 +9,20 @@ use dom_query::{Document, NodeId, Selection};
 use rquickjs::function::Opt;
 use rquickjs::{Array, Ctx, Function, Object, Value};
 
+use super::convert::text_within;
 use super::host::{type_error, Host};
 use std::rc::Rc;
 
 /// A document larger than this is refused (what the call downloaded is
 /// capped anyway; this bounds a string the script built).
 const MAX_HTML: usize = 4 * 1024 * 1024;
+/// Documents one call may parse, and their bytes together: they stay in the
+/// host's memory, outside the engine's limit, until the call ends.
+const MAX_DOCS: usize = 8;
+const MAX_PARSED: usize = 8 * 1024 * 1024;
+/// Tags (`<`) of the documents of one call together: what bounds their
+/// nodes, a few hundred bytes each (`"<br>".repeat(1e6)` is a million).
+const MAX_TAGS: usize = 200_000;
 /// Nodes `all` returns at most.
 const MAX_ALL: usize = 500;
 /// Handles one call may hold.
@@ -25,6 +33,9 @@ const MAX_NODES: usize = 20_000;
 pub(super) struct Docs {
     docs: Vec<Document>,
     nodes: Vec<(usize, NodeId)>,
+    /// Bytes and tags parsed in the call.
+    bytes: usize,
+    tags: usize,
 }
 
 impl Docs {
@@ -45,13 +56,20 @@ fn squash(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-pub(super) fn parse<'js>(ctx: &Ctx<'js>, host: &Rc<Host>, text: &str) -> rquickjs::Result<Value<'js>> {
-    if text.len() > MAX_HTML {
-        return Err(type_error(ctx, "the document is too large"));
-    }
+pub(super) fn parse<'js>(ctx: &Ctx<'js>, host: &Rc<Host>, text: &rquickjs::String<'js>) -> rquickjs::Result<Value<'js>> {
+    let text = text_within(text, MAX_HTML)?.ok_or_else(|| type_error(ctx, "the document is too large"))?;
     let handle = {
         let mut docs = host.docs.borrow_mut();
-        let doc = Document::from(text);
+        if docs.docs.len() >= MAX_DOCS {
+            return Err(type_error(ctx, &format!("more than {MAX_DOCS} documents in one call")));
+        }
+        let tags = text.bytes().filter(|b| *b == b'<').count();
+        if docs.bytes + text.len() > MAX_PARSED || docs.tags + tags > MAX_TAGS {
+            return Err(type_error(ctx, "the documents of one call are too large"));
+        }
+        docs.bytes += text.len();
+        docs.tags += tags;
+        let doc = Document::from(text.as_str());
         let root = doc.root().id;
         docs.docs.push(doc);
         let index = docs.docs.len() - 1;

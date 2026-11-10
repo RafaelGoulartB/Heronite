@@ -1,10 +1,13 @@
 //! Where an extension may send requests: the hosts of its manifest, checked
-//! on every address the script builds (and on every redirect), and the rate
+//! on every address the script builds (and on every redirect), the client
+//! that connects to public addresses only ([`public_client`]), and the rate
 //! the host keeps for it.
 
-use std::net::{IpAddr, ToSocketAddrs};
+use std::net::IpAddr;
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
+use heronite_metadata::Http;
 use parking_lot::Mutex;
 use url::{Host, Url};
 
@@ -124,42 +127,49 @@ pub fn check(text: &str, rules: &[HostRule]) -> Result<Url, Denied> {
     Ok(url)
 }
 
-/// Whether `addr` is this computer, the local network or otherwise not on
-/// the internet.
-fn is_private(addr: IpAddr) -> bool {
-    match addr {
-        IpAddr::V4(a) => {
-            a.is_loopback() || a.is_private() || a.is_link_local() || a.is_unspecified() || a.is_broadcast() || a.octets()[0] == 0
-                // 100.64.0.0/10, carrier-grade NAT.
-                || (a.octets()[0] == 100 && (a.octets()[1] & 0xc0) == 64)
+/// The client of every request a script sends: it connects only to public
+/// addresses ([`heronite_images::public`]), the ones it resolved and
+/// checked, never through a proxy. A name that leads elsewhere fails with
+/// [`heronite_images::public::NotPublic`].
+pub fn public_client() -> &'static Http {
+    static CLIENT: OnceLock<Http> = OnceLock::new();
+    CLIENT.get_or_init(|| Http::default().public_only())
+}
+
+/// `text` (an address) as it may appear in a message, the log, a stored
+/// state or the interface: without a user and password, a query or a
+/// fragment, which may hold a key.
+pub fn shown(text: &str) -> String {
+    match Url::parse(text) {
+        Ok(mut u) => {
+            let _ = u.set_username("");
+            let _ = u.set_password(None);
+            u.set_query(None);
+            u.set_fragment(None);
+            u.to_string()
         }
-        IpAddr::V6(a) => {
-            let s = a.segments();
-            a.is_loopback()
-                || a.is_unspecified()
-                || (s[0] & 0xfe00) == 0xfc00
-                || (s[0] & 0xffc0) == 0xfe80
-                || a.to_ipv4_mapped().is_some_and(|v4| is_private(IpAddr::V4(v4)))
-        }
+        Err(_) => text.split(['?', '#']).next().unwrap_or(text).chars().filter(|c| !c.is_control()).take(300).collect(),
     }
 }
 
-/// Resolves `url`'s host and refuses it when a name leads to a private
-/// address (a listed name pointed at the local network). Best effort: the
-/// request resolves the name again. `Ok(false)`: the name does not resolve.
-pub fn public(url: &Url) -> Result<bool, Denied> {
-    let Some(host) = url.host_str() else { return Err(Denied::NotAnAddress) };
-    let port = url.port_or_known_default().unwrap_or(443);
-    let Ok(addrs) = (host, port).to_socket_addrs() else { return Ok(false) };
-    let addrs: Vec<IpAddr> = addrs.map(|a| a.ip()).collect();
-    if addrs.iter().any(|a| is_private(*a)) {
-        return Err(Denied::Private(host.to_owned()));
+/// `text` with every http(s) address in it [`shown`]: what reaches the log,
+/// a stored state or the interface from a script (its errors, its log
+/// lines) names no query or fragment, which may hold a key.
+pub fn scrub(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = ["http://", "https://"].iter().filter_map(|p| rest.find(p)).min() {
+        out.push_str(&rest[..at]);
+        let end = rest[at..].find(|c: char| c.is_whitespace() || "\"'<>`()[]{}".contains(c)).map_or(rest.len(), |e| at + e);
+        out.push_str(&shown(&rest[at..end]));
+        rest = &rest[end..];
     }
-    Ok(!addrs.is_empty())
+    out.push_str(rest);
+    out
 }
 
 /// The rate of one extension, shared by all its calls: requests are spaced
-/// `interval` apart.
+/// `interval` apart. A slot is given only to a request that will use it.
 pub struct RateLimiter {
     interval: Duration,
     next: Mutex<Option<Instant>>,
@@ -170,14 +180,17 @@ impl RateLimiter {
         Self { interval, next: Mutex::new(None) }
     }
 
-    /// Takes the next free slot and returns when it is. A caller that gives
-    /// up still used it.
-    pub fn slot(&self) -> Instant {
+    /// Takes the next free slot when it comes no later than `before`, and
+    /// returns when it is; `None` (nothing taken) when it comes later.
+    pub fn slot(&self, before: Instant) -> Option<Instant> {
         let mut next = self.next.lock();
         let now = Instant::now();
         let at = next.map_or(now, |n| n.max(now));
+        if at > before {
+            return None;
+        }
         *next = Some(at + self.interval);
-        at
+        Some(at)
     }
 }
 
@@ -224,21 +237,45 @@ mod tests {
 
     #[test]
     fn a_name_that_leads_home_is_refused() {
-        let url = Url::parse("https://localhost/").unwrap();
-        assert!(matches!(public(&url), Err(Denied::Private(_))));
+        let e = public_client().get("https://localhost/").timeout(Duration::from_secs(5)).send().unwrap_err();
+        assert!(e.downcast_ref::<heronite_images::public::NotPublic>().is_some(), "{e:#}");
         for ip in ["10.0.0.1", "192.168.1.2", "172.16.0.1", "169.254.1.1", "100.64.0.1", "0.0.0.0", "::1", "fd00::1", "fe80::1"] {
-            assert!(is_private(ip.parse().unwrap()), "{ip}");
+            assert!(!heronite_images::public::is_public(ip.parse().unwrap()), "{ip}");
         }
-        assert!(!is_private("93.184.216.34".parse().unwrap()));
+        assert!(heronite_images::public::is_public("93.184.216.34".parse().unwrap()));
+    }
+
+    #[test]
+    fn messages_show_no_keys() {
+        assert_eq!(shown("https://user:pw@api.example.org/v1/search?key=secret&q=a#frag"), "https://api.example.org/v1/search");
+        assert_eq!(shown("/relative?key=secret"), "/relative");
+        assert_eq!(
+            scrub("Error: bad answer from https://api.example.org/s?api_key=secret (500), see \"http://x.org/a#t\"\n  at find"),
+            "Error: bad answer from https://api.example.org/s (500), see \"http://x.org/a\"\n  at find"
+        );
+        assert_eq!(scrub("no address here"), "no address here");
     }
 
     #[test]
     fn the_rate_spaces_requests() {
         let rate = RateLimiter::new(Duration::from_millis(100));
-        let a = rate.slot();
-        let b = rate.slot();
-        let c = rate.slot();
+        let later = Instant::now() + Duration::from_secs(60);
+        let a = rate.slot(later).unwrap();
+        let b = rate.slot(later).unwrap();
+        let c = rate.slot(later).unwrap();
         assert_eq!(b - a, Duration::from_millis(100));
         assert_eq!(c - b, Duration::from_millis(100));
+    }
+
+    #[test]
+    fn a_slot_too_late_is_not_taken() {
+        let rate = RateLimiter::new(Duration::from_secs(30));
+        let soon = Instant::now() + Duration::from_secs(10);
+        let first = rate.slot(soon).unwrap();
+        // The next one is 30 s away: refused, and nothing is used up.
+        for _ in 0..5 {
+            assert_eq!(rate.slot(soon), None);
+        }
+        assert_eq!(rate.slot(first + Duration::from_secs(31)), Some(first + Duration::from_secs(30)));
     }
 }

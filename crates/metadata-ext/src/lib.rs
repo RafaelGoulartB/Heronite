@@ -33,4 +33,4 @@ pub mod store;
 
 pub use error::ExtensionError;
 pub use limits::Limits;
-pub use service::{ExtensionState, ExtensionsExt, InstallAction, InstallOutcome, InstalledExtension, PackageInfo};
+pub use service::{Approval, ExtensionState, ExtensionsExt, InstallAction, InstallOutcome, InstalledExtension, PackageInfo};

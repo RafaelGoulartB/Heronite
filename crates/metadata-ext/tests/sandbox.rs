@@ -337,7 +337,8 @@ fn the_rate_is_kept_across_calls() {
     run_with(&env, "await ctx.http.get('https://api.example.org/json'); return 1;", json!({})).unwrap();
     assert!(started.elapsed() >= Duration::from_millis(450), "{:?}", started.elapsed());
     assert_eq!(server.count(|_| true), 4);
-    // A rate that leaves no time for a request ends the call.
+    // A rate that leaves no time for a request ends the call; the service
+    // could not be asked now, which is no failure of the extension.
     let slow = HostEnv { rate: Arc::new(RateLimiter::new(Duration::from_secs(60))), ..env };
     let e = run_with(
         &slow,
@@ -345,7 +346,26 @@ fn the_rate_is_kept_across_calls() {
         json!({}),
     )
     .unwrap_err();
-    assert!(matches!(e, CallError::Limit(Limit::Time, _)), "{e:?}");
+    assert!(matches!(e, CallError::Unreachable(_)) && !e.is_failure(), "{e:?}");
+}
+
+#[test]
+fn a_slow_rate_never_turns_into_failures() {
+    let (server, env) = served();
+    // One request every 2 s, calls of 1.5 s: a call while the next slot is
+    // too far gives up without using it.
+    let env = HostEnv { rate: Arc::new(RateLimiter::new(Duration::from_secs(2))), ..env };
+    let get = "return (await ctx.http.get('https://api.example.org/json')).status;";
+    let started = Instant::now();
+    assert_eq!(run_with(&env, get, json!({})).unwrap(), json!(200));
+    for _ in 0..6 {
+        let e = run_with(&env, get, json!({})).unwrap_err();
+        assert!(matches!(e, CallError::Unreachable(_)) && !e.is_failure(), "{e:?}");
+    }
+    // Once the slot comes, the next call goes out as if nothing happened.
+    std::thread::sleep((started + Duration::from_millis(2050)).saturating_duration_since(Instant::now()));
+    assert_eq!(run_with(&env, get, json!({})).unwrap(), json!(200));
+    assert_eq!(server.count(|_| true), 2);
 }
 
 #[test]
@@ -430,7 +450,7 @@ fn the_same_script_runs_on_many_threads_at_once() {
         let handles: Vec<_> = (0..12)
             .map(|i| {
                 let (script, env) = (&script, &env);
-                s.spawn(move || session(script, env, |c| c.call("find", Some(json!({"n": i.to_string()})))).unwrap().unwrap())
+                s.spawn(move || session(script, env, move |c| c.call("find", Some(json!({"n": i.to_string()})))).unwrap().unwrap())
             })
             .collect();
         handles.into_iter().map(|h| h.join().unwrap()).collect()

@@ -9,16 +9,26 @@ use heronite_metadata::http::{BodyTooLarge, APP_UA};
 use rquickjs::{Coerced, Ctx, Exception, Function, Object, Value};
 use url::Url;
 
+use heronite_images::public::NotPublic;
+
+use super::convert::text_within;
 use super::host::{type_error, Host};
 use super::{CallError, Limit};
 use crate::net::{self, Denied};
 
 /// Redirects one request may follow (each counts as a request too).
 const MAX_REDIRECTS: u32 = 5;
+/// The least time worth sending a request in.
+const MIN_REQUEST: Duration = Duration::from_millis(50);
 
 /// Headers a script may not set: the host sets them or they could change
 /// where the request goes.
 const FORBIDDEN_HEADERS: [&str; 7] = ["host", "user-agent", "content-length", "connection", "transfer-encoding", "te", "upgrade"];
+
+/// Bytes of all the header, query and form names and values of one
+/// request, and of its address.
+const MAX_OPTION_BYTES: usize = 64 * 1024;
+const MAX_ADDRESS_BYTES: usize = 8 * 1024;
 
 struct Outgoing {
     headers: Vec<(String, String)>,
@@ -26,27 +36,52 @@ struct Outgoing {
     content_type: Option<&'static str>,
 }
 
+/// The names and values of `object` (`headers`, `query` or `form`), each
+/// value as text, all within `budget` bytes, checked before each is copied
+/// out of the engine.
+fn pairs<'js>(ctx: &Ctx<'js>, object: &Object<'js>, what: &str, budget: &mut usize) -> rquickjs::Result<Vec<(String, String)>> {
+    let mut take = |s: &rquickjs::String<'js>| -> rquickjs::Result<String> {
+        let text = text_within(s, *budget)?
+            .ok_or_else(|| type_error(ctx, &format!("the {what} of a request are larger than {MAX_OPTION_BYTES} bytes")))?;
+        *budget -= text.len();
+        Ok(text)
+    };
+    let mut out = Vec::new();
+    for key in object.keys::<rquickjs::String>() {
+        let key = key?;
+        let value: Coerced<rquickjs::String> = object.get(key.clone())?;
+        out.push((take(&key)?, take(&value.0)?));
+    }
+    Ok(out)
+}
+
+/// A header name is a token; a value has no line breaks or other control
+/// characters (it would end the header and start another).
+fn valid_header(name: &str, value: &str) -> bool {
+    !name.is_empty()
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b))
+        && !value.chars().any(|c| c.is_control() && c != '\t')
+}
+
 fn options<'js>(ctx: &Ctx<'js>, url: &mut Url, opts: Option<&Object<'js>>) -> rquickjs::Result<Outgoing> {
     let mut out = Outgoing { headers: Vec::new(), body: None, content_type: None };
     let Some(opts) = opts else { return Ok(out) };
+    let mut budget = MAX_OPTION_BYTES;
     if let Some(headers) = opts.get::<_, Option<Object>>("headers")? {
-        for key in headers.keys::<String>() {
-            let key = key?;
+        for (key, value) in pairs(ctx, &headers, "headers", &mut budget)? {
             let lower = key.to_ascii_lowercase();
             if FORBIDDEN_HEADERS.contains(&lower.as_str()) || lower.starts_with("proxy-") {
                 return Err(type_error(ctx, &format!("the header {key} is set by the app")));
             }
-            let value: Coerced<String> = headers.get(&key)?;
-            out.headers.push((key, value.0));
+            if !valid_header(&key, &value) {
+                return Err(type_error(ctx, &format!("the header {key} is not a valid name and value")));
+            }
+            out.headers.push((key, value));
         }
     }
     if let Some(query) = opts.get::<_, Option<Object>>("query")? {
-        let mut pairs = url.query_pairs_mut();
-        for key in query.keys::<String>() {
-            let key = key?;
-            let value: Coerced<String> = query.get(&key)?;
-            pairs.append_pair(&key, &value.0);
-        }
+        let added = pairs(ctx, &query, "query", &mut budget)?;
+        url.query_pairs_mut().extend_pairs(added);
     }
     if url.query() == Some("") {
         url.set_query(None);
@@ -56,11 +91,7 @@ fn options<'js>(ctx: &Ctx<'js>, url: &mut Url, opts: Option<&Object<'js>>) -> rq
         out.content_type = Some("application/json");
     } else if let Some(form) = opts.get::<_, Option<Object>>("form")? {
         let mut enc = url::form_urlencoded::Serializer::new(String::new());
-        for key in form.keys::<String>() {
-            let key = key?;
-            let value: Coerced<String> = form.get(&key)?;
-            enc.append_pair(&key, &value.0);
-        }
+        enc.extend_pairs(pairs(ctx, &form, "form fields", &mut budget)?);
         out.body = Some(enc.finish());
         out.content_type = Some("application/x-www-form-urlencoded");
     } else if let Some(body) = opts.get::<_, Option<Coerced<String>>>("body")? {
@@ -77,10 +108,18 @@ fn abort(ctx: &Ctx<'_>, host: &Host, e: CallError) -> rquickjs::Error {
 }
 
 fn denied(ctx: &Ctx<'_>, host: &Host, url: &str, why: Denied) -> rquickjs::Error {
-    abort(ctx, host, CallError::Denied(format!("{url}: {why}")))
+    abort(ctx, host, CallError::Denied(format!("{}: {why}", net::shown(url))))
 }
 
-pub(super) fn send<'js>(ctx: &Ctx<'js>, host: &Host, post: bool, address: &str, opts: Option<Object<'js>>) -> rquickjs::Result<Value<'js>> {
+pub(super) fn send<'js>(
+    ctx: &Ctx<'js>,
+    host: &Host,
+    post: bool,
+    address: rquickjs::String<'js>,
+    opts: Option<Object<'js>>,
+) -> rquickjs::Result<Value<'js>> {
+    let address = text_within(&address, MAX_ADDRESS_BYTES)?.ok_or_else(|| type_error(ctx, "the address is too long"))?;
+    let address = address.as_str();
     let rules = host.env.hosts.clone();
     let mut url = net::check(address, &rules).map_err(|why| denied(ctx, host, address, why))?;
     let outgoing = options(ctx, &mut url, opts.as_ref())?;
@@ -95,7 +134,11 @@ pub(super) fn send<'js>(ctx: &Ctx<'js>, host: &Host, post: bool, address: &str, 
             Some(to) if (300..400).contains(&response.status) && response.status != 304 => {
                 redirects += 1;
                 if redirects > MAX_REDIRECTS {
-                    return Err(abort(ctx, host, CallError::Denied(format!("{url}: more than {MAX_REDIRECTS} redirects"))));
+                    return Err(abort(
+                        ctx,
+                        host,
+                        CallError::Denied(format!("{}: more than {MAX_REDIRECTS} redirects", net::shown(url.as_str()))),
+                    ));
                 }
                 let next = url.join(&to).map_err(|_| denied(ctx, host, &to, Denied::NotAnAddress))?;
                 url = net::check(next.as_str(), &rules).map_err(|why| denied(ctx, host, next.as_str(), why))?;
@@ -127,32 +170,28 @@ fn once(
     }
     let http = &host.env.http;
     let (target, routed) = http.route(url.as_str());
-    // A test serves the origin itself; elsewhere the name must not lead to
-    // this computer or the local network.
-    if !routed {
-        match net::public(url) {
-            Err(why) => return Err(denied(ctx, host, url.as_str(), why)),
-            Ok(false) => {
-                host.set_unreachable(format!("{}: the name does not resolve", url.host_str().unwrap_or("")));
-                return Err(Exception::throw_message(ctx, &format!("could not reach {url}")));
-            }
-            Ok(true) => {}
-        }
-    }
-    let slot = host.env.rate.slot();
-    if slot >= host.deadline() {
-        return Err(abort(ctx, host, CallError::Limit(Limit::Time, "the rate leaves no time for this request".into())));
-    }
+    let shown = net::shown(url.as_str());
+    // A test serves the origin itself; elsewhere the request goes through a
+    // client that connects to public addresses only (the address it
+    // checked is the one it connects to).
+    let client = if routed { http } else { net::public_client() };
+    // A slot of the rate is taken only when it leaves time for the request;
+    // the call's own time is the limit, so this is no failure of the
+    // extension: it could not be asked now.
+    let Some(slot) = host.env.rate.slot(host.deadline().checked_sub(MIN_REQUEST).unwrap_or_else(Instant::now)) else {
+        let why = "its rate leaves no time for this request in the call".to_owned();
+        return Err(abort(ctx, host, CallError::Unreachable(format!("{shown}: {why}"))));
+    };
     if let Some(wait) = slot.checked_duration_since(Instant::now()) {
         std::thread::sleep(wait);
     }
     let left = host.deadline().saturating_duration_since(Instant::now());
-    if left < Duration::from_millis(50) {
+    if left < MIN_REQUEST {
         return Err(abort(ctx, host, CallError::Limit(Limit::Time, format!("ran longer than {:?}", limits.time))));
     }
     let bytes_left = limits.total_bytes.saturating_sub(host.bytes.get());
     let max = limits.response_bytes.min(bytes_left);
-    let mut req = if post { http.post(target) } else { http.get(target) };
+    let mut req = if post { client.post(target) } else { client.get(target) };
     req = req.no_redirects().timeout(limits.request_timeout.min(left)).max_bytes(max).header("user-agent", APP_UA);
     for (k, v) in headers {
         req = req.header(k, v);
@@ -170,20 +209,21 @@ fn once(
         }
         Err(e) if e.downcast_ref::<BodyTooLarge>().is_some() => {
             let what = if max < limits.response_bytes { "all the answers of the call" } else { "one answer" };
-            Err(abort(ctx, host, CallError::Limit(Limit::Bytes, format!("{url}: {what} over the size limit"))))
+            Err(abort(ctx, host, CallError::Limit(Limit::Bytes, format!("{shown}: {what} over the size limit"))))
+        }
+        Err(e) if e.downcast_ref::<NotPublic>().is_some() => {
+            Err(denied(ctx, host, url.as_str(), Denied::Private(url.host_str().unwrap_or("").to_owned())))
         }
         Err(e) => {
-            let why = format!("{e:#}").replace(target_text(http, url).as_str(), url.as_str());
-            host.set_unreachable(why);
-            Err(Exception::throw_message(ctx, &format!("could not reach {url}")))
+            // The client's text names the address with its query: keep only
+            // what went wrong.
+            let why = format!("{e:#}");
+            let why = why.rsplit_once(": ").map_or(why.as_str(), |(_, w)| w).to_owned();
+            let message = format!("could not reach {shown}");
+            host.set_unreachable(format!("{shown}: {why}"), message.clone());
+            Err(Exception::throw_message(ctx, &message))
         }
     }
-}
-
-/// The address a request really went to (a test's server), to keep it out
-/// of messages.
-fn target_text(http: &heronite_metadata::Http, url: &Url) -> String {
-    http.route(url.as_str()).0
 }
 
 fn response_object<'js>(ctx: &Ctx<'js>, url: &Url, r: heronite_metadata::http::Response) -> rquickjs::Result<Value<'js>> {

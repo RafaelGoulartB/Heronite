@@ -67,11 +67,14 @@ pub fn parse_date(text: &str) -> Option<String> {
     month.map(|d| d.format("%Y-%m").to_string())
 }
 
-/// An http(s) picture address the manifest allows, else `None`.
+/// An http(s) picture address the manifest allows, else `None`. It is
+/// marked as an extension's (`heronite_images::public::marked`): whatever
+/// downloads it later, now or after a restart, reaches public addresses
+/// only.
 fn picture(v: Option<&Value>, rules: &[HostRule]) -> Option<String> {
     let s = v?.as_str()?.trim();
     (s.len() <= 2000).then_some(())?;
-    net::check(s, rules).ok().map(String::from)
+    net::check(s, rules).ok().map(|u| heronite_images::public::marked(u.as_str()))
 }
 
 /// A game a script found, as the host judged it.
@@ -89,6 +92,8 @@ pub struct Hit {
 /// `game.ids` and `game.hashes`.
 pub struct GameKeys<'a> {
     pub title: &'a str,
+    /// The release year the game's record has, if any.
+    pub year: Option<i32>,
     pub ids: &'a Map<String, Value>,
     pub hashes: &'a Map<String, Value>,
 }
@@ -119,6 +124,10 @@ fn judge(hit: &Map<String, Value>, title: &str, game: &GameKeys<'_>) -> MatchedB
 
 /// The hits of `find`, best first: those found by an id or a hash, then
 /// the same title, then the guesses, each group in the script's order.
+/// Several hits of the game's title are different games of one name
+/// ("Doom" of 1993 and of 2016): only the one of the game's year, if the
+/// game has one and a single hit has it, stays sure; the others are
+/// guesses.
 pub fn hits(value: &Value, game: &GameKeys<'_>, pictures: &[HostRule]) -> Vec<Hit> {
     let Value::Array(items) = value else { return Vec::new() };
     let mut out: Vec<Hit> = items
@@ -145,6 +154,16 @@ pub fn hits(value: &Value, game: &GameKeys<'_>, pictures: &[HostRule]) -> Vec<Hi
         })
         .take(MAX_HITS)
         .collect();
+    let exact = out.iter().filter(|h| h.matched_by == MatchedBy::ExactTitle).count();
+    if exact > 1 {
+        let of_year = |h: &Hit| game.year.is_some() && h.year == game.year;
+        let one_of_year = out.iter().filter(|h| h.matched_by == MatchedBy::ExactTitle && of_year(h)).count() == 1;
+        for h in out.iter_mut().filter(|h| h.matched_by == MatchedBy::ExactTitle) {
+            if !(one_of_year && of_year(h)) {
+                h.matched_by = MatchedBy::FuzzyTitle;
+            }
+        }
+    }
     let rank = |by: MatchedBy| match by {
         MatchedBy::ExactTitle => 1,
         MatchedBy::FuzzyTitle => 2,

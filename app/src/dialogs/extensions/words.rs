@@ -40,6 +40,7 @@ pub fn error(e: &ExtensionError) -> String {
         ExtensionError::NotAsListed(_) => {
             tr!("It is not what the list says it is (its name, version, fields or hosts differ), so nothing was installed.").into()
         }
+        ExtensionError::Changed => tr!("The package changed after it was shown, so nothing was installed. Open it again.").into(),
     }
 }
 
@@ -157,6 +158,7 @@ mod tests {
             ExtensionError::Download("x".into()),
             ExtensionError::Checksum("source.js".into()),
             ExtensionError::NotAsListed("x".into()),
+            ExtensionError::Changed,
         ];
         for e in &all {
             match e {
@@ -173,7 +175,8 @@ mod tests {
                 | ExtensionError::Io(_)
                 | ExtensionError::Download(_)
                 | ExtensionError::Checksum(_)
-                | ExtensionError::NotAsListed(_) => {}
+                | ExtensionError::NotAsListed(_)
+                | ExtensionError::Changed => {}
             }
         }
         all

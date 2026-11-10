@@ -14,14 +14,31 @@
 //!
 //! The thread has a known stack size, so the engine's stack limit holds
 //! whatever thread asked.
+//!
+//! The caller never waits for the thread past a call's time limit and
+//! [`GRACE`]. The interrupt handler stops a script's own code at the limit,
+//! but not a loop inside one of the engine's built-in functions
+//! (`Array.prototype.join.call({ length: 2 ** 53 - 1 })`) nor slow work in
+//! the host (an HTML parse): such a thread cannot be stopped from outside.
+//! It is left behind ([`Limit::Stuck`]): it keeps a processor core and up
+//! to the memory limit until it ends by itself or the app quits. The
+//! extension is stopped at once, at most [`MAX_STUCK_PER_EXTENSION`]
+//! threads of one extension and [`MAX_STUCK`] in all may be left behind,
+//! and past that no session starts. [`arrays`] refuses the known cases
+//! before they run, so a thread is left behind only for what it misses.
 
+mod arrays;
 mod convert;
 mod host;
 mod html;
 mod request;
 
 use std::rc::Rc;
+use std::sync::mpsc::{sync_channel, RecvTimeoutError};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use parking_lot::Mutex;
 
 use rquickjs::context::intrinsic;
 use rquickjs::module::WriteOptions;
@@ -34,6 +51,25 @@ use crate::ExtensionError;
 
 /// The stack of a script's thread; the engine's own limit is below it.
 const THREAD_STACK: usize = 8 * 1024 * 1024;
+
+/// How long past a call's time limit its caller waits for the thread: the
+/// interrupt handler, a request's own timeout and the host's work after it
+/// fit in it.
+pub const GRACE: Duration = Duration::from_secs(2);
+/// Threads of one extension left running past their time; at this many it
+/// starts no other session until the app restarts.
+pub const MAX_STUCK_PER_EXTENSION: usize = 1;
+/// Threads of all extensions left running past their time; at this many
+/// no extension starts a session until the app restarts.
+pub const MAX_STUCK: usize = 3;
+
+/// The threads left running, by extension id.
+static STUCK: Mutex<Vec<String>> = parking_lot::const_mutex(Vec::new());
+
+/// How many threads of extension `id` are still running past their time.
+pub fn stuck(id: &str) -> usize {
+    STUCK.lock().iter().filter(|s| *s == id).count()
+}
 
 /// What the context offers besides the base objects: no `eval` (nor the
 /// `Function` constructor, which needs it), no `performance`, no `WeakRef`.
@@ -60,6 +96,10 @@ pub enum Limit {
     NeverSettled,
     /// It returned more data than a source may give.
     Size,
+    /// It ran past its time and [`GRACE`] where nothing can interrupt it
+    /// (inside a built-in function, or the host's own work); its thread was
+    /// left behind. The extension is stopped at once.
+    Stuck,
 }
 
 /// Why a call of a script gave nothing.
@@ -72,13 +112,16 @@ pub enum CallError {
     Denied(String),
     /// It threw, or its module did not load.
     Script(String),
+    /// Not started: too many threads of other extensions are stuck
+    /// ([`MAX_STUCK`]). Not this extension's fault.
+    Busy(String),
 }
 
 impl CallError {
     /// Whether it counts towards the failures that stop the extension (an
-    /// unreachable network does not).
+    /// unreachable network or other extensions' stuck threads do not).
     pub fn is_failure(&self) -> bool {
-        !matches!(self, Self::Unreachable(_))
+        !matches!(self, Self::Unreachable(_) | Self::Busy(_))
     }
 }
 
@@ -89,6 +132,7 @@ impl std::fmt::Display for CallError {
             Self::Limit(l, m) => write!(f, "limit ({l:?}): {m}"),
             Self::Denied(m) => write!(f, "denied: {m}"),
             Self::Script(m) => write!(f, "script error: {m}"),
+            Self::Busy(m) => write!(f, "not started: {m}"),
         }
     }
 }
@@ -223,25 +267,129 @@ impl Calls for JsCalls<'_> {
     }
 }
 
-/// Runs `f` with the exported functions of `script`, in a fresh runtime on
-/// a thread of its own (see the module docs). Blocking.
-pub fn session<T: Send>(script: &Script, env: &HostEnv, f: impl FnOnce(&mut dyn Calls) -> T + Send) -> Result<T, CallError> {
-    std::thread::scope(|scope| {
-        let thread = std::thread::Builder::new()
-            .name(format!("ext:{}", env.id))
-            .stack_size(THREAD_STACK)
-            .spawn_scoped(scope, || run(script, env, f))
-            .map_err(|e| CallError::Script(format!("could not start the engine: {e}")))?;
-        thread.join().unwrap_or_else(|_| Err(CallError::Script("the engine stopped unexpectedly".into())))
-    })
+/// When the call running on a session's thread must end, and whether its
+/// caller stopped waiting; shared by the thread and its caller.
+pub(crate) struct Watch {
+    state: Mutex<WatchState>,
 }
 
-fn run<T>(script: &Script, env: &HostEnv, f: impl FnOnce(&mut dyn Calls) -> T) -> Result<T, CallError> {
+struct WatchState {
+    deadline: Instant,
+    done: bool,
+    abandoned: bool,
+}
+
+impl Watch {
+    fn new(deadline: Instant) -> Self {
+        Self { state: Mutex::new(WatchState { deadline, done: false, abandoned: false }) }
+    }
+
+    /// A new call (or the module's load) starts and must end by `deadline`.
+    pub(crate) fn set_deadline(&self, deadline: Instant) {
+        self.state.lock().deadline = deadline;
+    }
+
+    fn deadline(&self) -> Instant {
+        self.state.lock().deadline
+    }
+
+    /// The caller gives up on thread of extension `id`: `false` when the
+    /// thread finished meanwhile (its answer is in the channel).
+    fn abandon(&self, id: &str) -> bool {
+        let mut state = self.state.lock();
+        if state.done {
+            return false;
+        }
+        state.abandoned = true;
+        STUCK.lock().push(id.to_owned());
+        true
+    }
+}
+
+/// Marks the thread's work done when dropped, and frees its place among
+/// the stuck ones if its caller had given up on it.
+struct Finished {
+    watch: Arc<Watch>,
+    id: String,
+}
+
+impl Drop for Finished {
+    fn drop(&mut self) {
+        let mut state = self.watch.state.lock();
+        state.done = true;
+        if state.abandoned {
+            let mut stuck = STUCK.lock();
+            if let Some(i) = stuck.iter().position(|s| *s == self.id) {
+                stuck.swap_remove(i);
+            }
+            log::info!("Extension {}: a call left running past its time has ended", self.id);
+        }
+    }
+}
+
+/// Runs `f` with the exported functions of `script`, in a fresh runtime on
+/// a thread of its own (see the module docs). Blocking, but never longer
+/// than each call's time limit and [`GRACE`]: past that the thread is left
+/// behind and this returns [`Limit::Stuck`].
+pub fn session<T: Send + 'static>(
+    script: &Script,
+    env: &HostEnv,
+    f: impl FnOnce(&mut dyn Calls) -> T + Send + 'static,
+) -> Result<T, CallError> {
+    {
+        let stuck = STUCK.lock();
+        let own = stuck.iter().filter(|s| **s == env.id).count();
+        if own >= MAX_STUCK_PER_EXTENSION {
+            return Err(CallError::Limit(
+                Limit::Stuck,
+                "a call of it that ran past its time limit is still running; it is not started again until the app restarts".into(),
+            ));
+        }
+        if stuck.len() >= MAX_STUCK {
+            return Err(CallError::Busy(format!("{} calls of extensions are still running past their time limit", stuck.len())));
+        }
+    }
+    let watch = Arc::new(Watch::new(Instant::now() + env.limits.time));
+    let (tx, rx) = sync_channel(1);
+    let (script, thread_env, thread_watch) = (script.clone(), env.clone(), watch.clone());
+    std::thread::Builder::new()
+        .name(format!("ext:{}", env.id))
+        .stack_size(THREAD_STACK)
+        .spawn(move || {
+            let _finished = Finished { watch: thread_watch.clone(), id: thread_env.id.clone() };
+            let _ = tx.send(run(&script, &thread_env, &thread_watch, f));
+        })
+        .map_err(|e| CallError::Script(format!("could not start the engine: {e}")))?;
+    loop {
+        let until = watch.deadline() + GRACE;
+        match rx.recv_timeout(until.saturating_duration_since(Instant::now())) {
+            Ok(out) => return out,
+            Err(RecvTimeoutError::Disconnected) => return Err(CallError::Script("the engine stopped unexpectedly".into())),
+            // A later call of the session moved the deadline on.
+            Err(RecvTimeoutError::Timeout) if Instant::now() < watch.deadline() + GRACE => {}
+            Err(RecvTimeoutError::Timeout) => {
+                if !watch.abandon(&env.id) {
+                    return rx.recv().unwrap_or_else(|_| Err(CallError::Script("the engine stopped unexpectedly".into())));
+                }
+                log::warn!("Extension {}: a call ran past its time limit and could not be stopped; its thread is left running", env.id);
+                return Err(CallError::Limit(
+                    Limit::Stuck,
+                    format!(
+                        "it ran past its time limit ({:?}) inside the script engine and could not be stopped; that call keeps using a processor core until it ends or the app restarts",
+                        env.limits.time
+                    ),
+                ));
+            }
+        }
+    }
+}
+
+fn run<T>(script: &Script, env: &HostEnv, watch: &Arc<Watch>, f: impl FnOnce(&mut dyn Calls) -> T) -> Result<T, CallError> {
     let engine = |e: rquickjs::Error| CallError::Script(format!("engine: {e}"));
     // Declared before the runtime so it is dropped after it: the module is
     // read with `JS_READ_OBJ_ROM_DATA`, which keeps pointing into the buffer.
     let bytecode = script.bytecode.clone();
-    let host = Rc::new(Host::new(env.clone()));
+    let host = Rc::new(Host::new(env.clone(), watch.clone()));
     let rt = Runtime::new().map_err(engine)?;
     rt.set_memory_limit(env.limits.memory);
     rt.set_max_stack_size(env.limits.stack);
@@ -250,6 +398,8 @@ fn run<T>(script: &Script, env: &HostEnv, f: impl FnOnce(&mut dyn Calls) -> T) -
     let context = Context::custom::<Intrinsics>(&rt).map_err(engine)?;
     let out = context.with(|ctx| -> Result<T, CallError> {
         host.begin();
+        let guarded = arrays::guard(&ctx).map_err(|e| host.error(&ctx, e))?;
+        host.settle(&ctx, guarded.into_value())?;
         // SAFETY: the bytes are what `Script::compile` wrote with this
         // build's engine, never read from disk or from the extension.
         let module = unsafe { Module::load(ctx.clone(), &bytecode) }.map_err(|e| host.error(&ctx, e))?;

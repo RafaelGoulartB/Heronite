@@ -24,6 +24,7 @@ mod fetch;
 pub mod fx;
 pub mod geometry;
 mod loader;
+pub mod public;
 mod resize;
 pub mod thumbs;
 

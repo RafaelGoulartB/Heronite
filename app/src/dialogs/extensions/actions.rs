@@ -9,7 +9,7 @@ use gpui_kit::*;
 use heronite_i18n::tr;
 use heronite_metadata_ext::lists;
 use heronite_metadata_ext::package::{MANIFEST, README, SCRIPT};
-use heronite_metadata_ext::{ExtensionError, ExtensionsExt, InstallOutcome};
+use heronite_metadata_ext::{Approval, ExtensionError, ExtensionsExt, InstallOutcome};
 
 use super::{words, Confirm, ExtensionsDialog, Face, Offer, Package};
 use crate::ui::fields::choose_path;
@@ -28,15 +28,24 @@ impl ExtensionsDialog {
     /// The installer of `path`, reading it off the UI thread.
     pub(super) fn open_file(&mut self, path: PathBuf, back: bool, cx: &mut Context<Self>) {
         let path = package_path(&path);
-        self.face =
-            Face::Confirm(Box::new(Confirm { from: Package::File(path.clone()), info: None, error: None, installing: false, back }));
+        self.face = Face::Confirm(Box::new(Confirm {
+            from: Package::File(path.clone()),
+            info: None,
+            error: None,
+            installing: false,
+            back,
+            keep_settings: false,
+        }));
         let service = self.hub.read(cx).service.clone();
         cx.spawn(async move |this, cx| {
             let read = cx.background_spawn(async move { service.inspect_extension(&path) }).await;
             this.update(cx, |d, cx| {
                 if let Face::Confirm(c) = &mut d.face {
                     match read {
-                        Ok(info) => c.info = Some(Box::new(info)),
+                        Ok(info) => {
+                            c.keep_settings = info.keeps_settings_by_default();
+                            c.info = Some(Box::new(info));
+                        }
                         Err(e) => c.error = Some(e),
                     }
                 }
@@ -86,9 +95,10 @@ impl ExtensionsDialog {
                 d.preparing = None;
                 match prepared {
                     Ok(p) => {
+                        let keep_settings = p.info.keeps_settings_by_default();
                         let info = Some(Box::new(p.info.clone()));
                         let from = Package::List { prepared: Arc::new(p), origin };
-                        d.face = Face::Confirm(Box::new(Confirm { from, info, error: None, installing: false, back: true }));
+                        d.face = Face::Confirm(Box::new(Confirm { from, info, error: None, installing: false, back: true, keep_settings }));
                     }
                     Err(e) => d.entry_error = Some((id, e)),
                 }
@@ -101,23 +111,26 @@ impl ExtensionsDialog {
     }
 
     /// Installs what the installer shows (the user saw what it is, so the
-    /// same or an older version goes ahead too).
+    /// same or an older version goes ahead too): that package, by its
+    /// SHA-256, keeping its saved settings or not as the user chose.
     pub(super) fn install(&mut self, cx: &mut Context<Self>) {
         let Face::Confirm(c) = &mut self.face else { return };
-        if c.installing || c.info.is_none() {
+        let Some(info) = &c.info else { return };
+        if c.installing {
             return;
         }
+        let approval = Approval { sha256: info.sha256.clone(), keep_settings: !info.asks_about_settings() || c.keep_settings };
         c.installing = true;
         c.error = None;
         let service = self.hub.read(cx).service.clone();
         let job: Box<dyn FnOnce() -> Result<InstallOutcome, ExtensionError> + Send> = match &c.from {
             Package::File(path) => {
                 let path = path.clone();
-                Box::new(move || service.install_extension(&path, true))
+                Box::new(move || service.install_approved(&path, &approval))
             }
             Package::List { prepared, .. } => {
                 let prepared = prepared.clone();
-                Box::new(move || lists::install_prepared(&service, &prepared, true))
+                Box::new(move || lists::install_approved(&service, &prepared, &approval))
             }
         };
         cx.spawn(async move |this, cx| {

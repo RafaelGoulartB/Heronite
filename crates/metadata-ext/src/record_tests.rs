@@ -7,7 +7,12 @@ fn rules() -> Vec<HostRule> {
 }
 
 fn keys<'a>(title: &'a str, ids: &'a Map<String, Value>, hashes: &'a Map<String, Value>) -> GameKeys<'a> {
-    GameKeys { title, ids, hashes }
+    GameKeys { title, year: None, ids, hashes }
+}
+
+/// `url` as a picture of an extension is kept: marked as one.
+fn mark(url: &str) -> String {
+    heronite_images::public::marked(url)
 }
 
 fn all_fields() -> Vec<String> {
@@ -48,20 +53,50 @@ fn a_title_match_is_sure_only_when_the_titles_agree() {
         { "id": "4" },
         { "id": 5, "title": "<b>Portal</b> 2", "year": 1800, "thumb": "https://elsewhere.org/a.jpg", "platform": "PC" },
     ]);
-    let hits = hits(&found, &keys("Portal 2", &ids, &hashes), &rules());
+    // The game's year picks "2" among the two of its title.
+    let game = GameKeys { year: Some(2011), ..keys("Portal 2", &ids, &hashes) };
+    let hits = hits(&found, &game, &rules());
     let summary: Vec<(&str, MatchedBy)> = hits.iter().map(|h| (h.id.as_str(), h.matched_by)).collect();
     assert_eq!(
         summary,
-        [("2", MatchedBy::ExactTitle), ("5", MatchedBy::ExactTitle), ("1", MatchedBy::FuzzyTitle), ("3", MatchedBy::FuzzyTitle)],
+        [("2", MatchedBy::ExactTitle), ("1", MatchedBy::FuzzyTitle), ("3", MatchedBy::FuzzyTitle), ("5", MatchedBy::FuzzyTitle)],
         "the same title first, a doubtful one is a guess, no id or no title is dropped"
     );
-    assert_eq!(hits[0].thumb.as_deref(), Some("https://x.img.example.org/a.jpg"));
+    assert_eq!(hits[0].thumb.as_deref(), Some(mark("https://x.img.example.org/a.jpg").as_str()));
     assert_eq!(
-        (hits[1].title.as_str(), hits[1].year, hits[1].thumb.as_deref()),
+        (hits[3].title.as_str(), hits[3].year, hits[3].thumb.as_deref()),
         ("Portal 2", None, None),
         "plain text; no year 1800; no foreign host"
     );
-    assert_eq!(hits[1].platform.as_deref(), Some("PC"));
+    assert_eq!(hits[3].platform.as_deref(), Some("PC"));
+}
+
+#[test]
+fn several_games_of_the_title_are_a_guess() {
+    let (ids, hashes) = (Map::new(), Map::new());
+    let found = json!([
+        { "id": "doom-1993", "title": "Doom (1993 video game)", "year": 1993 },
+        { "id": "doom-2016", "title": "Doom (2016 video game)", "year": 2016 },
+    ]);
+    // Both read "Doom" once normalised, as the Wikipedia example's titles do.
+    let found =
+        json!(found.as_array().unwrap().iter().map(|h| json!({ "id": h["id"], "title": "Doom", "year": h["year"] })).collect::<Vec<_>>());
+    let judged = |year: Option<i32>, found: &Value| -> Vec<MatchedBy> {
+        let game = GameKeys { year, ..keys("Doom", &ids, &hashes) };
+        hits(found, &game, &rules()).iter().map(|h| h.matched_by).collect()
+    };
+    assert_eq!(judged(None, &found), [MatchedBy::FuzzyTitle, MatchedBy::FuzzyTitle], "the game's year unknown");
+    assert_eq!(judged(Some(2005), &found), [MatchedBy::FuzzyTitle, MatchedBy::FuzzyTitle], "neither of its year");
+    let by_year: Vec<(String, MatchedBy)> = {
+        let game = GameKeys { year: Some(2016), ..keys("Doom", &ids, &hashes) };
+        hits(&found, &game, &rules()).into_iter().map(|h| (h.id, h.matched_by)).collect()
+    };
+    assert_eq!(by_year, [("doom-2016".into(), MatchedBy::ExactTitle), ("doom-1993".into(), MatchedBy::FuzzyTitle)]);
+    // Two of the same year cannot be told apart either.
+    let twins = json!([{ "id": "a", "title": "Doom", "year": 2016 }, { "id": "b", "title": "Doom", "year": 2016 }]);
+    assert_eq!(judged(Some(2016), &twins), [MatchedBy::FuzzyTitle, MatchedBy::FuzzyTitle]);
+    // One hit of the title is sure as before.
+    assert_eq!(judged(None, &json!([{ "id": "a", "title": "Doom" }])), [MatchedBy::ExactTitle]);
 }
 
 #[test]
@@ -123,9 +158,10 @@ fn a_record_is_clamped_like_the_built_in_mappings() {
     assert_eq!(md.critic_score.map(|s| s.get()), Some(95.0));
     assert_eq!(md.age_ratings.len(), 1);
     assert_eq!(md.websites, ["https://portal2.example.org"]);
-    assert_eq!(md.cover_url.as_deref(), Some("https://api.example.org/c.jpg"), "the first cover wins");
+    assert_eq!(md.cover_url.as_deref(), Some(mark("https://api.example.org/c.jpg").as_str()), "the first cover wins");
     assert_eq!(md.cover_square_url, None, "plain http to a host listed for https only");
-    assert_eq!(md.cover_wide_url.as_deref(), Some("https://x.img.example.org/w.jpg"));
+    assert_eq!(md.cover_wide_url.as_deref(), Some(mark("https://x.img.example.org/w.jpg").as_str()));
+    assert!(md.cover_url.as_deref().is_some_and(heronite_images::public::is_extension_url), "downloaded the safe way, later too");
     assert_eq!(md.hero_url, None);
     assert_eq!(r.adult, ["coverWide"]);
 

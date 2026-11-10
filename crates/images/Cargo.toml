@@ -14,6 +14,8 @@ fast_image_resize = "6"
 lz4_flex = { version = "0.11", default-features = false, features = ["std", "safe-encode", "safe-decode"] }
 sha2 = "0.10"
 ureq = "3"
+# Checking and joining the addresses of a redirect (`public`).
+url = "2"
 log.workspace = true
 
 [dev-dependencies]

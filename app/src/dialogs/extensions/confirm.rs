@@ -2,9 +2,12 @@
 //! the games it is for, what it fills), what it is allowed to do, the
 //! settings it asks for, where it comes from and what that guarantees,
 //! then Cancel · Install. A newer version reads "Update <name> 1.0.0 →
-//! 1.1.0"; the same or an older one says so before it goes ahead. A
-//! package that does not read says why in plain words, with the engine's
-//! words under it for its author.
+//! 1.1.0"; the same or an older one says so before it goes ahead. One made
+//! by someone else than the one installed, or that connects to new hosts,
+//! says so, and asks whether what the user entered in its settings goes to
+//! it (not by default when its author changed). A package that does not
+//! read says why in plain words, with the engine's words under it for its
+//! author.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -18,7 +21,7 @@ use crate::icons::Icon;
 use crate::pages::settings::metadata_labels as labels;
 use crate::pages::{status_pill, tag_pill};
 use crate::theme;
-use crate::ui::controls::{action_button, button, ButtonKind};
+use crate::ui::controls::{action_button, button, toggle_row, ButtonKind};
 use crate::ui::fields::{field_label, meta_text};
 use crate::ui::icon;
 
@@ -36,6 +39,10 @@ pub(super) fn title_of(info: &PackageInfo) -> String {
 /// What replacing the installed version does, for anything but a new install.
 fn replacing(info: &PackageInfo) -> Option<String> {
     let installed = info.installed.clone().unwrap_or_default();
+    if info.action != InstallAction::New && info.asks_about_settings() {
+        // Whether its settings stay is the question under it.
+        return Some(tr!("It replaces version {installed}. On or off and its place stay.", installed));
+    }
     Some(match info.action {
         InstallAction::New => return None,
         InstallAction::Update => {
@@ -100,6 +107,31 @@ fn error_block(e: &heronite_metadata_ext::ExtensionError) -> Div {
     )
 }
 
+/// What changed since the version installed (or removed with its settings
+/// kept): another author, new hosts. Calm, but plain.
+fn changes(info: &PackageInfo) -> Option<Div> {
+    let mut lines = Vec::new();
+    if info.author_changed {
+        let author = info.installed_author.clone().unwrap_or_default();
+        lines.push(tr!("Made by someone other than the one installed ({author}).", author));
+    }
+    if !info.new_hosts.is_empty() {
+        lines.push(tr!("Connects to new hosts: {hosts}", hosts = info.new_hosts.join(", ")));
+    }
+    if lines.is_empty() {
+        return None;
+    }
+    let c = theme::readable(theme::warning());
+    Some(div().flex().flex_col().gap(px(4.)).children(lines.into_iter().map(|t| {
+        div()
+            .flex()
+            .items_start()
+            .gap(px(8.))
+            .child(div().pt(px(1.)).child(icon(Icon::Warning, px(14.), c)))
+            .child(div().text_size(px(12.5)).line_height(px(17.)).text_color(theme::text_primary()).child(t))
+    })))
+}
+
 fn package(info: &PackageInfo) -> Div {
     let d = &info.descriptor;
     let mut pills = div().flex().flex_wrap().gap(px(6.)).child(tag_pill(words::kind(info.kind))).child(tag_pill(labels::audience(d)));
@@ -139,6 +171,7 @@ fn package(info: &PackageInfo) -> Div {
         .children(
             replacing(info).map(|t| div().text_size(px(12.5)).line_height(px(17.)).text_color(theme::readable(theme::accent())).child(t)),
         )
+        .children(changes(info))
         .child(pills)
         .child(
             div()
@@ -161,7 +194,25 @@ impl ExtensionsDialog {
         }
     }
 
-    pub(super) fn render_confirm(&self, _cx: &mut Context<Self>) -> Div {
+    /// Whether what the user entered in its settings goes to this package.
+    fn keep_settings_choice(&self, c: &Confirm, cx: &mut Context<Self>) -> Div {
+        div().child(
+            toggle_row(
+                "ext-keep-settings",
+                tr!("Keep what you entered in its settings, keys included"),
+                Some(tr!("Only if you trust this package with them: it can send them to the hosts it connects to.")),
+                c.keep_settings,
+            )
+            .on_click(cx.listener(|this, _, _, cx| {
+                if let Face::Confirm(c) = &mut this.face {
+                    c.keep_settings = !c.keep_settings;
+                }
+                cx.notify();
+            })),
+        )
+    }
+
+    pub(super) fn render_confirm(&self, cx: &mut Context<Self>) -> Div {
         let Face::Confirm(c) = &self.face else { return div() };
         let mut col = div().flex().flex_col().gap(px(16.)).pb(px(4.));
         match &c.info {
@@ -172,7 +223,11 @@ impl ExtensionsDialog {
                     .child(meta_text(tr!("Nothing was installed. Choose another file, or ask the source's author for one that works.")));
             }
             Some(info) => {
-                col = col.child(package(info)).child(trust(&origin_of(c)));
+                col = col.child(package(info));
+                if info.asks_about_settings() {
+                    col = col.child(self.keep_settings_choice(c, cx));
+                }
+                col = col.child(trust(&origin_of(c)));
                 if !info.warnings.is_empty() {
                     col = col.child(meta_text(tr!("Its source.toml has keys this Heronite does not know; they are left out.")));
                 }
@@ -247,5 +302,19 @@ mod tests {
         i.action = InstallAction::Downgrade;
         assert_eq!(title_of(&i), "Go back to Wikipedia 1.0.0");
         assert!(replacing(&info(InstallAction::New, None)).is_none());
+    }
+
+    #[test]
+    fn another_author_or_new_hosts_are_said() {
+        let mut i = info(InstallAction::Update, Some("0.9.0"));
+        assert!(super::changes(&i).is_none());
+        i.author_changed = true;
+        i.installed_author = Some("Alice".into());
+        i.new_hosts = vec!["collect.evil.example".into()];
+        assert!(super::changes(&i).is_some());
+        // Its settings are the question under it, not promised to stay.
+        i.saved_settings = true;
+        assert!(i.asks_about_settings() && !i.keeps_settings_by_default());
+        assert!(!replacing(&i).unwrap().contains("settings"));
     }
 }

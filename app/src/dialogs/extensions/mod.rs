@@ -71,6 +71,9 @@ struct Confirm {
     installing: bool,
     /// Opened from the gallery: the back arrow returns to it.
     back: bool,
+    /// Keep the values saved for its settings (asked when it comes from
+    /// another author or connects to new hosts).
+    keep_settings: bool,
 }
 
 enum Face {
