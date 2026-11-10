@@ -265,8 +265,8 @@ impl ModsDialog {
         cx.notify();
     }
 
-    /// Kicker with "Experimental", game title, the game's support label and
-    /// the status line, the master switch and close.
+    /// The "Mods" line (icon, kicker, "Experimental"), the game's title, its
+    /// support label and the status line; the master switch and close.
     fn render_header(&mut self, v: Option<&View>, cx: &mut Context<Self>) -> Div {
         let (status, active) = match v {
             None => (tr!("Loading…").to_string(), false),
@@ -291,22 +291,20 @@ impl ModsDialog {
             .child(
                 div()
                     .flex()
-                    .flex_none()
-                    .items_center()
-                    .justify_center()
-                    .size(px(46.))
-                    .rounded(px(12.))
-                    .bg(theme::accent_tint())
-                    .child(icon(Icon::Extension, px(24.), theme::accent())),
-            )
-            .child(
-                div()
-                    .flex()
                     .flex_col()
                     .flex_1()
                     .min_w_0()
-                    .gap(px(1.))
-                    .child(div().flex().items_center().gap(px(8.)).child(kicker(tr!("Mods"))).child(self.experimental_label()))
+                    .gap(px(2.))
+                    // The icon belongs to "Mods", not to the game named under it.
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .child(icon(Icon::Extension, px(15.), theme::accent()))
+                            .child(kicker(tr!("Mods")))
+                            .child(div().ml(px(2.)).child(self.experimental_label())),
+                    )
                     .child(dialog_title(self.game.title.clone()).truncate())
                     .child(
                         div()

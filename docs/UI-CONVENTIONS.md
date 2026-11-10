@@ -487,8 +487,8 @@ by the setting each comes from (`HERONITE_DEBUG_PREVIEW=1` opens it).
 
 **Mods manager** (`dialogs/mods/`, `docs/MODS.md`): a 720px `drawer` for one game, opened by the game action "Mods" (context
 menu next to Settings, palette; installed PC games, not emulated, not console mode), by the "Mods" row of the facts card
-("12 · 10 on", only once the game has mods) and by the toast's "Open" of a finished install. Header: kicker with an amber
-"Experimental" pill, game title, the game's support label ("Should work" green, "Needs extra steps" amber, "Untested game"
+("12 · 10 on", only once the game has mods) and by the toast's "Open" of a finished install. Header: the "Mods" line (the puzzle icon, the kicker
+and an amber "Experimental" pill; no icon tile beside the game's name), game title, the game's support label ("Should work" green, "Needs extra steps" amber, "Untested game"
 neutral, "Most mods won't work" red; `heronite_mods::support`) before a one-line status, the "Play with mods" switch; both
 labels say why under the pointer (`ui::tooltip_titled`: a title over the sentence). Tabs Installed, Browse, Game, and Plugins
 for Bethesda games. Installed: notices as tinted cards (`render_jobs::tinted`: game folder not found, FUSE problem with "Open
