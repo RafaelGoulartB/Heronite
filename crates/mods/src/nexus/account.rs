@@ -64,8 +64,6 @@ pub fn validate(api_key: &str) -> Result<Account, String> {
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::fs::PermissionsExt;
-
     use super::*;
 
     #[test]
@@ -97,8 +95,12 @@ mod tests {
         assert_eq!(load_account(&root), None);
         let stored = StoredAccount::new(" abc ", Account { name: "N".into(), user_id: 3, ..Default::default() });
         save_account(&root, &stored).unwrap();
-        let mode = std::fs::metadata(root.nexus_account()).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o600);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(root.nexus_account()).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
         let back = load_account(&root).unwrap();
         assert_eq!((back.api_key.as_str(), back.account.user_id), ("abc", 3));
         assert!(!back.validated_at.is_empty());

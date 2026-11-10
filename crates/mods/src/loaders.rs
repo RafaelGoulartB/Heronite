@@ -80,7 +80,7 @@ pub fn target_exe(game_dir: &Path, rel: &str, relative: bool) -> String {
 pub fn is_target(current: &str, game_dir: &Path, rel: &str) -> bool {
     let current = current.trim().replace('\\', "/").to_lowercase();
     let rel = rel.to_lowercase();
-    let absolute = game_dir.join(&rel).to_string_lossy().to_lowercase();
+    let absolute = game_dir.join(&rel).to_string_lossy().replace('\\', "/").to_lowercase();
     current == rel || current.trim_start_matches("./") == rel || current == absolute
 }
 
@@ -90,6 +90,14 @@ pub fn is_target(current: &str, game_dir: &Path, rel: &str) -> bool {
 pub fn steam_launch_line(loader: &Loader) -> Option<String> {
     let from = loader.steam_replaces?;
     Some(format!("bash -c 'exec \"${{@/{from}/{}}}\"' -- %command%", loader.file))
+}
+
+/// The same for Steam on Windows, which has no shell to rewrite the command:
+/// the loader's full path first, then `%command%`. Steam starts the loader
+/// with the game's command as its arguments, which the loaders ignore.
+pub fn steam_launch_line_windows(loader: &Loader, game_dir: &Path, rel: &str) -> Option<String> {
+    loader.steam_replaces?;
+    Some(format!("\"{}\" %command%", game_dir.join(rel.replace('/', "\\")).display()))
 }
 
 #[cfg(test)]
@@ -147,9 +155,16 @@ mod tests {
     fn the_setting_and_the_steam_line() {
         let game = Path::new("/games/Skyrim");
         assert_eq!(target_exe(game, "skse64_loader.exe", true), "skse64_loader.exe");
-        assert_eq!(target_exe(game, "skse64_loader.exe", false), "/games/Skyrim/skse64_loader.exe");
+        assert_eq!(target_exe(game, "skse64_loader.exe", false), game.join("skse64_loader.exe").to_string_lossy());
         assert!(is_target("skse64_loader.exe", game, "skse64_loader.exe"));
         assert!(is_target("/games/Skyrim/SKSE64_loader.exe", game, "skse64_loader.exe"));
+        assert!(is_target(r"C:\Games\Skyrim\SKSE64_loader.exe", Path::new(r"C:\Games\Skyrim"), "skse64_loader.exe"));
+        if cfg!(windows) {
+            let line = steam_launch_line_windows(&LOADERS[0], Path::new(r"D:\Steam\common\Skyrim"), "skse64_loader.exe");
+            assert_eq!(line.as_deref(), Some(r#""D:\Steam\common\Skyrim\skse64_loader.exe" %command%"#));
+        }
+        let me2 = LOADERS.iter().find(|l| l.name == "ModEngine 2").unwrap();
+        assert!(steam_launch_line_windows(me2, game, "Game/modengine2_launcher.exe").is_none());
         assert!(!is_target("", game, "skse64_loader.exe"));
         assert!(!is_target("/games/Skyrim/SkyrimSE.exe", game, "skse64_loader.exe"));
         assert_eq!(steam_launch_line(&LOADERS[0]).unwrap(), "bash -c 'exec \"${@/SkyrimSELauncher.exe/skse64_loader.exe}\"' -- %command%");

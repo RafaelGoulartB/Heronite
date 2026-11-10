@@ -1,6 +1,6 @@
 //! Bethesda's `Plugins.txt`: the plugins of the enabled mods are listed in
-//! the Wine prefix while the game runs, and the user's own file is put back
-//! afterwards.
+//! the user's `AppData\Local` (the Wine prefix's, or on Windows the real
+//! one) while the game runs, and the user's own file is put back afterwards.
 
 use std::collections::HashSet;
 use std::fs;
@@ -16,6 +16,16 @@ use crate::model::ModList;
 use crate::paths::GameDirs;
 
 const HEADER: &str = "# This file is used by the game to keep track of your downloaded content.";
+
+/// Where a game keeps the files of its user.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UserHome<'a> {
+    /// A Wine prefix (the folder holding `drive_c`, or its `pfx`).
+    Prefix(&'a Path),
+    /// Windows: `%LOCALAPPDATA%` and the Documents folder (which can be
+    /// redirected, to OneDrive for one).
+    Native { local_app_data: &'a Path, documents: &'a Path },
+}
 
 /// Puts the user's `Plugins.txt` back when dropped.
 #[derive(Debug)]
@@ -34,13 +44,13 @@ impl PluginsGuard {
 /// Writes the plugin list of the enabled mods in `list`. `None` when the
 /// prefix has no user folder yet (a first launch makes it; the next launch
 /// writes the list). The folder is found as `drive_c/users/<user>/AppData/
-/// Local/<spec folder>` of `prefix` (or its `pfx`).
+/// Local/<spec folder>` of a prefix (or its `pfx`), and as `%LOCALAPPDATA%/// <spec folder>` on Windows.
 ///
 /// `game_dir` is the game's folder as it is on disk: call this before the
 /// mods are mounted over it, or the mods' own plugins would count as the
 /// game's when old games are ordered by file time.
-pub fn write(prefix: &Path, spec: &PluginsSpec, dirs: &GameDirs, list: &ModList, game_dir: &Path) -> Result<Option<PluginsGuard>, String> {
-    let Some(folder) = app_data_folder(prefix, spec)? else { return Ok(None) };
+pub fn write(home: UserHome, spec: &PluginsSpec, dirs: &GameDirs, list: &ModList, game_dir: &Path) -> Result<Option<PluginsGuard>, String> {
+    let Some(folder) = app_data_folder(home, spec)? else { return Ok(None) };
     let file = folder.join("Plugins.txt");
     Swap::recover(&file)?;
 
@@ -69,8 +79,12 @@ pub(crate) fn prefix_users(prefix: &Path) -> Vec<(String, PathBuf)> {
 
 /// The folder for the game's `Plugins.txt`, made if no build of the game has
 /// made it yet.
-fn app_data_folder(prefix: &Path, spec: &PluginsSpec) -> Result<Option<PathBuf>, String> {
-    let homes: Vec<(String, PathBuf)> = prefix_users(prefix).into_iter().map(|(n, home)| (n, home.join("AppData/Local"))).collect();
+fn app_data_folder(home: UserHome, spec: &PluginsSpec) -> Result<Option<PathBuf>, String> {
+    let homes: Vec<(String, PathBuf)> = match home {
+        UserHome::Prefix(prefix) => prefix_users(prefix).into_iter().map(|(n, home)| (n, home.join("AppData/Local"))).collect(),
+        UserHome::Native { local_app_data, .. } if local_app_data.is_dir() => vec![("steamuser".into(), local_app_data.to_path_buf())],
+        UserHome::Native { .. } => Vec::new(),
+    };
     if homes.is_empty() {
         return Ok(None);
     }
@@ -229,7 +243,7 @@ mod tests {
             mod_with("b", &["B.esp", "B2.esl", "Skyrim.esm"], true),
         ];
         list.disabled_plugins = vec!["b2.ESL".into()];
-        let guard = write(&e.prefix, &spec("489830"), &e.dirs, &list, &e.game).unwrap().unwrap();
+        let guard = write(UserHome::Prefix(&e.prefix), &spec("489830"), &e.dirs, &list, &e.game).unwrap().unwrap();
         let expected = format!("{HEADER}\r\n*ForeignCC.esl\r\nOld.esp\r\n*M.esm\r\nB2.esl\r\n*A.esp\r\n*B.esp\r\n");
         assert_eq!(text(&folder.join("Plugins.txt")), expected);
         drop(guard);
@@ -243,7 +257,7 @@ mod tests {
         fs::create_dir_all(e.prefix.join("drive_c/users/steamuser")).unwrap();
         let mut list = ModList::new("g", "Skyrim");
         list.mods = vec![mod_with("a", &["A.esp"], true)];
-        let guard = write(&e.prefix, &spec("489830"), &e.dirs, &list, &e.game).unwrap().unwrap();
+        let guard = write(UserHome::Prefix(&e.prefix), &spec("489830"), &e.dirs, &list, &e.game).unwrap().unwrap();
         let folder = e.prefix.join("drive_c/users/steamuser/AppData/Local/Skyrim Special Edition");
         assert!(folder.join("Plugins.txt").exists(), "the folder is made under steamuser");
         drop(guard);
@@ -257,7 +271,7 @@ mod tests {
         let gog = local(&e, "bob", "Skyrim Special Edition GOG");
         let mut list = ModList::new("g", "Skyrim");
         list.mods = vec![mod_with("a", &["A.esp"], true)];
-        let _g = write(&e.prefix, &spec("489830"), &e.dirs, &list, &e.game).unwrap().unwrap();
+        let _g = write(UserHome::Prefix(&e.prefix), &spec("489830"), &e.dirs, &list, &e.game).unwrap().unwrap();
         assert!(gog.join("Plugins.txt").exists());
         assert!(!e.prefix.join("drive_c/users/Public/AppData/Local/Skyrim Special Edition/Plugins.txt").exists());
     }
@@ -269,8 +283,8 @@ mod tests {
         fs::write(folder.join("Plugins.txt"), "*Mine.esp\r\n").unwrap();
         let mut list = ModList::new("g", "Skyrim");
         list.mods = vec![mod_with("a", &["A.esp"], true)];
-        std::mem::forget(write(&e.prefix, &spec("489830"), &e.dirs, &list, &e.game).unwrap());
-        let g = write(&e.prefix, &spec("489830"), &e.dirs, &list, &e.game).unwrap().unwrap();
+        std::mem::forget(write(UserHome::Prefix(&e.prefix), &spec("489830"), &e.dirs, &list, &e.game).unwrap());
+        let g = write(UserHome::Prefix(&e.prefix), &spec("489830"), &e.dirs, &list, &e.game).unwrap().unwrap();
         assert!(text(&folder.join("Plugins.txt")).contains("*Mine.esp\r\n*A.esp"));
         assert_eq!(text(&folder.join("Plugins.txt")).matches("A.esp").count(), 1);
         drop(g);
@@ -278,11 +292,27 @@ mod tests {
     }
 
     #[test]
+    fn windows_lists_them_in_local_app_data() {
+        let e = env();
+        let (local_app_data, documents) = (e.prefix.join("Local"), e.prefix.join("Documents"));
+        let home = UserHome::Native { local_app_data: &local_app_data, documents: &documents };
+        let mut list = ModList::new("g", "Skyrim");
+        list.mods = vec![mod_with("a", &["A.esp"], true)];
+        assert!(write(home, &spec("489830"), &e.dirs, &list, &e.game).unwrap().is_none(), "no AppData/Local: nothing to write");
+        fs::create_dir_all(&local_app_data).unwrap();
+        let guard = write(home, &spec("489830"), &e.dirs, &list, &e.game).unwrap().unwrap();
+        let file = local_app_data.join("Skyrim Special Edition/Plugins.txt");
+        assert_eq!(text(&file), format!("{HEADER}\r\n*A.esp\r\n"));
+        drop(guard);
+        assert!(!file.exists());
+    }
+
+    #[test]
     fn no_users_means_nothing_to_write() {
         let t = tempfile::tempdir().unwrap();
         let dirs = ModsRoot::at(t.path()).game("g");
         let list = ModList::new("g", "Skyrim");
-        assert!(write(&t.path().join("none"), &spec("489830"), &dirs, &list, t.path()).unwrap().is_none());
+        assert!(write(UserHome::Prefix(&t.path().join("none")), &spec("489830"), &dirs, &list, t.path()).unwrap().is_none());
     }
 
     #[test]
@@ -298,7 +328,7 @@ mod tests {
             fs::create_dir_all(p.parent().unwrap()).unwrap();
             fs::write(p, "x").unwrap();
         }
-        let guard = write(&e.prefix, &spec("22330"), &e.dirs, &list, &e.game).unwrap().unwrap();
+        let guard = write(UserHome::Prefix(&e.prefix), &spec("22330"), &e.dirs, &list, &e.game).unwrap().unwrap();
         assert_eq!(text(&folder.join("Plugins.txt")), format!("{HEADER}\r\nZ.esp\r\nA.esp\r\n"));
         let mtime = |id: &str, f: &str| e.dirs.mod_dir(id).join("data").join(f).metadata().unwrap().modified().unwrap();
         let own = e.game.join("Data/Oblivion.esm").metadata().unwrap().modified().unwrap();

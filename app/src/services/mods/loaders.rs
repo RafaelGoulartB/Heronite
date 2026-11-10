@@ -53,7 +53,12 @@ pub(super) fn cards(
 
 fn card(found: Found, list: &ModList, game_dir: &Path, through_steam: bool, current: &str) -> LoaderCard {
     let start = if through_steam {
-        LoaderStart::Steam { line: loaders::steam_launch_line(found.loader) }
+        let line = if cfg!(windows) {
+            loaders::steam_launch_line_windows(found.loader, game_dir, &found.rel)
+        } else {
+            loaders::steam_launch_line(found.loader)
+        };
+        LoaderStart::Steam { line }
     } else if loaders::is_target(current, game_dir, &found.rel) {
         LoaderStart::On
     } else {
@@ -142,6 +147,11 @@ mod tests {
         assert_eq!(on.start, LoaderStart::On);
         let steam = card(found[0].clone(), &list, &game_dir, true, "");
         let LoaderStart::Steam { line } = steam.start else { panic!() };
-        assert!(line.unwrap().contains("SkyrimSELauncher.exe/skse64_loader.exe"));
+        let line = line.unwrap();
+        if cfg!(windows) {
+            assert_eq!(line, format!("\"{}\" %command%", game_dir.join("skse64_loader.exe").display()));
+        } else {
+            assert!(line.contains("SkyrimSELauncher.exe/skse64_loader.exe"), "{line}");
+        }
     }
 }

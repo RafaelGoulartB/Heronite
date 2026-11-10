@@ -1,0 +1,22 @@
+{
+  "Cannot use {path}: it is not a folder": "{path} kann nicht verwendet werden: Es ist kein Ordner",
+  "Could not download fuse-overlayfs: {error}": "fuse-overlayfs konnte nicht heruntergeladen werden: {error}",
+  "Heronite needs FUSE (fusermount3) to apply mods. Install the fuse3 package.": "Heronite braucht FUSE (fusermount3), um Mods anzuwenden. Installiere das Paket fuse3.",
+  "Heronite needs FUSE to apply mods, but /dev/fuse is missing. Load the fuse kernel module.": "Heronite braucht FUSE, um Mods anzuwenden, aber /dev/fuse fehlt. Lade das Kernelmodul fuse.",
+  "Mods cannot be applied over {path}": "Über {path} können keine Mods angewendet werden",
+  "Mods could not be applied: {error}": "Die Mods konnten nicht angewendet werden: {error}",
+  "Not a valid game key: {key}": "Kein gültiger Spielschlüssel: {key}",
+  "The archive has no files to install": "Das Archiv enthält keine Dateien zum Installieren",
+  "The fuse-overlayfs download is corrupt (its checksum does not match)": "Der Download von fuse-overlayfs ist beschädigt (die Prüfsumme stimmt nicht)",
+  "The game is running with mods; close it first": "Das Spiel läuft mit Mods; schließe es zuerst",
+  "The mods folder and the game folder cannot be inside each other": "Der Mod-Ordner und der Spielordner dürfen nicht ineinander liegen",
+  "The overwrite folder is empty": "Der Überschreibungsordner ist leer",
+  "The path {path} is not allowed": "Der Pfad {path} ist nicht erlaubt",
+  "fuse-overlayfs did not mount {path}: {error}": "fuse-overlayfs hat {path} nicht eingehängt: {error}",
+  "fuse-overlayfs failed: {error}": "fuse-overlayfs ist fehlgeschlagen: {error}",
+  "fuse-overlayfs is needed to apply mods and could not be found. Install the fuse-overlayfs package.": "fuse-overlayfs wird zum Anwenden von Mods gebraucht und wurde nicht gefunden. Installiere das Paket fuse-overlayfs.",
+  "fuse-overlayfs is not available for {arch}; install it with your package manager": "fuse-overlayfs gibt es nicht für {arch}; installiere es mit deinem Paketmanager",
+  "{n} enabled mod is missing its files: {names}. Reinstall or remove it in Mods.": "{n} aktivierter Mod hat keine Dateien: {names}. Installiere ihn neu oder entferne ihn unter Mods.",
+  "{n} enabled mods are missing their files: {names}. Reinstall or remove them in Mods.": "{n} aktivierte Mods haben keine Dateien: {names}. Installiere sie neu oder entferne sie unter Mods.",
+  "{path} is still mounted from an earlier run and could not be unmounted": "{path} ist von einem früheren Lauf noch eingehängt und konnte nicht ausgehängt werden"
+}

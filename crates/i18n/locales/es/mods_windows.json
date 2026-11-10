@@ -1,0 +1,13 @@
+{
+  "An optional Windows feature. Not used yet.": "Una característica opcional de Windows. Aún no se usa.",
+  "Could not put {file} into the game folder: {error}": "No se pudo poner {file} en la carpeta del juego: {error}",
+  "Could not set Heronite for the {scheme} links: {error}": "No se pudo configurar Heronite para los enlaces {scheme}: {error}",
+  "Hard links and copies": "Enlaces duros y copias",
+  "Mods apply only when the game is started from Heronite. Their files are put into the game's folder while it runs and taken out when it ends; what the game writes there goes to the mods' overwrite folder.": "Los mods solo se aplican cuando el juego se inicia desde Heronite. Sus archivos se ponen en la carpeta del juego mientras se ejecuta y se quitan cuando termina; lo que el juego escribe ahí va a la carpeta de sobrescritura de los mods.",
+  "Need Developer Mode or an administrator. Not used.": "Necesitan el modo de desarrollador o un administrador. No se usan.",
+  "Projected File System": "Projected File System",
+  "Symbolic links": "Enlaces simbólicos",
+  "The game folder {path} is not there (an unplugged drive?)": "La carpeta del juego {path} no está (¿una unidad desconectada?)",
+  "The mods of an earlier run could not be taken out of the game folder: {error}": "No se pudieron quitar de la carpeta del juego los mods de una ejecución anterior: {error}",
+  "While the game runs, the mods' files are in its folder: linked when they are on the same drive as the mods, copied otherwise. The game's own files a mod replaces are set aside and put back when it ends, or at the next start after a crash.": "Mientras el juego se ejecuta, los archivos de los mods están en su carpeta: enlazados cuando están en la misma unidad que los mods, copiados si no. Los archivos propios del juego que un mod reemplaza se apartan y se devuelven cuando termina, o en el siguiente inicio tras un fallo."
+}

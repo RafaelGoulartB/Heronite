@@ -147,7 +147,9 @@ mod tests {
     #[test]
     fn lists_the_files_two_mods_share() {
         let (_t, dirs, _list) = setup(&[("a", true, &["Data/B.esp", "Data/a.esp", "x"]), ("b", true, &["data/b.esp", "Data/A.esp", "y"])]);
-        assert_eq!(files_between(&dirs, "b", "a"), ["Data/A.esp", "data/b.esp"]);
+        // Windows puts `Data/A.esp` into the `data` folder b already has.
+        let a = if cfg!(windows) { "data/A.esp" } else { "Data/A.esp" };
+        assert_eq!(files_between(&dirs, "b", "a"), [a, "data/b.esp"]);
         assert!(files_between(&dirs, "b", "missing").is_empty());
     }
 

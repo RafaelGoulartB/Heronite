@@ -25,6 +25,10 @@ pub(super) struct Facts {
 pub(super) fn resolve(paths: &DataPaths, game: &CollectionGame) -> Facts {
     let through_steam = game.launch_kind.as_deref() == Some("steam-uri");
     let dir = game_folders(paths, game).into_iter().find(|(kind, _)| *kind == FolderKind::Install).map(|(_, dir)| dir);
+    // Windows: no prefix, and every PC game is a Windows game.
+    if cfg!(windows) {
+        return Facts { dir, prefix: None, through_steam, native: false };
+    }
     let steam_id = game.steam_app_id.as_deref().filter(|id| !id.is_empty());
     let prefix = match (through_steam, steam_id) {
         // Steam keeps the prefix beside the library the game is installed in.

@@ -1,7 +1,8 @@
 # Mods
 
 Heronite manages mods per game, MO2-style: every mod lives in a folder of its
-own and the game's folder is never written. When a game with mods on starts
+own and, on Linux, the game's folder is never written (Windows: see
+[Windows](#windows)). When a game with mods on starts
 from Heronite, `fuse-overlayfs` is mounted **over the game's own folder**: the
 enabled mods are layers above the game's files (the last mod of the list wins
 a file), and whatever the game writes while it runs lands in the game's
@@ -204,3 +205,49 @@ still on its folder (`deploy::unmount_ours`).
 - At start: unfinished installs are swept and stale overlays unmounted (not
   when the start is a game launch: its own mount is being made).
 - Settings → Mods: the account, who opens the links, fuse-overlayfs and FUSE.
+
+## Windows
+
+Windows has no overlay file system, and Heronite does not hook a game's file
+calls (MO2's usvfs). So while the game runs, the enabled mods' files are **in
+its folder**, and they come out again when it ends (`journal_deploy`):
+
+- **Link, else copy.** Each file is a hard link to the mod's copy when the
+  mods root and the game are on the same volume, and a copy otherwise
+  (another drive, FAT, a share). The first failed link makes the rest of
+  that deployment copy. Text files (`.ini .cfg .json .xml .txt .toml .yaml
+  .yml .log`) and files under 64 KiB are always copied, so a game that
+  rewrites one never writes into the mod through a link.
+- **The game's own files** that a mod replaces are moved to
+  `<mods root>/<game key>/.backup/<path>` and put back afterwards.
+- **Journal first.** `deploy.json` (the plan, then the size and time of each
+  placed file) and `deploy.snapshot` (the game folder's list) are written
+  before the game folder is touched. `restore` is idempotent: after a crash at
+  any step it puts the folder back. It runs when the session ends (the guard),
+  when an adopted game ends (`GameMods::release`), at start for every game
+  that is not running (`deployment::cleanup_stale`), and before the next
+  deployment. A failed restore keeps the journal for the next try.
+- **What the game wrote** goes to the overwrite folder, as on Linux: files
+  that were not in the snapshot, and copies of ours whose size or time
+  changed. The overwrite folder is the top layer of the next deployment. Not
+  caught: changes to the game's own files no mod replaced (they stay, as
+  without mods), game files the game deleted, and in-place writes into a
+  linked file.
+- While a journal exists the game counts as running with mods
+  (`deployment::in_use`): removing, updating and emptying are refused.
+- **Proxy DLLs** need nothing: Windows loads the DLL in the game folder before
+  System32's, so there is no `WINEDLLOVERRIDES`, and nothing is offered for
+  Steam's launch options. A script extender's Steam line is
+  `"<game folder>\skse64_loader.exe" %command%`.
+- **Bethesda**: `Plugins.txt` in `%LOCALAPPDATA%\<game>`, the `*Custom.ini`
+  keys in `<Documents>\My Games\<game>`. Documents comes from the known
+  folder, so OneDrive redirection is followed.
+- **Links**: `nxm://` and `ror2mm://` under `HKCU\Software\Classes`, for this
+  user, only when Settings → Mods is asked to.
+- Not used: symbolic links (they need Developer Mode or admin, and some games
+  and anti-cheat refuse reparse points) and the Projected File System (an
+  optional feature that is never turned on from here). Settings → Mods shows
+  whether either is available.
+
+Storage adds, per game: `deploy.json`, `deploy.snapshot` and `.backup/`, only
+while mods are in the game folder.

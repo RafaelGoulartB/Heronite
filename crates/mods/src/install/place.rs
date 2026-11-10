@@ -177,11 +177,24 @@ fn transfer(src: &Path, dst: &Path, mode: Transfer) -> std::io::Result<()> {
 
 /// Archives carry read-only files; the owner can always change a mod's files.
 fn make_writable(path: &Path) {
-    use std::os::unix::fs::PermissionsExt;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(m) = path.metadata() {
+            let mode = m.permissions().mode();
+            if mode & 0o200 == 0 {
+                let _ = fs::set_permissions(path, fs::Permissions::from_mode(mode | 0o200));
+            }
+        }
+    }
+    // The read-only attribute; Windows has no world-writable bit to worry about.
+    #[cfg(windows)]
     if let Ok(m) = path.metadata() {
-        let mode = m.permissions().mode();
-        if mode & 0o200 == 0 {
-            let _ = fs::set_permissions(path, fs::Permissions::from_mode(mode | 0o200));
+        let mut p = m.permissions();
+        if p.readonly() {
+            #[allow(clippy::permissions_set_readonly_false)]
+            p.set_readonly(false);
+            let _ = fs::set_permissions(path, p);
         }
     }
 }
@@ -292,8 +305,8 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let (src, out) = (t.path().join("src"), t.path().join("out"));
         put(src.join("d/a.txt"), "a");
-        std::os::unix::fs::symlink("/etc", src.join("d/evil")).unwrap();
-        std::os::unix::fs::symlink("/etc/passwd", src.join("d/pw")).unwrap();
+        crate::fsutil::test_symlink(Path::new("/etc"), &src.join("d/evil"));
+        crate::fsutil::test_symlink(Path::new("/etc/passwd"), &src.join("d/pw"));
         fs::create_dir_all(&out).unwrap();
         let cancel = AtomicBool::new(false);
         Placer::new(&out, Vec::new(), Transfer::Move, &cancel).place(&src.join("d"), true, &comps("x")).unwrap();

@@ -75,6 +75,8 @@ pub(crate) fn entries(dir: &Path) -> Vec<(String, bool)> {
 /// fine.
 pub(crate) fn remove_any(path: &Path) -> io::Result<()> {
     match path.symlink_metadata() {
+        // A link to a folder on Windows is removed with `remove_dir`.
+        Ok(m) if m.is_symlink() => fs::remove_file(path).or_else(|e| fs::remove_dir(path).map_err(|_| e)),
         Ok(m) if m.is_dir() => fs::remove_dir_all(path),
         Ok(_) => fs::remove_file(path),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
@@ -92,6 +94,18 @@ pub(crate) fn totals(root: &Path) -> (u64, u64) {
     (files, bytes)
 }
 
+/// Makes a symbolic link to a folder for a test; whether it could. Windows
+/// needs Developer Mode or admin for one, and a test without it checks the
+/// rest only.
+#[cfg(test)]
+pub(crate) fn test_symlink(target: &Path, link: &Path) -> bool {
+    #[cfg(unix)]
+    let made = std::os::unix::fs::symlink(target, link);
+    #[cfg(windows)]
+    let made = std::os::windows::fs::symlink_dir(target, link);
+    made.is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,11 +115,11 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         fs::create_dir(t.path().join("Textures")).unwrap();
         fs::write(t.path().join("a.esp"), b"x").unwrap();
-        std::os::unix::fs::symlink("/etc", t.path().join("evil")).unwrap();
+        let linked = test_symlink(Path::new("/etc"), &t.path().join("evil"));
         assert_eq!(find_ci(t.path(), "textures"), Some(("Textures".into(), true)));
         assert_eq!(find_ci(t.path(), "A.ESP"), Some(("a.esp".into(), false)));
         assert_eq!(find_ci(t.path(), "evil"), None);
         assert_eq!(entries(t.path()), vec![("Textures".to_string(), true), ("a.esp".to_string(), false)]);
-        assert_eq!(totals(t.path()).0, 2, "the link counts as a file and is not entered");
+        assert_eq!(totals(t.path()).0, if linked { 2 } else { 1 }, "the link counts as a file and is not entered");
     }
 }

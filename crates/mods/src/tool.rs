@@ -1,5 +1,7 @@
 //! `fuse-overlayfs` and `fusermount3`: finding them, and fetching the
-//! overlay tool once when the system has none.
+//! overlay tool once when the system has none. On Windows nothing is needed
+//! (the files are put in place, [`crate::journal_deploy`]); [`support`]
+//! tells what the system offers there instead.
 
 use std::ffi::OsStr;
 use std::io::Read;
@@ -42,8 +44,15 @@ fn on_path(name: &str, path: Option<&OsStr>) -> Option<PathBuf> {
 }
 
 fn is_executable(p: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    p.metadata().is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        p.metadata().is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+    }
+    #[cfg(not(unix))]
+    {
+        p.is_file()
+    }
 }
 
 /// `fusermount3`, else `fusermount`: what libfuse calls to mount and unmount
@@ -59,20 +68,54 @@ pub struct Support {
     pub overlay: Option<PathBuf>,
     pub fusermount: Option<PathBuf>,
     pub dev_fuse: bool,
+    /// Windows: the files go into the game folder, nothing else is needed.
+    pub windows: Option<WindowsSupport>,
+}
+
+/// What Windows offers beyond hard links and copies. Neither is used to
+/// apply mods; Settings → Mods shows them, and nothing here turns them on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct WindowsSupport {
+    /// The Projected File System optional feature is on.
+    pub projfs: bool,
+    /// This user may make symbolic links (Developer Mode or admin).
+    pub symlinks: bool,
 }
 
 pub fn support(tools_bin: &Path) -> Support {
-    Support { overlay: find(tools_bin), fusermount: fusermount(), dev_fuse: Path::new("/dev/fuse").exists() }
+    #[cfg(windows)]
+    {
+        let _ = tools_bin;
+        Support { overlay: None, fusermount: None, dev_fuse: false, windows: Some(windows_support()) }
+    }
+    #[cfg(not(windows))]
+    {
+        Support { overlay: find(tools_bin), fusermount: fusermount(), dev_fuse: Path::new("/dev/fuse").exists(), windows: None }
+    }
+}
+
+/// ProjFS: its filter driver and library are in System32 only while the
+/// feature is on. Symbolic links: one is tried in the temp folder.
+#[cfg(windows)]
+fn windows_support() -> WindowsSupport {
+    let system = PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into())).join("System32");
+    let projfs = system.join("ProjectedFSLib.dll").is_file() && system.join("drivers").join("prjflt.sys").is_file();
+    let probe = std::env::temp_dir().join(format!("heronite-symlink-probe-{}", std::process::id()));
+    let symlinks = std::os::windows::fs::symlink_file(std::env::temp_dir(), &probe).is_ok();
+    let _ = std::fs::remove_file(&probe);
+    WindowsSupport { projfs, symlinks }
 }
 
 impl Support {
     pub fn ready(&self) -> bool {
-        self.overlay.is_some() && self.fusermount.is_some() && self.dev_fuse
+        self.windows.is_some() || (self.overlay.is_some() && self.fusermount.is_some() && self.dev_fuse)
     }
 
     /// What is missing, as a sentence for the user; `None` when all is there.
     pub fn problem(&self) -> Option<String> {
-        if self.fusermount.is_none() {
+        if self.windows.is_some() {
+            None
+        } else if self.fusermount.is_none() {
             Some(tr!("Heronite needs FUSE (fusermount3) to apply mods. Install the fuse3 package.").to_string())
         } else if !self.dev_fuse {
             Some(tr!("Heronite needs FUSE to apply mods, but /dev/fuse is missing. Load the fuse kernel module.").to_string())
@@ -164,13 +207,16 @@ fn download(url: &str, progress: &mut dyn FnMut(Progress), cancel: &AtomicBool) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
+    #[cfg(unix)]
     fn exe(path: &Path) {
         std::fs::write(path, b"#!/bin/sh\n").unwrap();
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 
+    #[cfg(unix)]
     #[test]
     fn find_prefers_env_then_path_then_tools_bin() {
         let t = tempfile::tempdir().unwrap();
@@ -202,19 +248,23 @@ mod tests {
         assert!(!target.exists(), "nothing is written for a bad hash");
         install_verified(&good, &sha.to_uppercase(), &target).unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), good);
+        #[cfg(unix)]
         assert_eq!(target.metadata().unwrap().permissions().mode() & 0o777, 0o755);
     }
 
     #[test]
     fn says_what_is_missing() {
-        let all = Support { overlay: Some("/x".into()), fusermount: Some("/y".into()), dev_fuse: true };
+        let all = Support { overlay: Some("/x".into()), fusermount: Some("/y".into()), dev_fuse: true, windows: None };
         assert!(all.ready() && all.problem().is_none());
         let no_fuse = Support { fusermount: None, ..all.clone() };
         assert!(!no_fuse.ready());
         assert!(no_fuse.problem().unwrap().contains("fusermount3"));
         assert!(Support { dev_fuse: false, ..all.clone() }.problem().unwrap().contains("/dev/fuse"));
         // Downloaded at the first modded launch where a release build exists.
-        assert_eq!(Support { overlay: None, ..all }.problem().is_some(), !downloadable());
+        assert_eq!(Support { overlay: None, ..all.clone() }.problem().is_some(), !downloadable());
+        // Windows needs none of it.
+        let windows = Support { overlay: None, fusermount: None, dev_fuse: false, windows: Some(WindowsSupport::default()) };
+        assert!(windows.ready() && windows.problem().is_none());
     }
 
     #[test]
