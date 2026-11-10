@@ -1,5 +1,6 @@
-//! Collection metadata and artwork backend: IGDB, Steam, Lutris, store and
-//! Playnite providers, the per-field merge, details editing, custom art,
+//! Collection metadata and artwork backend: the registry of sources (IGDB,
+//! Steam, Lutris, store and Playnite details, plus pictures and extras), the
+//! per-field merge, details editing, custom art,
 //! Steam details/hero caches, covers, web image search and HowLongToBeat.
 //!
 //! Port of Heronite's `src/local-library/{metadata,art,heroes,covers,
@@ -24,6 +25,7 @@ pub mod protondb;
 pub mod providers;
 pub mod remove;
 pub mod service;
+pub mod sources;
 pub mod steam;
 pub mod steam_tags;
 pub mod store;
@@ -34,4 +36,5 @@ pub mod web_images;
 pub use http::{Endpoints, Http};
 pub use providers::{PlayniteGame, PlayniteSource};
 pub use service::MetadataService;
+pub use sources::{MetadataSource, SourceContext, SourceDescriptor, SourceGame, SourceKind, SourceRegistry};
 pub use types::*;

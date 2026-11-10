@@ -53,7 +53,8 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      per-game display settings (DisplayConfig;
  │                      kscreen-doctor, Mutter, wlr-randr, hyprctl),
  │                      read-only so far                             → platform
- ├─ heronite-metadata   IGDB/Steam/Lutris/HLTB metadata and artwork  → data
+ ├─ heronite-metadata   registry of metadata sources (IGDB, Steam,
+ │                      Lutris, HLTB, ...), the merge, artwork       → data
  ├─ heronite-achievements achievements of Steam (the client's files),
  │                      GOG, Epic and RetroAchievements (ROM hashes
  │                      by the vendored rcheevos), and the local copy
@@ -537,6 +538,26 @@ text size) and applies it.
   whether the user asked for it). `usage` measures, on this PC only (the account is never asked), what
   each kind would take in the cloud by game or part, by the uploads' own rules, and the
   screenshots' monthly growth, for the space bar and treemap of Settings → Cloud.
+- **heronite-metadata:** the Collection's details and pictures. `sources` is
+  the registry of sources: each has a `SourceDescriptor` (plain data, the
+  shape an extension's manifest will carry: id, name, kind details /
+  pictures / extras, the fields it provides, the games it applies to
+  (`AppliesTo`), how it finds a game, what it needs, whether it uses the
+  network, hidden or offered). Details sources implement `MetadataSource`
+  (`lookup` of a `SourceGame` with a `SourceContext`: paths, HTTP,
+  settings); thin adapters in `sources/builtin` wrap the provider modules
+  (`igdb`, `steam`, `providers` for the store and Playnite, `lutris`), in
+  the order candidates are merged. SteamGridDB, web images, HowLongToBeat,
+  Steam tags and ProtonDB are listed as descriptors only and still run on
+  their own paths (`covers`, `web_images`, `hltb`, `steam_tags`,
+  `protondb`). `service` asks the sources that apply to a game in parallel,
+  marks a fetch offline when every network source asked was unreachable,
+  and `merge` combines the candidates field by field
+  (`settings.metadata.fieldPriority`, whose defaults stay in
+  `heronite_data::settings`; a registry test checks the two agree). Each
+  candidate says how it was found (`MatchedBy`: the game's own record, an
+  id, the Steam id, an exact or a fuzzy title). Settings → Metadata and the
+  per-game dialog list the offered details sources from the registry.
 - **heronite-achievements:** every game's achievements, whatever its store.
   `target` says which sources a Collection game has (its store, its Steam
   twin, RetroAchievements for a ROM). `sources/` reads them: `steam` the

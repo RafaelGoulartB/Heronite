@@ -9,10 +9,10 @@ use heronite_data::age_rating::{self, RatingSystem};
 use heronite_data::game_config;
 use heronite_data::models::MetadataSettings;
 use heronite_data::settings::{self, default_field_priority, EffectiveSettings, METADATA_FIELDS};
-use heronite_i18n::{n_, tr};
+use heronite_i18n::tr;
 
 use super::SettingsPage;
-use crate::dialogs::metadata::field_label as metadata_field_label;
+use crate::dialogs::metadata::{field_label as metadata_field_label, FETCH_SOURCES as SOURCES};
 use crate::dialogs::metadata_wizard::hub;
 use crate::icons::Icon;
 use crate::pages::PageCtx;
@@ -30,11 +30,6 @@ pub struct State {
     advanced_open: bool,
     open_select: Option<&'static str>,
 }
-
-// "playnite" stays in the saved priorities (kept from Heronite's data) but is
-// not offered: nothing feeds that source here.
-const SOURCES: [(&str, &str); 5] =
-    [("auto", n_!("Auto (IGDB first)")), ("igdb", "IGDB"), ("steam", "Steam"), ("store", n_!("Store")), ("lutris", "Lutris")];
 
 impl State {
     pub fn new(ctx: &PageCtx, s: &EffectiveSettings, window: &mut Window, cx: &mut Context<SettingsPage>) -> Self {

@@ -2,7 +2,7 @@
 //! Lutris), pick a source per field and apply.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
@@ -12,6 +12,7 @@ use heronite_data::models::CollectionGameMetadata;
 use heronite_data::settings::METADATA_FIELDS;
 use heronite_i18n::{n_, tr};
 use heronite_metadata::service::Offline;
+use heronite_metadata::sources::{self, SourceKind};
 use heronite_metadata::{MetadataApplyArgs, MetadataPreview, MetadataSearchHit, MetadataService};
 
 use super::art_images::{chain_for_url, picture, DialogImages};
@@ -22,8 +23,13 @@ use crate::ui::controls::{action_button, button, help_text, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::{input_box, new_input, select_field};
 
-pub const FETCH_SOURCES: [(&str, &str); 5] =
-    [("auto", n_!("Auto (IGDB first)")), ("igdb", "IGDB"), ("steam", "Steam"), ("store", n_!("Store")), ("lutris", "Lutris")];
+/// The source choices of this dialog and of Settings → Metadata: "Auto",
+/// then the details sources offered, as `(id, tr! key or proper name)`.
+pub static FETCH_SOURCES: LazyLock<Vec<(&str, &str)>> = LazyLock::new(|| {
+    std::iter::once(("auto", n_!("Auto (IGDB first)")))
+        .chain(sources::offered(SourceKind::Details).map(|d| (d.id.as_str(), d.name.as_str())))
+        .collect()
+});
 
 pub fn field_label(field: &str) -> &'static str {
     match field {

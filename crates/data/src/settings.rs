@@ -41,9 +41,12 @@ pub const METADATA_FIELDS: [&str; 14] = [
     "hero",
 ];
 
-const SOURCE_IDS: [&str; 6] = ["igdb", "steam", "store", "playnite", "lutris", "manual"];
+/// `MetadataSourceId`: the ids a saved `fieldPriority` keeps. Every one but
+/// `manual` is a details source of `heronite_metadata::sources` (its tests
+/// check the two agree).
+pub const SOURCE_IDS: [&str; 6] = ["igdb", "steam", "store", "playnite", "lutris", "manual"];
 
-/// `DEFAULT_FIELD_PRIORITY`.
+/// `DEFAULT_FIELD_PRIORITY`. Uses only [`SOURCE_IDS`].
 pub fn default_field_priority(field: &str) -> Vec<String> {
     let list: &[&str] = match field {
         "description" | "releaseDate" => &["igdb", "steam", "store", "lutris", "playnite"],

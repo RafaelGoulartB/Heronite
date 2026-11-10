@@ -5,11 +5,7 @@ use heronite_data::models::{CollectionGameMetadata, LocalGameMeta};
 use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// `MetadataSourceId`.
-pub const SOURCE_IDS: [&str; 6] = ["igdb", "steam", "store", "playnite", "lutris", "manual"];
-
-/// The providers asked for candidates, in `PROVIDER_ORDER`.
-pub const PROVIDER_ORDER: [&str; 5] = ["igdb", "steam", "store", "lutris", "playnite"];
+pub use heronite_data::settings::SOURCE_IDS;
 
 /// What a network provider got: tells "nothing there" from "could not ask".
 #[derive(Debug, Clone)]
@@ -51,6 +47,41 @@ impl<T> Lookup<T> {
     }
 }
 
+/// How a source found the game. The order is from surest to least sure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MatchedBy {
+    /// The game's own record (its entry in the store library).
+    Game,
+    /// An id the game carries for this source: an IGDB id picked or matched
+    /// before, a Lutris slug, a Playnite id.
+    SourceId,
+    SteamId,
+    RomHash,
+    /// A title search whose best hit has the same title (normalized).
+    ExactTitle,
+    /// A title search whose best hit only looks like the title.
+    FuzzyTitle,
+}
+
+impl MatchedBy {
+    /// Whether the match can be saved without asking: everything but a
+    /// fuzzy title.
+    pub fn is_sure(self) -> bool {
+        self != Self::FuzzyTitle
+    }
+
+    /// [`ExactTitle`](Self::ExactTitle) when `found` is `title` once
+    /// normalized, else [`FuzzyTitle`](Self::FuzzyTitle).
+    pub fn by_title(title: &str, found: Option<&str>) -> Self {
+        if found.is_some_and(|f| crate::util::score_title(title, f) == 100) {
+            Self::ExactTitle
+        } else {
+            Self::FuzzyTitle
+        }
+    }
+}
+
 /// `CollectionMetadataCandidate`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -60,7 +91,22 @@ pub struct MetadataCandidate {
     pub match_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub match_year: Option<i32>,
+    /// `None` (absent in older data): not said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matched_by: Option<MatchedBy>,
     pub metadata: CollectionGameMetadata,
+}
+
+impl MetadataCandidate {
+    /// The candidate of `source` for `metadata`: its title and release year
+    /// are the match shown to the user.
+    pub fn new(source: &str, metadata: CollectionGameMetadata, matched_by: Option<MatchedBy>) -> Self {
+        let match_year = metadata.release_date.as_deref().and_then(|d| {
+            let head: String = d.chars().take(4).collect();
+            head.trim().parse::<i32>().ok().filter(|y| *y != 0)
+        });
+        Self { source: source.to_owned(), match_name: metadata.title.clone(), match_year, matched_by, metadata }
+    }
 }
 
 /// `CollectionMetadataPreview`.
@@ -275,4 +321,32 @@ pub struct IgdbCredentialTest {
     pub ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn matched_by_title_tells_exact_from_fuzzy() {
+        assert_eq!(MatchedBy::by_title("Portal 2", Some("portal 2")), MatchedBy::ExactTitle);
+        assert_eq!(MatchedBy::by_title("Portal 2", Some("Portal 2: Complete")), MatchedBy::FuzzyTitle);
+        assert_eq!(MatchedBy::by_title("Portal 2", None), MatchedBy::FuzzyTitle);
+        assert!(MatchedBy::ExactTitle.is_sure() && MatchedBy::Game.is_sure() && !MatchedBy::FuzzyTitle.is_sure());
+    }
+
+    #[test]
+    fn candidate_match_method_is_additive() {
+        let old = r#"{"source":"igdb","matchName":"X","metadata":{"appName":"a","runner":"sideload"}}"#;
+        let c: MetadataCandidate = serde_json::from_str(old).unwrap();
+        assert_eq!(c.matched_by, None);
+        assert!(serde_json::to_value(&c).unwrap().get("matchedBy").is_none());
+
+        let mut md = c.metadata.clone();
+        md.title = Some("X".into());
+        md.release_date = Some("2011-04-18".into());
+        let c = MetadataCandidate::new("steam", md, Some(MatchedBy::SteamId));
+        assert_eq!((c.match_name.as_deref(), c.match_year), (Some("X"), Some(2011)));
+        assert_eq!(serde_json::to_value(&c).unwrap()["matchedBy"], "steamId");
+    }
 }

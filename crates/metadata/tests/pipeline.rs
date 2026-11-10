@@ -808,3 +808,35 @@ fn hltb_change_match_refresh_and_failures() {
     let kept = heronite_data::hltb::WikiCache::load(&paths);
     assert_eq!(kept.hltb("Portal 2", "").unwrap().game_id, Some(7231), "a failed refresh keeps the times");
 }
+
+#[test]
+fn candidates_say_how_they_were_found() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    let (server, _) = mock();
+    let svc = MetadataService::with_endpoints(paths, server.endpoints());
+    let by = |c: &[MetadataCandidate]| c.iter().map(|c| (c.source.clone(), c.matched_by)).collect::<Vec<_>>();
+    let pair = |s: &str, m: MatchedBy| (s.to_string(), Some(m));
+
+    // The Steam id comes from the overlay; Lutris only has a title search,
+    // whose best hit ("Portal") is not the title.
+    let found = svc.gather_candidates(&args("steam_620", "Portal 2"));
+    assert_eq!(
+        by(&found),
+        [
+            pair("igdb", MatchedBy::SteamId),
+            pair("steam", MatchedBy::SteamId),
+            pair("store", MatchedBy::Game),
+            pair("lutris", MatchedBy::FuzzyTitle)
+        ]
+    );
+
+    let pinned = MetadataApplyArgs { igdb_id: Some(72), lutris_slug: Some("portal".into()), ..args("steam_620", "Portal 2") };
+    let found = svc.gather_candidates(&pinned);
+    assert_eq!(found[0].matched_by, Some(MatchedBy::SourceId));
+    assert_eq!(found.iter().find(|c| c.source == "lutris").and_then(|c| c.matched_by), Some(MatchedBy::SourceId));
+
+    // No Steam id: the Steam source is not asked.
+    let found = svc.gather_candidates(&args("plain", "Plain Game"));
+    assert!(found.iter().all(|c| c.source != "steam"));
+}

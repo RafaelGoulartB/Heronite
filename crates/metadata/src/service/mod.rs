@@ -12,9 +12,6 @@ mod tag_fill;
 
 pub use bulk::AUTO_FILL_BATCH;
 
-/// Providers that need the network; the rest read local files.
-const ONLINE_SOURCES: [&str; 3] = ["igdb", "steam", "lutris"];
-
 /// No online provider could be reached, so nothing was saved: the game stays
 /// unfetched and the next fill or manual fetch tries again.
 #[derive(Debug)]
@@ -47,7 +44,6 @@ use heronite_data::field_names::NameRules;
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameArt, CollectionGameMetadata, LocalMetaFile, MetadataSettings};
 use heronite_data::paths::DataPaths;
-use heronite_data::settings;
 use heronite_i18n::tr;
 use indexmap::IndexMap;
 use parking_lot::{Mutex, RwLock};
@@ -58,11 +54,9 @@ use crate::hltb::{self, HltbClient, HltbLookup, HltbQuery, HowLongToBeat, Search
 use crate::http::{Endpoints, Http};
 use crate::igdb::{Igdb, IgdbCredentials};
 use crate::images::materialize_metadata_image;
-use crate::lutris::fetch_lutris_metadata;
 use crate::merge::{merge_metadata, with_preferred_source, MergeArgs, MergeCandidate};
-use crate::providers::{
-    fetch_playnite_metadata, metadata_from_playnite_game, metadata_from_store_game, PlayniteGame, PlayniteSource, StoreLibraries,
-};
+use crate::providers::{metadata_from_playnite_game, PlayniteGame, PlayniteSource, StoreLibraries};
+use crate::sources::{self, Shared, SourceContext, SourceDescriptor, SourceGame, SourceRegistry};
 use crate::steam::{self, SteamAppDetails, SteamState};
 use crate::store::{as_runner, current_or_blank, get_game_metadata, list_game_metadata, upsert_game_metadata};
 use crate::types::*;
@@ -72,11 +66,11 @@ use crate::{covers, web_images};
 pub struct MetadataService {
     pub paths: DataPaths,
     pub http: Http,
-    igdb: Igdb,
-    steam: SteamState,
+    igdb: Arc<Igdb>,
+    steam: Arc<SteamState>,
     hltb: HltbClient,
-    stores: StoreLibraries,
-    playnite: RwLock<Option<Arc<dyn PlayniteSource>>>,
+    playnite: Arc<RwLock<Option<Arc<dyn PlayniteSource>>>>,
+    sources: SourceRegistry,
     bulk: Mutex<BulkProgress>,
     bulk_cancel: AtomicBool,
     bulk_running: AtomicBool,
@@ -91,14 +85,23 @@ impl MetadataService {
 
     /// Custom base URLs (tests point them at a local server).
     pub fn with_endpoints(paths: DataPaths, endpoints: Endpoints) -> Self {
+        let igdb = Arc::new(Igdb::new());
+        let steam = Arc::new(SteamState::default());
+        let playnite = Arc::new(RwLock::new(None));
+        let sources = SourceRegistry::builtin(Shared {
+            igdb: igdb.clone(),
+            steam: steam.clone(),
+            stores: Arc::new(StoreLibraries::default()),
+            playnite: playnite.clone(),
+        });
         Self {
             paths,
             http: Http::new(endpoints),
-            igdb: Igdb::new(),
-            steam: SteamState::default(),
+            igdb,
+            steam,
             hltb: HltbClient::new(),
-            stores: StoreLibraries::default(),
-            playnite: RwLock::new(None),
+            playnite,
+            sources,
             bulk: Mutex::new(BulkProgress::default()),
             bulk_cancel: AtomicBool::new(false),
             bulk_running: AtomicBool::new(false),
@@ -112,9 +115,14 @@ impl MetadataService {
         *self.playnite.write() = source;
     }
 
+    /// The metadata sources, in the order candidates are listed.
+    pub fn sources(&self) -> &SourceRegistry {
+        &self.sources
+    }
+
     /// Effective (normalized) `settings.metadata`.
     pub fn metadata_settings(&self) -> MetadataSettings {
-        settings::load(&self.paths).map(|s| s.metadata).unwrap_or_else(|_| settings::normalize_metadata(None))
+        sources::load_metadata_settings(&self.paths)
     }
 
     fn credentials(&self) -> IgdbCredentials {
@@ -153,46 +161,15 @@ impl MetadataService {
         list_game_metadata(&self.paths)
     }
 
-    fn steam_id_for(&self, args: &MetadataApplyArgs) -> Option<String> {
-        if let Some(id) = args.steam_app_id.clone().filter(|s| !s.is_empty()) {
-            return Some(id);
-        }
-        let meta: LocalMetaFile = json_store::read(&self.paths.local_meta()).ok()?;
-        meta.games.get(&args.app_name)?.steam_app_id.clone().filter(|s| !s.is_empty())
-    }
-
-    fn candidate_for(&self, source: &str, game: &MetadataApplyArgs) -> Lookup<MetadataCandidate> {
-        let (app, runner) = (game.app_name.as_str(), game.runner.as_str());
-        // Local providers have nothing to be unreachable about.
-        let local = |found: Option<CollectionGameMetadata>| found.map_or(Lookup::NotFound, Lookup::Found);
-        let lookup = match source {
-            "igdb" => {
-                self.igdb.fetch(&self.http, &self.credentials(), app, runner, &game.title, self.steam_id_for(game).as_deref(), game.igdb_id)
-            }
-            "steam" => steam::fetch_steam_metadata(
-                &self.paths,
-                &self.http,
-                &self.steam,
-                app,
-                runner,
-                self.steam_id_for(game).as_deref(),
-                game.language.as_deref(),
-            ),
-            "store" => local(self.stores.find(&self.paths, runner, app).map(|g| metadata_from_store_game(app, runner, &g))),
-            "lutris" => fetch_lutris_metadata(&self.http, app, runner, &game.title, game.lutris_slug.as_deref()),
-            "playnite" => {
-                let src = self.playnite.read().clone();
-                local(fetch_playnite_metadata(&self.paths, src.as_deref(), app, runner))
-            }
-            _ => Lookup::Skipped,
-        };
-        lookup.map(|metadata| {
-            let match_year = metadata.release_date.as_deref().and_then(|d| {
-                let head: String = d.chars().take(4).collect();
-                head.trim().parse::<i32>().ok().filter(|y| *y != 0)
-            });
-            MetadataCandidate { source: source.to_owned(), match_name: metadata.title.clone(), match_year, metadata }
-        })
+    /// `game` as the sources see it. The overlay is read only when needed:
+    /// for the Steam id the arguments lack, or for a source's audience.
+    fn source_game(&self, args: &MetadataApplyArgs) -> SourceGame {
+        let has_steam_id = args.steam_app_id.as_deref().is_some_and(|s| !s.is_empty());
+        let overlay = (!has_steam_id || self.sources.needs_overlay())
+            .then(|| json_store::read::<LocalMetaFile>(&self.paths.local_meta()).ok())
+            .flatten()
+            .and_then(|mut file| file.games.shift_remove(&args.app_name));
+        SourceGame::new(args, overlay.as_ref())
     }
 
     /// `gatherCandidates`: asks every provider at once (IGDB calls queue
@@ -206,28 +183,32 @@ impl MetadataService {
         let mut with_ids = game.clone();
         with_ids.igdb_id = game.igdb_id.or_else(|| current.as_ref().and_then(|c| c.igdb_id).map(|n| n.get() as i64));
         with_ids.lutris_slug = game.lutris_slug.clone().or_else(|| current.as_ref().and_then(|c| c.lutris_slug.clone()));
-        let lookups: Vec<(&str, Lookup<MetadataCandidate>)> = std::thread::scope(|scope| {
-            let handles: Vec<_> = PROVIDER_ORDER
-                .iter()
+        let game_view = self.source_game(&with_ids);
+        let ctx = SourceContext::new(&self.paths, &self.http);
+        let lookups: Vec<(&SourceDescriptor, Lookup<MetadataCandidate>)> = std::thread::scope(|scope| {
+            let handles: Vec<_> = self
+                .sources
+                .lookups()
                 .map(|source| {
-                    let with_ids = &with_ids;
-                    scope.spawn(move || self.candidate_for(source, with_ids))
+                    let (ctx, game_view) = (&ctx, &game_view);
+                    let applies = source.descriptor().applies_to.matches(game_view);
+                    (source.descriptor(), applies.then(|| scope.spawn(move || source.lookup(ctx, game_view))))
                 })
                 .collect();
             handles
                 .into_iter()
-                .zip(PROVIDER_ORDER)
-                .map(|(h, source)| match h.join() {
-                    Ok(l) => (source, l),
-                    Err(_) => {
-                        log::warn!("Metadata source {source} failed for {}: panicked", game.title);
+                .map(|(source, h)| match h.map(|h| h.join()) {
+                    None => (source, Lookup::Skipped),
+                    Some(Ok(l)) => (source, l),
+                    Some(Err(_)) => {
+                        log::warn!("Metadata source {} failed for {}: panicked", source.id, game.title);
                         (source, Lookup::NotFound)
                     }
                 })
                 .collect()
         });
         // Offline: every online provider that was asked failed to connect.
-        let mut asked = lookups.iter().filter(|(s, l)| ONLINE_SOURCES.contains(s) && !matches!(l, Lookup::Skipped)).peekable();
+        let mut asked = lookups.iter().filter(|(s, l)| s.network && !matches!(l, Lookup::Skipped)).peekable();
         let offline = asked.peek().is_some() && asked.all(|(_, l)| matches!(l, Lookup::Unreachable));
         let candidates = lookups
             .into_iter()
