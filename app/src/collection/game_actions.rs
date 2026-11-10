@@ -45,6 +45,8 @@ pub(super) enum GameAction {
     Favourite,
     OpenFolder,
     Settings,
+    /// The Mods manager (installed PC games).
+    Mods,
     /// The game settings on the ReShade section.
     Reshade,
     EditGame,
@@ -234,6 +236,20 @@ impl CollectionView {
                 ));
             }
         }
+        // Emulated games have no mods; console mode builds no manager.
+        if crate::services::mods::available()
+            && game.installed
+            && game.launch_kind.as_deref() != Some("emulator")
+            && !crate::console::active()
+        {
+            v.push(item(
+                A::Mods,
+                "mods",
+                tr!("Mods"),
+                Icon::Extension,
+                "mod mods nexus thunderstore plugin plugins fomod load order modificacoes complementos",
+            ));
+        }
         // Sideloaded programs and browser games; not Steam/emulated entries,
         // nor the ones another launcher or a store client starts.
         if game.runner == "sideload"
@@ -363,6 +379,7 @@ impl CollectionView {
                 let view = cx.new(|cx| crate::dialogs::game_settings::GameSettingsDialog::new(ctx, g, tab, window, cx));
                 self.open_dialog(view, cx);
             }
+            A::Mods => self.open_mods(key, window, cx),
             A::Reshade => self.open_reshade(key, window, cx),
             A::EditGame => {
                 self.open_edit_game(key, window, cx);

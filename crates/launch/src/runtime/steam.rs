@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use super::companions::Companions;
 use super::process::{finish_aborted, run_script};
-use super::session::{fail, finish};
+use super::session::{apply_mods, fail, finish};
 use super::state::{Control, Shared};
 use super::{LaunchEvent, LaunchRequest};
 use crate::log_writer::GameLog;
@@ -53,6 +53,11 @@ pub(super) fn run_steam(
             return finish_aborted(shared, log, req);
         }
     }
+    // Mounted before Steam is asked, held until the game ends.
+    let _mods = match apply_mods(shared, log, req, control) {
+        Ok(m) => m,
+        Err(notice) => return fail(shared, log, req, notice),
+    };
     log.info(&format!("Opening {uri}"));
     shared.send(LaunchEvent::Preparing {
         app_name: req.app_name.clone(),

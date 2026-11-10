@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use super::process::{run_script, run_to_completion};
-use super::session::{finish, spawn_checkpointer, SessionEnd};
+use super::session::{finish, release_mods, spawn_checkpointer, SessionEnd};
 use super::state::{Control, Ledger, Shared};
 use super::{LaunchEvent, LaunchRequest, Launcher};
 use crate::log_writer::{self, GameLog, GameLogType, LogPaths};
@@ -409,6 +409,9 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
                 };
                 prep.after_exit(&entry.app_name, &PrepSpec { cloud_saves: cloud_saves.clone(), ..Default::default() });
             }
+            if !aborted {
+                release_mods(&shared, &log, &entry.app_name, &entry.runner);
+            }
             finish(&shared, &log, &req, &control, elapsed, None);
         }
         Tracked::Steam { app_id, opened_steam, after_script, .. } => {
@@ -427,6 +430,9 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
             log.info("Steam game finished");
             let finished = matches!(outcome, crate::playtime_watch::SteamWaitOutcome::Finished);
             let elapsed = control.played();
+            if finished {
+                release_mods(&shared, &log, &entry.app_name, &entry.runner);
+            }
             if let Some(script) = after_script.as_ref().filter(|_| finished) {
                 let probe = shared.services.lock().unwrap().probe.clone();
                 let status = |n: Notice| {

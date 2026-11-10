@@ -31,6 +31,8 @@ mod transport;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Message {
     pub launch: Option<LaunchRequest>,
+    /// An `nxm://` / `ror2mm://` link (see [`super::cli::is_mod_link`]).
+    pub mod_link: Option<String>,
     /// `--open-client` on the second invocation.
     pub open_client: Option<Client>,
     /// A game to close (`heronite://stop`).
@@ -68,6 +70,9 @@ impl Message {
         if stop.is_some() {
             line["stop"] = stop.into();
         }
+        if let Some(link) = &self.mod_link {
+            line["modLink"] = link.as_str().into();
+        }
         if self.screenshot {
             line["screenshot"] = true.into();
         }
@@ -91,10 +96,12 @@ impl Message {
             _ => None,
         };
         let flag = |k: &str| v.get(k).and_then(Value::as_bool).unwrap_or(false);
+        let mod_link = v.get("modLink").and_then(Value::as_str).filter(|l| super::cli::is_mod_link(l)).map(str::to_string);
         let open_client = v.get("openClient").and_then(Value::as_str).and_then(Client::from_id);
         Some(Message {
             launch: request("launch"),
             open_client,
+            mod_link,
             stop: request("stop"),
             screenshot: flag("screenshot"),
             no_gui: flag("noGui"),
@@ -301,6 +308,7 @@ mod tests {
                 alt_exe: Some("/g/x.exe".into()),
                 gui_false: true,
             }),
+            mod_link: Some("nxm://skyrimspecialedition/mods/1/files/2".into()),
             open_client: Some(Client::Ubisoft),
             stop: None,
             screenshot: false,

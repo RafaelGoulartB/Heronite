@@ -17,6 +17,9 @@
 //!   it in the desktop's settings stands in for that shortcut where Heronite
 //!   cannot register one (a desktop without a global shortcuts portal).
 //!
+//! Mod links (`nxm://` from Nexus Mods' "Mod manager download", `ror2mm://`
+//! from Thunderstore's "Install with mod manager") go to the mods service.
+//!
 //! `--open-client <id>` opens a store client (`battlenet`, `ea`, `ubisoft`,
 //! `rockstar`; the shortcuts of the clients under Wine) and never shows the
 //! window.
@@ -63,6 +66,8 @@ pub enum UrlAction {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Cli {
     pub launch: Option<LaunchRequest>,
+    /// An `nxm://` or `ror2mm://` link to install a mod from.
+    pub mod_link: Option<String>,
     /// `--open-client <id>`.
     pub open_client: Option<Client>,
     /// `heronite://stop?..`: the game to close in the running instance.
@@ -96,6 +101,7 @@ Usage:
   heronite-rs                         open the Collection
   heronite-rs --launch <runner>_<app> launch a game (also: --launch <runner> <app>, --launch <app>)
   heronite-rs [--no-gui] <url>        launch from heronite://launch?appName=..&runner=..
+  heronite-rs <nxm://..|ror2mm://..>  install a mod from Nexus Mods or Thunderstore
   heronite-rs --open-client <client>  open battlenet, ea, ubisoft or rockstar (no window)
   heronite-rs --screenshot            capture the running game (for a key bound in the desktop's settings)
   --no-gui                            do not show the window (the process exits when the game ends)
@@ -204,6 +210,11 @@ pub fn parse_url(url: &str) -> Option<UrlAction> {
     }
 }
 
+/// `nxm://…` (Nexus Mods) or `ror2mm://…` (Thunderstore).
+pub fn is_mod_link(arg: &str) -> bool {
+    arg.split_once("://").is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("nxm") || scheme.eq_ignore_ascii_case("ror2mm"))
+}
+
 /// Parses the arguments after the program name.
 pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
     let args: Vec<String> = args.into_iter().collect();
@@ -262,6 +273,7 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
                     cli.launch = Some(LaunchRequest { runner, app_name, ..Default::default() });
                 }
             }
+            _ if is_mod_link(a) => cli.mod_link = Some(a.clone()),
             _ => {
                 match parse_url(a) {
                     // `--launch X` already seen wins over nothing; a URL fills in when absent.
@@ -422,6 +434,16 @@ mod tests {
         assert!(l("heronite://launch?appName=a&altExe=x.exe").alt_exe.is_none());
         // fragment is ignored
         assert_eq!(l("heronite://launch?appName=a#frag").app_name, "a");
+    }
+
+    #[test]
+    fn mod_links() {
+        let c = p(&["nxm://skyrimspecialedition/mods/12604/files/35407?key=a&expires=1&user_id=2"]);
+        assert_eq!(c.mod_link.as_deref(), Some("nxm://skyrimspecialedition/mods/12604/files/35407?key=a&expires=1&user_id=2"));
+        assert!(c.launch.is_none());
+        assert!(p(&["ROR2MM://v1/install/thunderstore.io/a/b/1.0.0/"]).mod_link.is_some());
+        assert!(p(&["heronite://launch/Quail"]).mod_link.is_none());
+        assert!(!is_mod_link("nxm:/broken"));
     }
 
     #[test]

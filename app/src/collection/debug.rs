@@ -274,6 +274,7 @@ impl CollectionView {
                 let section = w.strip_prefix("settings:").and_then(crate::pages::settings::Section::parse);
                 self.open_settings_section(section.unwrap_or(crate::pages::settings::Section::Appearance), window, cx);
             }
+            w if w.starts_with("mod") && self.mods_debug_dialog(w, window, cx) => {}
             "statuses" => self.open_manage_statuses(window, cx),
             "hltb" => self.open_hltb_match(window, cx),
             "batchedit" => self.open_batch_edit(window, cx),

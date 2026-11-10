@@ -41,7 +41,8 @@ pub(super) enum Flyout {
 }
 
 /// Groups of a game's context menu, in order: play, organize (status,
-/// categories, favourite, hidden), the game, its installation, ReShade, shortcuts,
+/// categories, favourite, hidden), the game, its installation, what is added
+/// to the game (mods, ReShade), shortcuts,
 /// removing it, the log, then "Select multiple".
 const GROUPS: usize = 9;
 
@@ -102,8 +103,9 @@ fn menu_place(action: &GameAction) -> (usize, u8) {
         A::Epic(E::Relocate) => (3, 3),
         A::Epic(E::Eos) => (3, 4),
         A::Epic(E::Forget) => (3, 5),
-        // A group of its own, above the shortcuts.
-        A::Reshade => (4, 0),
+        // What is added to the game: a group of its own, above the shortcuts.
+        A::Mods => (4, 0),
+        A::Reshade => (4, 1),
         A::Shortcuts { .. } => (5, 0),
         A::Steam { .. } => (5, 1),
         A::RemoveRecent => (5, 2),
@@ -663,5 +665,18 @@ impl CollectionView {
         )
         .with_priority(20)
         .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{menu_place, GameAction};
+
+    #[test]
+    fn mods_share_the_group_of_reshade_and_come_first() {
+        let (mods, reshade) = (menu_place(&GameAction::Mods), menu_place(&GameAction::Reshade));
+        assert_eq!(mods.0, reshade.0);
+        assert!(mods.1 < reshade.1);
+        assert_ne!(mods.0, menu_place(&GameAction::Settings).0);
     }
 }

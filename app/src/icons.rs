@@ -4,6 +4,11 @@
 pub enum Icon {
     Add,
     AccessTime,
+    /// A mod (the Mods manager).
+    Extension,
+    /// Six dots: a row that can be dragged.
+    DragIndicator,
+    MoreHoriz,
     ArrowDownward,
     ArrowUpward,
     Cancel,
@@ -18,7 +23,6 @@ pub enum Icon {
     Download,
     Edit,
     ExpandMore,
-    MoreHoriz,
     Favorite,
     FavoriteBorder,
     Flag,
@@ -60,8 +64,6 @@ pub enum Icon {
     /// Bulleted lines (the Focus list as rows).
     ViewList,
     Downloading,
-    /// Six dots: a row that can be dragged.
-    DragIndicator,
     Pause,
     Build,
     Logout,
@@ -170,6 +172,7 @@ impl Icon {
         use Icon::*;
         match self {
             Add => "icons/add.svg",
+            Extension => "icons/extension.svg",
             AccessTime => "icons/access-time.svg",
             ArrowDownward => "icons/arrow-downward.svg",
             ArrowUpward => "icons/arrow-upward.svg",
