@@ -78,10 +78,32 @@ fn unpack(path: &Path, dest: &Path, cancel: &AtomicBool) -> Result<(), String> {
         let name = path.file_name().unwrap_or_default();
         return fs::copy(path, dest.join(name)).map(|_| ()).map_err(|e| format!("{}: {e}", path.display()));
     }
+    // The extractor's own words for a picture or a text file ("Cannot open
+    // the file as archive") do not say what to do instead.
+    if !is_archive(path) {
+        return Err(tr!(
+            "{name} is not an archive (zip, 7z, rar, tar) or a mod file, so it cannot be added. Unpack the mod yourself and add its folder instead.",
+            name = path.file_name().unwrap_or_default().to_string_lossy()
+        ));
+    }
     let is_cancelled = || cancel.load(Ordering::Relaxed);
     let log = |line: &str| log::debug!("mods: extract: {line}");
     let io = Io { cancel: &is_cancelled, log: &log };
     archive::extract(path, dest, None, false, &io)
+}
+
+/// Whether the extractor has a format for `path`: one told by its name, else
+/// an archive's first bytes (downloads often lose their extension).
+fn is_archive(path: &Path) -> bool {
+    if archive::by_name(&path.to_string_lossy()).is_some() {
+        return true;
+    }
+    let mut head = [0u8; 264];
+    let n = fs::File::open(path).and_then(|mut f| std::io::Read::read(&mut f, &mut head)).unwrap_or(0);
+    let head = &head[..n];
+    const MAGIC: &[&[u8]] =
+        &[b"PK\x03\x04", b"Rar!", b"7z\xBC\xAF", &[0x1f, 0x8b], b"BZh", &[0xfd, b'7', b'z', b'X', b'Z'], &[0x28, 0xb5, 0x2f, 0xfd]];
+    MAGIC.iter().any(|m| head.starts_with(m)) || (head.len() > 262 && &head[257..262] == b"ustar")
 }
 
 /// The folder holding `fomod/ModuleConfig.xml`, looking through up to two
@@ -181,6 +203,23 @@ mod tests {
         let root = s.root.clone();
         drop(s);
         assert!(!root.exists(), "the scratch folder goes with the guard");
+    }
+
+    #[test]
+    fn a_file_that_is_no_archive_is_turned_away_with_what_to_do() {
+        let t = tempfile::tempdir().unwrap();
+        let dirs = ModsRoot::at(t.path().join("m")).game("g");
+        let readme = t.path().join("readme.txt");
+        fs::write(&readme, "Put the files in the game folder").unwrap();
+        let error = stage(&dirs, &Source::Archive(readme), &AtomicBool::new(false)).unwrap_err();
+        assert!(error.starts_with("readme.txt is not an archive") && error.contains("add its folder"), "{error}");
+        assert!(entries(&dirs.staging()).is_empty(), "nothing is left behind");
+
+        // A download that lost its extension is still told by its first bytes.
+        let zip = t.path().join("download");
+        fs::write(&zip, b"PK\x03\x04rest").unwrap();
+        assert!(is_archive(&zip) && is_archive(Path::new("Mod.7z")) && is_archive(Path::new("Mod.tar.gz")));
+        assert!(!is_archive(&t.path().join("readme.txt")) && !is_archive(&t.path().join("missing")));
     }
 
     #[test]
