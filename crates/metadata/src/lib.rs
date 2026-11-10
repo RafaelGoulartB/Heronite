@@ -1,5 +1,5 @@
 //! Collection metadata and artwork backend: the registry of sources (IGDB,
-//! Steam, Lutris, VNDB, the LaunchBox Games Database, store and Playnite
+//! Steam, Lutris, the LaunchBox Games Database, store and Playnite
 //! details, plus pictures (SteamGridDB, libretro-thumbnails) and extras; `platforms` and `rom_names` for emulated games), when
 //! a match is sure enough to save (`confidence`) and the review queue of the
 //! others (`review`), the per-field merge, details editing, custom art,
@@ -41,7 +41,6 @@ pub mod steam_tags;
 pub mod store;
 pub mod types;
 pub mod util;
-pub mod vndb;
 pub mod web_images;
 
 pub use http::{Endpoints, Http};

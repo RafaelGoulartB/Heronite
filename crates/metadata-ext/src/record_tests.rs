@@ -72,6 +72,25 @@ fn a_title_match_is_sure_only_when_the_titles_agree() {
 }
 
 #[test]
+fn a_hit_may_carry_its_name_in_another_script_and_flag_its_thumbnail() {
+    let (ids, hashes) = (Map::new(), Map::new());
+    let found = json!([
+        { "id": "v2002", "title": "STEINS;GATE", "altTitle": "シュタインズ・ゲート", "thumb": "https://api.example.org/t.jpg", "adult": true },
+        { "id": "v97", "title": "Saya no Uta", "altTitle": "SAYA NO UTA", "thumb": "https://api.example.org/s.jpg" },
+        { "id": "v3", "title": "Other", "altTitle": 7 },
+    ]);
+    let hits = hits(&found, &keys("シュタインズ・ゲート", &ids, &hashes), &rules());
+    // The game's title is the other name: sure, as if it were the title.
+    assert_eq!((hits[0].id.as_str(), hits[0].matched_by), ("v2002", MatchedBy::ExactTitle));
+    assert_eq!(hits[0].alt_title.as_deref(), Some("シュタインズ・ゲート"));
+    assert!(hits[0].thumb_adult && !hits[1].thumb_adult);
+    assert!(hits[0].is_named(Some("Steins;Gate")) && hits[0].is_named(Some("シュタインズ・ゲート")) && !hits[0].is_named(None));
+    // The same name twice, or not text: no other name.
+    assert_eq!((hits[1].alt_title.as_deref(), hits[2].alt_title.as_deref()), (None, None));
+    assert_eq!(hits[1].matched_by, MatchedBy::FuzzyTitle);
+}
+
+#[test]
 fn several_games_of_the_title_are_a_guess() {
     let (ids, hashes) = (Map::new(), Map::new());
     let found = json!([

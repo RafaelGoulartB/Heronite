@@ -192,7 +192,7 @@ fn extensions_answer_for_emulated_games_beside_launchbox_and_leave_cleanly() {
     let settings = s.svc.metadata_settings();
     assert_eq!(
         s.svc.field_order(&settings, "description"),
-        strings(&["igdb", "steam", "store", "lutris", "playnite", "vndb", "launchbox", "wikipedia", "retrodb"])
+        strings(&["igdb", "steam", "store", "lutris", "playnite", "launchbox", "wikipedia", "retrodb"])
     );
     assert_eq!(s.svc.field_order(&settings, "series"), strings(&["igdb", "playnite", "pcgamingwiki", "retrodb"]));
     let saved = s.svc.apply_game_metadata(&args("sm", "Super Metroid")).unwrap();

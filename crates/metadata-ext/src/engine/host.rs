@@ -17,7 +17,13 @@ use rquickjs::{Ctx, Exception, Function, Object, Value};
 
 use super::{convert, describe, html, request, CallError, Limit, Watch};
 use crate::limits::Limits;
-use crate::net::{HostRule, RateLimiter};
+use crate::net::{scrub, HostRule, RateLimiter};
+
+/// What `ctx.unreachable()` says without a message.
+const DEFAULT_UNREACHABLE: &str = "the service cannot be asked now";
+/// Errors `ctx.unreachable` keeps per call; one made past them is still
+/// returned, but ends the call as a failure.
+const MAX_DECLARED: usize = 16;
 
 /// What a session of one extension may use; cheap to clone.
 #[derive(Clone)]
@@ -47,6 +53,8 @@ pub(super) struct Host {
     /// The last request that got no answer: why, and the message of the
     /// error it threw to the script.
     unreachable: RefCell<Option<(String, String)>>,
+    /// The messages of the errors `ctx.unreachable` made in this call.
+    declared: RefCell<Vec<String>>,
     pub(super) requests: Cell<u32>,
     pub(super) bytes: Cell<u64>,
     logs: Cell<u32>,
@@ -62,6 +70,7 @@ impl Host {
             stopped: Cell::new(false),
             abort: RefCell::new(None),
             unreachable: RefCell::new(None),
+            declared: RefCell::new(Vec::new()),
             requests: Cell::new(0),
             bytes: Cell::new(0),
             logs: Cell::new(0),
@@ -76,6 +85,7 @@ impl Host {
         self.stopped.set(false);
         self.abort.replace(None);
         self.unreachable.replace(None);
+        self.declared.replace(Vec::new());
         self.requests.set(0);
         self.bytes.set(0);
         self.logs.set(0);
@@ -114,6 +124,23 @@ impl Host {
         self.unreachable.borrow().as_ref().map(|(why, _)| why.clone())
     }
 
+    /// `ctx.unreachable(message)`: the script says the service cannot be
+    /// asked now (busy, down). The error it gets back ends the call as
+    /// unreachable when thrown, like a request that got no answer.
+    fn declare_unreachable(&self, message: &str) -> String {
+        let line: String =
+            message.chars().map(|c| if c.is_control() || crate::manifest::is_format_char(c) { ' ' } else { c }).take(300).collect();
+        let line = match line.split_whitespace().collect::<Vec<_>>().join(" ") {
+            l if l.is_empty() => DEFAULT_UNREACHABLE.to_owned(),
+            l => l,
+        };
+        let mut declared = self.declared.borrow_mut();
+        if declared.len() < MAX_DECLARED && !declared.contains(&line) {
+            declared.push(line.clone());
+        }
+        line
+    }
+
     /// What ended the call, given the engine's error `e`. It is unreachable
     /// only when the error is the one a request threw for it, even if the
     /// wait for that request used up the call's time: an error of the
@@ -125,9 +152,15 @@ impl Host {
             return a;
         }
         let interrupted = text.contains("interrupted");
+        let first = text.lines().next().unwrap_or("");
         if let Some((why, message)) = self.unreachable.borrow().as_ref() {
-            if !interrupted && text.lines().next() == Some(format!("Error: {message}").as_str()) {
+            if !interrupted && first == format!("Error: {message}") {
                 return CallError::Unreachable(why.clone());
+            }
+        }
+        if let Some(said) = self.declared.borrow().iter().find(|m| first == format!("Error: {m}")) {
+            if !interrupted {
+                return CallError::Unreachable(scrub(said));
             }
         }
         if Instant::now() >= self.deadline.get() || interrupted {
@@ -248,6 +281,25 @@ pub(super) fn api<'js>(ctx: &Ctx<'js>, host: &Rc<Host>) -> rquickjs::Result<Obje
             let title = short(&title, 2000)?.ok_or_else(|| type_error(&ctx, "the title is too long"))?;
             Ok(normalize_title(&title))
         })?,
+    )?;
+    let h = host.clone();
+    api.set(
+        "unreachable",
+        Function::new(
+            ctx.clone(),
+            move |ctx: Ctx<'js>, message: Opt<rquickjs::Coerced<rquickjs::String<'js>>>| -> rquickjs::Result<Value<'js>> {
+                let text = match message.0 {
+                    Some(m) => {
+                        let c = m.0.to_cstring()?;
+                        let text = c.as_str();
+                        let end = (0..=text.len().min(2048)).rev().find(|i| text.is_char_boundary(*i)).unwrap_or(0);
+                        h.declare_unreachable(&text[..end])
+                    }
+                    None => h.declare_unreachable(""),
+                };
+                Ok(Exception::from_message(ctx, &text)?.into_value())
+            },
+        )?,
     )?;
     api.set("language", host.env.language.clone())?;
     Ok(api)

@@ -3,7 +3,7 @@ name = "heronite-metadata"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Collection metadata and artwork backend (IGDB, Steam, Lutris, VNDB, LaunchBox, merge, art, web image search, HowLongToBeat) compatible with Heronite's data files"
+description = "Collection metadata and artwork backend (IGDB, Steam, Lutris, LaunchBox, merge, art, web image search, HowLongToBeat) compatible with Heronite's data files"
 
 [dependencies]
 heronite-data = { path = "../data" }

@@ -71,7 +71,7 @@ pub const ALL_FIELDS: [&str; 16] = [
 /// `MetadataSourceId`: the built-in ids of a `fieldPriority`. Every one but
 /// `manual` is a details source of `heronite_metadata::sources` (its tests
 /// check the two agree). A saved list keeps other ids too.
-pub const SOURCE_IDS: [&str; 8] = ["igdb", "steam", "store", "playnite", "lutris", "vndb", "launchbox", "manual"];
+pub const SOURCE_IDS: [&str; 7] = ["igdb", "steam", "store", "playnite", "lutris", "launchbox", "manual"];
 
 /// Sources added after `fieldPriority` lists were already saved in
 /// every settings file (the lists are written whole). A saved list that is
@@ -80,30 +80,36 @@ pub const SOURCE_IDS: [&str; 8] = ["igdb", "steam", "store", "playnite", "lutris
 /// (see `heronite_metadata::sources::order`), so a new source fills those
 /// fields without a migration of the file. In the order they were added: a
 /// list saved between two of them lacks only the later ones.
-pub const ADDED_SOURCES: [&str; 3] = ["vndb", "launchbox", "libretro"];
+pub const ADDED_SOURCES: [&str; 2] = ["launchbox", "libretro"];
+
+/// Ids of extensions that the default lists of some saved files name, as
+/// the builds that wrote them had the source built in (VNDB): last of the
+/// sources of their time, followed only by [`ADDED_SOURCES`]. A saved list that is a default but for one of
+/// them, at that place, still reads as the default; the extension of that
+/// id, once installed, joins its end like any extension.
+pub const DEFAULT_LISTED_EXTENSIONS: [&str; 1] = ["vndb"];
 
 /// `DEFAULT_FIELD_PRIORITY`. Uses only [`SOURCE_IDS`], but for the square
 /// and wide covers, which SteamGridDB gives too, and for the covers
 /// libretro-thumbnails gives (a pictures source, like SteamGridDB: not in
-/// [`SOURCE_IDS`]). VNDB, asked only as a fallback, the LaunchBox Games
-/// Database and libretro-thumbnails come last: they fill what the others
-/// left empty (the last two move ahead for the emulated games they find
-/// surely, see `heronite_metadata::sources::order`).
+/// [`SOURCE_IDS`]). The LaunchBox Games Database and libretro-thumbnails
+/// come last: they fill what the others left empty (and move ahead for the
+/// emulated games they find surely, see `heronite_metadata::sources::order`).
 pub fn default_field_priority(field: &str) -> Vec<String> {
     let list: &[&str] = match field {
-        "description" | "releaseDate" => &["igdb", "steam", "store", "lutris", "playnite", "vndb", "launchbox"],
-        "developers" | "genres" => &["igdb", "steam", "store", "playnite", "lutris", "vndb", "launchbox"],
+        "description" | "releaseDate" => &["igdb", "steam", "store", "lutris", "playnite", "launchbox"],
+        "developers" | "genres" => &["igdb", "steam", "store", "playnite", "lutris", "launchbox"],
         "publishers" => &["igdb", "steam", "store", "playnite", "launchbox"],
-        "themes" => &["igdb", "playnite", "vndb"],
+        "themes" => &["igdb", "playnite"],
         "series" => &["igdb", "playnite"],
         "gameModes" => &["igdb", "launchbox"],
         "platforms" => &["igdb", "store", "playnite", "lutris", "launchbox"],
         "features" => &["igdb", "steam", "playnite"],
-        "criticScore" => &["igdb", "steam", "vndb", "launchbox"],
+        "criticScore" => &["igdb", "steam", "launchbox"],
         // Both are read: the first fills the boards it has, the next the rest.
         "ageRatings" => &["igdb", "steam"],
-        "cover" => &["igdb", "steam", "lutris", "playnite", "store", "vndb", "launchbox", "libretro"],
-        "hero" => &["igdb", "steam", "lutris", "playnite", "vndb", "launchbox"],
+        "cover" => &["igdb", "steam", "lutris", "playnite", "store", "launchbox", "libretro"],
+        "hero" => &["igdb", "steam", "lutris", "playnite", "launchbox"],
         // Official art first (Steam's header, the store's wide box art),
         // then SteamGridDB's.
         "coverSquare" => &["steamgriddb", "launchbox", "libretro"],
@@ -607,7 +613,7 @@ mod tests {
         assert_eq!(s.cover_aspect, CoverAspect::Steam);
         assert!(s.metadata.auto_fill_missing);
         assert!(!s.metadata.download_images);
-        assert_eq!(s.metadata.field_priority["cover"], ["igdb", "steam", "lutris", "playnite", "store", "vndb", "launchbox", "libretro"]);
+        assert_eq!(s.metadata.field_priority["cover"], ["igdb", "steam", "lutris", "playnite", "store", "launchbox", "libretro"]);
         assert!(!s.metadata.allow_adult_covers);
         assert_eq!(s.metadata.field_priority["coverSquare"], ["steamgriddb", "launchbox", "libretro"]);
         assert!(s.metadata.keep_cover_families.is_empty() && !s.metadata.fill_cover_families);
@@ -705,7 +711,7 @@ mod tests {
         assert_eq!(s.cover_aspect, CoverAspect::Dvd);
         // An id this build does not know is kept (it never answers).
         assert_eq!(s.metadata.field_priority["cover"], ["steam", "bogus"]);
-        assert_eq!(s.metadata.field_priority["hero"], ["igdb", "steam", "lutris", "playnite", "vndb", "launchbox"]);
+        assert_eq!(s.metadata.field_priority["hero"], ["igdb", "steam", "lutris", "playnite", "launchbox"]);
     }
 
     #[test]

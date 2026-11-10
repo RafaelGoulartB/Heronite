@@ -110,7 +110,6 @@ impl Server {
             steam_api: format!("{b}/steamapi"),
             steam_community: format!("{b}/community"),
             lutris: format!("{b}/lutris"),
-            vndb: format!("{b}/vndb/kana"),
             launchbox: format!("{b}/launchbox"),
             launchbox_images: format!("{b}/lbimages"),
             libretro_thumbnails: format!("{b}/libretro"),
@@ -196,4 +195,47 @@ pub fn png() -> Vec<u8> {
     let mut v = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
     v.extend(std::iter::repeat_n(7u8, 9000));
     v
+}
+
+/// A details source asked as a fallback for visual novels, declared the
+/// way an extension declares one, that knows no game: added to a service
+/// (`MetadataService::add_source`) where a test needs a fallback source.
+/// It counts the lookups and searches it gets.
+pub struct Fallback {
+    descriptor: heronite_metadata::SourceDescriptor,
+    pub lookups: std::sync::atomic::AtomicUsize,
+    pub searches: std::sync::atomic::AtomicUsize,
+}
+
+pub const FALLBACK: &str = "novels";
+
+pub fn fallback() -> Arc<Fallback> {
+    let descriptor = serde_json::from_value(serde_json::json!({
+        "id": FALLBACK, "name": "Novels", "kind": "details", "network": true, "searchable": true,
+        "provides": ["description", "releaseDate", "developers", "genres", "themes", "criticScore", "cover", "hero"],
+        "asked": "asFallback", "gameKind": {"name": "Visual novels", "signals": ["Visual Novel"]},
+        "extension": {"version": "1.0.0", "author": "tests"}
+    }))
+    .expect("a test descriptor");
+    Arc::new(Fallback { descriptor, lookups: Default::default(), searches: Default::default() })
+}
+
+impl heronite_metadata::MetadataSource for Fallback {
+    fn descriptor(&self) -> &heronite_metadata::SourceDescriptor {
+        &self.descriptor
+    }
+
+    fn lookup(
+        &self,
+        _: &heronite_metadata::SourceContext<'_>,
+        _: &heronite_metadata::SourceGame,
+    ) -> heronite_metadata::Lookup<heronite_metadata::MetadataCandidate> {
+        self.lookups.fetch_add(1, Ordering::SeqCst);
+        heronite_metadata::Lookup::NotFound
+    }
+
+    fn search(&self, _: &heronite_metadata::SourceContext<'_>, _: &str) -> heronite_metadata::Lookup<Vec<heronite_metadata::SourceHit>> {
+        self.searches.fetch_add(1, Ordering::SeqCst);
+        heronite_metadata::Lookup::Found(Vec::new())
+    }
 }

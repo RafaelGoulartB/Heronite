@@ -1,8 +1,8 @@
 //! A made-up review (`HERONITE_DEBUG_DIALOG=review…`, or while
 //! `HERONITE_DEBUG_METADATA_JOB` makes jobs up): proposals and searches are
 //! invented from the game's title, nothing is asked or written (the first
-//! game also has a VNDB proposal, with its original title). The pictures
-//! are covers the Collection already has.
+//! game also has a proposal of a made-up extension, `novels`, with its
+//! original title). The pictures are covers the Collection already has.
 
 use heronite_metadata::service::SourceSearch;
 use heronite_metadata::{MatchChoice, MatchedBy, ReviewReason, SourceHit};
@@ -80,7 +80,7 @@ impl FakeReview {
                             2009,
                             "Windows, PS3",
                             thumb(2),
-                            vec![hit("vndb", "v2002", t, 2009, Some(MatchedBy::ExactTitle)), hit("lutris", "game-vn", t, 2009, None)],
+                            vec![hit("novels", "n2002", t, 2009, Some(MatchedBy::ExactTitle)), hit("lutris", "game-vn", t, 2009, None)],
                         )
                     },
                     choice(

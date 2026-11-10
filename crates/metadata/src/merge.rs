@@ -451,7 +451,7 @@ mod tests {
     fn preferred_source_goes_first() {
         let pr = priority();
         let out = with_preferred_source(&pr, Some("lutris"));
-        assert_eq!(out["description"], ["lutris", "igdb", "steam", "store", "playnite", "vndb", "launchbox"]);
+        assert_eq!(out["description"], ["lutris", "igdb", "steam", "store", "playnite", "launchbox"]);
         assert_eq!(out["gameModes"], ["lutris", "igdb", "launchbox"]);
         assert_eq!(with_preferred_source(&pr, Some("auto")), pr);
         assert_eq!(with_preferred_source(&pr, None), pr);

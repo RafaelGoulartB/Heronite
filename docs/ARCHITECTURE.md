@@ -56,7 +56,7 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      kscreen-doctor, Mutter, wlr-randr, hyprctl),
  │                      read-only so far                             → platform
  ├─ heronite-metadata   registry of metadata sources (IGDB, Steam,
- │                      Lutris, VNDB, LaunchBox, HLTB, ...), the merge,
+ │                      Lutris, LaunchBox, HLTB, ...), the merge,  
  │                      the review of unsure matches, artwork        → data, images
  ├─ heronite-metadata-ext metadata sources as extensions: manifest,
  │                      package (folder / zip), installed ones, the
@@ -562,17 +562,8 @@ text size) and applies it.
   network, hidden or offered). Details sources implement `MetadataSource`
   (`lookup` of a `SourceGame` with a `SourceContext`: paths, HTTP,
   settings); thin adapters in `sources/builtin` wrap the provider modules
-  (`igdb`, `steam`, `providers` for the store and Playnite, `lutris`,
-  `vndb`), in the order candidates are merged. `vndb` is the Visual Novel
-  Database's public API v2 ("Kana", no key): one `POST /vn` searches a
-  title (any script, aliases) with every field, a pinned entry is read by
-  its id (`v17`, or a vndb.org address typed in a search); its client keeps
-  under VNDB's 200 requests per 5 minutes and waits out a 429, a few
-  seconds at most (longer, VNDB counts as unreachable, and a game
-  only it could have found is not marked as found in no source); its tags
-  (content, no spoilers, rated 2+, 12 at most) are themes, its genre is
-  "Visual Novel", its 10..100 rating the score, a safe landscape screenshot
-  the background. `launchbox` is the LaunchBox Games Database: no API, the
+  (`igdb`, `steam`, `providers` for the store and Playnite, `lutris`),
+  in the order candidates are merged. `launchbox` is the LaunchBox Games Database: no API, the
   whole database is one archive (`Metadata.zip`, ~105 MB, daily) that the
   user downloads from the source's row; `fetch` downloads it into the
   data folder's cache area (`store_cache/sources/launchbox/`, out of
@@ -651,7 +642,8 @@ text size) and applies it.
   (`leadsFor`, see `sources/order`: for an emulated game LaunchBox found
   surely, it goes ahead of the sources that found the game only by its
   title, in each field whose order is still the default one). A descriptor may say a source is asked only as a
-  fallback (`Asked::AsFallback`, VNDB) and name the kind of game it is
+  fallback (`Asked::AsFallback`; no built-in source is, the VNDB and
+  Wikipedia extensions are) and name the kind of game it is
   about (`GameKind`: a name for Settings and the genre / theme / Steam tag
   names that signal it). `service/gather` asks the sources: a fallback
   source goes with the others when the game is identified with it (a
@@ -664,16 +656,24 @@ text size) and applies it.
   by hand asks it like any searchable source. Not asked, it says why
   (`NotAsked::Fallback`); a job's fillable fields leave it out unless the
   job names it. A candidate may flag pictures as adult
-  (`MetadataCandidate::adult_pictures`, `SourceHit::thumb_adult`; VNDB from
-  its users' votes: above 0.4 sexual or violence, or no vote, is not
-  "safe"): unless `settings.metadata.allowAdultCovers` is on, the gather,
+  (`MetadataCandidate::adult_pictures`, `SourceHit::thumb_adult`; an
+  extension per picture, as the VNDB extension does from its users'
+  votes, or for all its pictures with `adult = true`): unless
+  `settings.metadata.allowAdultCovers` is on, the gather,
   `SourceRegistry::lookup_id` / `search` and `review_entry` drop them, so
   the next source fills the picture and none is shown or downloaded; saved
   pictures stay. A source added after `fieldPriority` lists were saved is
   in `heronite_data::settings::ADDED_SOURCES`: the old default list still
   reads as the default, and a list the user set gets it at its end (a
   pictures source too: libretro-thumbnails is in `ADDED_SOURCES` and in the
-  covers' default orders, not in `SOURCE_IDS`). SteamGridDB, web images, HowLongToBeat,
+  covers' default orders, not in `SOURCE_IDS`). The default lists of the
+  builds where VNDB was built in name `vndb`, last of the sources of then:
+  `heronite_data::settings::DEFAULT_LISTED_EXTENSIONS` keeps such a list
+  reading as the default, and the VNDB extension, once installed, joins
+  its end like any extension (a list the user set keeps `vndb` where it
+  is, and it answers there). The fallback rule's tests add a fallback
+  source of their own (`SourceRegistry::for_tests_with_fallback`,
+  `tests/common`'s `fallback`). SteamGridDB, web images, HowLongToBeat,
   Steam tags and ProtonDB are listed as descriptors only and still run on
   their own paths (`covers`, `web_images`, `hltb`, `steam_tags`,
   `protondb`), but SteamGridDB also has a lookup: a pictures source asked
@@ -771,7 +771,8 @@ text size) and applies it.
   `Endpoints::origins` sends whole origins to a test server
   (`Http::route`).
 
-  *Adding a built-in source* (what VNDB, LaunchBox and libretro-thumbnails needed; no screen code):
+  *Adding a built-in source* (what LaunchBox and libretro-thumbnails needed; no screen code; a
+  source that needs neither a database nor the app's own state is better written as an extension):
   1. A provider module (`crates/metadata/src/<source>.rs`, or a folder
      when it has a local database: `launchbox/`): the client (base URLs in
      `http::Endpoints`, and their test prefixes in `tests/common`'s
@@ -849,9 +850,13 @@ text size) and applies it.
   the manifest's hosts over https, checked again on every redirect, sent
   through `net::public_client`, which connects to public addresses only,
   the app's user agent, the manifest's rate, per-call request and byte
-  budgets, every string copied out of the engine bounded first; `html`:
+  budgets, every string copied out of the engine bounded first;
+  `unreachable`: an error that ends the call as unreachable, not as a
+  failure, for a script that sees its service busy or down; `html`:
   CSS selectors over `dom_query`, documents per call bounded); `record`
-  checks and clamps what scripts return like the built-in mappings, and
+  checks and clamps what scripts return like the built-in mappings
+  (a hit's title or its `altTitle`, a name in another script, is what the
+  title rule compares), and
   marks the pictures it names (`heronite_images::public::marked`) so the
   images cache and the copy to `metadata-art` fetch them from public
   addresses only; `source::ScriptSource` is the
@@ -876,7 +881,8 @@ text size) and applies it.
   screens are `app/src/dialogs/extensions/` (gallery and installer) and
   Settings → Metadata's `extension.rs` / `more.rs`. `examples/run.rs` runs an extension against a
   title. The example extensions are in `extensions/` (Wikipedia,
-  PCGamingWiki).
+  PCGamingWiki, VNDB), each tested against recorded answers
+  (`tests/examples.rs`, `tests/vndb.rs`).
 - **heronite-achievements:** every game's achievements, whatever its store.
   `target` says which sources a Collection game has (its store, its Steam
   twin, RetroAchievements for a ROM). `sources/` reads them: `steam` the

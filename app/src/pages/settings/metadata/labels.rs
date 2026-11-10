@@ -4,8 +4,8 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::source_prefs::ids;
-use heronite_i18n::{tr, trn};
-use heronite_metadata::sources::{extra_fields, AppliesTo, SourceDescriptor, SourceRow, SourceStatus};
+use heronite_i18n::{n_, tr, trn};
+use heronite_metadata::sources::{extra_fields, AppliesTo, GameKind, SourceDescriptor, SourceRow, SourceStatus};
 
 use crate::dialogs::metadata::field_label as details_field_label;
 use crate::icons::Icon;
@@ -123,11 +123,20 @@ fn store_name(id: &str) -> &str {
     }
 }
 
+/// Kinds of game the app has words for: an extension's manifest names its
+/// kind in English (`game_kind.name`), shown translated when it is one of these.
+const GAME_KINDS: [&str; 1] = [n_!("Visual novels")];
+
+/// The kind of game a source is about, as shown.
+pub(crate) fn kind_name(kind: &GameKind) -> &str {
+    GAME_KINDS.iter().find(|k| **k == kind.name).map_or(kind.name.as_str(), |k| tr(k))
+}
+
 /// The games a source is for, in a few words: the kind of game it is
 /// about, else its audience.
 pub(crate) fn audience(d: &SourceDescriptor) -> String {
     if let Some(kind) = &d.game_kind {
-        return tr(&kind.name).to_owned();
+        return kind_name(kind).to_owned();
     }
     audience_of(&d.applies_to)
 }
@@ -223,7 +232,7 @@ pub(crate) fn when_asked(d: &SourceDescriptor) -> Option<String> {
         return Some(match &d.game_kind {
             Some(kind) => tr!(
                 "Asked when the other sources do not find a game, or when they say it is one of these: {kind}. Pick its match for a game to always ask it.",
-                kind = tr(&kind.name)
+                kind = kind_name(kind)
             ),
             None => tr!("Asked when the other sources do not find a game. Pick its match for a game to always ask it.").into(),
         });
@@ -249,17 +258,26 @@ mod tests {
         assert_eq!(monogram("IGDB"), "IG");
         assert_eq!(monogram("ProtonDB"), "PD");
         assert_eq!(monogram("Lutris"), "Lu");
-        assert_eq!(monogram("vndb"), "Vn");
+        assert_eq!(monogram("novels"), "No");
     }
 
     #[test]
     fn a_source_reads_from_its_descriptor_alone() {
         use heronite_metadata::sources::builtin_descriptors;
-        let vndb = builtin_descriptors().iter().find(|d| d.id == "vndb").unwrap();
-        assert_eq!(super::audience(vndb), "Visual novels");
-        assert_eq!(gives(&vndb.provides), "Text \u{b7} Scores \u{b7} Covers \u{b7} Backgrounds");
-        assert!(super::about(vndb).is_some_and(|a| a.contains("vndb.org")));
-        assert!(super::when_asked(vndb).is_some_and(|w| w.contains("Visual novels")));
+        // A fallback source about a kind of game, as an extension's manifest gives it.
+        let novels: heronite_metadata::sources::SourceDescriptor = serde_json::from_value(serde_json::json!({
+            "id": "novels", "name": "Novels", "kind": "details", "asked": "asFallback",
+            "gameKind": {"name": "Visual novels", "signals": ["Visual Novel"]},
+            "about": "A database of visual novels.",
+            "provides": ["description", "releaseDate", "developers", "genres", "themes", "criticScore", "cover", "hero"]
+        }))
+        .unwrap();
+        assert_eq!(super::audience(&novels), "Visual novels");
+        assert_eq!(gives(&novels.provides), "Text \u{b7} Scores \u{b7} Covers \u{b7} Backgrounds");
+        assert_eq!(super::about(&novels), Some("A database of visual novels."));
+        assert!(super::when_asked(&novels).is_some_and(|w| w.contains("Visual novels")));
+        let unknown = heronite_metadata::sources::GameKind { name: "Kinetic novels".into(), signals: Vec::new() };
+        assert_eq!(super::kind_name(&unknown), "Kinetic novels", "a kind the app has no words for shows as written");
         let igdb = builtin_descriptors().iter().find(|d| d.id == "igdb").unwrap();
         assert_eq!(super::audience(igdb), "All games");
         assert!(super::when_asked(igdb).is_none());

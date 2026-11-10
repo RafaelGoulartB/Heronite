@@ -228,7 +228,7 @@ mod tests {
     fn other_options_go_under_the_source() {
         let (_dir, paths, _) = setup();
         let d: SourceDescriptor = serde_json::from_value(json!({
-            "id": "vndb", "name": "VNDB", "kind": "details",
+            "id": "exampledb", "name": "ExampleDB", "kind": "details",
             "options": [
                 {"key": "lang", "label": "Language", "kind": "select",
                  "choices": [{"value": "en", "label": "English"}, {"value": "ja", "label": "Japanese"}]},
@@ -239,7 +239,7 @@ mod tests {
         assert_eq!(value(&paths, &d, "lang"), OptionValue::Text("en".into()));
         assert_eq!(value(&paths, &d, "nsfw"), OptionValue::Switch(true));
         let s = set_option_value(&paths, &d, "lang", OptionValue::Text("ja".into())).unwrap();
-        assert_eq!(s.metadata.sources["vndb"].options["lang"], json!("ja"));
+        assert_eq!(s.metadata.sources["exampledb"].options["lang"], json!("ja"));
         set_option_value(&paths, &d, "nsfw", OptionValue::Switch(false)).unwrap();
         assert_eq!(value(&paths, &d, "nsfw"), OptionValue::Switch(false));
         assert!(set_option_value(&paths, &d, "nsfw", OptionValue::Text("x".into())).is_err());

@@ -85,7 +85,21 @@ pub struct Hit {
     pub year: Option<i32>,
     pub platform: Option<String>,
     pub thumb: Option<String>,
+    /// `adult: true`: its thumbnail is flagged adult.
+    pub thumb_adult: bool,
+    /// Its name in another script or language (`altTitle`).
+    pub alt_title: Option<String>,
     pub matched_by: MatchedBy,
+}
+
+impl Hit {
+    /// Whether `title` names this hit: its title or its other name.
+    pub fn is_named(&self, title: Option<&str>) -> bool {
+        [Some(self.title.as_str()), self.alt_title.as_deref()]
+            .into_iter()
+            .flatten()
+            .any(|name| MatchedBy::by_title(name, title) == MatchedBy::ExactTitle)
+    }
 }
 
 /// What the game carries that a script may say it found it by: the keys of
@@ -99,9 +113,9 @@ pub struct GameKeys<'a> {
 }
 
 /// How the hit was found. By an id or a hash only when the hit names one
-/// the game has; by title, sure only when the titles are the same once
-/// normalized and the script is not unsure.
-fn judge(hit: &Map<String, Value>, title: &str, game: &GameKeys<'_>) -> MatchedBy {
+/// the game has; by title, sure only when the game's title is the hit's
+/// title or other name once normalized and the script is not unsure.
+fn judge(hit: &Map<String, Value>, names: [Option<&str>; 2], game: &GameKeys<'_>) -> MatchedBy {
     let has = |m: &Map<String, Value>, k: &str| m.get(k).is_some_and(|v| v.as_str().is_some_and(|s| !s.is_empty()));
     if let Some(Value::Object(by)) = hit.get("matchedBy") {
         if let Some(id) = by.get("id").and_then(Value::as_str) {
@@ -116,9 +130,11 @@ fn judge(hit: &Map<String, Value>, title: &str, game: &GameKeys<'_>) -> MatchedB
         }
     }
     let unsure = hit.get("confidence").and_then(Value::as_f64).is_some_and(|c| c < SURE_CONFIDENCE);
-    match MatchedBy::by_title(game.title, Some(title)) {
-        MatchedBy::ExactTitle if !unsure => MatchedBy::ExactTitle,
-        _ => MatchedBy::FuzzyTitle,
+    let same = names.into_iter().flatten().any(|name| MatchedBy::by_title(game.title, Some(name)) == MatchedBy::ExactTitle);
+    if same && !unsure {
+        MatchedBy::ExactTitle
+    } else {
+        MatchedBy::FuzzyTitle
     }
 }
 
@@ -143,8 +159,11 @@ pub fn hits(value: &Value, game: &GameKeys<'_>, pictures: &[HostRule]) -> Vec<Hi
                 return None;
             }
             let title = text(h.get("title"), 200)?;
+            let alt_title = text(h.get("altTitle"), 200).filter(|alt| MatchedBy::by_title(&title, Some(alt)) != MatchedBy::ExactTitle);
             Some(Hit {
-                matched_by: judge(h, &title, game),
+                matched_by: judge(h, [Some(&title), alt_title.as_deref()], game),
+                thumb_adult: h.get("adult").and_then(Value::as_bool) == Some(true),
+                alt_title,
                 year: h.get("year").and_then(Value::as_i64).and_then(|y| i32::try_from(y).ok()).filter(|y| (1950..=2100).contains(y)),
                 platform: text(h.get("platform"), 100),
                 thumb: picture(h.get("thumb"), pictures),

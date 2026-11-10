@@ -8,7 +8,7 @@ use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use common::{fixture, Req, Resp, Server};
+use common::{fallback, fixture, Req, Resp, Server, FALLBACK};
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameMetadata, MetadataFile};
 use heronite_data::paths::DataPaths;
@@ -144,6 +144,8 @@ fn setup() -> Setup {
     let server = mock();
     let paths = make_root(dir.path());
     let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());
+    // A fallback source, as an extension adds one: asked when nothing is sure.
+    svc.add_source(fallback()).unwrap();
     Setup { _dir: dir, paths, server, svc }
 }
 
@@ -370,7 +372,7 @@ fn in_no_source_stops_the_automatic_paths_until_the_title_changes() {
 fn searching_every_source_groups_the_hits_by_game() {
     let s = setup();
     let found = s.svc.search_sources("Portal 2", None);
-    assert_eq!(found.asked, ["igdb", "steam", "lutris", "vndb"], "a search by hand asks the fallback source too");
+    assert_eq!(found.asked, ["igdb", "steam", "lutris", FALLBACK], "a search by hand asks the fallback source too");
     assert!(found.unreachable.is_empty() && found.needs_key.is_empty());
     let portal2 = found.choices.iter().find(|c| c.hits.iter().any(|h| h.id.as_deref() == Some("72"))).unwrap();
     let sources: Vec<(&str, &str)> = portal2.hits.iter().map(|h| (h.source.as_str(), h.id.as_deref().unwrap())).collect();
@@ -395,7 +397,7 @@ fn searching_every_source_groups_the_hits_by_game() {
         .sources()
         .descriptors()
         .filter(|d| d.searchable)
-        .all(|d| ["igdb", "steam", "lutris", "vndb", "launchbox"].contains(&d.id.as_str())));
+        .all(|d| ["igdb", "steam", "lutris", "launchbox", FALLBACK].contains(&d.id.as_str())));
     assert!(!keyless.asked.contains(&"launchbox".to_string()), "searchable, but not asked before its download");
 }
 
@@ -509,16 +511,16 @@ fn the_preview_says_what_each_source_did() {
     let states: Vec<(&str, &SourceAnswer)> = preview.sources.iter().map(|st| (st.source.as_str(), &st.answer)).collect();
     assert_eq!(
         states.iter().map(|s| s.0).collect::<Vec<_>>(),
-        ["igdb", "steam", "store", "lutris", "vndb", "launchbox"],
+        ["igdb", "steam", "store", "lutris", "launchbox", FALLBACK],
         "Playnite is hidden"
     );
-    assert_eq!(*states[5].1, SourceAnswer::NotAsked { why: NotAsked::NotForThisGame }, "LaunchBox is for emulated games");
+    assert_eq!(*states[4].1, SourceAnswer::NotAsked { why: NotAsked::NotForThisGame }, "LaunchBox is for emulated games");
     assert!(
         matches!(states[0].1, SourceAnswer::Found { used: false, pinned: false, hit } if hit.matched_by == Some(MatchedBy::FuzzyTitle))
     );
     assert_eq!(*states[1].1, SourceAnswer::NotAsked { why: NotAsked::NotForThisGame });
     assert_eq!(*states[2].1, SourceAnswer::NotFound);
-    assert_eq!(*states[4].1, SourceAnswer::NotFound, "nothing sure: the fallback source was asked");
+    assert_eq!(*states[5].1, SourceAnswer::NotFound, "nothing sure: the fallback source was asked");
     assert!(preview.proposed.description.is_none() && preview.proposed.genres.is_empty(), "an automatic save takes nothing");
 
     // Off, and no keys.

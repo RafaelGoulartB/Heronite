@@ -302,6 +302,46 @@ fn a_failing_extension_stops_without_harming_the_others() {
     assert_eq!(progress.processed, 3);
 }
 
+/// `ctx.unreachable`: a script that sees its service busy or down ends the
+/// call as unreachable, like a request that got no answer.
+#[test]
+fn a_busy_service_is_unreachable_and_never_stops_the_extension() {
+    let s = setup();
+    let script = |body: &str| format!("export function find(game, ctx) {{ {body} }}\nexport function fetch() {{}}");
+    let add = |id: &str, body: &str| {
+        let ext = source(id, &["description"], "", &script(body), Limits::default());
+        s.svc.add_source(Arc::new(ext)).unwrap();
+    };
+    add("busy", r#"throw ctx.unreachable("The service is busy\n(429)");"#);
+    add("quiet", "throw ctx.unreachable();");
+    // An error of its own is a failure, even of the same words, and even
+    // after it made one with `ctx.unreachable` that it did not throw.
+    add("plain", r#"throw new Error("The service is busy (429)");"#);
+    add("other", r#"ctx.unreachable("busy"); throw new Error("boom");"#);
+    for _ in 0..6 {
+        let preview = s.svc.preview_game_metadata(&args("portal2")).unwrap();
+        assert_eq!(state(&preview, "busy"), SourceAnswer::Unreachable);
+        assert_eq!(state(&preview, "quiet"), SourceAnswer::Unreachable);
+        assert!(matches!(state(&preview, "exampledb"), SourceAnswer::Found { .. }));
+    }
+    let settings = s.svc.metadata_settings();
+    for id in ["busy", "quiet"] {
+        assert_eq!(s.svc.sources().health(id), SourceHealth::Ok, "{id}");
+        assert_eq!(s.svc.source_status(&settings, id), Some(SourceStatus::On), "{id}");
+    }
+    for id in ["plain", "other"] {
+        assert_eq!(s.svc.source_status(&settings, id), Some(SourceStatus::Failing), "{id}");
+    }
+    // A search says it could not be reached.
+    let found = s.svc.search_sources("Portal", Some(&["busy".to_string()]));
+    assert_eq!(found.unreachable, ["busy"]);
+    // So does its test, with its words on one line.
+    let test = source("tested", &["description"], "", "export function find() {}\nexport function fetch() {}\nexport function test(ctx) { throw ctx.unreachable(\"down for\\nmaintenance\"); }", Limits::default());
+    s.svc.add_source(Arc::new(test)).unwrap();
+    let result = s.svc.sources().test(&SourceContext::new(&s.paths, &s.svc.http), "tested").unwrap();
+    assert_eq!(result.error.as_deref(), Some("unreachable: down for maintenance"));
+}
+
 #[test]
 fn an_extension_that_runs_too_long_fails_alone() {
     let s = setup();

@@ -1,9 +1,11 @@
 //! A made-up preview for `HERONITE_DEBUG_DIALOG=metadata:<state>`: nothing
 //! is asked or written. `fake` (and `change`, with "Change" open): IGDB
 //! pinned, Steam found by its id, Lutris found another game (left out), the
-//! store not for this game, VNDB not asked (the others found the game),
-//! genres locked and the release date picked from Steam; `vndb`: as `fake`,
-//! with VNDB asked and found by its title; `emulated`: as `fake` for an
+//! store not for this game, a fallback source not asked (the others found
+//! the game), genres locked and the release date picked from Steam;
+//! `fallback`: as `fake`, with that source asked and found by its title
+//! ([`FALLBACK`], a made-up extension id: not in the registry, so it shows
+//! by its id and cannot be searched); `emulated`: as `fake` for an
 //! emulated game, Steam not for it, the LaunchBox Games Database found
 //! by the dump's name on its platform and libretro-thumbnails (a pictures
 //! source: no match to show) giving its box art; `none`: no source found the
@@ -18,6 +20,9 @@ use heronite_data::num::JsNum;
 use heronite_metadata::service::SourceSearch;
 use heronite_metadata::{MatchChoice, MatchedBy, MetadataCandidate, MetadataPreview, NotAsked, SourceAnswer, SourceHit, SourceState};
 use indexmap::IndexMap;
+
+/// The made-up fallback source of the made-up states.
+const FALLBACK: &str = "novels";
 
 pub(super) struct FakePreview {
     state: String,
@@ -113,9 +118,9 @@ impl FakePreview {
                 m.cover_wide_url = self.thumb(3);
             }));
         }
-        if self.state == "vndb" {
-            candidates.push(self.candidate("vndb", t, "2004-11", MatchedBy::ExactTitle, "v2002", |m| {
-                m.description = Some(format!("{t}, as the Visual Novel Database tells it."));
+        if self.state == "fallback" {
+            candidates.push(self.candidate(FALLBACK, t, "2004-11", MatchedBy::ExactTitle, "n2002", |m| {
+                m.description = Some(format!("{t}, as a database of visual novels tells it."));
                 m.developers = strings(&["North Studio"]);
                 m.genres = strings(&["Visual Novel"]);
                 m.themes = strings(&["Time Travel", "Conspiracy", "Male Protagonist"]);
@@ -138,7 +143,7 @@ impl FakePreview {
                 SourceState { source: "store".into(), answer: SourceAnswer::NotAsked { why: NotAsked::NotForThisGame } },
                 // Asked only when the others are reached and find nothing.
                 SourceState {
-                    source: "vndb".into(),
+                    source: FALLBACK.into(),
                     answer: if self.state == "offline" { SourceAnswer::NotAsked { why: NotAsked::Fallback } } else { missing },
                 },
             ]
@@ -149,9 +154,9 @@ impl FakePreview {
                 SourceState { source: "lutris".into(), answer: found(&candidates[3], false) },
                 SourceState { source: "store".into(), answer: SourceAnswer::NotAsked { why: NotAsked::NotForThisGame } },
                 SourceState {
-                    source: "vndb".into(),
-                    answer: match candidates.get(4).filter(|c| c.source == "vndb") {
-                        Some(vndb) => found(vndb, true),
+                    source: FALLBACK.into(),
+                    answer: match candidates.get(4).filter(|c| c.source == FALLBACK) {
+                        Some(fallback) => found(fallback, true),
                         None => SourceAnswer::NotAsked { why: NotAsked::Fallback },
                     },
                 },

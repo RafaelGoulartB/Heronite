@@ -57,3 +57,19 @@ fn live_pcgamingwiki() {
     assert_eq!(c.metadata.series.as_deref(), Some("Portal"));
     assert!(c.metadata.features.iter().any(|f| f.contains("ontroller support")), "{:?}", c.metadata.features);
 }
+
+#[test]
+fn live_vndb() {
+    if !enabled() {
+        return;
+    }
+    let game = SourceGame { app_name: "a".into(), runner: "sideload".into(), title: "Steins;Gate".into(), ..Default::default() };
+    let c = lookup("vndb", game);
+    assert_eq!((c.match_id.as_deref(), c.matched_by), (Some("v2002"), Some(MatchedBy::ExactTitle)));
+    let md = &c.metadata;
+    assert_eq!(md.release_date.as_deref(), Some("2009-10-15"));
+    assert!(md.description.as_deref().is_some_and(|d| d.contains("Steins;Gate") && !d.contains("[url")));
+    assert!(md.cover_url.as_deref().is_some_and(|u| u.starts_with("https://t.vndb.org/")) && md.hero_url.is_some());
+    assert!(!md.developers.is_empty() && !md.themes.is_empty() && md.critic_score.is_some());
+    assert_eq!(md.genres, ["Visual Novel"]);
+}

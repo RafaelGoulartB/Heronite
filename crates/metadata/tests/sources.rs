@@ -128,7 +128,7 @@ fn a_field_switched_off_is_never_taken_from_its_source() {
     svc.set_source_field_enabled("igdb", "description", false).unwrap();
     svc.set_source_field_enabled("igdb", "cover", false).unwrap();
     let s = svc.metadata_settings();
-    assert_eq!(svc.field_order(&s, "description"), ["steam", "store", "lutris", "playnite", "vndb", "launchbox"]);
+    assert_eq!(svc.field_order(&s, "description"), ["steam", "store", "lutris", "playnite", "launchbox"]);
     let preview = svc.preview_game_metadata(&args()).unwrap();
     assert_eq!(preview.proposed.field_sources["description"], "steam");
     assert_eq!(preview.proposed.field_sources["cover"], "steam");

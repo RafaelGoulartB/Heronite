@@ -19,7 +19,7 @@
 //!   (a record holding only a picture would keep the idle fill away); a
 //!   fetch of pictures only that nothing answers writes nothing;
 //! - none found it and one that could have did not answer (offline, or it
-//!   asked to wait, as a throttled VNDB does; for a fetch of the details,
+//!   asked to wait, as a throttled service does; for a fetch of the details,
 //!   only a details source counts): nothing is saved or marked
 //!   ([`SourceUnreachable`], or [`Offline`] when no source answered at
 //!   all), so the next pass asks again. A job reports the game as such

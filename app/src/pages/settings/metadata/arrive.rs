@@ -59,7 +59,7 @@ fn board_select(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement 
 /// What "Allow adult covers" does, under it.
 pub(super) fn adult_help() -> &'static str {
     tr!(
-        "Covers and backgrounds a source marks as suggestive or explicit (VNDB does). Off, they are never shown or downloaded and the next source gives the picture; pictures already saved stay."
+        "Covers and backgrounds a source marks as suggestive or explicit. Off, they are never shown or downloaded and the next source gives the picture; pictures already saved stay."
     )
 }
 

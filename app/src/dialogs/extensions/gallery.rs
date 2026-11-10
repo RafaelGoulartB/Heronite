@@ -182,7 +182,7 @@ impl ExtensionsDialog {
     fn render_panel(&self, o: &Offer, cx: &mut Context<Self>) -> Div {
         let e = &o.entry;
         let origin = words::list_origin(&o.list, o.builtin);
-        let audience = e.game_kind.as_ref().map_or_else(|| labels::audience_of(&e.applies_to), |k| heronite_i18n::tr(&k.name).to_string());
+        let audience = e.game_kind.as_ref().map_or_else(|| labels::audience_of(&e.applies_to), |k| labels::kind_name(k).to_string());
         let mut pills = div().flex().flex_wrap().gap(px(6.)).child(tag_pill(words::kind(e.kind))).child(tag_pill(audience));
         if e.adult {
             pills = pills.child(status_pill(tr!("Adult content"), theme::warning()));

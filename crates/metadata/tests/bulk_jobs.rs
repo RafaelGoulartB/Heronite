@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use common::{fixture, png, Req, Resp, Server};
+use common::{fallback, fixture, png, Req, Resp, Server, FALLBACK};
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameMetadata, MetadataFile};
 use heronite_data::paths::DataPaths;
@@ -290,7 +290,6 @@ fn dead_endpoints() -> Endpoints {
         igdb: format!("{base}/igdb/v4"),
         steam_store: format!("{base}/steam"),
         lutris: format!("{base}/lutris"),
-        vndb: format!("{base}/vndb"),
         ..Endpoints::default()
     }
 }
@@ -633,6 +632,7 @@ fn counts_for_two_thousand_games_read_each_file_once() {
 #[test]
 fn fill_what_is_missing_does_what_the_counts_say() {
     let s = setup();
+    s.svc.add_source(fallback()).unwrap();
     put(&s.paths, &mixed_portal());
     let games = vec![portal(), plain()];
     let counts = s.svc.bulk_counts(&games).unwrap();
@@ -644,7 +644,8 @@ fn fill_what_is_missing_does_what_the_counts_say() {
     assert!(after.fields_missing < counts.fields_missing);
     assert_eq!(
         s.svc.bulk_sources(&s.svc.metadata_settings()).iter().map(|d| d.id.as_str()).collect::<Vec<_>>(),
-        ["igdb", "steam", "store", "lutris", "vndb", "launchbox"]
+        ["igdb", "steam", "store", "lutris", "launchbox", FALLBACK],
+        "a fallback source is offered too"
     );
     assert_eq!(counts.needs_download, ["launchbox"], "listed, but it reaches no game before its download");
     assert_eq!(counts.reach["launchbox"], 0);

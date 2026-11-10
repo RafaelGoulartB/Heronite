@@ -356,9 +356,14 @@ impl SourceRegistry {
             steam: Arc::new(crate::steam::SteamState::default()),
             stores: Arc::new(crate::providers::StoreLibraries::default()),
             playnite: Arc::new(parking_lot::RwLock::new(None)),
-            vndb: Arc::new(crate::vndb::Vndb::new()),
             launchbox: Arc::new(crate::launchbox::LaunchBox::new()),
         })
+    }
+
+    /// [`Self::for_tests`] with [`test_fallback`] added, as an extension.
+    #[cfg(test)]
+    pub(crate) fn for_tests_with_fallback() -> Self {
+        Self::for_tests().with_source(Arc::new(test_fallback())).expect("not a built-in id")
     }
 
     /// Whether some lookup's audience depends on the overlay entry.
@@ -375,4 +380,42 @@ fn also_for_on<'d>(paths: &DataPaths, m: &MetadataSettings, d: &'d SourceDescrip
     let also = d.also_for.as_ref()?;
     let opt = d.options.iter().find(|o| o.key == also.option)?;
     options::option_value(paths, m, d, opt).as_bool().then_some(&also.applies_to)
+}
+
+/// A details source asked as a fallback for visual novels, declared the
+/// way an extension declares one, with a select and a switch option. It
+/// finds nothing: the tests of the fallback rule, the orders and the rows
+/// need its descriptor only.
+#[cfg(test)]
+pub(crate) struct TestFallback(SourceDescriptor);
+
+#[cfg(test)]
+pub(crate) const TEST_FALLBACK: &str = "novels";
+
+#[cfg(test)]
+pub(crate) fn test_fallback() -> TestFallback {
+    let d = serde_json::from_value(serde_json::json!({
+        "id": TEST_FALLBACK, "name": "Novels", "kind": "details", "network": true, "searchable": true,
+        "provides": ["description", "releaseDate", "developers", "genres", "themes", "criticScore", "cover", "hero"],
+        "asked": "asFallback", "gameKind": {"name": "Visual novels", "signals": ["Visual Novel"]},
+        "options": [
+            {"key": "titleOrder", "label": "Title to show", "kind": "select",
+             "choices": [{"value": "latin", "label": "Romaji"}, {"value": "original", "label": "Original"}]},
+            {"key": "screenshotBackground", "label": "Screenshot background", "kind": "switch", "default": true}
+        ],
+        "extension": {"version": "1.0.0", "author": "tests"}
+    }))
+    .expect("a test descriptor");
+    TestFallback(d)
+}
+
+#[cfg(test)]
+impl MetadataSource for TestFallback {
+    fn descriptor(&self) -> &SourceDescriptor {
+        &self.0
+    }
+
+    fn lookup(&self, _: &SourceContext<'_>, _: &SourceGame) -> Lookup<MetadataCandidate> {
+        Lookup::NotFound
+    }
 }

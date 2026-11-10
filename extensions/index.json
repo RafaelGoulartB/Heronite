@@ -38,6 +38,65 @@
       }
     },
     {
+      "id": "vndb",
+      "name": "VNDB",
+      "version": "1.0.0",
+      "api": 1,
+      "author": "Heronite",
+      "homepage": "https://vndb.org",
+      "kind": "details",
+      "adult": false,
+      "description": "The Visual Novel Database (vndb.org), for visual novels and Japanese titles: found by the Japanese, romaji or English name, or by a VNDB id such as v17. Not affiliated with VNDB.",
+      "fields": [
+        "description",
+        "releaseDate",
+        "developers",
+        "genres",
+        "themes",
+        "criticScore",
+        "cover",
+        "hero"
+      ],
+      "applies": {
+        "to": "all",
+        "asked": "fallback",
+        "game_kind": {
+          "name": "Visual novels",
+          "signals": [
+            "Visual Novel"
+          ]
+        }
+      },
+      "hosts": [
+        "api.vndb.org"
+      ],
+      "images": [
+        "t.vndb.org"
+      ],
+      "settings": [
+        {
+          "label": "Title to show",
+          "required": false
+        },
+        {
+          "label": "Use a screenshot as background",
+          "required": false
+        }
+      ],
+      "files": {
+        "source.toml": {
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/vndb/source.toml",
+          "sha256": "793489b77d5b4da349eea542cd89b874a34d7a66387c10588bc678ccb89e08e7",
+          "size": 1373
+        },
+        "source.js": {
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/vndb/source.js",
+          "sha256": "f93fdfbc5bceac5cf789f87f3e551cb7cc98846dce1c4e946d41aa69e1784229",
+          "size": 10641
+        }
+      }
+    },
+    {
       "id": "wikipedia",
       "name": "Wikipedia",
       "version": "1.0.0",

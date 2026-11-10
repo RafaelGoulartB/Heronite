@@ -2,7 +2,7 @@
 //! `HERONITE_EXTENSIONS_INDEX` names): read and checked like a downloaded
 //! one without the network, its entries' files read beside it and checked
 //! against it, nothing outside its folder read, and the repository's own
-//! `extensions/index.json` installing both examples.
+//! `extensions/index.json` installing every example.
 
 mod support;
 
@@ -26,10 +26,10 @@ fn offline(data: &Path) -> MetadataService {
     MetadataService::with_endpoints(DataPaths::at(data), e)
 }
 
-/// A copy of the repository's `extensions/` (the list and both folders) in
+/// A copy of the repository's `extensions/` (the list and its folders) in
 /// `dir`; returns the list's path.
 fn copy_of_the_repository_list(dir: &Path) -> PathBuf {
-    for id in ["wikipedia", "pcgamingwiki"] {
+    for id in ["wikipedia", "pcgamingwiki", "vndb"] {
         std::fs::create_dir_all(dir.join(id)).unwrap();
         for file in ["source.toml", "source.js"] {
             std::fs::copy(example(id).join(file), dir.join(id).join(file)).unwrap();
@@ -66,7 +66,7 @@ fn a_list_on_this_computer_is_read_and_checked_without_the_network_or_a_copy() {
     assert!(copy.builtin && copy.error.is_none() && copy.read_at.is_some(), "{copy:?}");
     assert_eq!(copy.url, key);
     let ids: Vec<&str> = copy.index.as_ref().unwrap().entries.iter().map(|e| e.id.as_str()).collect();
-    assert_eq!(ids, ["pcgamingwiki", "wikipedia"]);
+    assert_eq!(ids, ["pcgamingwiki", "vndb", "wikipedia"]);
     // Read now when the copies kept are asked for too, and no copy is kept.
     assert_eq!(own.cached(&svc)[0].index, copy.index);
     let kept = std::fs::read_dir(svc.paths.extension_lists_cache_dir()).map(|d| d.count()).unwrap_or(0);
@@ -161,7 +161,7 @@ fn nothing_outside_the_lists_folder_is_read() {
 }
 
 #[test]
-fn the_repository_list_read_from_this_checkout_installs_both_examples() {
+fn the_repository_list_read_from_this_checkout_installs_every_example() {
     let data = tempfile::tempdir().unwrap();
     let svc = offline(data.path());
     let key = ListLocation::File(repo_index()).key();
@@ -175,7 +175,7 @@ fn the_repository_list_read_from_this_checkout_installs_both_examples() {
     }
     let installed = svc.installed_extensions();
     let ids: Vec<&str> = installed.iter().map(|e| e.id.as_str()).collect();
-    assert_eq!(ids, ["pcgamingwiki", "wikipedia"]);
+    assert_eq!(ids, ["pcgamingwiki", "vndb", "wikipedia"]);
     assert!(installed.iter().all(|e| e.list.as_deref() == Some(key.as_str()) && own.origin(&svc, e) == Origin::Local(key.clone())));
     assert!(svc.sources().get("wikipedia").is_some() && svc.sources().get("pcgamingwiki").is_some(), "registered and asked");
     // Nothing updates while the list offers the versions installed.

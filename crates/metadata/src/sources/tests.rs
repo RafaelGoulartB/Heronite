@@ -18,7 +18,6 @@ fn registry() -> SourceRegistry {
         steam: Arc::new(SteamState::default()),
         stores: Arc::new(StoreLibraries::default()),
         playnite: Arc::new(RwLock::new(None)),
-        vndb: Arc::new(crate::vndb::Vndb::new()),
         launchbox: Arc::new(crate::launchbox::LaunchBox::new()),
     })
 }
@@ -31,7 +30,7 @@ fn ids<'a>(list: impl Iterator<Item = &'a SourceDescriptor>) -> Vec<&'a str> {
 fn lookups_keep_the_provider_order() {
     let reg = registry();
     let lookups: Vec<&str> = reg.lookups().map(|s| s.descriptor().id.as_str()).collect();
-    assert_eq!(lookups, ["igdb", "steam", "store", "lutris", "playnite", "vndb", "launchbox", "steamgriddb", "libretro"]);
+    assert_eq!(lookups, ["igdb", "steam", "store", "lutris", "playnite", "launchbox", "steamgriddb", "libretro"]);
     assert_eq!(
         ids(reg.descriptors()),
         [
@@ -40,7 +39,6 @@ fn lookups_keep_the_provider_order() {
             "store",
             "lutris",
             "playnite",
-            "vndb",
             "launchbox",
             "steamgriddb",
             "libretro",
@@ -77,17 +75,17 @@ fn details_sources_and_two_pictures_sources_have_a_lookup() {
 
 #[test]
 fn offered_details_sources_leave_playnite_out() {
-    assert_eq!(ids(offered(SourceKind::Details)), ["igdb", "steam", "store", "lutris", "vndb", "launchbox"]);
+    assert_eq!(ids(offered(SourceKind::Details)), ["igdb", "steam", "store", "lutris", "launchbox"]);
     assert!(registry().get("playnite").is_some_and(|d| d.hidden));
     let names: Vec<&str> = offered(SourceKind::Details).map(|d| d.name.as_str()).collect();
-    assert_eq!(names, ["IGDB", "Steam", "Store", "Lutris", "VNDB", "LaunchBox"]);
+    assert_eq!(names, ["IGDB", "Steam", "Store", "Lutris", "LaunchBox"]);
 }
 
 #[test]
-fn network_sources_are_igdb_steam_lutris_vndb_steamgriddb_and_libretro() {
+fn network_sources_are_igdb_steam_lutris_steamgriddb_and_libretro() {
     let reg = registry();
     let online: Vec<&str> = reg.lookups().map(|s| s.descriptor()).filter(|d| d.network).map(|d| d.id.as_str()).collect();
-    assert_eq!(online, ["igdb", "steam", "lutris", "vndb", "steamgriddb", "libretro"]);
+    assert_eq!(online, ["igdb", "steam", "lutris", "steamgriddb", "libretro"]);
 }
 
 #[test]
@@ -97,10 +95,7 @@ fn cover_families_by_source() {
     assert_eq!(gives("coverSquare"), ["launchbox", "steamgriddb", "libretro"]);
     assert_eq!(gives("coverWide"), ["steam", "store", "steamgriddb", "libretro"]);
     // The tall cover keeps its sources; IGDB and Lutris give only that one.
-    assert_eq!(
-        gives("cover"),
-        ["igdb", "steam", "store", "lutris", "playnite", "vndb", "launchbox", "steamgriddb", "libretro", "webimages"]
-    );
+    assert_eq!(gives("cover"), ["igdb", "steam", "store", "lutris", "playnite", "launchbox", "steamgriddb", "libretro", "webimages"]);
     // No background: its screenshots are 240 to 512 px wide.
     assert!(!gives("hero").contains(&"libretro"));
 }
@@ -284,19 +279,20 @@ fn launchbox_is_for_emulated_games_and_pc_games_on_request() {
 }
 
 #[test]
-fn only_vndb_is_a_fallback_and_its_kind_is_visual_novels() {
-    let reg = registry();
+fn no_built_in_source_is_a_fallback_and_an_extensions_kind_is_read() {
+    assert!(registry().descriptors().all(|d| !d.is_fallback() && d.game_kind.is_none()));
+    let reg = SourceRegistry::for_tests_with_fallback();
     let fallbacks: Vec<&str> = reg.descriptors().filter(|d| d.is_fallback()).map(|d| d.id.as_str()).collect();
-    assert_eq!(fallbacks, ["vndb"]);
-    let kind = reg.get("vndb").unwrap().game_kind.as_ref().unwrap();
+    assert_eq!(fallbacks, [TEST_FALLBACK]);
+    let kind = reg.get(TEST_FALLBACK).unwrap().game_kind.as_ref().unwrap();
     assert!(kind.said_by(&["Adventure".to_string(), "visual novel".to_string()]));
     assert!(!kind.said_by(&["Novel".to_string()]));
     // Named by a request of fallback sources only.
     let only = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    assert!(reg.names_fallback("vndb", Some(&only(&["vndb"]))));
-    assert!(reg.names_fallback("vndb", Some(&only(&["vndb", "steamtags"]))));
-    assert!(!reg.names_fallback("vndb", Some(&only(&["igdb", "vndb"]))));
-    assert!(!reg.names_fallback("vndb", None));
+    assert!(reg.names_fallback(TEST_FALLBACK, Some(&only(&[TEST_FALLBACK]))));
+    assert!(reg.names_fallback(TEST_FALLBACK, Some(&only(&[TEST_FALLBACK, "steamtags"]))));
+    assert!(!reg.names_fallback(TEST_FALLBACK, Some(&only(&["igdb", TEST_FALLBACK]))));
+    assert!(!reg.names_fallback(TEST_FALLBACK, None));
     // A manifest says so the same way.
     let d: SourceDescriptor = serde_json::from_str(
         r#"{"id":"x","name":"X","kind":"details","asked":"asFallback","gameKind":{"name":"Visual novels","signals":["Visual Novel"]}}"#,
@@ -307,7 +303,7 @@ fn only_vndb_is_a_fallback_and_its_kind_is_visual_novels() {
 
 #[test]
 fn a_manifest_descriptor_takes_defaults() {
-    let d: SourceDescriptor = serde_json::from_str(r#"{"id":"vndb","name":"VNDB","kind":"details"}"#).unwrap();
+    let d: SourceDescriptor = serde_json::from_str(r#"{"id":"exampledb","name":"ExampleDB","kind":"details"}"#).unwrap();
     assert_eq!(d.applies_to, AppliesTo::All);
     assert_eq!(d.needs, Needs::Nothing);
     assert!(d.provides.is_empty() && d.finds_by.is_empty() && !d.network && !d.hidden);

@@ -10,7 +10,7 @@
 //!   "sources": {
 //!     "steamgriddb": { "enabled": false },
 //!     "steam":       { "fieldsOff": ["description", "cover"] },
-//!     "vndb":        { "enabled": true, "options": { "language": "ja" } }
+//!     "exampledb":   { "enabled": true, "options": { "language": "ja" } }
 //!   },
 //!   "sourceOrder": ["store", "igdb", "steam", "lutris", "playnite"],
 //!   "fieldPriority": { "cover": ["steam", "igdb"] }
@@ -32,7 +32,7 @@
 //! Ids this build does not know are kept everywhere.
 
 use crate::models::{MetadataSettings, SourcePrefs};
-use crate::settings::{default_field_priority, ADDED_SOURCES};
+use crate::settings::{default_field_priority, ADDED_SOURCES, DEFAULT_LISTED_EXTENSIONS};
 
 /// Ids of the built-in sources whose state is read outside the metadata
 /// service (legacy switches, fetch paths of their own, the app).
@@ -97,9 +97,11 @@ pub fn set_option(m: &mut MetadataSettings, id: &str, key: &str, value: Option<s
 
 /// Whether the user set an order for `field`: its saved `fieldPriority`
 /// differs from the default one, and from the default as it was before the
-/// [`ADDED_SOURCES`] (what every settings file saved until then).
+/// [`ADDED_SOURCES`] (what every settings file saved until then), once a
+/// [`DEFAULT_LISTED_EXTENSIONS`] id is left out where those defaults had it.
 pub fn is_field_customised(m: &MetadataSettings, field: &str) -> bool {
-    m.field_priority.get(field).is_some_and(|list| {
+    m.field_priority.get(field).is_some_and(|saved| {
+        let list = without_default_listed(saved);
         let default = default_field_priority(field);
         // The default as each earlier build saved it: without the sources
         // added after it.
@@ -107,8 +109,17 @@ pub fn is_field_customised(m: &MetadataSettings, field: &str) -> bool {
             let later = &ADDED_SOURCES[built..];
             default.iter().filter(|id| !later.contains(&id.as_str())).cloned().collect::<Vec<String>>()
         });
-        *list != default && saved_before.into_iter().all(|before| *list != before)
+        list != default && saved_before.into_iter().all(|before| list != before)
     })
+}
+
+/// `list` without the [`DEFAULT_LISTED_EXTENSIONS`] ids followed only by
+/// [`ADDED_SOURCES`]: the place the defaults that named them had them.
+fn without_default_listed(list: &[String]) -> Vec<String> {
+    let at_default_place = |i: usize| {
+        DEFAULT_LISTED_EXTENSIONS.contains(&list[i].as_str()) && list[i + 1..].iter().all(|id| ADDED_SOURCES.contains(&id.as_str()))
+    };
+    (0..list.len()).filter(|i| !at_default_place(*i)).map(|i| list[i].clone()).collect()
 }
 
 /// Back to the default order for `field`, stored as the default list so
@@ -155,18 +166,33 @@ mod tests {
         for field in METADATA_FIELDS {
             assert!(is_field_on(&m, "igdb", field));
         }
-        // A list saved before VNDB was a source is still the default.
-        let m = read(r#"{"metadata":{"fieldPriority":{"cover":["igdb","steam","lutris","playnite","store"],"hero":["vndb","igdb"]}}}"#);
+        // A list saved before LaunchBox was a source is still the default.
+        let m =
+            read(r#"{"metadata":{"fieldPriority":{"cover":["igdb","steam","lutris","playnite","store"],"hero":["exampledb","igdb"]}}}"#);
         assert!(!is_field_customised(&m, "cover") && is_field_customised(&m, "hero"));
         // Nor is a list saved when LaunchBox was the last one added, before libretro-thumbnails.
         let m = read(
-            r#"{"metadata":{"fieldPriority":{"cover":["igdb","steam","lutris","playnite","store","vndb","launchbox"],
+            r#"{"metadata":{"fieldPriority":{"cover":["igdb","steam","lutris","playnite","store","launchbox"],
                 "coverSquare":["steamgriddb","launchbox"],"coverWide":["steam","store","steamgriddb"]}}}"#,
         );
         assert!(["cover", "coverSquare", "coverWide"].iter().all(|f| !is_field_customised(&m, f)));
         assert_eq!(m.field_priority["coverWide"], ["steam", "store", "steamgriddb"], "the saved list is kept as it is");
         let m = read(r#"{"metadata":{"fieldPriority":{"coverWide":["steamgriddb","steam","store"]}}}"#);
         assert!(is_field_customised(&m, "coverWide"));
+        // The defaults of the builds where VNDB was built in, with it last of
+        // the sources of then: still the default.
+        let m = read(
+            r#"{"metadata":{"fieldPriority":{"cover":["igdb","steam","lutris","playnite","store","vndb","launchbox","libretro"],
+                "hero":["igdb","steam","lutris","playnite","vndb","launchbox"],"themes":["igdb","playnite","vndb"],
+                "description":["igdb","steam","store","lutris","playnite","vndb"]}}}"#,
+        );
+        assert!(["cover", "hero", "themes", "description"].iter().all(|f| !is_field_customised(&m, f)));
+        assert_eq!(m.field_priority["themes"], ["igdb", "playnite", "vndb"], "the saved list is kept as it is");
+        // Placed elsewhere by the user, it is the user's list.
+        let m = read(
+            r#"{"metadata":{"fieldPriority":{"themes":["vndb","igdb","playnite"],"hero":["igdb","steam","lutris","vndb","playnite","launchbox"]}}}"#,
+        );
+        assert!(is_field_customised(&m, "themes") && is_field_customised(&m, "hero"));
         // No metadata at all: defaults, nothing customised.
         let m = read("{}");
         assert!(METADATA_FIELDS.iter().all(|f| !is_field_customised(&m, f)));
@@ -175,23 +201,23 @@ mod tests {
     #[test]
     fn unknown_ids_and_keys_survive_a_round_trip() {
         let m = read(
-            r#"{"metadata":{"fieldPriority":{"description":["vndb","igdb"," "]},"sourceOrder":["vndb","igdb","vndb",""],
-                "sources":{"vndb":{"enabled":false,"options":{"lang":"ja"},"fieldsOff":["cover","cover"],"later":1},"empty":{}},
+            r#"{"metadata":{"fieldPriority":{"description":["exampledb","igdb"," "]},"sourceOrder":["exampledb","igdb","exampledb",""],
+                "sources":{"exampledb":{"enabled":false,"options":{"lang":"ja"},"fieldsOff":["cover","cover"],"later":1},"empty":{}},
                 "laterKey":{"a":1}}}"#,
         );
-        assert_eq!(m.field_priority["description"], ["vndb", "igdb"]);
-        assert_eq!(m.source_order, ["vndb", "igdb"]);
-        assert!(!is_on(&m, "vndb") && !is_field_on(&m, "vndb", "cover"));
-        assert_eq!(option(&m, "vndb", "lang"), Some(json!("ja")));
+        assert_eq!(m.field_priority["description"], ["exampledb", "igdb"]);
+        assert_eq!(m.source_order, ["exampledb", "igdb"]);
+        assert!(!is_on(&m, "exampledb") && !is_field_on(&m, "exampledb", "cover"));
+        assert_eq!(option(&m, "exampledb", "lang"), Some(json!("ja")));
         assert!(!m.sources.contains_key("empty"));
         let out = write(&m);
-        assert_eq!(out["sources"]["vndb"], json!({"enabled": false, "options": {"lang": "ja"}, "fieldsOff": ["cover"], "later": 1}));
+        assert_eq!(out["sources"]["exampledb"], json!({"enabled": false, "options": {"lang": "ja"}, "fieldsOff": ["cover"], "later": 1}));
         assert_eq!(out["laterKey"], json!({"a": 1}));
         let again = normalize_metadata(Some(&serde_json::from_value(out.clone()).unwrap()));
         assert_eq!(write(&again), out);
         // Only unknown ids: still the user's list.
-        let m = read(r#"{"metadata":{"fieldPriority":{"series":["vndb"]}}}"#);
-        assert_eq!(m.field_priority["series"], ["vndb"]);
+        let m = read(r#"{"metadata":{"fieldPriority":{"series":["exampledb"]}}}"#);
+        assert_eq!(m.field_priority["series"], ["exampledb"]);
         // An empty list falls back to the default, as before.
         let m = read(r#"{"metadata":{"fieldPriority":{"series":[]}}}"#);
         assert_eq!(m.field_priority["series"], default_field_priority("series"));

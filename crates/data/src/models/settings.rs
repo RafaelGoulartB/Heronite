@@ -181,8 +181,8 @@ pub struct MetadataSettings {
     pub cover_aspect: String,
     #[serde(default)]
     pub download_images: bool,
-    /// Pictures a source flags as adult (VNDB's suggestive or explicit
-    /// covers) are kept. Off: they are dropped before the merge, never
+    /// Pictures a source flags as adult (suggestive or explicit covers) are
+    /// kept. Off: they are dropped before the merge, never
     /// shown as a thumbnail and never downloaded; pictures already saved
     /// stay. Written only when on.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

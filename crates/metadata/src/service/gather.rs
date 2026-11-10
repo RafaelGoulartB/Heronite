@@ -4,9 +4,9 @@
 //! answers call for; the pictures flagged adult are dropped here unless the
 //! user allows them.
 //!
-//! A fallback source ([`Asked::AsFallback`], VNDB) is asked with the others
-//! when the game is identified with it (a pinned or stored match), when the
-//! request names it, or when the record or the game's Steam tags say the
+//! A fallback source ([`Asked::AsFallback`], an extension such as VNDB) is
+//! asked with the others when the game is identified with it (a pinned or
+//! stored match), when the request names it, or when the record or the game's Steam tags say the
 //! game is of its kind ([`GameKind`]). Otherwise it waits for the others:
 //! it is asked after them when none of the online details sources found
 //! the game for sure, or when one of their candidates says the game is of
@@ -406,11 +406,11 @@ mod tests {
 
     #[test]
     fn a_source_that_did_not_answer_holds_the_mark_only_when_it_could_have_found_the_game() {
-        let sources = SourceRegistry::for_tests();
+        let sources = SourceRegistry::for_tests_with_fallback();
         let ids = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let pictures = ["coverSquare".to_string()];
         // A fetch of the details: a details source, not a pictures one.
-        assert!(missed(&sources, &ids(&["vndb"]), None));
+        assert!(missed(&sources, &ids(&[crate::sources::TEST_FALLBACK]), None));
         assert!(!missed(&sources, &ids(&["steamgriddb", "libretro"]), None));
         assert!(!missed(&sources, &[], None));
         // A fetch of pictures only: any source.

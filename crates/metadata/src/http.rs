@@ -14,7 +14,8 @@ use serde::de::DeserializeOwned;
 pub const BROWSER_UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
 pub const FIREFOX_UA: &str = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0";
 /// The app by name and version, for APIs that ask clients to say who they
-/// are (VNDB), as the GOG and Sunshine clients do. Nothing about the user.
+/// are (every request of an extension carries it), as the GOG and Sunshine
+/// clients do. Nothing about the user.
 pub const APP_UA: &str = concat!("Heronite/", env!("CARGO_PKG_VERSION"));
 
 /// Base URLs of every remote service.
@@ -27,8 +28,6 @@ pub struct Endpoints {
     pub steam_api: String,
     pub steam_community: String,
     pub lutris: String,
-    /// VNDB's API v2 ("Kana").
-    pub vndb: String,
     /// The LaunchBox Games Database (its archive, `/Metadata.zip`).
     pub launchbox: String,
     /// Where LaunchBox's pictures are, by file name.
@@ -60,7 +59,6 @@ impl Default for Endpoints {
             steam_api: "https://api.steampowered.com".into(),
             steam_community: "https://steamcommunity.com".into(),
             lutris: "https://lutris.net".into(),
-            vndb: "https://api.vndb.org/kana".into(),
             launchbox: "https://gamesdb.launchbox-app.com".into(),
             launchbox_images: "https://images.launchbox-app.com".into(),
             libretro_thumbnails: "https://thumbnails.libretro.com".into(),

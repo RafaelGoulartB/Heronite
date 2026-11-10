@@ -154,9 +154,7 @@ impl ScriptSource {
         };
         // A title match holds only if the record is the game the hit named.
         let by = match (by, hit) {
-            (MatchedBy::ExactTitle, Some(h))
-                if MatchedBy::by_title(&h.title, fetched.metadata.title.as_deref()) != MatchedBy::ExactTitle =>
-            {
+            (MatchedBy::ExactTitle, Some(h)) if !h.is_named(fetched.metadata.title.as_deref()) => {
                 if fetched.metadata.title.is_some() {
                     MatchedBy::FuzzyTitle
                 } else {
@@ -286,8 +284,8 @@ impl MetadataSource for ScriptSource {
                     platform: h.platform,
                     thumb_url: h.thumb,
                     matched_by: None,
-                    alt_title: None,
-                    thumb_adult: self.manifest.adult,
+                    alt_title: h.alt_title,
+                    thumb_adult: self.manifest.adult || h.thumb_adult,
                 })
                 .collect();
             Lookup::Found(hits)

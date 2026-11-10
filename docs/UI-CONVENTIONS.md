@@ -78,8 +78,8 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
 what the Cover aspect asks for and the Cover shapes card counts it) and "Review 23" sits before "Update metadata…": it opens
   "Review matches" on the games waiting for review, or, when none waits, "Update metadata" on the games that need
   attention (`summary.rs`). Below, the sources are rows in three captioned cards by kind: Game details (IGDB, Steam,
-  Store, Lutris, VNDB), Pictures (SteamGridDB, From the web) and Extras (HowLongToBeat, Steam tags, ProtonDB); a kind with no
-  source is left out. A closed row shows a drag handle (details sources only), the source's tile (its logo, else two
+  Store, Lutris, LaunchBox, and the extensions of that kind), Pictures (SteamGridDB, From the web) and Extras
+  (HowLongToBeat, Steam tags, ProtonDB); a kind with no source is left out. A closed row shows a drag handle (details sources only), the source's tile (its logo, else two
   letters in its colour), its name over what it gives ("Text · Scores · Covers"), the games it is for ("All games",
   "Games found on Steam"…, or the kind of game it is about: "Visual novels"), its status (a dot and a word: Off, On, Connected, Add a key, Could not connect, Sign in,
   Needs a download, Not on this system, By hand only; an extension also Could not be loaded or Stopped after errors, in
@@ -113,8 +113,8 @@ what the Cover aspect asks for and the Cover shapes card counts it) and "Review 
   Collection, whatever the switch says; dimmed with "No source that gives square covers is on." when none can be asked;
   the header pill follows the job). Under the cards, "When details arrive" holds the switches that belong to no source: fill
   missing metadata in the background, copy covers to disk, "Allow adult covers" (off by default: covers and backgrounds a
-  source marks as suggestive or explicit, as VNDB does, are never shown or downloaded and the next source gives the
-  picture; pictures already saved stay; `allowAdultCovers`), show age ratings, and the rating board shown first. Last,
+  source marks as suggestive or explicit (an extension can flag its pictures) are never shown or downloaded and the
+  next source gives the picture; pictures already saved stay; `allowAdultCovers`), show age ratings, and the rating board shown first. Last,
   "Order for one field (advanced)" is a collapsed block with a line per field and its sources as chips, first to last,
   the first one accented: dragging a chip onto another of the same field puts it there for that field only, and the line
   then offers "Reset" (back to following the list above), else it says "List order". A source that is off, or whose
@@ -617,8 +617,8 @@ is sure and saved; a match by a similar name is saved only when at least two sou
 the same game as a sure one), while a lone similar-name match, or sources that found different games, is not saved: the
 game waits in the review queue (`local_library/metadata-review.json`) and counts as needing attention.
 `HERONITE_DEBUG_DIALOG=review[:<state>]` opens a made-up "Review matches" on the selection, else the first three games on
-screen (nothing asked or written): `review` (four, two and one choices in turn; the first game has a VNDB proposal with
-its original title), `review:search` (after a search by
+screen (nothing asked or written): `review` (four, two and one choices in turn; the first game has a proposal of a made-up
+extension, `novels`, with its original title), `review:search` (after a search by
 another name, one source unreachable), `review:empty` (one game, nothing found), `review:done` (the end state),
 `review:busy` (asking the sources), `review:saving`, `review:error` (offline).
 
@@ -635,16 +635,16 @@ source…"), and again after a match is pinned and after "Search every source ag
   a source that found nothing) are on sources that can be searched. A pinned match, one the user chose, has a pin with the
   tooltip "Pinned: every update uses this game". A match the merge ignored because it is another game than the others
   found is amber and reads "(left out: another game)" (not while the game waits for review, where nothing is merged).
-  A source asked only as a fallback (VNDB) that the others made unnecessary keeps its row, "Not asked: the others
-  found it", with "Search". The other sources not asked fold into one muted line per reason under the rows: "Not for
-  this game: Lutris", "Off: …", "Needs a key: …", "Not asked: …". Above the rows: the offline line, the IGDB key hint with
+  A source asked only as a fallback (an extension such as VNDB or Wikipedia) that the others made unnecessary keeps
+  its row, "Not asked: the others found it", with "Search". The other sources not asked fold into one muted line per
+  reason under the rows: "Not for this game: Lutris", "Off: …", "Needs a key: …", "Not asked: …". Above the rows: the offline line, the IGDB key hint with
   "Open Settings → Metadata" (closes the dialog), and, for a game that waits for review, "The sources are not sure which
   game this is: nothing is picked for you. Pick the values, or change a match." The refresh button below ("Search every
   source again") asks again.
 - **Change** replaces the column: a back arrow, "Which game of IGDB is it?", the hits of that source alone for the game's
-  title (a search field, "Search this source", Enter searches again; a VNDB id such as v17 or a vndb.org address finds
-  that entry; each hit's year, its name in another script and platforms under it), the one in use checked. A click pins that game and
-  asks every source again; when the match is pinned, "Automatic" ("Let IGDB find the game by itself") comes first and
+  title (a search field, "Search this source", Enter searches again; a source may read a typed id or address as that
+  entry, as the VNDB extension does with v17; each hit's year, its name in another script and platforms under it), the
+  one in use checked. A click pins that game and asks every source again; when the match is pinned, "Automatic" ("Let IGDB find the game by itself") comes first and
   unpins it. A line says why there are no hits ("Nothing found for “zelda”.", "This source is off.", "This source needs a
   key: add it in Settings → Metadata.", "Could not reach this source. Check your connection and try again."). Esc closes
   Change, then an open select, then the dialog.
@@ -667,9 +667,9 @@ source…"), and again after a match is pinned and after "Search every source ag
   pins and locks of what is on screen without asking the sources again ("Saving…") and closes; with no source having
   answered it saves only the locks.
 `HERONITE_DEBUG_DIALOG=metadata:<state>` opens the selected game's "Metadata" over a made-up preview: `fake` (a pinned
-match, a match left out, a locked field, a field picked from another source, VNDB not asked), `vndb` (as `fake`, with
-VNDB found by name), `emulated` (an emulated game: Steam not for it, LaunchBox found by the dump's name, its line with
-the platform: a source of emulated games says which platform it matched on; libretro-thumbnails gives box art and, a
+match, a match left out, a locked field, a field picked from another source, a fallback source not asked), `fallback` (as
+`fake`, with that source found by name; `novels`, a made-up extension id, shows by its id and cannot be searched),
+`emulated` (an emulated game: Steam not for it, LaunchBox found by the dump's name, its line with the platform: a source of emulated games says which platform it matched on; libretro-thumbnails gives box art and, a
 pictures source, has no row there), `change` (the same with "Change" open),
 `none` (no source found the game), `offline`, `nokey` (no IGDB key), `covers` (as `fake`, scrolled to the cover rows);
 plain `metadata` asks the sources for real.

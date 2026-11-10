@@ -201,6 +201,7 @@ mod tests {
     use heronite_data::source_prefs::{set_field_on, set_on};
 
     use super::*;
+    use crate::sources::TEST_FALLBACK;
 
     fn setup() -> (tempfile::TempDir, DataPaths, SourceRegistry) {
         let dir = tempfile::tempdir().unwrap();
@@ -243,7 +244,8 @@ mod tests {
 
     #[test]
     fn rows_cover_the_visible_sources_in_order() {
-        let (_dir, paths, reg) = setup();
+        let (_dir, paths, _) = setup();
+        let reg = SourceRegistry::for_tests_with_fallback();
         let mut m = normalize_metadata(None);
         set_field_on(&mut m, "steam", "cover", false);
         let rows = reg.rows(&paths, &m, &TestResults::default());
@@ -255,22 +257,22 @@ mod tests {
                 "steam",
                 "store",
                 "lutris",
-                "vndb",
                 "launchbox",
                 "steamgriddb",
                 "libretro",
                 "webimages",
                 "howlongtobeat",
                 "steamtags",
-                "protondb"
+                "protondb",
+                TEST_FALLBACK
             ]
         );
         let status = |id| row(&rows, id).status;
         assert_eq!(status("steam"), SourceStatus::On);
-        assert_eq!(status("vndb"), SourceStatus::On);
-        let vndb = row(&rows, "vndb");
-        assert!(vndb.reorderable && !vndb.can_test && vndb.fields.iter().all(|f| f.switchable && f.on));
-        let options: Vec<(&str, &OptionValue)> = vndb.options.iter().map(|o| (o.option.key.as_str(), &o.value)).collect();
+        assert_eq!(status(TEST_FALLBACK), SourceStatus::On);
+        let fallback = row(&rows, TEST_FALLBACK);
+        assert!(fallback.reorderable && !fallback.can_test && fallback.fields.iter().all(|f| f.switchable && f.on));
+        let options: Vec<(&str, &OptionValue)> = fallback.options.iter().map(|o| (o.option.key.as_str(), &o.value)).collect();
         assert_eq!(options, [("titleOrder", &OptionValue::Text("latin".into())), ("screenshotBackground", &OptionValue::Switch(true))]);
         assert_eq!(status("steamgriddb"), SourceStatus::NeedsKey);
         assert_eq!(status("webimages"), SourceStatus::ByHandOnly);

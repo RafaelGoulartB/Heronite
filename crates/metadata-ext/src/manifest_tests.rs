@@ -130,7 +130,7 @@ fn ids_are_checked_and_never_a_built_in_one() {
     for bad in ["A", "a", "has space", "under_score", "-dash", "dash-", "two--dashes", "é", &"x".repeat(41)] {
         assert!(error(&with("id = \"example-db\"", &format!("id = \"{bad}\""))).contains("lowercase"), "{bad}");
     }
-    for taken in ["igdb", "steam", "vndb", "steamgriddb", "howlongtobeat", "manual", "keep", "auto", "store", "playnite"] {
+    for taken in ["igdb", "steam", "launchbox", "steamgriddb", "howlongtobeat", "manual", "keep", "auto", "store", "playnite"] {
         assert_eq!(
             Manifest::parse(&with("id = \"example-db\"", &format!("id = \"{taken}\""))).unwrap_err(),
             ExtensionError::IdTaken(taken.into())

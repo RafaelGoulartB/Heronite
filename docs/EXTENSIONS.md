@@ -23,9 +23,12 @@ icon 256 KB, the zip 2 MB. In a zip the files sit at the top or in one
 folder at the top. Everything the app shows about an extension comes from
 the manifest; no script runs to draw a screen.
 
-The repository has two complete examples: `extensions/wikipedia` (a
-details source asked as a fallback) and `extensions/pcgamingwiki` (an
-extras source that finds games by their Steam id).
+The repository has three complete examples: `extensions/wikipedia` (a
+details source asked as a fallback), `extensions/pcgamingwiki` (an
+extras source that finds games by their Steam id) and `extensions/vndb`
+(the Visual Novel Database: a details source asked as a fallback for
+visual novels, with settings, names in several scripts, pictures flagged
+adult one by one, and a service that asks clients to slow down).
 
 ## The manifest: `source.toml`
 
@@ -77,7 +80,7 @@ default = "us"
 ```
 
 - **id** must not be a built-in source's (`igdb`, `steam`, `store`,
-  `lutris`, `playnite`, `vndb`, `launchbox`, `steamgriddb`, `libretro`,
+  `lutris`, `playnite`, `launchbox`, `steamgriddb`, `libretro`,
   `webimages`, `howlongtobeat`, `steamtags`, `protondb`, `manual`, `keep`,
   `auto`). The
   user's settings for it are kept under this id: keep it for ever.
@@ -97,7 +100,8 @@ default = "us"
 - **asked = "fallback"**: asked only when no other online details source
   found the game for sure, when the record or the game's Steam tags carry
   its `game_kind` signal, when the game was already matched with it, or
-  when the user asks it by name.
+  when the user asks it by name. The VNDB example is one, for the games
+  whose genres or Steam tags say "Visual Novel".
 - An extension's fields are taken after the sources already in a field's
   order; the user can move it like any source. It never goes ahead of
   them by itself: unlike a built-in source such as the LaunchBox Games
@@ -142,17 +146,27 @@ be, best first, at most 25 (more are left out):
   year: 2011,               // optional
   platform: "PC",           // optional
   thumb: "https://images.example.net/12345.jpg", // optional, on your hosts
+  adult: true,              // optional: the thumb is adult (see below)
+  altTitle: "ポータル2",     // optional: another name of it (another script, an alias)
   confidence: 1,            // optional, 0..1
   matchedBy: { id: "steam" } // optional, see below
 }
 ```
 
+`altTitle` is shown beside the title in the search results. `adult: true`
+flags the thumbnail as adult: it is not shown unless the user allows
+adult covers (as with a picture of the record, below).
+
 How sure a match is decides whether it is saved or sent to review:
 
-- By title (the default): sure only when `title` is the game's title once
-  normalised the app's way (`ctx.normalize`), and `confidence`, when given,
-  is at least 0.75. A script cannot claim more. The record `fetch` returns
-  should carry the same title; a different one makes the match a guess.
+- By title (the default): sure only when `title` or `altTitle` is the
+  game's title once normalised the app's way (`ctx.normalize`), and
+  `confidence`, when given, is at least 0.75. A script cannot claim more.
+  The record `fetch` returns should carry one of those two names as its
+  title; a different one makes the match a guess. A source that knows a
+  game by many names (VNDB: titles in several scripts, aliases) puts the
+  one that is the game's title, when it is not the title it shows, in
+  `altTitle`.
   Several hits with the game's title are different games of one name
   ("Doom" of 1993 and of 2016): they are guesses, unless the game's record
   has a year and exactly one of them has that `year`.
@@ -253,6 +267,7 @@ ctx.date.parse("April 18, 2011");   // "2011-04-18"; also "2011-04", "18 Apr 201
 ctx.normalize("Pokémon: Red!");     // the app's title key, to compare titles like the app does
 ctx.language;                  // the interface language: "en", "pt-BR", "de"...
 ctx.log("found 3 pages");      // a line in the app's log, tagged with the extension id
+throw ctx.unreachable("busy"); // the service cannot be asked now: not a failure (see below)
 ```
 
 `ctx.http` requests carry the app's user agent (`Heronite/<version>`; a
@@ -268,6 +283,20 @@ limit) is a failure. A request whose turn at the manifest's rate would
 come after the call's time is not sent: the call ends as "unreachable"
 and its turn is left for the next call, so a slow rate (`2/min`) makes
 calls wait their turn, never failures.
+
+When the service answers but cannot be asked now (it asks to slow down
+with a 429, or has a server error: 503 and the like), throw
+`ctx.unreachable(message)`: the call ends as "unreachable", exactly like
+a request that got no answer. The game is not marked as found in no
+source and is asked again later, a fetch where every source was
+unreachable counts as offline, and it never counts towards "Stopped
+after errors". `message` (optional; kept to one line of 300 characters)
+is what the log and the "Test" button show. Only the error it returns,
+thrown and not caught, counts this way: an error of the script's own,
+even with the same words, is a failure. `r.headers["retry-after"]` says
+how long the service asked to wait; a script has no timers, but a second
+try waits its turn at the manifest's rate (the VNDB example tries once
+more when the pause asked is no longer than that).
 
 ## Limits
 
@@ -292,7 +321,8 @@ Each call of an exported function (a `find`, a `fetch`, a `test`) may use:
 
 Going over a limit ends the call: the source answers "not found" for that
 game, and the fetch goes on with the other sources. After 5 failures in a
-row (errors and limits, not an unreachable network) the extension is
+row (errors and limits; not an unreachable network nor
+`ctx.unreachable`) the extension is
 stopped: Settings shows "Stopped after errors" with the last error, and it
 is not asked until the user switches it on again or installs an update.
 Messages, the log and the stored error show addresses without their query
@@ -552,6 +582,7 @@ manifests of its version and older ones; a manifest with a higher `api` is
 refused at install ("made for a newer Heronite") and, once installed, shows
 as "Could not be loaded". Additions that old scripts do not notice (a new
 `ctx` helper, a new optional key) do not change the number; a change that
-would break a script does.
+would break a script does. `ctx.unreachable` and a hit's `altTitle` and
+`adult` are such additions.
 
 Version 1 is the first.

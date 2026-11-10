@@ -114,7 +114,6 @@ impl MetadataService {
             steam: steam.clone(),
             stores: Arc::new(StoreLibraries::default()),
             playnite: playnite.clone(),
-            vndb: Arc::new(crate::vndb::Vndb::new()),
             launchbox: Arc::new(crate::launchbox::LaunchBox::new()),
         });
         Self {

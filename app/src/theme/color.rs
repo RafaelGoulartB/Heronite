@@ -326,7 +326,6 @@ pub fn source_colour(id: &str) -> Rgba {
         "steamgriddb" => rgb(0x6cb6ff),
         "howlongtobeat" => rgb(0x2ec4b6),
         "protondb" => rgb(0xf0727a),
-        "vndb" => rgb(0xe56fb1),
         "launchbox" => rgb(0x8bc34a),
         "libretro" => rgb(0xe8845a),
         _ => {

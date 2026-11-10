@@ -416,7 +416,6 @@ fn dead_endpoints() -> (Endpoints, Arc<AtomicUsize>) {
         igdb: format!("{base}/igdb/v4"),
         steam_store: format!("{base}/steam"),
         lutris: format!("{base}/lutris"),
-        vndb: format!("{base}/vndb"),
         ..Endpoints::default()
     };
     (endpoints, accepted)

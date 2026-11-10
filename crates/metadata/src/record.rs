@@ -241,14 +241,14 @@ mod tests {
     fn other_sources_live_in_the_new_key() {
         let mut md = blank_metadata("a", "sideload");
         let m = SourceMatch { id: "x1".into(), matched_by: Some(MatchedBy::FuzzyTitle), ..Default::default() };
-        set_source_match(&mut md, "vndb", m.clone(), None);
-        assert_eq!(source_match(&md, "vndb"), Some(m));
-        assert!(!source_match(&md, "vndb").unwrap().is_sure());
+        set_source_match(&mut md, "exampledb", m.clone(), None);
+        assert_eq!(source_match(&md, "exampledb"), Some(m));
+        assert!(!source_match(&md, "exampledb").unwrap().is_sure());
         let json = serde_json::to_value(&md).unwrap();
-        assert_eq!(json["sourceMatches"]["vndb"], serde_json::json!({"id": "x1", "matchedBy": "fuzzyTitle"}));
-        unpin(&mut md, "vndb");
+        assert_eq!(json["sourceMatches"]["exampledb"], serde_json::json!({"id": "x1", "matchedBy": "fuzzyTitle"}));
+        unpin(&mut md, "exampledb");
         assert!(pinned_ids(&md).is_empty());
-        clear_source_match(&mut md, "vndb");
+        clear_source_match(&mut md, "exampledb");
         assert!(source_matches(&md).is_empty() && !md.extra.contains_key(SOURCE_MATCHES));
         md.lutris_slug = Some("x".into());
         clear_source_match(&mut md, "lutris");
