@@ -114,6 +114,10 @@ pub struct SourceDescriptor {
     /// a fill or an update.
     #[serde(default)]
     pub manual_only: bool,
+    /// Can be searched by name, and asked for one of its games by id: the
+    /// user can pick (pin) which of its games a game is.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub searchable: bool,
     /// Operating systems it works on (`std::env::consts::OS`: `windows`,
     /// `linux`, `macos`); empty = all.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

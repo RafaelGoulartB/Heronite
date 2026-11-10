@@ -54,7 +54,8 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      kscreen-doctor, Mutter, wlr-randr, hyprctl),
  │                      read-only so far                             → platform
  ├─ heronite-metadata   registry of metadata sources (IGDB, Steam,
- │                      Lutris, HLTB, ...), the merge, artwork       → data
+ │                      Lutris, HLTB, ...), the merge, the review of
+ │                      unsure matches, artwork                      → data
  ├─ heronite-achievements achievements of Steam (the client's files),
  │                      GOG, Epic and RetroAchievements (ROM hashes
  │                      by the vendored rcheevos), and the local copy
@@ -581,8 +582,27 @@ text size) and applies it.
   `job_run` maps the mode onto the merge's options and runs each game
   (Steam tags in one pass, 50 games per request); `undo` puts back what the
   last job wrote, part by part, leaving what changed after it, and the
-  `metadata-art` pictures it replaced (copies in `local_library/metadata-undo`);
+  `metadata-art` pictures it replaced (copies in `local_library/metadata-undo`)
+  and the review queue entries it changed;
   `counts` reads, without network, what a set of games lacks.
+  An unsure match is not saved: `confidence` is the rule (sure candidates
+  and the guesses that are the same game as one are used; guesses alone
+  only when enough sources agree; else nothing is saved), applied by every
+  automatic path (jobs, the idle fill) through `service/fetch` (the
+  gather, the decision, the merge a preview proposes and the saves).
+  `review` is the queue of the games sent to review with what each source
+  proposed (`local_library/metadata-review.json`, safe to delete), and
+  `service/review` its entry points (list, read, search the sources by
+  name, and the answers: use a match, in no source, skip). `record` reads
+  and writes what a record keeps beside its fields, in additive keys: the
+  game of each source (`sourceMatches`; the IGDB id, Steam id and Lutris
+  slug stay in their own keys), pinned or not; the locked fields
+  (`lockedFields`, kept by every update); the user's "in no source"
+  (`noMatch`). Searchable sources (`SourceDescriptor::searchable`: IGDB,
+  Steam, Lutris) implement `search` and `lookup_id`, so a pinned game is
+  looked up by its id. `service/attention` classifies a set of games from
+  disk (waiting for review, no details, failed last time, no description,
+  no cover; in no source apart).
 - **heronite-achievements:** every game's achievements, whatever its store.
   `target` says which sources a Collection game has (its store, its Steam
   twin, RetroAchievements for a ROM). `sources/` reads them: `steam` the

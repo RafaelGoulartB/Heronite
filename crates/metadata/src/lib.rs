@@ -1,6 +1,7 @@
 //! Collection metadata and artwork backend: the registry of sources (IGDB,
-//! Steam, Lutris, store and Playnite details, plus pictures and extras), the
-//! per-field merge, details editing, custom art,
+//! Steam, Lutris, store and Playnite details, plus pictures and extras), when
+//! a match is sure enough to save (`confidence`) and the review queue of the
+//! others (`review`), the per-field merge, details editing, custom art,
 //! Steam details/hero caches, covers, web image search and HowLongToBeat.
 //!
 //! Port of Heronite's `src/local-library/{metadata,art,heroes,covers,
@@ -13,6 +14,7 @@
 //! Everything is blocking (`ureq`); call from worker threads.
 
 pub mod art;
+pub mod confidence;
 pub mod covers;
 pub mod edit;
 pub mod hltb;
@@ -24,7 +26,9 @@ pub mod lutris;
 pub mod merge;
 pub mod protondb;
 pub mod providers;
+pub mod record;
 pub mod remove;
+pub mod review;
 pub mod service;
 pub mod sources;
 pub mod steam;
@@ -37,6 +41,8 @@ pub mod web_images;
 pub use http::{Endpoints, Http};
 pub use job::*;
 pub use providers::{PlayniteGame, PlayniteSource};
+pub use record::SourceMatch;
+pub use review::{MatchChoice, MatchPick, ReviewEntry, ReviewItem, ReviewReason};
 pub use service::MetadataService;
 pub use sources::{MetadataSource, SourceContext, SourceDescriptor, SourceGame, SourceKind, SourceRegistry};
 pub use types::*;

@@ -82,6 +82,12 @@ impl MatchedBy {
     }
 }
 
+/// The year of a release date (`2011-04-18`, `2011`); `None` when unknown.
+pub fn release_year(date: Option<&str>) -> Option<i32> {
+    let head: String = date?.chars().take(4).collect();
+    head.trim().parse::<i32>().ok().filter(|y| *y != 0)
+}
+
 /// `CollectionMetadataCandidate`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -94,6 +100,10 @@ pub struct MetadataCandidate {
     /// `None` (absent in older data): not said.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub matched_by: Option<MatchedBy>,
+    /// Which game of the source this is (IGDB id, Steam app id, Lutris
+    /// slug). `None`: the source has no ids (the store's own record).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub match_id: Option<String>,
     pub metadata: CollectionGameMetadata,
 }
 
@@ -101,12 +111,97 @@ impl MetadataCandidate {
     /// The candidate of `source` for `metadata`: its title and release year
     /// are the match shown to the user.
     pub fn new(source: &str, metadata: CollectionGameMetadata, matched_by: Option<MatchedBy>) -> Self {
-        let match_year = metadata.release_date.as_deref().and_then(|d| {
-            let head: String = d.chars().take(4).collect();
-            head.trim().parse::<i32>().ok().filter(|y| *y != 0)
-        });
-        Self { source: source.to_owned(), match_name: metadata.title.clone(), match_year, matched_by, metadata }
+        let match_year = release_year(metadata.release_date.as_deref());
+        Self { source: source.to_owned(), match_name: metadata.title.clone(), match_year, matched_by, match_id: None, metadata }
     }
+
+    /// Says which game of the source this is.
+    pub fn with_id(mut self, id: Option<String>) -> Self {
+        self.match_id = id.filter(|i| !i.is_empty());
+        self
+    }
+
+    /// The candidate as a choice the user can pick: its game, where it is
+    /// known, its cover as the thumbnail.
+    pub fn hit(&self) -> SourceHit {
+        let md = &self.metadata;
+        let platform = (!md.platforms.is_empty()).then(|| md.platforms.iter().take(3).cloned().collect::<Vec<_>>().join(", "));
+        SourceHit {
+            source: self.source.clone(),
+            id: self.match_id.clone(),
+            title: self.match_name.clone(),
+            year: self.match_year,
+            platform,
+            thumb_url: md.cover_url.clone().filter(|u| u.starts_with("http")),
+            matched_by: self.matched_by,
+        }
+    }
+}
+
+/// A game a source has: a search hit, or what a source proposed for a game.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceHit {
+    pub source: String,
+    /// The game's id in the source; `None` when it has none (it cannot be
+    /// pinned).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub year: Option<i32>,
+    /// Platform names as the source writes them ("PlayStation, PC").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
+    /// A small cover (an `http` URL).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thumb_url: Option<String>,
+    /// How the source found it for the game; `None` for a search hit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matched_by: Option<MatchedBy>,
+}
+
+/// Why a source was not asked about a game.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NotAsked {
+    /// Switched off in Settings → Metadata.
+    Off,
+    /// Not for this game (its audience, or no id to look it up with).
+    NotForThisGame,
+    /// It needs a key or an account the user has not set.
+    NeedsKey,
+    /// Left out by the request (other fields or sources were chosen).
+    NotChosen,
+}
+
+/// What one source answered about a game.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "state")]
+pub enum SourceAnswer {
+    #[serde(rename_all = "camelCase")]
+    Found {
+        hit: SourceHit,
+        /// The user chose this game of the source; every lookup uses it.
+        pinned: bool,
+        /// The proposal takes its values ([`crate::confidence`] may leave
+        /// out a guess that is another game).
+        used: bool,
+    },
+    NotFound,
+    Unreachable,
+    NotAsked {
+        why: NotAsked,
+    },
+}
+
+/// A details source and its answer, for the per-game dialog.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceState {
+    pub source: String,
+    pub answer: SourceAnswer,
 }
 
 /// `CollectionMetadataPreview`.
@@ -123,6 +218,18 @@ pub struct MetadataPreview {
     /// hold local data only and must not be saved as a fetch.
     #[serde(default)]
     pub offline: bool,
+    /// Every details source that is offered (and any other that answered),
+    /// in registry order, with its answer.
+    #[serde(default)]
+    pub sources: Vec<SourceState>,
+    /// Fields the record keeps as they are ([`crate::record::locked_fields`]).
+    #[serde(default)]
+    pub locks: Vec<String>,
+    /// Set when an automatic update would not save these candidates but
+    /// send the game to review; `proposed` then holds no fetched value
+    /// unless a source is pinned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<crate::review::ReviewReason>,
 }
 
 /// `CollectionMetadataApplyArgs` (plus the optional Steam `language` that
@@ -161,6 +268,16 @@ pub struct MetadataApplyArgs {
     /// `None`: every source that is on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub only_sources: Option<Vec<String>>,
+    /// source id -> the game of that source the user chose (looked up by
+    /// that id, saved as pinned), or `None` to go back to finding it
+    /// automatically. Sources left out keep what the record has.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pins: Option<IndexMap<String, Option<String>>>,
+    /// field -> locked after saving. A field named here takes the merge's
+    /// value (the user's pick) before the lock is set; a locked field not
+    /// named keeps its value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locks: Option<IndexMap<String, bool>>,
 }
 
 /// `CollectionMetadataSearchHit`.

@@ -1,6 +1,7 @@
 //! [`MetadataHub`]: owns the `MetadataService`, the bulk jobs' progress, their
-//! undo and the idle auto-fill; lives as long as the window. The "Update
-//! metadata" dialog, the dock's Metadata menu and the header pill read it.
+//! undo, the idle auto-fill and the answers to the review queue; lives as
+//! long as the window. The "Update metadata" dialog, the dock's Metadata
+//! menu, the header pill and Settings → Metadata read it.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -9,7 +10,8 @@ use futures::channel::mpsc::{unbounded, UnboundedSender};
 use futures::StreamExt;
 use gpui_kit::*;
 use heronite_data::DataPaths;
-use heronite_metadata::{BulkArgs, BulkProgress, BulkState, MetadataService, UndoReport};
+use heronite_metadata::service::{Attention, Resolution, Resolved};
+use heronite_metadata::{BulkArgs, BulkItem, BulkProgress, BulkState, MetadataService, UndoReport};
 
 use super::fake::Fake;
 
@@ -22,6 +24,9 @@ pub enum HubEvent {
     JobDone(Box<BulkProgress>),
     /// The last job was undone.
     Undone(UndoReport),
+    /// The review queue changed (a job or the idle fill queued games, a
+    /// game was answered, an undo): read it again.
+    ReviewChanged,
 }
 
 pub struct MetadataHub {
@@ -34,6 +39,8 @@ pub struct MetadataHub {
     pub undoing: bool,
     /// What the last undo did, until the next job starts.
     pub undone: Option<UndoReport>,
+    /// The service's review revision last announced.
+    review_revision: u64,
     /// `HERONITE_DEBUG_METADATA_JOB`: jobs are made up (see `fake.rs`).
     fake: Option<Fake>,
     tx: Arc<Mutex<UnboundedSender<BulkProgress>>>,
@@ -63,7 +70,16 @@ impl MetadataHub {
         })
         .detach();
         let progress = service.bulk_progress();
-        Self { service, progress, seen: 0, undoing: false, undone: None, fake: Fake::from_env(), tx: Arc::new(Mutex::new(tx)) }
+        Self {
+            review_revision: service.review_revision(),
+            service,
+            progress,
+            seen: 0,
+            undoing: false,
+            undone: None,
+            fake: Fake::from_env(),
+            tx: Arc::new(Mutex::new(tx)),
+        }
     }
 
     pub(super) fn on_progress(&mut self, p: BulkProgress, cx: &mut Context<Self>) {
@@ -77,8 +93,45 @@ impl MetadataHub {
                 cx.emit(HubEvent::DataChanged);
             }
             cx.emit(HubEvent::JobDone(Box::new(self.progress.clone())));
+            self.note_review(cx);
         }
         cx.notify();
+    }
+
+    /// Announces [`HubEvent::ReviewChanged`] when the service changed the
+    /// review queue since the last time.
+    pub fn note_review(&mut self, cx: &mut Context<Self>) {
+        let now = self.service.review_revision();
+        if now != self.review_revision {
+            self.review_revision = now;
+            cx.emit(HubEvent::ReviewChanged);
+        }
+    }
+
+    /// Applies the user's answer for a game of the review off the UI thread;
+    /// the Collection reloads and the queue is announced as changed after.
+    #[allow(dead_code)] // Nothing draws the review queue yet.
+    pub fn resolve_review(&mut self, game: BulkItem, resolution: Resolution, cx: &mut Context<Self>) -> Task<anyhow::Result<Resolved>> {
+        let service = self.service.clone();
+        cx.spawn(async move |this, cx| {
+            let done = cx.background_spawn(async move { service.resolve_review(&game, &resolution) }).await;
+            if matches!(done, Ok(Resolved::Saved(_) | Resolved::InNoSource)) {
+                this.update(cx, |this, cx| {
+                    cx.emit(HubEvent::DataChanged);
+                    this.note_review(cx);
+                })
+                .ok();
+            }
+            done
+        })
+    }
+
+    /// The games of `games` that need attention, by reason, read off the UI
+    /// thread (no network).
+    #[allow(dead_code)] // Nothing draws the attention summary yet.
+    pub fn attention(&self, games: Vec<BulkItem>, cx: &mut Context<Self>) -> Task<anyhow::Result<Attention>> {
+        let service = self.service.clone();
+        cx.background_spawn(async move { service.attention(&games) })
     }
 
     pub fn running(&self) -> bool {
@@ -158,6 +211,7 @@ impl MetadataHub {
                         this.undone = Some(report);
                         cx.emit(HubEvent::DataChanged);
                         cx.emit(HubEvent::Undone(report));
+                        this.note_review(cx);
                     }
                     Ok(None) => {}
                     Err(err) => log::warn!("metadata undo: {err:#}"),
@@ -262,6 +316,7 @@ impl MetadataHub {
                 log::info!("idle fill updated {changed} item(s)");
                 this.update(cx, |_, cx| cx.emit(HubEvent::DataChanged)).ok();
             }
+            this.update(cx, |this, cx| this.note_review(cx)).ok();
         })
         .detach();
     }

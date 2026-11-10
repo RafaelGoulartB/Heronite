@@ -28,8 +28,11 @@ impl Bucket {
     pub fn of(o: &GameOutcome) -> Self {
         match o {
             GameOutcome::Updated => Self::Updated,
-            GameOutcome::NoChange(_) | GameOutcome::Skipped(SkipReason::AlreadyFetched | SkipReason::NoSource) => Self::NoChange,
-            GameOutcome::NotFound => Self::NotFound,
+            GameOutcome::NoChange(_) | GameOutcome::Skipped(SkipReason::AlreadyFetched | SkipReason::NoSource | SkipReason::InNoSource) => {
+                Self::NoChange
+            }
+            // Until the results have their own group for the review queue.
+            GameOutcome::NotFound | GameOutcome::ToReview(_) => Self::NotFound,
             GameOutcome::Offline | GameOutcome::Failed(_) => Self::Failed,
             GameOutcome::Skipped(SkipReason::Stopped) => Self::NotDone,
         }
@@ -39,7 +42,7 @@ impl Bucket {
         match self {
             Self::Updated => t.updated,
             Self::NoChange => t.no_change + t.skipped,
-            Self::NotFound => t.not_found,
+            Self::NotFound => t.not_found + t.to_review,
             Self::Failed => t.failed + t.offline,
             Self::NotDone => t.stopped,
         }
@@ -73,12 +76,15 @@ pub(crate) fn reason(o: &GameOutcome) -> &'static str {
         GameOutcome::Updated => "",
         GameOutcome::NoChange(NoChangeReason::NothingMissing) => tr!("Nothing was missing"),
         GameOutcome::NoChange(NoChangeReason::NothingNew) => tr!("The sources had nothing new"),
+        GameOutcome::NoChange(NoChangeReason::Locked) => tr!("Its fields are locked"),
+        GameOutcome::ToReview(_) => tr!("The sources were not sure: waiting for review"),
         GameOutcome::NotFound => tr!("No source found this game"),
         GameOutcome::Offline => tr!("Could not reach the sources"),
         GameOutcome::Failed(_) => tr!("Could not be saved"),
         GameOutcome::Skipped(SkipReason::AlreadyFetched) => tr!("Already had details"),
         GameOutcome::Skipped(SkipReason::NoSource) => tr!("No source is for this game"),
         GameOutcome::Skipped(SkipReason::Stopped) => tr!("The update stopped before it"),
+        GameOutcome::Skipped(SkipReason::InNoSource) => tr!("You said no source has this game"),
     }
 }
 
@@ -147,7 +153,8 @@ pub(crate) fn done_line(p: &BulkProgress) -> String {
     }
 }
 
-/// Games of a finished job that need a look (not found or failed).
+/// Games of a finished job that need a look (not found, sent to review or
+/// failed).
 pub(crate) fn problems(t: &JobTally) -> usize {
-    t.not_found + t.failed + t.offline
+    t.not_found + t.to_review + t.failed + t.offline
 }

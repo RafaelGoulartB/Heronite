@@ -7,14 +7,20 @@
 //! `Send + Sync`, keep it in an `Arc`.
 
 mod age_fill;
+mod attention;
 mod bulk;
 mod counts;
+mod fetch;
 mod job_run;
+mod review;
 mod source_settings;
 mod tag_fill;
 mod undo;
 
+pub use attention::Attention;
 pub use bulk::AUTO_FILL_BATCH;
+pub use fetch::{is_sent_to_review, SentToReview};
+pub use review::{MatchUnavailable, Resolution, Resolved, SourceSearch};
 
 /// The `fetchError` of a game no source had.
 const NO_DATA: &str = "No metadata sources returned data";
@@ -37,21 +43,13 @@ pub fn is_offline(err: &anyhow::Error) -> bool {
     err.downcast_ref::<Offline>().is_some()
 }
 
-/// What the providers returned and whether the online ones answered at all.
-struct Gathered {
-    candidates: Vec<MetadataCandidate>,
-    offline: bool,
-}
-
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Arc;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use heronite_data::field_names::NameRules;
-use heronite_data::json_store;
-use heronite_data::models::{CollectionGameArt, CollectionGameMetadata, LocalMetaFile, MetadataSettings};
+use heronite_data::models::{CollectionGameArt, CollectionGameMetadata, MetadataSettings};
 use heronite_data::paths::DataPaths;
-use heronite_data::settings::METADATA_FIELDS;
 use heronite_i18n::tr;
 use indexmap::IndexMap;
 use parking_lot::{Mutex, RwLock};
@@ -61,15 +59,13 @@ use crate::edit;
 use crate::hltb::{self, HltbClient, HltbLookup, HltbQuery, HowLongToBeat, SearchHit};
 use crate::http::{Endpoints, Http};
 use crate::igdb::{Igdb, IgdbCredentials};
-use crate::images::materialize_metadata_image;
-use crate::merge::{clear_field, copy_field, merge_metadata, with_preferred_source, MergeArgs, MergeCandidate};
+use crate::merge::{merge_metadata, MergeArgs, MergeCandidate};
 use crate::providers::{metadata_from_playnite_game, PlayniteGame, PlayniteSource, StoreLibraries};
 use crate::sources::rows::TestResults;
-use crate::sources::{self, ids, is_field_on, is_on, Shared, SourceContext, SourceDescriptor, SourceGame, SourceRegistry};
+use crate::sources::{self, ids, Shared, SourceRegistry};
 use crate::steam::{self, SteamAppDetails, SteamState};
-use crate::store::{as_runner, current_or_blank, get_game_metadata, list_game_metadata, upsert_game_metadata};
+use crate::store::{as_runner, get_game_metadata, list_game_metadata, upsert_game_metadata};
 use crate::types::*;
-use crate::util::now_iso;
 use crate::{covers, web_images};
 
 pub struct MetadataService {
@@ -90,6 +86,8 @@ pub struct MetadataService {
     undo_gate: Mutex<()>,
     filling: AtomicBool,
     rating_fill: AtomicBool,
+    /// Bumped on every change of the review queue this service makes.
+    review_revision: AtomicU64,
 }
 
 impl MetadataService {
@@ -122,6 +120,7 @@ impl MetadataService {
             undo_gate: Mutex::new(()),
             filling: AtomicBool::new(false),
             rating_fill: AtomicBool::new(false),
+            review_revision: AtomicU64::new(0),
         }
     }
 
@@ -176,225 +175,6 @@ impl MetadataService {
         list_game_metadata(&self.paths)
     }
 
-    /// `game` as the sources see it. The overlay is read only when needed:
-    /// for the Steam id the arguments lack, or for a source's audience.
-    fn source_game(&self, args: &MetadataApplyArgs) -> SourceGame {
-        let has_steam_id = args.steam_app_id.as_deref().is_some_and(|s| !s.is_empty());
-        let overlay = (!has_steam_id || self.sources.needs_overlay())
-            .then(|| json_store::read::<LocalMetaFile>(&self.paths.local_meta()).ok())
-            .flatten()
-            .and_then(|mut file| file.games.shift_remove(&args.app_name));
-        SourceGame::new(args, overlay.as_ref())
-    }
-
-    /// `gatherCandidates`: asks every provider that is on and applies to the
-    /// game at once (IGDB calls queue among themselves) and keeps those that
-    /// answered, in provider order.
-    pub fn gather_candidates(&self, game: &MetadataApplyArgs) -> Vec<MetadataCandidate> {
-        self.gather(game).candidates
-    }
-
-    fn gather(&self, game: &MetadataApplyArgs) -> Gathered {
-        let current = get_game_metadata(&self.paths, &game.runner, &game.app_name).ok().flatten();
-        let mut with_ids = game.clone();
-        with_ids.igdb_id = game.igdb_id.or_else(|| current.as_ref().and_then(|c| c.igdb_id).map(|n| n.get() as i64));
-        with_ids.lutris_slug = game.lutris_slug.clone().or_else(|| current.as_ref().and_then(|c| c.lutris_slug.clone()));
-        let game_view = self.source_game(&with_ids);
-        let ctx = SourceContext::new(&self.paths, &self.http);
-        let settings = ctx.settings();
-        let lookups: Vec<(&SourceDescriptor, Lookup<MetadataCandidate>)> = std::thread::scope(|scope| {
-            let handles: Vec<_> = self
-                .sources
-                .lookups()
-                .map(|source| {
-                    let (ctx, game_view) = (&ctx, &game_view);
-                    let d = source.descriptor();
-                    let ask = is_on(settings, &d.id) && d.applies_to.matches(game_view) && Self::wanted(d, game);
-                    (d, ask.then(|| scope.spawn(move || source.lookup(ctx, game_view))))
-                })
-                .collect();
-            handles
-                .into_iter()
-                .map(|(source, h)| match h.map(|h| h.join()) {
-                    None => (source, Lookup::Skipped),
-                    Some(Ok(l)) => (source, l),
-                    Some(Err(_)) => {
-                        log::warn!("Metadata source {} failed for {}: panicked", source.id, game.title);
-                        (source, Lookup::NotFound)
-                    }
-                })
-                .collect()
-        });
-        // Offline: every online provider that was asked failed to connect.
-        let mut asked = lookups.iter().filter(|(s, l)| s.network && !matches!(l, Lookup::Skipped)).peekable();
-        let offline = asked.peek().is_some() && asked.all(|(_, l)| matches!(l, Lookup::Unreachable));
-        let candidates = lookups
-            .into_iter()
-            .filter_map(|(_, l)| match l {
-                Lookup::Found(c) => Some(c),
-                _ => None,
-            })
-            .collect();
-        Gathered { candidates, offline }
-    }
-
-    /// Whether the arguments' `only_sources` and `only_fields` leave `d` to ask.
-    fn wanted(d: &SourceDescriptor, args: &MetadataApplyArgs) -> bool {
-        args.only_sources.as_ref().is_none_or(|s| s.contains(&d.id))
-            && args.only_fields.as_ref().is_none_or(|f| f.iter().any(|field| d.provides(field)))
-    }
-
-    /// The candidates the merge may use: those of sources that are on, each
-    /// without the fields switched off for its source.
-    fn usable(settings: &MetadataSettings, candidates: &[MetadataCandidate]) -> Vec<(String, CollectionGameMetadata)> {
-        candidates
-            .iter()
-            .filter(|c| is_on(settings, &c.source))
-            .map(|c| {
-                let mut md = c.metadata.clone();
-                for field in METADATA_FIELDS.iter().filter(|f| !is_field_on(settings, &c.source, f)) {
-                    clear_field(&mut md, field);
-                }
-                (c.source.clone(), md)
-            })
-            .collect()
-    }
-
-    /// The merge of `candidates` into `current` that a preview proposes.
-    fn propose(
-        &self,
-        args: &MetadataApplyArgs,
-        current: Option<&CollectionGameMetadata>,
-        candidates: &[MetadataCandidate],
-    ) -> CollectionGameMetadata {
-        let has_picks = args.field_picks.as_ref().is_some_and(|p| !p.is_empty());
-        let overwrite = args.overwrite_existing != Some(false);
-        let preserve_manual = if has_picks { false } else { args.preserve_manual.unwrap_or(args.overwrite_existing == Some(false)) };
-        let settings = self.metadata_settings();
-        let priority = with_preferred_source(&self.sources.field_orders(&settings), args.source.as_deref());
-        let usable = Self::usable(&settings, candidates);
-        let merge_candidates: Vec<MergeCandidate<'_>> = usable.iter().map(|(source, md)| MergeCandidate { source, metadata: md }).collect();
-        let mut proposed = merge_metadata(MergeArgs {
-            app_name: &args.app_name,
-            runner: &args.runner,
-            current,
-            candidates: &merge_candidates,
-            priority: &priority,
-            overwrite_existing: overwrite,
-            preserve_manual,
-            field_picks: args.field_picks.as_ref(),
-            fields: args.only_fields.as_deref(),
-        });
-        // The merge only fills an empty IGDB id, so a game picked on purpose
-        // (re-matching a wrong one) has to be carried over here.
-        if args.igdb_id.is_some() {
-            if let Some(igdb) = candidates.iter().find(|c| c.source == "igdb").filter(|c| c.metadata.igdb_id.is_some()) {
-                proposed.igdb_id = igdb.metadata.igdb_id;
-                proposed.igdb_slug = igdb.metadata.igdb_slug.clone();
-            }
-        }
-        // Names the user renamed, merged or removed in the fields manager.
-        NameRules::load(&self.paths).apply_metadata(&mut proposed);
-        // The rules above touch every field: those not chosen stay as stored.
-        if let Some(fields) = &args.only_fields {
-            for field in METADATA_FIELDS.iter().filter(|f| !fields.iter().any(|c| c == *f)) {
-                copy_field(current, &mut proposed, field);
-            }
-        }
-        proposed
-    }
-
-    /// `previewGameMetadata`: what each provider returned and what the merge
-    /// would store. Nothing is written.
-    pub fn preview_game_metadata(&self, args: &MetadataApplyArgs) -> Result<MetadataPreview> {
-        let runner = as_runner(&args.runner).to_owned();
-        let current = get_game_metadata(&self.paths, &runner, &args.app_name)?;
-        let mut args = args.clone();
-        args.runner = runner;
-        let Gathered { candidates, offline } = self.gather(&args);
-        let proposed = self.propose(&args, current.as_ref(), &candidates);
-        Ok(MetadataPreview {
-            app_name: args.app_name.clone(),
-            current,
-            proposed,
-            candidates,
-            igdb_configured: self.igdb_configured(),
-            offline,
-        })
-    }
-
-    /// `persistImages`.
-    fn persist_images(&self, md: CollectionGameMetadata, download: bool) -> CollectionGameMetadata {
-        self.persist_chosen_images(md, download, &[ArtKind::Cover, ArtKind::Hero])
-    }
-
-    /// `persistImages` of the pictures in `kinds` only.
-    fn persist_chosen_images(&self, mut md: CollectionGameMetadata, download: bool, kinds: &[ArtKind]) -> CollectionGameMetadata {
-        if kinds.contains(&ArtKind::Cover) {
-            md.cover_url = materialize_metadata_image(
-                &self.paths,
-                &self.http,
-                &md.runner,
-                &md.app_name,
-                ArtKind::Cover,
-                md.cover_url.as_deref(),
-                download,
-            );
-        }
-        if kinds.contains(&ArtKind::Hero) {
-            md.hero_url = materialize_metadata_image(
-                &self.paths,
-                &self.http,
-                &md.runner,
-                &md.app_name,
-                ArtKind::Hero,
-                md.hero_url.as_deref(),
-                download,
-            );
-        }
-        md
-    }
-
-    /// `applyGameMetadata`: fetch, merge and store. When no provider answers
-    /// the record is stored with `fetchError` so the idle fill retries after
-    /// a week. When none could be reached at all nothing is stored
-    /// ([`Offline`]): local data alone must not count as a fetch.
-    pub fn apply_game_metadata(&self, args: &MetadataApplyArgs) -> Result<CollectionGameMetadata> {
-        let preview = self.preview_game_metadata(args)?;
-        if preview.offline {
-            return Err(Offline.into());
-        }
-        if preview.candidates.is_empty() {
-            let mut failed = current_or_blank(&self.paths, as_runner(&args.runner), &args.app_name)?;
-            failed.fetch_error = Some(NO_DATA.into());
-            failed.fetched_at = Some(now_iso());
-            return upsert_game_metadata(&self.paths, failed);
-        }
-        let download = args.download_images.unwrap_or(self.metadata_settings().download_images);
-        let saved = self.persist_images(preview.proposed, download);
-        upsert_game_metadata(&self.paths, saved)
-    }
-
-    /// Stores what the user saw in `preview` without asking the providers
-    /// again: the preview's candidates are merged with `args` (`field_picks`
-    /// and the merge options) over the saved record. Nothing is written, and
-    /// an error returned, when the preview holds no online data.
-    pub fn apply_preview(&self, preview: &MetadataPreview, args: &MetadataApplyArgs) -> Result<CollectionGameMetadata> {
-        if preview.offline {
-            return Err(Offline.into());
-        }
-        if preview.candidates.is_empty() {
-            bail!(tr!("No metadata sources returned data"));
-        }
-        let runner = as_runner(&args.runner).to_owned();
-        let current = get_game_metadata(&self.paths, &runner, &args.app_name)?;
-        let mut args = args.clone();
-        args.runner = runner;
-        let proposed = self.propose(&args, current.as_ref(), &preview.candidates);
-        let download = args.download_images.unwrap_or(self.metadata_settings().download_images);
-        upsert_game_metadata(&self.paths, self.persist_images(proposed, download))
-    }
-
     /// `seedPlayniteMetadata`: first import of a Playnite game's own metadata
     /// (skipped when the game already has field sources).
     pub fn seed_playnite_metadata(
@@ -431,6 +211,9 @@ impl MetadataService {
             fields: None,
         });
         NameRules::load(&self.paths).apply_metadata(&mut merged);
+        for field in existing.as_ref().map(crate::record::locked_fields).unwrap_or_default() {
+            crate::merge::copy_field(existing.as_ref(), &mut merged, &field);
+        }
         upsert_game_metadata(&self.paths, self.persist_images(merged, false))
     }
 

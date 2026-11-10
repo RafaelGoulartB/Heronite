@@ -11,6 +11,7 @@ use heronite_data::settings::METADATA_FIELDS;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
+use crate::review::ReviewReason;
 use crate::sources::extra_fields;
 use crate::types::{BulkArgs, BulkItem, BulkProgress, BulkState};
 
@@ -117,6 +118,9 @@ pub enum GameOutcome {
     NotFound,
     /// No source could be reached; nothing was saved.
     Offline,
+    /// The sources were not sure which game it is: nothing was saved and the
+    /// game waits in the review queue.
+    ToReview(ReviewReason),
     /// Reading or writing the game's record failed: the error, in English
     /// (it is a diagnostic, not a sentence of the interface).
     Failed(String),
@@ -130,6 +134,8 @@ pub enum NoChangeReason {
     NothingMissing,
     /// The sources answered with what the game already had.
     NothingNew,
+    /// Every chosen field is locked; no source was asked.
+    Locked,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -142,6 +148,8 @@ pub enum SkipReason {
     NoSource,
     /// The job was stopped before this game.
     Stopped,
+    /// The user said no source has this game ("In no source").
+    InNoSource,
 }
 
 /// One game of a job.
@@ -176,7 +184,10 @@ pub struct JobTally {
     pub not_found: usize,
     pub offline: usize,
     pub failed: usize,
-    /// Skipped for being fetched or having no source, not for a Stop.
+    /// Sent to the review queue.
+    pub to_review: usize,
+    /// Skipped for being fetched, having no source or being "in no source",
+    /// not for a Stop.
     pub skipped: usize,
     pub stopped: usize,
     /// Fields changed over every game.
@@ -208,6 +219,7 @@ impl BulkProgress {
                 GameOutcome::NotFound => t.not_found += 1,
                 GameOutcome::Offline => t.offline += 1,
                 GameOutcome::Failed(_) => t.failed += 1,
+                GameOutcome::ToReview(_) => t.to_review += 1,
                 GameOutcome::Skipped(SkipReason::Stopped) => t.stopped += 1,
                 GameOutcome::Skipped(_) => t.skipped += 1,
             }
@@ -226,10 +238,24 @@ impl BulkProgress {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GameCounts {
     pub games: usize,
-    /// No record, or one without a value in any field.
+    /// No record, or one without a value in any field (games marked "in no
+    /// source" left out, as in the next two).
     pub no_details: usize,
     /// The last fetch found the game in no source (`fetchError`).
     pub failed_last_time: usize,
+    /// Waiting in the review queue.
+    pub to_review: usize,
+    /// The three above, each game once.
+    pub without_match: usize,
+    /// Details but no description.
+    pub no_description: usize,
+    /// Details but no cover.
+    pub no_cover: usize,
+    /// Marked "in no source" by the user.
+    pub in_no_source: usize,
+    /// Games with any reason of [`crate::service::Attention`]; the others
+    /// are complete.
+    pub needs_attention: usize,
     /// Games where "Fill what is missing" has a field to look at.
     pub games_missing: usize,
     /// The fields "Fill what is missing" would look at, over every game.
@@ -253,4 +279,7 @@ pub struct UndoReport {
     pub files_removed: usize,
     /// Pictures the job had replaced, put back.
     pub files_restored: usize,
+    /// Entries of the review queue put back as they were (the job's added
+    /// ones removed).
+    pub reviews: usize,
 }

@@ -32,6 +32,8 @@ impl CollectionView {
             HubEvent::Undone(report) => {
                 this.show_toast(trn!(report.games, "Update undone: {n} game put back", "Update undone: {n} games put back"), false, cx)
             }
+            // Nothing shows the queue yet.
+            HubEvent::ReviewChanged => {}
         })
         .detach();
         // The header pill follows the job's progress.

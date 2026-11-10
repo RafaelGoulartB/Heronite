@@ -19,11 +19,12 @@ use heronite_data::models::LocalMetaFile;
 use heronite_data::status::STATUS_ONLY_KEY;
 
 use super::undo::UndoLog;
-use super::{is_offline, tag_fill, MetadataService};
+use super::{is_offline, is_sent_to_review, tag_fill, MetadataService};
 use crate::job::QueuedJob;
 use crate::store::get_all_game_metadata;
 use crate::types::*;
 use crate::util::now_ms;
+use crate::{record, review};
 
 const WEEK_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 /// Games filled per idle pass.
@@ -230,8 +231,11 @@ impl MetadataService {
     /// `refreshMissingCollectionMetadata`: when `autoFillMissing` is on,
     /// fetches metadata for up to 40 overlay games that have none (or whose
     /// last attempt failed more than a week ago) and returns how many got
-    /// data. Stops at the first game when offline (nothing is saved, so the
-    /// next call tries again). Call it when the app is idle.
+    /// data. Games waiting for review, or that the user said are in no
+    /// source (under their title), are left alone; a game the sources are
+    /// not sure about goes to review. Stops at the first game when offline
+    /// (nothing is saved, so the next call tries again). Call it when the
+    /// app is idle.
     pub fn refresh_missing_collection_metadata(&self) -> Result<usize> {
         self.refresh_missing_while(&|| false)
     }
@@ -259,13 +263,20 @@ impl MetadataService {
         let overlay: LocalMetaFile = json_store::read(&self.paths.local_meta())?;
         // Nothing writes metadata.json while this scan runs.
         let known = get_all_game_metadata(&self.paths)?;
+        let queued = review::load(&self.paths).games;
         let mut missing = Vec::new();
         for meta in overlay.games.values() {
             // An entry that only holds a status was never a game to search for.
             if meta.extra.get(STATUS_ONLY_KEY) == Some(&serde_json::Value::Bool(true)) {
                 continue;
             }
-            let needs = match known.get(&metadata_key(&meta.runner, &meta.app_name)) {
+            let key = metadata_key(&meta.runner, &meta.app_name);
+            if queued.contains_key(&key) {
+                continue;
+            }
+            let needs = match known.get(&key) {
+                // Asked again only once renamed.
+                Some(c) if record::no_match(c).is_some() => !record::marked_no_match(c, &meta.title),
                 None => true,
                 Some(c) if c.fetch_error.is_some() => match c.fetched_at.as_deref() {
                     None | Some("") => true,
@@ -306,6 +317,7 @@ impl MetadataService {
                     log::info!("Collection metadata fill stopped: {e}");
                     break;
                 }
+                Err(e) if is_sent_to_review(&e).is_some() => continue,
                 Err(e) => return Err(e),
             };
             if saved.fetch_error.is_none() {

@@ -12,11 +12,12 @@ use parking_lot::RwLock;
 use super::descriptor::extra_fields::{LINUX_RATING, STEAM_TAGS as STEAM_TAGS_FIELD, TIME_TO_BEAT};
 use super::options::{OptionChoice, OptionKind, OptionValue, SourceOption};
 use super::{AppliesTo, Entry, MetadataSource, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind, SourceRegistry, SourceTest};
+use crate::covers::search_steam;
 use crate::igdb::{Igdb, IgdbCredentials};
-use crate::lutris::fetch_lutris_metadata;
+use crate::lutris::{fetch_lutris_metadata, search_lutris};
 use crate::providers::{fetch_playnite_metadata, metadata_from_store_game, PlayniteSource, StoreLibraries};
 use crate::steam::{self, SteamState};
-use crate::types::{Lookup, MatchedBy, MetadataCandidate};
+use crate::types::{Lookup, MatchedBy, MetadataCandidate, SourceHit};
 
 const IGDB: &str = "igdb";
 const STEAM: &str = "steam";
@@ -49,6 +50,7 @@ fn source(id: &str, name: &str, kind: SourceKind, provides: &[&str]) -> SourceDe
         network: true,
         hidden: false,
         manual_only: false,
+        searchable: false,
         only_on: Vec::new(),
         options: Vec::new(),
     }
@@ -70,6 +72,7 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
         SourceDescriptor {
             finds_by: vec![SourceId, SteamId, ExactTitle, FuzzyTitle],
             needs: Needs::ApiKey,
+            searchable: true,
             options: vec![
                 key(
                     "clientId",
@@ -85,6 +88,7 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
         SourceDescriptor {
             applies_to: AppliesTo::HasSteamId,
             finds_by: vec![SteamId],
+            searchable: true,
             ..source(
                 STEAM,
                 "Steam",
@@ -110,6 +114,7 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
         },
         SourceDescriptor {
             finds_by: vec![SourceId, ExactTitle, FuzzyTitle],
+            searchable: true,
             ..source(LUTRIS, "Lutris", Details, &["description", "releaseDate", "genres", "platforms", "cover", "hero"])
         },
         // Kept in saved priorities (Heronite's data) but not offered: nothing
@@ -218,8 +223,7 @@ impl MetadataSource for IgdbSource {
     }
 
     fn lookup(&self, ctx: &SourceContext<'_>, game: &SourceGame) -> Lookup<MetadataCandidate> {
-        let m = ctx.settings();
-        let creds = IgdbCredentials::new(&m.igdb_client_id, &m.igdb_client_secret);
+        let creds = igdb_credentials(ctx);
         let steam_id = game.steam_app_id.as_deref();
         let found = self.igdb.fetch(ctx.http, &creds, &game.app_name, &game.runner, &game.title, steam_id, game.igdb_id);
         // `fetch` tries the IGDB id, then the Steam id, then the title: the
@@ -233,8 +237,19 @@ impl MetadataSource for IgdbSource {
             } else {
                 MatchedBy::by_title(&game.title, md.title.as_deref())
             };
-            candidate(self.d, matched_by)(md)
+            igdb_candidate(self.d, matched_by, md)
         })
+    }
+
+    fn lookup_id(&self, ctx: &SourceContext<'_>, game: &SourceGame, id: &str) -> Lookup<MetadataCandidate> {
+        let Ok(id) = id.trim().parse::<i64>() else { return Lookup::NotFound };
+        self.igdb
+            .fetch_id(ctx.http, &igdb_credentials(ctx), &game.app_name, &game.runner, id)
+            .map(|md| igdb_candidate(self.d, MatchedBy::SourceId, md))
+    }
+
+    fn search(&self, ctx: &SourceContext<'_>, query: &str) -> Lookup<Vec<SourceHit>> {
+        self.igdb.search_hits(ctx.http, &igdb_credentials(ctx), query)
     }
 
     fn has_test(&self) -> bool {
@@ -243,9 +258,18 @@ impl MetadataSource for IgdbSource {
 
     /// Asks Twitch for a token and IGDB for one game with the saved keys.
     fn test(&self, ctx: &SourceContext<'_>) -> Option<SourceTest> {
-        let m = ctx.settings();
-        Some(self.igdb.test_credentials(ctx.http, &IgdbCredentials::new(&m.igdb_client_id, &m.igdb_client_secret)))
+        Some(self.igdb.test_credentials(ctx.http, &igdb_credentials(ctx)))
     }
+}
+
+fn igdb_credentials(ctx: &SourceContext<'_>) -> IgdbCredentials {
+    let m = ctx.settings();
+    IgdbCredentials::new(&m.igdb_client_id, &m.igdb_client_secret)
+}
+
+fn igdb_candidate(d: &SourceDescriptor, matched_by: MatchedBy, md: CollectionGameMetadata) -> MetadataCandidate {
+    let id = md.igdb_id.map(|n| (n.get() as i64).to_string());
+    candidate(d, matched_by)(md).with_id(id)
 }
 
 struct SteamSource {
@@ -259,16 +283,26 @@ impl MetadataSource for SteamSource {
     }
 
     fn lookup(&self, ctx: &SourceContext<'_>, game: &SourceGame) -> Lookup<MetadataCandidate> {
-        steam::fetch_steam_metadata(
-            ctx.paths,
-            ctx.http,
-            &self.state,
-            &game.app_name,
-            &game.runner,
-            game.steam_app_id.as_deref(),
-            game.language.as_deref(),
+        self.app(ctx, game, game.steam_app_id.as_deref(), MatchedBy::SteamId)
+    }
+
+    fn lookup_id(&self, ctx: &SourceContext<'_>, game: &SourceGame, id: &str) -> Lookup<MetadataCandidate> {
+        self.app(ctx, game, Some(id.trim()), MatchedBy::SourceId)
+    }
+
+    fn search(&self, ctx: &SourceContext<'_>, query: &str) -> Lookup<Vec<SourceHit>> {
+        search_steam(ctx.http, query)
+    }
+}
+
+impl SteamSource {
+    fn app(&self, ctx: &SourceContext<'_>, game: &SourceGame, id: Option<&str>, matched_by: MatchedBy) -> Lookup<MetadataCandidate> {
+        steam::fetch_steam_metadata(ctx.paths, ctx.http, &self.state, &game.app_name, &game.runner, id, game.language.as_deref()).map(
+            |md| {
+                let id = md.steam_app_id.clone();
+                candidate(self.d, matched_by)(md).with_id(id)
+            },
         )
-        .map(candidate(self.d, MatchedBy::SteamId))
     }
 }
 
@@ -302,8 +336,28 @@ impl MetadataSource for LutrisSource {
         let slug = game.lutris_slug.as_deref().filter(|s| !s.is_empty());
         fetch_lutris_metadata(ctx.http, &game.app_name, &game.runner, &game.title, slug).map(|md| {
             let matched_by = if slug.is_some() { MatchedBy::SourceId } else { MatchedBy::by_title(&game.title, md.title.as_deref()) };
-            candidate(self.d, matched_by)(md)
+            self.candidate(matched_by, md)
         })
+    }
+
+    fn lookup_id(&self, ctx: &SourceContext<'_>, game: &SourceGame, id: &str) -> Lookup<MetadataCandidate> {
+        let slug = id.trim();
+        if slug.is_empty() {
+            return Lookup::NotFound;
+        }
+        fetch_lutris_metadata(ctx.http, &game.app_name, &game.runner, &game.title, Some(slug))
+            .map(|md| self.candidate(MatchedBy::SourceId, md))
+    }
+
+    fn search(&self, ctx: &SourceContext<'_>, query: &str) -> Lookup<Vec<SourceHit>> {
+        search_lutris(ctx.http, query)
+    }
+}
+
+impl LutrisSource {
+    fn candidate(&self, matched_by: MatchedBy, md: CollectionGameMetadata) -> MetadataCandidate {
+        let id = md.lutris_slug.clone();
+        candidate(self.d, matched_by)(md).with_id(id)
     }
 }
 

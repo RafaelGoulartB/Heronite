@@ -16,6 +16,10 @@
 //! back the replaced pictures the record points at again. No other file is
 //! removed. Steam tags are not undone: they are a cache of what Steam lists.
 //!
+//! The review queue: the entries the job added are removed and those it
+//! took out (games it saved) put back, each only while it is as the job
+//! left it (a game the user reviewed since stays reviewed).
+//!
 //! The undo lives in memory: it is offered until the next job starts or the
 //! app closes. Writing it to disk as a job runs would add a write per game,
 //! and an undo that comes back after a restart, over records other things
@@ -36,6 +40,7 @@ use serde_json::{Map, Value};
 
 use super::MetadataService;
 use crate::job::UndoReport;
+use crate::review::ReviewEntry;
 use crate::util::{blank_metadata, folder_name, local_art_url};
 
 const FIELD_SOURCES: &str = "fieldSources";
@@ -70,15 +75,23 @@ struct Entry {
 pub(super) struct UndoLog {
     job: u64,
     entries: IndexMap<String, Entry>,
+    /// Review queue entries: as they were before the job, and as it left
+    /// them (`None`: none).
+    reviews: IndexMap<String, (Option<ReviewEntry>, Option<ReviewEntry>)>,
 }
 
 impl UndoLog {
     pub(super) fn new(job: u64) -> Self {
-        Self { job, entries: IndexMap::new() }
+        Self { job, entries: IndexMap::new(), reviews: IndexMap::new() }
     }
 
     pub(super) fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.entries.is_empty() && self.reviews.is_empty()
+    }
+
+    /// The job changed the queue entry of `key` from `before` to `after`.
+    pub(super) fn record_review(&mut self, key: String, before: Option<ReviewEntry>, after: Option<ReviewEntry>) {
+        self.reviews.entry(key).and_modify(|e| e.1 = after.clone()).or_insert((before, after));
     }
 
     /// Before the job may write the pictures of a game: keeps the files
@@ -275,8 +288,13 @@ impl MetadataService {
             log
         };
         match undo(&self.paths, &log) {
-            Ok(report) => {
+            Ok(mut report) => {
                 clear_backups(&self.paths);
+                let reviews: Vec<_> = log.reviews.iter().map(|(k, (b, a))| (k.clone(), b.clone(), a.clone())).collect();
+                match self.restore_queue(&reviews) {
+                    Ok(n) => report.reviews = n,
+                    Err(e) => log::warn!("Undo could not restore the review queue: {e:#}"),
+                }
                 Ok(Some(report))
             }
             // Nothing was written (one write of the file): it can be tried again.

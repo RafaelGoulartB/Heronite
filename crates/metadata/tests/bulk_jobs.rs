@@ -614,8 +614,12 @@ fn counts_for_two_thousand_games_read_each_file_once() {
     assert_eq!(counts.games, total);
     assert_eq!(counts.no_details, 2 * quarter, "no record, or a failed one with nothing in it");
     assert_eq!(counts.failed_last_time, quarter);
-    assert_eq!(attention.len(), 2 * quarter);
-    assert!(attention.iter().all(|g| g.app_name.trim_start_matches("game").parse::<usize>().unwrap() % 4 < 2));
+    // Needing attention also counts a missing description or cover: the
+    // records with only a description have no cover.
+    assert_eq!(attention.len(), 3 * quarter);
+    assert!(attention.iter().all(|g| g.app_name.trim_start_matches("game").parse::<usize>().unwrap() % 4 != 2));
+    assert_eq!((counts.without_match, counts.no_cover, counts.no_description, counts.to_review), (2 * quarter, quarter, 0, 0));
+    assert_eq!(counts.needs_attention, 3 * quarter);
     assert_eq!(counts.games_missing, 3 * quarter);
     let fields = heronite_data::settings::METADATA_FIELDS.len();
     assert_eq!(counts.fields_missing, 2 * quarter * fields + quarter * (fields - 1));

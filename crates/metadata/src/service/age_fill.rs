@@ -15,6 +15,7 @@ use serde_json::Value;
 use super::MetadataService;
 use crate::igdb::{IgdbCredentials, RATINGS_BATCH};
 use crate::merge::{AGE_CHECKED, AGE_RATINGS};
+use crate::record;
 use crate::steam;
 use crate::store::get_all_game_metadata;
 use crate::types::Lookup;
@@ -25,11 +26,13 @@ use crate::util::now_iso;
 const STEAM_PER_PASS: usize = 100;
 const STEAM_GAP: Duration = Duration::from_millis(400);
 
-/// A record never asked for its ratings that has an id to ask with.
+/// A record never asked for its ratings that has an id to ask with (and
+/// whose ratings are not locked).
 fn needs_age_ratings(md: &CollectionGameMetadata) -> bool {
     md.age_ratings.is_empty()
         && !md.extra.contains_key(AGE_CHECKED)
         && md.field_sources.get(AGE_RATINGS).map(String::as_str) != Some("manual")
+        && !record::is_locked(md, AGE_RATINGS)
         && (igdb_id(md).is_some() || md.steam_app_id.as_deref().is_some_and(|s| !s.is_empty()))
 }
 
@@ -150,5 +153,20 @@ impl MetadataService {
             }
             Ok(rated)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::util::blank_metadata;
+
+    #[test]
+    fn a_record_with_its_ratings_locked_is_not_asked() {
+        let mut md = blank_metadata("a", "sideload");
+        md.igdb_id = Some(heronite_data::num::JsNum(72.0));
+        assert!(needs_age_ratings(&md));
+        record::set_locked(&mut md, AGE_RATINGS, true);
+        assert!(!needs_age_ratings(&md));
     }
 }

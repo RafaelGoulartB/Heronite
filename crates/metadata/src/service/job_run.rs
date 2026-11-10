@@ -20,10 +20,13 @@ use indexmap::IndexMap;
 
 use super::bulk::initial;
 use super::counts::{missing_details, tag_steam_id};
+use super::fetch::{decide, Gathered};
 use super::undo::{clear_backups, UndoLog};
-use super::{tag_fill, Gathered, MetadataService, Offline, NO_DATA};
+use super::{tag_fill, MetadataService, Offline, NO_DATA};
 use crate::job::{FieldChange, GameOutcome, GameResult, NoChangeReason, SkipReason, UpdateMode};
 use crate::merge::{has_field_value, read_field};
+use crate::record;
+use crate::review::ReviewEntry;
 use crate::sources::{extra_fields, ids, is_on};
 use crate::steam_tags;
 use crate::store::{as_runner, get_all_game_metadata, get_game_metadata, upsert_game_metadata};
@@ -166,7 +169,7 @@ impl MetadataService {
             let (result, error) = self.job_game(&plan, game, &mut known, &mut undo, &tags);
             match &result.outcome {
                 GameOutcome::Updated | GameOutcome::NoChange(NoChangeReason::NothingNew) => p.updated += 1,
-                GameOutcome::NoChange(_) | GameOutcome::Skipped(_) => p.skipped += 1,
+                GameOutcome::NoChange(_) | GameOutcome::Skipped(_) | GameOutcome::ToReview(_) => p.skipped += 1,
                 GameOutcome::NotFound | GameOutcome::Offline | GameOutcome::Failed(_) => p.failed += 1,
             }
             errors.extend(error);
@@ -248,6 +251,10 @@ impl MetadataService {
         if plan.skip_fetched && stored.is_some_and(|c| c.fetched_at.as_deref().is_some_and(|f| !f.is_empty()) && c.fetch_error.is_none()) {
             return (result_of(game, GameOutcome::Skipped(SkipReason::AlreadyFetched), Vec::new()), None);
         }
+        // The user said no source has it: its details are not asked again.
+        let in_no_source = stored.is_some_and(|c| record::marked_no_match(c, &game.title));
+        // Every field the job could change is locked.
+        let all_locked = stored.is_some_and(|c| !plan.fillable.is_empty() && plan.fillable.iter().all(|f| record::is_locked(c, f)));
         let steam_id = tag_steam_id(game, stored);
         let tag_asked = steam_id.as_ref().is_some_and(|i| tags.asked.contains(i));
         let tag_change = steam_id
@@ -269,10 +276,13 @@ impl MetadataService {
             }
             Some(_) => (!plan.fillable.is_empty()).then(|| Ask { fields: plan.only_fields.clone(), full: plan.full }),
         };
+        let ask = ask.filter(|_| !in_no_source && !all_locked);
         let details = ask.map(|ask| self.job_details(plan, &ask, game, &key, known, undo));
 
         let (outcome, mut changes, error) = match details {
             Some(d) => (d.outcome, d.changes, d.error),
+            None if in_no_source && !tag_asked => (GameOutcome::Skipped(SkipReason::InNoSource), Vec::new(), None),
+            None if all_locked && !tag_asked => (GameOutcome::NoChange(NoChangeReason::Locked), Vec::new(), None),
             None if tag_asked && tags.unreachable => (GameOutcome::Offline, Vec::new(), None),
             None if tag_asked => (GameOutcome::NoChange(NoChangeReason::NothingNew), Vec::new(), None),
             None => {
@@ -316,7 +326,7 @@ impl MetadataService {
             Ok(before) => before,
             Err(e) => return Details::failed(game, format!("{e:#}")),
         };
-        let Gathered { candidates, offline } = self.gather(&args);
+        let Gathered { candidates, offline, .. } = self.gather(&args);
         let mut write = |md: CollectionGameMetadata, pictures, undo: &mut UndoLog| -> anyhow::Result<CollectionGameMetadata> {
             let saved = upsert_game_metadata(&self.paths, md)?;
             undo.record(key.to_owned(), before.clone(), saved.clone(), pictures);
@@ -339,12 +349,29 @@ impl MetadataService {
             }
             return Details { outcome: GameOutcome::NotFound, changes: Vec::new(), error: Some(format!("{}: {NO_DATA}", game.title)) };
         }
-        let proposed = self.propose(&args, before.as_ref(), &candidates);
+        let decision = decide(&candidates, before.as_ref());
+        if let Some(reason) = decision.review {
+            let entry = ReviewEntry::new(&game.app_name, runner, &game.title, reason, &candidates);
+            return match self.queue_review(entry.clone()) {
+                Ok(was) => {
+                    undo.record_review(key.to_owned(), was, Some(entry));
+                    Details { outcome: GameOutcome::ToReview(reason), changes: Vec::new(), error: None }
+                }
+                Err(e) => Details::failed(game, format!("{e:#}")),
+            };
+        }
+        let proposed = self.propose(&args, before.as_ref(), &decision.used);
         let kept = (!pictures.is_empty()).then(|| undo.pictures_before(&self.paths, runner, &game.app_name));
         let saved = self.persist_chosen_images(proposed, plan.download, &pictures);
         let pictures = kept.map(|p| p.after(&self.paths));
         match write(saved, pictures, undo) {
             Ok(saved) => {
+                // Saved with a sure match: it no longer waits for review.
+                match self.unqueue(key) {
+                    Ok(Some(was)) => undo.record_review(key.to_owned(), Some(was), None),
+                    Ok(None) => {}
+                    Err(e) => log::warn!("review queue: {e:#}"),
+                }
                 let changes = changed_fields(before.as_ref(), &saved, &plan.fields);
                 let outcome = if changes.is_empty() { GameOutcome::NoChange(NoChangeReason::NothingNew) } else { GameOutcome::Updated };
                 Details { outcome, changes, error: None }

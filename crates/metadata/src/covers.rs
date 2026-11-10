@@ -13,7 +13,7 @@ use parking_lot::Mutex;
 use serde_json::Value;
 
 use crate::http::Http;
-use crate::types::{ArtKind, WebImage};
+use crate::types::{ArtKind, Lookup, SourceHit, WebImage};
 use crate::util::{encode_uri_component, normalize_title, re};
 
 const SGDB_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Heronite/0.1";
@@ -113,7 +113,7 @@ pub fn score_steam_name(query: &str, name: &str) -> i32 {
 }
 
 /// Words a store adds after a game's name for another edition of the same game.
-const EDITION_WORDS: &[&str] = &[
+pub(crate) const EDITION_WORDS: &[&str] = &[
     "goty",
     "game",
     "of",
@@ -243,6 +243,66 @@ fn best_of(title: &str, search_apps: &Value, store: &Value) -> Option<String> {
     best_from_search_apps(&mut best, search_apps.as_array().unwrap(), title);
     best_from_store_search(&mut best, store, title);
     best.0.map(|(i, _)| i)
+}
+
+/// Steam apps whose name is like `query` (the store search, else the
+/// community one), add-ons left out, with their library cover. Steam gives
+/// no release year here.
+pub fn search_steam(http: &Http, query: &str) -> Lookup<Vec<SourceHit>> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Lookup::Found(Vec::new());
+    }
+    let store = http
+        .get(format!("{}/api/storesearch/", http.endpoints.steam_store))
+        .query(&[("term", query), ("l", "english"), ("cc", "US")])
+        .send_ok()
+        .and_then(|r| r.json::<Value>());
+    let apps: Vec<(String, String)> = match store {
+        Ok(body) => body
+            .get("items")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|i| i.get("type").and_then(Value::as_str).is_none_or(|t| t.is_empty() || t == "app"))
+            .filter_map(|i| Some((i.get("id")?.as_u64()?.to_string(), i.get("name")?.as_str()?.to_owned())))
+            .collect(),
+        Err(e) => {
+            log::warn!("Steam store search failed for {query}: {e}");
+            let community = http
+                .get(format!("{}/actions/SearchApps/{}", http.endpoints.steam_community, encode_uri_component(query)))
+                .send_ok()
+                .and_then(|r| r.json::<Value>());
+            match community {
+                Ok(Value::Array(hits)) => hits
+                    .iter()
+                    .filter_map(|i| {
+                        let id =
+                            i.get("appid").and_then(|a| a.as_str().map(str::to_owned).or_else(|| a.as_u64().map(|n| n.to_string())))?;
+                        Some((id, i.get("name")?.as_str()?.to_owned()))
+                    })
+                    .collect(),
+                Ok(_) => Vec::new(),
+                Err(e) => return Lookup::from_error(&e),
+            }
+        }
+    };
+    let mut hits: Vec<SourceHit> = Vec::new();
+    for (id, name) in apps {
+        if is_likely_addon(&name, query) || hits.iter().any(|h| h.id.as_deref() == Some(id.as_str())) {
+            continue;
+        }
+        hits.push(SourceHit {
+            source: "steam".into(),
+            thumb_url: crate::steam::steam_cdn_cover(Some(&id)),
+            id: Some(id),
+            title: Some(name),
+            year: None,
+            platform: None,
+            matched_by: None,
+        });
+    }
+    Lookup::Found(hits)
 }
 
 fn sgdb_get(http: &Http, api_key: &str, path: &str, params: &[(&str, &str)]) -> Result<Value> {

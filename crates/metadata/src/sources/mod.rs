@@ -34,7 +34,7 @@ pub use options::{OptionChoice, OptionKind, OptionValue, SourceOption};
 pub use rows::{FieldRow, OptionRow, SourceRow, SourceStatus};
 
 use crate::http::Http;
-use crate::types::{IgdbCredentialTest, Lookup, MetadataCandidate};
+use crate::types::{IgdbCredentialTest, Lookup, MetadataCandidate, SourceHit};
 
 /// The outcome of a source's test (IGDB's credentials check today).
 pub type SourceTest = IgdbCredentialTest;
@@ -73,6 +73,20 @@ pub trait MetadataSource: Send + Sync {
     /// Only called for games the descriptor's `applies_to` matches.
     /// [`Lookup::Skipped`] when it cannot be asked (no credentials, no id).
     fn lookup(&self, ctx: &SourceContext<'_>, game: &SourceGame) -> Lookup<MetadataCandidate>;
+
+    /// Its game `id` (a search hit's, or one the user pinned), as the
+    /// candidate for `game` ([`MatchedBy::SourceId`](crate::types::MatchedBy)).
+    /// Only for sources whose descriptor is `searchable`.
+    fn lookup_id(&self, _ctx: &SourceContext<'_>, _game: &SourceGame, _id: &str) -> Lookup<MetadataCandidate> {
+        Lookup::Skipped
+    }
+
+    /// Its games whose name is like `query`, best first. Only for sources
+    /// whose descriptor is `searchable`; [`Lookup::Skipped`] when it cannot
+    /// be asked (no key).
+    fn search(&self, _ctx: &SourceContext<'_>, _query: &str) -> Lookup<Vec<SourceHit>> {
+        Lookup::Skipped
+    }
 
     /// Whether [`test`](Self::test) does something.
     fn has_test(&self) -> bool {
@@ -136,6 +150,22 @@ impl SourceRegistry {
 
     fn lookup(&self, id: &str) -> Option<&dyn MetadataSource> {
         self.lookups().find(|s| s.descriptor().id == id)
+    }
+
+    /// Asks `source` for its game `id` (see [`MetadataSource::lookup_id`]).
+    pub fn lookup_id(&self, ctx: &SourceContext<'_>, source: &str, game: &SourceGame, id: &str) -> Lookup<MetadataCandidate> {
+        match self.lookup(source) {
+            Some(s) if s.descriptor().searchable => s.lookup_id(ctx, game, id),
+            _ => Lookup::Skipped,
+        }
+    }
+
+    /// Searches `source` by name (see [`MetadataSource::search`]).
+    pub fn search(&self, ctx: &SourceContext<'_>, source: &str, query: &str) -> Lookup<Vec<SourceHit>> {
+        match self.lookup(source) {
+            Some(s) if s.descriptor().searchable => s.search(ctx, query),
+            _ => Lookup::Skipped,
+        }
     }
 
     /// Whether `id` has a test (Settings shows "Test" for it).

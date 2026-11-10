@@ -117,6 +117,11 @@ impl DataPaths {
     pub fn metadata_undo_dir(&self) -> PathBuf {
         self.j("local_library/metadata-undo")
     }
+    /// The games whose metadata waits for the user to pick the match
+    /// (`heronite_metadata::review`). Safe to delete.
+    pub fn metadata_review(&self) -> PathBuf {
+        self.j("local_library/metadata-review.json")
+    }
     pub fn steam_details_dir(&self) -> PathBuf {
         self.j("local_library/steam-details")
     }
