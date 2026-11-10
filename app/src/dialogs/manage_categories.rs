@@ -22,7 +22,7 @@ use crate::collection::category_badges::colour_of;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{button, button_sm, help_text, ButtonKind};
-use crate::ui::dialog::{dialog, DialogProps};
+use crate::ui::dialog::{dialog_scrolled, DialogProps};
 use crate::ui::fields::input_box;
 use crate::ui::{icon, tooltip};
 
@@ -81,6 +81,8 @@ pub struct ManageCategoriesDialog {
     /// A rename to the name of another category, waiting for "Merge":
     /// `(from, into)`.
     merge: Option<(String, String)>,
+    /// The body's scroll, for its scrollbar.
+    scroll: ScrollHandle,
 }
 
 impl EventEmitter<DialogEvent> for ManageCategoriesDialog {}
@@ -115,7 +117,17 @@ impl ManageCategoriesDialog {
             }
         })
         .detach();
-        let mut this = Self { ctx, rows: Vec::new(), looks, picking: None, new_name, error: None, confirm: None, merge: None };
+        let mut this = Self {
+            ctx,
+            rows: Vec::new(),
+            looks,
+            picking: None,
+            new_name,
+            error: None,
+            confirm: None,
+            merge: None,
+            scroll: ScrollHandle::new(),
+        };
         this.load(window, cx);
         this
     }
@@ -464,9 +476,16 @@ impl Render for ManageCategoriesDialog {
         let footer = button("cat-close", ButtonKind::Primary, tr!("Done"))
             .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)))
             .into_any_element();
+        // The body's size is known only after it is laid out: draw once more
+        // so the scrollbar shows from the start.
+        if self.scroll.bounds().size.height <= px(0.) {
+            let view = cx.entity_id();
+            cx.defer(move |cx| cx.notify(view));
+        }
         let entity = cx.entity().downgrade();
-        dialog(
+        dialog_scrolled(
             DialogProps { id: "manage-categories".into(), title: tr!("Manage categories").into(), width: 560., height: None },
+            &self.scroll,
             body.into_any_element(),
             Some(footer),
             move |_, cx| {
