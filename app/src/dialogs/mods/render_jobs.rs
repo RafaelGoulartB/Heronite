@@ -122,23 +122,10 @@ impl ModsDialog {
         out
     }
 
-    /// No account, or `nxm://` links that do not open Heronite.
+    /// `nxm://` links that do not open Heronite. Nothing without an account:
+    /// the links need its key, and the account is set up in Settings → Mods.
     fn nexus_notice(&mut self, v: &View, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if v.account.is_none() {
-            return Some(
-                tinted(Tone::Info, Icon::AccountCircle)
-                    .child(words(
-                        Some(tr!("Connect Nexus Mods")),
-                        tr!("Add your Nexus Mods API key to check these mods for updates and, with Premium, install straight from Browse."),
-                    ))
-                    .child(
-                        button_sm("mods-nexus-account", ButtonKind::Glass, tr!("Open Settings \u{2192} Mods"))
-                            .self_center()
-                            .on_click(cx.listener(|this, _, _, cx| this.open_settings(cx))),
-                    )
-                    .into_any_element(),
-            );
-        }
+        v.account.as_ref()?;
         if matches!(v.handlers, HandlerState::None | HandlerState::Other) {
             let text = if v.handlers == HandlerState::Other {
                 tr!("Another program opens the \"Mod manager download\" links of Nexus Mods. Use Heronite to install them here.")

@@ -493,7 +493,7 @@ neutral, "Most mods won't work" red; `heronite_mods::support`) before a one-line
 labels say why under the pointer (`ui::tooltip_titled`: a title over the sentence). Tabs Installed, Browse, Game, and Plugins
 for Bethesda games. Installed: notices as tinted cards (`render_jobs::tinted`: game folder not found, FUSE problem with "Open
 Settings → Mods", game running, what to expect of the game's mods for every level but "Should work", Steam launch options,
-Nexus account and `nxm://` handler), this game's jobs (progress bar, Cancel / Dismiss; a mod installed where the game will
+the `nxm://` handler once a Nexus account is connected; the account itself is only asked for in Settings → Mods), this game's jobs (progress bar, Cancel / Dismiss; a mod installed where the game will
 not see it is an amber job that stays until dismissed), then the load order in
 one card: handle (drag a row onto another; Move up / Move down in its menu for the keyboard), switch, picture or initial, name,
 version, author, source pill, "Check files" (amber; click says why the game will not see the mod, with Open folder, Open mod
