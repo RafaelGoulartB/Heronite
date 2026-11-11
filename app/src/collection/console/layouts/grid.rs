@@ -528,6 +528,7 @@ impl CollectionView {
         let by_letter = self.grid_letters(tab);
         let nav = &mut self.tab_nav(tab).grid;
         let cols = nav.cols.max(1);
+        let before = (nav.filters.show, nav.filters.favourites);
         if let Some(chip) = nav.toolbar {
             match pad {
                 Pad::Left => nav.toolbar = Some(chip.saturating_sub(1)),
@@ -569,7 +570,7 @@ impl CollectionView {
                 let nav = &mut self.tab_nav(tab).grid;
                 nav.index = 0;
                 nav.restart = true;
-                self.keep_grid_filters(tab);
+                self.keep_grid_filters(tab, before);
             }
             return true;
         }
