@@ -32,12 +32,35 @@ What works on Windows, what is left, and what Windows does not need.
 ## ⬜ To do
 
 - Replay buffer (separate from the overlay; hidden on Windows)
-- Mods (`docs/MODS.md`, hidden on Windows): open mod archives without 7-Zip or bsdtar on the PATH, retry putting the game's folder back while a file is locked, and make the cross-drive copy of a backed-up file safe to interrupt
 - RetroAchievements sign-in for the remaining emulators (DuckStation, PCSX2, PPSSPP, Dolphin and Flycast): their Windows config locations and, where needed, token encryption still need support
 - Ludusavi registry entries: in a backup made on Windows, Ludusavi restores them itself, but they are missing from the restore preview and from the undo copy
 - Screenshots of games in legacy exclusive fullscreen: Desktop Duplication loses the display while such a game holds it. HDR capture also still needs a check on a real HDR monitor
 - A new tray icon starts in Windows 11's hidden-icons flyout until the user pins it
 - Appearance → "From the desktop" (accent and panel colour) reads only Linux desktops (`app/src/system/desktop_colours.rs`); on Windows it gets no colour and falls back. It should read Windows' accent colour and light/dark app mode
+
+## 🚧 Mods
+
+On (`Feature::Mods`, `docs/MODS.md` → Windows). While a game runs, its mods'
+files are in its folder (hard links on the same drive, copies otherwise), and
+a journal puts the folder back when it ends, at the next start or before the
+next launch.
+
+- **Archives without 7-Zip:** zip and 7z are opened in process (the `zip` and
+  `sevenz-rust2` crates), tar and RAR by Windows' own `tar.exe` (libarchive,
+  in Windows 10 1803 and later). 7-Zip, `unzip` or `bsdtar` on the PATH are
+  still used for what the in-process code does not read (a password, an
+  unusual method).
+- **A file still open when the game ends:** the restore waits for it (up to
+  15 s for all files together, retrying with a growing pause) and checks
+  every file before it moves one. If one is still open, the folder stays as
+  the game had it, the journal keeps why, and the mod manager says which file
+  to close; the next start or launch finishes the restore.
+- **A copy to another drive cut short:** it goes to `<name>.heronite-partial`
+  beside the target, is flushed and renamed into place, and only then is the
+  source removed. Leftover partial copies are removed at the next start.
+- Still to check on a real Windows: a modded game end to end (a Bethesda
+  game with a script extender, a BepInEx game), a RAR mod (libarchive's RAR
+  reader was not tested here), and a game on another drive than the mods.
 
 ## 🚧 Console mode controllers
 
