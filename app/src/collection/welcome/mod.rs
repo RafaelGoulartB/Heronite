@@ -219,7 +219,7 @@ impl CollectionView {
             SteamState::PortTaken => status(
                 tr!("Port in use"),
                 theme::warning(),
-                tr!("Another program on this PC uses the port Steam needs to let Heronite in. The Steam page says which, or lets you sign in with a QR code instead."),
+                tr!("Another program on this PC uses the port Steam needs to let Heronite in. The Steam page says which."),
             ),
             SteamState::Reading => status(tr!("Reading your library"), busy, tr!("Reading your Steam library\u{2026} a few seconds.")),
             SteamState::Connected => {

@@ -7,27 +7,22 @@
 //! Steam pill ([`SteamLibrary::notice`]). The Collection reloads on
 //! [`SteamLibraryEvent::Imported`].
 //!
-//! With a Steam account signed in ([`account`], optional), the library is
-//! read through Steam's Web API whenever the client cannot be read, at most
-//! every [`ACCOUNT_EVERY`] by itself.
-
-mod account;
+//! A Steam sign-in an earlier version saved (with a QR code, as the Steam
+//! mobile app) is ended on Steam and deleted at start
+//! ([`retire_steam_sign_in`]): Steam's security took those sign-ins for a
+//! phishing attack and locked accounts over them.
 
 use std::time::{Duration, Instant};
 
 use gpui_kit::*;
 use heronite_data::steam_owned::{SteamOwnedFile, SteamSource};
 use heronite_data::{AppPaths, DataPaths};
-use heronite_i18n::tr;
 use heronite_launch::settings::GlobalSettings;
-use heronite_launch::steam::{find_steam_binary, installed_app_ids, SteamLocator};
+use heronite_launch::steam::{find_steam_binary, SteamLocator};
 use heronite_launch::SystemProbe;
 use heronite_steam::account::http::Net;
-use heronite_steam::account::SignedOut;
-use heronite_steam::library::{ImportReport, LibraryRead};
+use heronite_steam::library::ImportReport;
 use heronite_steam::{ClientApiFlag, LibraryAccess, LibraryCheck, PortOwner, Steam};
-
-pub use account::{AccountState, QrState};
 
 const FIRST_DELAY: Duration = Duration::from_secs(6);
 /// Until the library was read once: cheap local checks (a pid file, the
@@ -45,9 +40,6 @@ const SETTLE: Duration = Duration::from_secs(20);
 /// stops saying it is starting and offers a restart (its updater and the
 /// sign-in take a while; past this, something keeps the client closed).
 const NOT_ANSWERING: Duration = Duration::from_secs(120);
-
-/// The library is read from the account at most this often by itself.
-const ACCOUNT_EVERY: Duration = INTERVAL;
 
 /// The id under which "Ignore" on the Collection's Steam pill is remembered
 /// (`heronite_data::ui_state::dismiss_note`).
@@ -71,42 +63,26 @@ fn library_check(paths: &DataPaths) -> (LibraryCheck, ClientApiFlag) {
     (steam.library_check(), steam.access_flag())
 }
 
-/// How a read failed.
-#[derive(Debug)]
-enum ReadError {
-    /// The client's or the account's message.
-    Failed(String),
-    /// Steam no longer takes the account's sign-in (deleted already).
-    SignedOut,
+/// Reads the library from the client and joins it. Blocking.
+fn sync_blocking(paths: &DataPaths) -> Result<ImportReport, String> {
+    let steam = steam(paths);
+    let read = steam.read_library()?;
+    heronite_steam::library::import(paths, read, find_steam_binary(&SystemProbe).as_deref()).map_err(|e| format!("{e:#}"))
 }
 
-/// Reads the library and joins it: from the client when it can be read,
-/// else from the account when `account` (one is signed in). Blocking.
-fn sync_blocking(paths: &DataPaths, account: bool) -> Result<(ImportReport, SteamSource), ReadError> {
-    let steam = steam(paths);
-    let bin = find_steam_binary(&SystemProbe);
-    let client_error = match steam.read_library() {
-        Ok(read) => {
-            let report = heronite_steam::library::import(paths, read, bin.as_deref()).map_err(|e| ReadError::Failed(format!("{e:#}")))?;
-            return Ok((report, SteamSource::Client));
-        }
-        Err(e) => e,
-    };
-    if !account {
-        return Err(ReadError::Failed(client_error));
+/// Ends on Steam and deletes a sign-in an earlier version saved, if there
+/// is one. Quiet: only the log says how it went. Blocking.
+fn retire_steam_sign_in(paths: &DataPaths) {
+    if !heronite_steam::account::saved(paths) {
+        return;
     }
-    let installed = installed_app_ids(&steam.locator);
-    let owned = heronite_steam::account::read_owned(paths, &Net::default(), &installed, &steam.locator.installs()).map_err(|e| {
-        if e.is::<SignedOut>() {
-            ReadError::SignedOut
-        } else {
-            ReadError::Failed(tr!("Reading your library from your Steam account failed: {error}", error = format!("{e:#}")))
-        }
-    })?;
-    let report =
-        heronite_steam::library::import_from(paths, LibraryRead { owned, family: Vec::new() }, bin.as_deref(), SteamSource::Account)
-            .map_err(|e| ReadError::Failed(format!("{e:#}")))?;
-    Ok((report, SteamSource::Account))
+    match heronite_steam::account::sign_out_on_steam(paths, &Net::default()) {
+        Ok(true) => log::info!("Steam: ended the sign-in an earlier version saved; Heronite no longer signs in to Steam"),
+        Ok(false) => log::warn!(
+            "Steam: deleted the sign-in an earlier version saved, but Steam did not end it: remove \"Heronite\" at store.steampowered.com/account/authorizeddevices"
+        ),
+        Err(e) => log::warn!("Steam: the sign-in an earlier version saved could not be deleted: {e:#}"),
+    }
 }
 
 /// What the cached library holds: games, installed ones, when it was read.
@@ -191,8 +167,6 @@ pub struct SteamLibrary {
     logged: Option<(LibraryAccess, Option<String>)>,
     /// The program holding the port of Steam's access, as of the last check.
     pub taken: Option<PortOwner>,
-    /// The Steam account signed in with a QR code (optional).
-    pub account: AccountState,
     /// A read was asked for while another ran: it runs next.
     pending: bool,
 }
@@ -201,7 +175,6 @@ impl EventEmitter<SteamLibraryEvent> for SteamLibrary {}
 
 impl SteamLibrary {
     pub fn new(paths: DataPaths, cx: &mut Context<Self>) -> Self {
-        let paths_for_account = paths.clone();
         let mut this = Self {
             paths,
             syncing: false,
@@ -218,11 +191,11 @@ impl SteamLibrary {
             starting_since: None,
             logged: None,
             taken: None,
-            account: AccountState::load(&paths_for_account),
             pending: false,
         };
-        this.account.debug();
         this.load_summary(cx);
+        let retire = this.paths.clone();
+        cx.background_spawn(async move { retire_steam_sign_in(&retire) }).detach();
         // Off for tests against real data, like the other idle jobs.
         if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") {
             cx.spawn(async move |this, cx| {
@@ -291,8 +264,7 @@ impl SteamLibrary {
     }
 
     /// Whether the client cannot be read for a reason the user has to deal
-    /// with (not while Steam is closed, starting or loading): what the
-    /// account's sign-in is offered for.
+    /// with (not while Steam is closed, starting or loading).
     pub fn client_stuck(&self) -> bool {
         matches!(
             self.state(),
@@ -457,8 +429,7 @@ impl SteamLibrary {
         .detach();
     }
 
-    /// A quiet read (the timer, the refresh button): when the client
-    /// answers, else from the account when one is signed in and it is due.
+    /// A quiet read (the timer, the refresh button): when the client answers.
     pub fn sync_if_ready(&mut self, cx: &mut Context<Self>) {
         if self.syncing {
             return;
@@ -469,7 +440,7 @@ impl SteamLibrary {
             this.update(cx, |this, cx| {
                 let ready = check.access == LibraryAccess::Ready;
                 this.take_check(check, flag);
-                if ready || (this.account_allowed() && this.account.due(ACCOUNT_EVERY)) {
+                if ready {
                     this.run(false, cx);
                 }
                 cx.notify();
@@ -485,52 +456,26 @@ impl SteamLibrary {
         self.run(true, cx);
     }
 
-    /// Whether the library may be read from the account now: one is signed
-    /// in, and the client's richer read (Family Sharing games)
-    /// is not what the cache holds, or the client is stuck. While Steam is
-    /// only closed, a library the client read stays as it is.
-    fn account_allowed(&self) -> bool {
-        // Not while signing out: a renewal would save the tokens again.
-        self.account.signed_in()
-            && !self.account.busy
-            && self.summary_loaded
-            && (self.client_stuck() || self.summary.updated_at.is_none() || self.summary.source == SteamSource::Account)
-    }
-
     fn run(&mut self, asked: bool, cx: &mut Context<Self>) {
         if self.syncing {
-            // A sign-in (or the user) asked while a quiet read ran: next.
+            // The user asked while a quiet read ran: next.
             self.pending |= asked;
             return;
         }
         self.syncing = true;
         let paths = self.paths.clone();
-        let account = self.account_allowed();
         cx.spawn(async move |this, cx| {
-            let res = cx.background_spawn(async move { sync_blocking(&paths, account) }).await;
+            let res = cx.background_spawn(async move { sync_blocking(&paths) }).await;
             this.update(cx, |this, cx| {
                 this.syncing = false;
                 let res = match res {
-                    Ok((report, source)) => {
-                        match source {
-                            SteamSource::Client => {
-                                this.set_access(LibraryAccess::Ready, None);
-                            }
-                            SteamSource::Account => this.account.read_now(),
-                        }
+                    Ok(report) => {
+                        this.set_access(LibraryAccess::Ready, None);
                         cx.emit(SteamLibraryEvent::Imported(report));
                         Ok(report)
                     }
-                    Err(ReadError::SignedOut) => {
-                        log::warn!("Steam library: Steam signed the account out");
-                        this.account.signed_out();
-                        Err(tr!("Steam signed you out of your account in Heronite. Sign in again with a QR code to keep reading your library from it.").to_string())
-                    }
-                    Err(ReadError::Failed(e)) => {
+                    Err(e) => {
                         log::warn!("Steam library: {e}");
-                        if account {
-                            this.account.read_now();
-                        }
                         Err(e)
                     }
                 };
@@ -576,7 +521,6 @@ mod tests {
             starting_since: None,
             logged: None,
             taken: None,
-            account: Default::default(),
             pending: false,
         }
     }
@@ -649,29 +593,6 @@ mod tests {
         assert_eq!(s.starting_since, None);
         s.set_access(LibraryAccess::Starting, None);
         assert_eq!(s.state(), SteamState::Opening);
-    }
-
-    #[test]
-    fn the_account_does_not_replace_a_library_the_client_read() {
-        use heronite_data::steam_owned::SteamSource;
-        let mut s = library();
-        s.account.name = Some("gaben".into());
-        // Never read: the account brings it.
-        assert!(s.account_allowed());
-        // Read from the client, Steam only closed: kept as the client read it.
-        s.summary.updated_at = Some("2026-11-07T10:00:00Z".into());
-        s.set_access(LibraryAccess::Closed, None);
-        assert!(!s.account_allowed());
-        // The client is stuck: the account steps in.
-        s.set_access(LibraryAccess::PortTaken, None);
-        assert!(s.account_allowed());
-        // Read from the account already: it keeps it current.
-        s.set_access(LibraryAccess::Closed, None);
-        s.summary.source = SteamSource::Account;
-        assert!(s.account_allowed());
-        // Signed out: never.
-        s.account.name = None;
-        assert!(!s.account_allowed());
     }
 
     #[test]
