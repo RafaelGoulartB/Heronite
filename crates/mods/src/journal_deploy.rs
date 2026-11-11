@@ -334,11 +334,15 @@ fn restore_with(dirs: &GameDirs, patience: &Patience) -> Result<RestoreSummary, 
 
     // What the game made while it ran (only once it could have run).
     let mut made: Vec<String> = Vec::new();
+    // Folders the game made, files or not (BepInEx makes empty `plugins`).
+    let mut made_dirs: Vec<String> = Vec::new();
     if journal.phase == Phase::Deployed {
         if let Some(snapshot) = &snapshot {
             let ours: HashSet<String> = journal.entries.iter().map(|e| e.rel.to_lowercase()).collect();
             let known: HashSet<String> = snapshot.files.iter().map(|f| f.to_lowercase()).collect();
-            for rel in list_tree(&game).files {
+            let now = list_tree(&game);
+            made_dirs = now.dirs.into_iter().collect();
+            for rel in now.files {
                 let key = rel.to_lowercase();
                 if is_partial(&rel) {
                     // Ours: a copy into the game folder cut short.
@@ -446,7 +450,7 @@ fn restore_with(dirs: &GameDirs, patience: &Patience) -> Result<RestoreSummary, 
         // or still listed.
         return Err(stopped(dirs, &mut journal, unfinished(&failed)));
     }
-    remove_new_dirs(&game, &touched_dirs, snapshot.as_ref());
+    remove_new_dirs(&game, &touched_dirs, &made_dirs, snapshot.as_ref());
     let _ = remove_any(&dirs.deploy_backup());
     let _ = fs::remove_file(dirs.deploy_snapshot());
     fs::remove_file(dirs.deploy_journal()).map_err(|e| format!("{}: {e}", dirs.deploy_journal().display()))?;
@@ -510,11 +514,13 @@ fn keep_written(dirs: &GameDirs, game: &Path, rel: &str) -> io::Result<()> {
 }
 
 /// Removes the empty folders that were not in the game before: those the
-/// mods' files needed, and those the game made for files now in overwrite.
-fn remove_new_dirs(game: &Path, files: &BTreeSet<String>, snapshot: Option<&Tree>) {
+/// mods' files needed, those the game made for files now in overwrite, and
+/// the ones it made and left empty (`dirs`). A folder with anything in it
+/// stays.
+fn remove_new_dirs(game: &Path, files: &BTreeSet<String>, dirs: &[String], snapshot: Option<&Tree>) {
     let Some(snapshot) = snapshot else { return };
     let before: HashSet<String> = snapshot.dirs.iter().map(|d| d.to_lowercase()).collect();
-    let mut candidates: BTreeSet<String> = BTreeSet::new();
+    let mut candidates: BTreeSet<String> = dirs.iter().cloned().collect();
     for rel in files {
         let mut parent = Path::new(rel).parent();
         while let Some(p) = parent.filter(|p| !p.as_os_str().is_empty()) {
@@ -728,6 +734,25 @@ mod tests {
         e.vanilla();
         assert!(!e.game.join("Logs").exists());
         assert_eq!(read(e.dirs.overwrite().join("Logs/run.log")), "log", "unchanged, still in overwrite");
+    }
+
+    /// BepInEx makes `BepInEx/plugins` and `BepInEx/patchers` at start and
+    /// leaves them empty (seen with ULTRAKILL).
+    #[test]
+    fn empty_folders_the_game_made_go_and_its_own_stay() {
+        let e = env();
+        fs::create_dir_all(e.game.join("Playlists")).unwrap();
+        let d = deploy(&e.dirs, &e.game, &e.layers()).unwrap();
+        fs::create_dir_all(e.game.join("BepInEx/plugins")).unwrap();
+        fs::create_dir_all(e.game.join("BepInEx/patchers")).unwrap();
+        put(e.game.join("BepInEx/LogOutput.log"), "log");
+        fs::create_dir_all(e.game.join("Data/Empty")).unwrap();
+        d.restore().unwrap();
+        e.vanilla();
+        assert!(!e.game.join("BepInEx").exists(), "made by the game while modded, now empty");
+        assert!(!e.game.join("Data/Empty").exists());
+        assert!(e.game.join("Playlists").is_dir(), "an empty folder the game had before stays");
+        assert_eq!(read(e.dirs.overwrite().join("BepInEx/LogOutput.log")), "log");
     }
 
     #[test]
