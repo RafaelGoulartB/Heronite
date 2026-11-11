@@ -18,7 +18,7 @@ pub mod posters;
 pub mod thumbnails;
 mod trashing;
 
-pub use list::{list_screenshots, GameQuery, Screenshot, ScreenshotsResult, IMAGE_EXTENSIONS, REPLAYS_FOLDER};
+pub use list::{list_all_screenshots, list_screenshots, GameQuery, Screenshot, ScreenshotsResult, IMAGE_EXTENSIONS, REPLAYS_FOLDER};
 pub use matching::{pick_screenshot_folder, score_screenshot_folder, FolderMatch};
 pub use posters::{is_video, Poster};
 pub use thumbnails::{CacheInfo, ThumbnailCache, THUMB_HEIGHT, THUMB_WIDTH};

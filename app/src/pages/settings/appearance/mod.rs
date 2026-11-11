@@ -86,6 +86,8 @@ pub struct State {
     /// The "Under the cover" and background picture selects are open.
     label_open: bool,
     picture_open: bool,
+    /// The "With no game selected" select is open.
+    home_open: bool,
     /// The Collection background's finer sliders (blur, colour intensity,
     /// edge shading) show.
     more_background: bool,
@@ -202,6 +204,7 @@ impl State {
             notice_watch: None,
             label_open: false,
             picture_open: false,
+            home_open: false,
             more_background: false,
             profiles: None,
             profiles_task: None,
@@ -482,6 +485,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     // Off: nothing else applies, so nothing else shows.
     if a.enabled {
         rows.push(look::picture_row(d, cx));
+        rows.push(look::home_row(d, cx));
         let a = &d.appearance;
         let more = a.more_background;
         let mut extra = Vec::new();
@@ -733,6 +737,12 @@ fn console_pictures() -> Vec<(heronite_data::appearance::BackgroundSource, &'sta
     look::picture_items().into_iter().filter(|(p, _)| *p != heronite_data::appearance::BackgroundSource::Custom).collect()
 }
 
+/// "With no game selected" without a picture of your own, which is picked on
+/// the desktop (a file dialog).
+fn console_home_pictures() -> Vec<(heronite_data::appearance::HomeBackground, &'static str)> {
+    look::home_items().into_iter().filter(|(h, _)| *h != heronite_data::appearance::HomeBackground::Custom).collect()
+}
+
 /// Console rows of `look.rs` and the profiles (the sections' order stays a desktop setting).
 fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
     use crate::console::list::Row;
@@ -748,6 +758,7 @@ fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         Row::choice("cover-categories", tr!("Categories on covers"), console_categories().0, console_categories_index(&a)),
         choice("bg-picture", tr!("Picture"), console_choice(&console_pictures(), a.background)),
         Row::toggle("bg-slideshow", tr!("Change the screenshot by itself"), a.background_slideshow),
+        choice("bg-home", tr!("With no game selected"), console_choice(&console_home_pictures(), a.home_background)),
         Row::header(tr!("Colour")),
         choice("theme", tr!("Theme"), console_choice(&scheme::theme_items(), a.theme)).desc(tr!("Console mode stays dark")),
         choice("accent", tr!("Accent colour"), console_choice(&accents, a.accent)),
@@ -770,6 +781,7 @@ fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         choice("motion", tr!("Animations"), console_choice(&look::motion_items(), a.motion)),
         Row::header(tr!("Layout")),
         choice("start-view", tr!("Open the Collection in"), console_choice(&look::start_items(), a.start_view)),
+        Row::toggle("open-with-game", tr!("Open with the last game selected"), a.open_with_game),
         Row::action("reset-widths", tr!("Reset widths")),
         Row::header(tr!("Profiles")),
     ];
@@ -841,6 +853,11 @@ fn console_apply_look(
                 look::set_look(d, cx, |a| a.background = v)
             }
         }
+        ("bg-home", i, _) => {
+            if let Some(v) = pick(&console_home_pictures(), i) {
+                look::set_look(d, cx, |a| a.home_background = v)
+            }
+        }
         ("theme", i, _) => {
             if let Some(v) = pick(&scheme::theme_items(), i) {
                 look::set_look(d, cx, |a| a.theme = v)
@@ -876,6 +893,7 @@ fn console_apply_look(
         }
         ("cover-badges", _, Some(on)) => look::set_look(d, cx, |a| a.cover_badges = on),
         ("bg-slideshow", _, Some(on)) => look::set_look(d, cx, |a| a.background_slideshow = on),
+        ("open-with-game", _, Some(on)) => look::set_look(d, cx, |a| a.open_with_game = on),
         ("high-contrast", _, Some(on)) => look::set_look(d, cx, |a| a.high_contrast = on),
         ("ui-scale-system", _, Some(on)) => {
             let percent = (!on).then(|| ui_scale::percent_of(&theme::appearance()));

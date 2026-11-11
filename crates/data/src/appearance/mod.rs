@@ -243,8 +243,13 @@ pub struct Appearance {
     /// With [`BackgroundSource::Screenshot`]: a different screenshot every
     /// [`SLIDESHOW_SECS`].
     pub background_slideshow: bool,
+    /// What shows behind the Collection while no game is selected.
+    pub home_background: HomeBackground,
     pub motion: Motion,
     pub start_view: StartView,
+    /// The Collection opens with the last game selected (else with none, on
+    /// [`Appearance::home_background`]).
+    pub open_with_game: bool,
     pub auto_view: AutoView,
     /// Show Collection shortcuts when the header has room (off by default).
     pub quick_toolbar_controls: bool,
@@ -285,8 +290,10 @@ impl Appearance {
         cover_stores_hide_grouped: false,
         background: BackgroundSource::DEFAULT,
         background_slideshow: false,
+        home_background: HomeBackground::DEFAULT,
         motion: Motion::DEFAULT,
         start_view: StartView::DEFAULT,
+        open_with_game: true,
         auto_view: AutoView::DEFAULT,
         quick_toolbar_controls: false,
         sections: Sections::DEFAULT,
@@ -383,8 +390,10 @@ impl Appearance {
             cover_stores_hide_grouped: flag("coverStoresHideGrouped", d.cover_stores_hide_grouped),
             background: name("background").and_then(BackgroundSource::parse).unwrap_or_default(),
             background_slideshow: flag("backgroundSlideshow", d.background_slideshow),
+            home_background: name("homeBackground").and_then(HomeBackground::parse).unwrap_or_default(),
             motion: name("motion").and_then(Motion::parse).unwrap_or_default(),
             start_view: name("startView").and_then(StartView::parse).unwrap_or_default(),
+            open_with_game: flag("openWithGame", d.open_with_game),
             auto_view: AutoView { on: flag("autoView", d.auto_view.on), width: num("autoViewWidth", d.auto_view.width) },
             quick_toolbar_controls: flag("quickToolbarControls", d.quick_toolbar_controls),
             sections: Sections::from_names(names("sections"), names("hiddenSections")),
@@ -422,8 +431,10 @@ impl Appearance {
             "coverStoresHideGrouped": self.cover_stores_hide_grouped,
             "background": self.background.as_str(),
             "backgroundSlideshow": self.background_slideshow,
+            "homeBackground": self.home_background.as_str(),
             "motion": self.motion.as_str(),
             "startView": self.start_view.as_str(),
+            "openWithGame": self.open_with_game,
             "autoView": self.auto_view.on,
             "autoViewWidth": self.auto_view.width,
             "quickToolbarControls": self.quick_toolbar_controls,
@@ -542,8 +553,10 @@ mod tests {
             cover_stores_hide_grouped: true,
             background: BackgroundSource::Screenshot,
             background_slideshow: true,
+            home_background: HomeBackground::RandomScreenshot,
             motion: Motion::Reduced,
             start_view: StartView::Grid,
+            open_with_game: false,
             auto_view: AutoView { on: true, width: 1600. },
             quick_toolbar_controls: true,
             sections: Sections::DEFAULT.moved(Section::Related, -5).toggled(Section::Timeline),
@@ -557,6 +570,8 @@ mod tests {
         assert_eq!(on_disk["interfaceSolidTintLight"], "frost");
         assert_eq!(on_disk["theme"], "system");
         assert_eq!(on_disk["customPalette"]["accent"], "#010203");
+        assert_eq!(on_disk["homeBackground"], "random-screenshot");
+        assert_eq!(on_disk["openWithGame"], false);
         assert_eq!(on_disk["interfaceSolidColour"], "#280a14");
         assert_eq!(on_disk["interfaceSolidColourLight"], Value::Null);
         assert_eq!(on_disk["accentColour"], "#c85a1e");

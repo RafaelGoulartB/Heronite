@@ -417,6 +417,11 @@ impl AppPaths {
     pub fn custom_background(&self) -> PathBuf {
         self.config.join("background-image")
     }
+    /// The picture behind the Collection while no game is selected
+    /// (`HomeBackground::Custom`).
+    pub fn home_background(&self) -> PathBuf {
+        self.config.join("home-background-image")
+    }
     /// Screenshot options specific to this app (see `heronite_data::screenshot_prefs`).
     pub fn screenshot_prefs(&self) -> PathBuf {
         self.config.join("screenshots.json")

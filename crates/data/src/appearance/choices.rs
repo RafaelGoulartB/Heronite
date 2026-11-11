@@ -206,6 +206,25 @@ choice! {
 }
 
 choice! {
+    /// The picture behind the Collection while no game is selected (after
+    /// Esc, or at start when the Collection opens with none).
+    HomeBackground {
+        /// Today's look: the picture of your own when the background is one,
+        /// else nothing.
+        Auto = "auto",
+        /// No picture: the panels' colour.
+        Solid = "solid",
+        /// A picture the user picked (copied to `AppPaths::home_background`).
+        Custom = "custom",
+        /// The art of a game of the Collection, picked at random.
+        RandomArt = "random-art",
+        /// One of the player's screenshots, of any game, picked at random
+        /// (a game's art while there are none).
+        RandomScreenshot = "random-screenshot",
+    } default Auto
+}
+
+choice! {
     /// Fades and transitions.
     Motion {
         Full = "full",

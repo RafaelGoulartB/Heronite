@@ -43,6 +43,7 @@ impl CollectionView {
         }
         self.sync_game_accent(a);
         self.sync_slideshow(a, cx);
+        self.sync_home(a, cx);
     }
 
     /// [`Accent::Game`]: the average colour of the selected game's cover,

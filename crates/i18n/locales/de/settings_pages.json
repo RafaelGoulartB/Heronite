@@ -571,5 +571,12 @@
   "The last download failed: {error}": "Der letzte Download ist fehlgeschlagen: {error}",
   "The box art RetroArch uses (thumbnails.libretro.com), found by each game's dump file name on its platform. No key or account. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Heronite is not affiliated with libretro.": "Die Cover, die RetroArch verwendet (thumbnails.libretro.com), gefunden über den Dateinamen des Dumps jedes Spiels auf seiner Plattform. Ohne Schlüssel oder Konto. Die Cover behalten ihr Format: Boxen im Querformat füllen das Breitbild-Cover, CD-Hüllen das quadratische. Heronite ist nicht mit libretro verbunden.",
   "Could not be loaded": "Konnte nicht geladen werden",
-  "Stopped after errors": "Nach Fehlern gestoppt"
+  "Stopped after errors": "Nach Fehlern gestoppt",
+  "Same as the background": "Wie der Hintergrund",
+  "A random game's artwork": "Artwork eines zufälligen Spiels",
+  "A random screenshot": "Ein zufälliger Screenshot",
+  "With no game selected": "Ohne ausgewähltes Spiel",
+  "After Esc, or when the Collection opens with no game selected. A random picture changes every 20 seconds.": "Nach Esc oder wenn die Sammlung ohne ausgewähltes Spiel öffnet. Ein zufälliges Bild wechselt alle 20 Sekunden.",
+  "Open with the last game selected": "Mit dem zuletzt ausgewählten Spiel öffnen",
+  "Off, the Collection opens with no game selected, on the picture chosen for that in Collection background.": "Aus öffnet die Sammlung ohne ausgewähltes Spiel, mit dem dafür unter „Hintergrund der Sammlung“ gewählten Bild."
 }

@@ -215,6 +215,23 @@ pub fn list_screenshots(folder: &Path, game: &GameQuery) -> ScreenshotsResult {
     ScreenshotsResult { folder: Some(root), matched_folder: Some(found.folder), items }
 }
 
+/// Every screenshot under the captures root `folder`, of every game folder
+/// (what [`list_screenshots`] would list for each), in no particular order.
+/// Empty when the root is not set or does not exist.
+pub fn list_all_screenshots(folder: &Path) -> Vec<PathBuf> {
+    if folder.as_os_str().is_empty() {
+        return Vec::new();
+    }
+    let root = resolve_path(folder);
+    list_game_folders(&root)
+        .into_iter()
+        .flat_map(|name| {
+            let dir = root.join(&name);
+            list_images(&dir, 0).into_iter().map(move |file| dir.join(file.rel))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,6 +252,22 @@ mod tests {
         for bad in ["a.txt", "png", "a.", "a.tmp", "a.mp4", "a.tiff", ""] {
             assert!(!is_image_file(bad), "{bad}");
         }
+    }
+
+    #[test]
+    fn all_screenshots_of_every_game() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        touch(&root.join("Elden Ring/a.png"), 100);
+        touch(&root.join("Hades/b.jpg"), 200);
+        touch(&root.join("Hades/notes.txt"), 200);
+        touch(&root.join(format!("Hades/{REPLAYS_FOLDER}/2026-01-01_10-00-00-000.mp4")), 300);
+        touch(&root.join(".hidden/c.png"), 300);
+        let mut all = list_all_screenshots(root);
+        all.sort();
+        assert_eq!(all, vec![root.join("Elden Ring/a.png"), root.join("Hades/b.jpg")]);
+        assert!(list_all_screenshots(&root.join("missing")).is_empty());
+        assert!(list_all_screenshots(Path::new("")).is_empty());
     }
 
     #[test]

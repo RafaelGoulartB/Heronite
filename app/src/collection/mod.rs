@@ -29,6 +29,7 @@ mod grid;
 mod grid_drawer;
 mod header;
 mod hltb_ui;
+mod home;
 mod html;
 mod install_options;
 mod journal;
@@ -226,6 +227,8 @@ pub struct CollectionView {
     grid: grid::GridUi,
     /// Settings → Appearance applied to the Collection (`look.rs`).
     look: look::LookState,
+    /// The picture behind the Collection with no game selected (`home.rs`).
+    home: home::HomeState,
     /// The panel whose edge is being dragged (`resize.rs`) and where the
     /// pointer grabbed it (pointer x − edge x).
     resizing: Option<(resize::Panel, f32)>,
@@ -430,6 +433,7 @@ impl CollectionView {
             card_w: theme::CARD_W,
             grid: grid::GridUi { drawer_closed, ..Default::default() },
             look: Default::default(),
+            home: Default::default(),
             resizing: None,
             list_state,
             row_heights: Default::default(),
@@ -708,9 +712,7 @@ impl CollectionView {
         }
         let stage_el = match self.stage_image(window) {
             Some((key, src)) => stage::stage(Some(src), key, self.scrim, crate::theme::appearance().collection_opacity / 100.),
-            None if self.stage_enabled && theme::appearance().background == heronite_data::appearance::BackgroundSource::Solid => {
-                stage::solid(self.scrim)
-            }
+            None if self.stage_enabled && self.stage_is_solid() => stage::solid(self.scrim),
             None => stage::stage(None, SharedString::default(), self.scrim, 1.),
         };
         let vh = f32::from(area.height);

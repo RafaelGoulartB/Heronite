@@ -6,8 +6,8 @@ use gpui_kit::component::slider::Slider;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::{
-    Accent, Appearance, BackgroundSource, CategoryStyle, Corners, CoverHover, CoverLabel, Density, FontChoice, Motion, Section, StartView,
-    Theme,
+    Accent, Appearance, BackgroundSource, CategoryStyle, Corners, CoverHover, CoverLabel, Density, FontChoice, HomeBackground, Motion,
+    Section, StartView, Theme,
 };
 use heronite_i18n::tr;
 
@@ -97,6 +97,16 @@ pub(super) fn picture_items() -> [(BackgroundSource, &'static str); 5] {
         (BackgroundSource::Cover, tr!("The cover, blurred")),
         (BackgroundSource::Solid, tr!("Solid colour")),
         (BackgroundSource::Custom, tr!("Your own picture")),
+    ]
+}
+
+pub(super) fn home_items() -> [(HomeBackground, &'static str); 5] {
+    [
+        (HomeBackground::Auto, tr!("Same as the background")),
+        (HomeBackground::RandomArt, tr!("A random game's artwork")),
+        (HomeBackground::RandomScreenshot, tr!("A random screenshot")),
+        (HomeBackground::Solid, tr!("Solid colour")),
+        (HomeBackground::Custom, tr!("Your own picture")),
     ]
 }
 
@@ -510,7 +520,7 @@ pub(super) fn picture_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> A
             d.appearance.picture_open = false;
             let source = picture_items()[i].0;
             if source == BackgroundSource::Custom && !d.ctx.app.custom_background().exists() {
-                pick_picture(cx);
+                pick_picture(PictureFor::Background, cx);
                 return;
             }
             set_look(d, cx, |a| a.background = source);
@@ -536,7 +546,8 @@ pub(super) fn picture_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> A
             row(
                 tr!("Your picture"),
                 Some(tr!("Copied into Heronite's settings, so moving the file later does not matter.")),
-                button("bg-custom-pick", ButtonKind::Glass, tr!("Choose a picture…")).on_click(cx.listener(|_, _, _, cx| pick_picture(cx))),
+                button("bg-custom-pick", ButtonKind::Glass, tr!("Choose a picture…"))
+                    .on_click(cx.listener(|_, _, _, cx| pick_picture(PictureFor::Background, cx))),
             )
             .into_any_element(),
         ),
@@ -545,14 +556,77 @@ pub(super) fn picture_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> A
     with_sub_rows(picture, rows)
 }
 
-/// Asks for a picture, copies it to `AppPaths::custom_background` and shows it.
-fn pick_picture(cx: &mut Context<SettingsPage>) {
+/// The Collection background picture row's "With no game selected" choice,
+/// with the button that picks its own picture under it.
+pub(super) fn home_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    let a = d.appearance.ui;
+    let items = home_items();
+    let current = items.iter().find(|(h, _)| *h == a.home_background).map(|(_, t)| *t).unwrap_or_default();
+    let select = select_field(
+        "bg-home",
+        None,
+        current,
+        !d.appearance.enabled,
+        d.appearance.home_open,
+        items.iter().map(|(h, t)| (SharedString::from(*t), *h == a.home_background)).collect(),
+        cx,
+        |d, _, cx| {
+            d.appearance.home_open = !d.appearance.home_open;
+            cx.notify();
+        },
+        |d, i, _, cx| {
+            d.appearance.home_open = false;
+            let source = home_items()[i].0;
+            if source == HomeBackground::Custom && !d.ctx.app.home_background().exists() {
+                pick_picture(PictureFor::Home, cx);
+                return;
+            }
+            set_look(d, cx, |a| a.home_background = source);
+        },
+    );
+    let home = row(
+        tr!("With no game selected"),
+        Some(tr!("After Esc, or when the Collection opens with no game selected. A random picture changes every 20 seconds.")),
+        div().w(px(240.)).child(select),
+    )
+    .into_any_element();
+    let mut rows = Vec::new();
+    if a.home_background == HomeBackground::Custom {
+        rows.push(
+            row(
+                tr!("Your picture"),
+                Some(tr!("Copied into Heronite's settings, so moving the file later does not matter.")),
+                button("bg-home-pick", ButtonKind::Glass, tr!("Choose a picture…"))
+                    .on_click(cx.listener(|_, _, _, cx| pick_picture(PictureFor::Home, cx))),
+            )
+            .into_any_element(),
+        );
+    }
+    with_sub_rows(home, rows)
+}
+
+/// Which picture of your own [`pick_picture`] sets.
+#[derive(Clone, Copy)]
+enum PictureFor {
+    /// The Collection background's (`AppPaths::custom_background`).
+    Background,
+    /// The one with no game selected (`AppPaths::home_background`).
+    Home,
+}
+
+/// Asks for a picture, copies it into the settings and shows it.
+fn pick_picture(target: PictureFor, cx: &mut Context<SettingsPage>) {
     let rx =
         cx.prompt_for_paths(PathPromptOptions { files: true, directories: false, multiple: false, prompt: Some(tr!("Select").into()) });
     cx.spawn(async move |this, cx| {
         let Ok(Ok(Some(paths))) = rx.await else { return };
         let Some(src) = paths.into_iter().next() else { return };
-        let Ok(dest) = this.read_with(cx, |d, _| d.ctx.app.custom_background()) else { return };
+        let Ok(dest) = this.read_with(cx, |d, _| match target {
+            PictureFor::Background => d.ctx.app.custom_background(),
+            PictureFor::Home => d.ctx.app.home_background(),
+        }) else {
+            return;
+        };
         let copied = cx
             .background_spawn(async move {
                 if let Some(dir) = dest.parent() {
@@ -564,7 +638,10 @@ fn pick_picture(cx: &mut Context<SettingsPage>) {
         this.update(cx, |d, cx| match copied {
             Ok(()) => {
                 theme::bump_custom_background();
-                set_look(d, cx, |a| a.background = BackgroundSource::Custom);
+                set_look(d, cx, |a| match target {
+                    PictureFor::Background => a.background = BackgroundSource::Custom,
+                    PictureFor::Home => a.home_background = HomeBackground::Custom,
+                });
             }
             Err(err) => {
                 d.error = Some(tr!("Could not copy the picture: {err}", err = err).into());
@@ -591,6 +668,14 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
     .into_any_element();
     let start = row(tr!("Open the Collection in"), None, choice("start-view", &start_items(), a.start_view, cx, |a, v| a.start_view = v))
         .into_any_element();
+    let with_game = toggle_row(
+        "open-with-game",
+        tr!("Open with the last game selected"),
+        Some(tr!("Off, the Collection opens with no game selected, on the picture chosen for that in Collection background.")),
+        a.open_with_game,
+    )
+    .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.open_with_game = !a.open_with_game)))
+    .into_any_element();
     let switch = toggle_row(
             "auto-view",
             tr!("Switch with the window's width"),
@@ -657,5 +742,5 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
                 .into_any_element(),
         );
     }
-    card([toolbar, start, with_sub_rows(switch, width), widths, with_sub_rows(sections_row, rows)])
+    card([toolbar, start, with_game, with_sub_rows(switch, width), widths, with_sub_rows(sections_row, rows)])
 }
