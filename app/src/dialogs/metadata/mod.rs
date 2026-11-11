@@ -7,8 +7,8 @@
 //!   into one line per reason). "Change" (`change.rs`) searches one source
 //!   and pins the game picked; "Automatic" unpins it.
 //! - Right (`fields.rs`): a row per field with a value: what will be saved,
-//!   the sources that have one as pills to pick from (or "Keep current"),
-//!   and a lock.
+//!   where it comes from (segments with the source names when sources
+//!   differ, else a line) and a lock.
 //! - Footer: "Everything from…", Close and Apply, which saves the picks,
 //!   pins and locks of what is on screen without asking the sources again
 //!   (`actions.rs`).
@@ -135,7 +135,7 @@ pub struct MetadataDialog {
     /// "Change": the search of one source.
     change: Option<change::Change>,
     everything_open: bool,
-    /// The pill under the pointer (field, source): its value shows.
+    /// The segment under the pointer (field, source): its value shows.
     hover: Option<(&'static str, String)>,
     /// What Apply saved, for a host that shows the game's details itself.
     applied: Option<CollectionGameMetadata>,

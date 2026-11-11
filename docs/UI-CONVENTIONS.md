@@ -648,17 +648,20 @@ source…"), and again after a match is pinned and after "Search every source ag
   unpins it. A line says why there are no hits ("Nothing found for “zelda”.", "This source is off.", "This source needs a
   key: add it in Settings → Metadata.", "Could not reach this source. Check your connection and try again."). Esc closes
   Change, then an open select, then the dialog.
-- **The fields** (right): a header (Field, What will be saved, Take it from), then a row per field that has a value now or
+- **The fields** (right): a header (Field, What will be saved, Source), then a row per field that has a value now or
   from some source, in the usual order, with a cover row per kept family after the tall one, "Cover · Tall", "Cover ·
   Square" and "Cover · Wide" (the tall one always, the others even when no source has a picture of that shape), and
   "Choose covers…" under the tall row's name, which opens "Covers" over this dialog (Esc closes it first; a picture set
   there reaches the drawer behind): the field's name, the value that will be saved (two lines at most, "Empty" when
-  none; a cover or a background as a small picture), a pill per source that has a value ("Take it from": its mark, the
-  picked one ringed in the accent, the number inside a score's pill) plus "Keep current" when the game has a value, and
-  the lock. A click on a pill picks it; the pill under the pointer shows its value in the middle without picking. With
-  nothing picked, a field takes what the merge would save (the order of Settings → Metadata). The lock (amber when
+  none; a cover or a background as a small picture), where it comes from, and the lock. Sources with the same value are
+  one choice ("IGDB + Lutris"), and so is the game's value ("· current"); with two choices or more they are segments on
+  an `ink_a(.06)` track, written out (the source names, "Keep current" when only the game has it), the picked one in
+  the accent. A click picks it; the segment under the pointer shows its value in the middle without picking. With one
+  choice there is nothing to pick: the sources' marks and a line ("Only IGDB", "IGDB, Lutris · same as now", "No
+  source has it"). Rows grow when the segments wrap. With nothing picked, a field takes what the merge would save (the
+  order of Settings → Metadata). The lock (amber when
   locked, tooltips "Lock this field" and "Locked: later updates leave this field as it is. Click to unlock.") keeps
-  the field as it is in every later update; a field already locked in the record has its pills dimmed and keeps the
+  the field as it is in every later update; a field already locked in the record has its segments dimmed and keeps the
   game's value until it is unlocked. While the sources answer: "The fields appear when the sources answered."; with no
   source finding the game and no details: "No source found this game, and it has no details yet. Search a source by
   another name, on the left."

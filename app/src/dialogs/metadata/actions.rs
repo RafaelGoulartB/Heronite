@@ -90,7 +90,7 @@ impl MetadataDialog {
 
     /// What the merge proposes for `field`: its source, else keeping what
     /// the game has.
-    fn default_pick(&self, field: &str) -> String {
+    pub(super) fn default_pick(&self, field: &str) -> String {
         let Some(p) = &self.preview else { return KEEP.into() };
         match p.proposed.field_sources.get(field) {
             Some(source) if p.candidates.iter().any(|c| &c.source == source && !format_value(Some(&c.metadata), field).is_empty()) => {
