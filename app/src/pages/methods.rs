@@ -66,7 +66,7 @@ pub struct Method {
     pub facts: Vec<Fact>,
     /// What is wrong, or what to do now.
     pub notice: Option<(String, Tone)>,
-    /// More content after the notice (a QR code, a sign-in form).
+    /// More content after the notice (a sign-in form).
     pub body: Vec<AnyElement>,
     /// Buttons, at the bottom of the card.
     pub actions: Vec<AnyElement>,

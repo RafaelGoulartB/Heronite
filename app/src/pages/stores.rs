@@ -76,18 +76,9 @@ fn account_glance(logged_in: bool, expired: bool, owned: usize, installed: usize
     }
 }
 
-/// Steam: whether it is on this PC and what its library holds. `account`:
-/// a Steam account is signed in, so the library comes in even while the
-/// client cannot be read.
-fn steam_glance(state: SteamState, summary: &Summary, account: bool) -> Glance {
+/// Steam: whether it is on this PC and what its library holds.
+fn steam_glance(state: SteamState, summary: &Summary) -> Glance {
     let library = || counts(summary.games, summary.installed);
-    let stuck = matches!(
-        state,
-        SteamState::NeedsRestart | SteamState::NotAnswering | SteamState::Blocked | SteamState::Failed | SteamState::PortTaken
-    );
-    if account && stuck && summary.updated_at.is_some() {
-        return glance(Dot::On, library());
-    }
     match state {
         SteamState::Checking => glance(Dot::Off, tr!("Checking")),
         SteamState::NotInstalled => glance(Dot::Off, tr!("Not found")),
@@ -151,7 +142,7 @@ fn glance_of(page: Page, cx: &App) -> Glance {
         Page::Amazon => store(Store::Amazon),
         Page::Steam => crate::services::steam_library_started(cx).map_or_else(unknown, |s| {
             let s = s.read(cx);
-            steam_glance(s.state(), &s.summary, s.account.signed_in())
+            steam_glance(s.state(), &s.summary)
         }),
         Page::Xbox => crate::services::xbox_library_started(cx).map_or_else(unknown, |s| {
             let s = s.read(cx);
@@ -309,24 +300,14 @@ mod tests {
     fn steam_says_what_is_missing_before_its_library() {
         use super::{steam_glance, Dot, SteamState, Summary};
         let read = Summary { games: 36, installed: 8, ..Default::default() };
-        assert_eq!(steam_glance(SteamState::Connected, &read, false).dot, Dot::On);
-        assert_eq!(steam_glance(SteamState::Closed, &read, false).dot, Dot::On);
-        assert_eq!(steam_glance(SteamState::Closed, &Summary::default(), false).dot, Dot::Off);
-        assert_eq!(steam_glance(SteamState::NotInstalled, &Summary::default(), false).dot, Dot::Off);
-        assert_eq!(steam_glance(SteamState::NeedsRestart, &read, false).dot, Dot::Attention);
-        assert_eq!(steam_glance(SteamState::NotAnswering, &read, false).dot, Dot::Attention);
-        assert_eq!(steam_glance(SteamState::PortTaken, &read, false).dot, Dot::Attention);
-        assert_eq!(steam_glance(SteamState::Reading, &read, false).dot, Dot::Busy);
-    }
-
-    #[test]
-    fn a_library_read_from_the_account_is_not_a_problem_to_show() {
-        use super::{steam_glance, Dot, SteamState, Summary};
-        let read = Summary { games: 36, installed: 8, updated_at: Some("2026-11-08T10:00:00Z".into()), ..Default::default() };
-        assert_eq!(steam_glance(SteamState::PortTaken, &read, true).dot, Dot::On);
-        assert_eq!(steam_glance(SteamState::NotAnswering, &read, true).dot, Dot::On);
-        // Signed in but never read yet: what is wrong still shows.
-        assert_eq!(steam_glance(SteamState::PortTaken, &Summary::default(), true).dot, Dot::Attention);
+        assert_eq!(steam_glance(SteamState::Connected, &read).dot, Dot::On);
+        assert_eq!(steam_glance(SteamState::Closed, &read).dot, Dot::On);
+        assert_eq!(steam_glance(SteamState::Closed, &Summary::default()).dot, Dot::Off);
+        assert_eq!(steam_glance(SteamState::NotInstalled, &Summary::default()).dot, Dot::Off);
+        assert_eq!(steam_glance(SteamState::NeedsRestart, &read).dot, Dot::Attention);
+        assert_eq!(steam_glance(SteamState::NotAnswering, &read).dot, Dot::Attention);
+        assert_eq!(steam_glance(SteamState::PortTaken, &read).dot, Dot::Attention);
+        assert_eq!(steam_glance(SteamState::Reading, &read).dot, Dot::Busy);
     }
 
     #[test]
