@@ -45,6 +45,14 @@ impl ModsProbe {
 }
 
 impl Probe for ModsProbe {
+    fn steam_roots(&self) -> Vec<PathBuf> {
+        SystemProbe.steam_roots()
+    }
+
+    fn steam_system_roots(&self) -> Vec<PathBuf> {
+        SystemProbe.steam_system_roots()
+    }
+
     fn exists(&self, path: &str) -> bool {
         SystemProbe.exists(path) || self.mods_bring(path)
     }
@@ -104,5 +112,16 @@ mod tests {
         assert!(!probe.mods_bring(&game.to_string_lossy()), "the folder itself is not a mod's file");
         let none = ModsProbe { game_dir: None, layers: Vec::new() };
         assert!(!none.exists(&at("skse64_loader.exe")));
+    }
+
+    #[test]
+    fn finds_steam_where_the_system_probe_does() {
+        // Steam games are planned with this probe too: on Windows the client
+        // is only found through the Steam roots (discussion #284).
+        let probe = ModsProbe { game_dir: None, layers: Vec::new() };
+        assert_eq!(probe.steam_roots(), SystemProbe.steam_roots());
+        assert!(!probe.steam_roots().is_empty());
+        assert_eq!(probe.steam_system_roots(), SystemProbe.steam_system_roots());
+        assert_eq!(heronite_launch::steam::find_steam_binary(&probe), heronite_launch::steam::find_steam_binary(&SystemProbe));
     }
 }
