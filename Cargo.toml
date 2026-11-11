@@ -4,7 +4,7 @@ members = ["app", "crates/*", "vendor/gpui-zoom"]
 
 [workspace.package]
 edition = "2021"
-version = "1.5.0"
+version = "1.6.0"
 license = "GPL-3.0-only"
 
 [workspace.dependencies]
