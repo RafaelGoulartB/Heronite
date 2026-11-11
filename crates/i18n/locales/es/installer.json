@@ -125,6 +125,7 @@
   "This script cannot be installed here.": "Este script no se puede instalar aquí.",
   "This step asked for a terminal; its output is shown here instead.": "Este paso pidió un terminal; su salida se muestra aquí.",
   "This step is not a directive": "Este paso no es una directiva",
+  "This {format} archive could not be opened. Install 7-Zip, or unpack the archive yourself and add the folder instead.": "No se pudo abrir este archivo {format}. Instala 7-Zip, o descomprime el archivo tú mismo y añade la carpeta.",
   "Try again from this step": "Reintentar desde este paso",
   "Unknown directive": "Directiva desconocida",
   "Unknown registry value type {kind}": "Tipo de valor de registro desconocido: {kind}",

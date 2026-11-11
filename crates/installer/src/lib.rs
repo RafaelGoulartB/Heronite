@@ -14,6 +14,7 @@
 //! Every function here blocks; the app calls them from a worker thread.
 
 pub mod archive;
+pub mod builtin;
 pub mod check;
 pub mod engine;
 pub mod exec;
