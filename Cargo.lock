@@ -3905,6 +3905,8 @@ dependencies = [
  "heronite-platform",
  "log",
  "parking_lot",
+ "regex",
+ "regex-syntax",
  "rquickjs",
  "semver",
  "serde",

@@ -7,7 +7,7 @@ fn rules() -> Vec<HostRule> {
 }
 
 fn keys<'a>(title: &'a str, ids: &'a Map<String, Value>, hashes: &'a Map<String, Value>) -> GameKeys<'a> {
-    GameKeys { title, year: None, ids, hashes }
+    GameKeys { title, year: None, ids, hashes, own: "ext" }
 }
 
 /// `url` as a picture of an extension is kept: marked as one.
@@ -40,6 +40,28 @@ fn dates_in_the_usual_spellings() {
     ] {
         assert_eq!(parse_date(text).as_deref(), want, "{text}");
     }
+}
+
+#[test]
+fn a_hit_by_the_pattern_code_is_sure_only_when_it_is_that_code() {
+    let ids: Map<String, Value> = [("ext".to_owned(), json!("RJ123456")), ("steam".to_owned(), json!("620"))].into_iter().collect();
+    let hashes = Map::new();
+    let found = json!([
+        { "id": "RJ999999", "title": "Another", "matchedBy": { "id": "ext" } },
+        { "id": "rj123456", "title": "Its name", "matchedBy": { "id": "ext" } },
+        { "id": "page", "title": "Elsewhere", "matchedBy": { "id": "steam" } },
+    ]);
+    let summary: Vec<(String, MatchedBy)> =
+        hits(&found, &keys("My Game", &ids, &hashes), &rules()).into_iter().map(|h| (h.id, h.matched_by)).collect();
+    assert_eq!(
+        summary,
+        [
+            ("rj123456".to_owned(), MatchedBy::SourceId),
+            ("page".to_owned(), MatchedBy::SteamId),
+            ("RJ999999".to_owned(), MatchedBy::FuzzyTitle),
+        ],
+        "another code named as found by it is a guess; other ids keep their rule"
+    );
 }
 
 #[test]
