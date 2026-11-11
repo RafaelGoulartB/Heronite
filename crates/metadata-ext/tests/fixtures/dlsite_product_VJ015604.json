@@ -1,0 +1,66 @@
+[
+ {
+  "workno": "VJ015604",
+  "product_id": "VJ015604",
+  "work_name": "終のステラ",
+  "maker_name": "Key",
+  "maker_name_en": null,
+  "regist_date": "2022-09-30 00:00:00",
+  "age_category": 1,
+  "age_category_string": "general",
+  "site_id": "soft",
+  "work_type": "ADV",
+  "work_type_string": "Adventure",
+  "intro_s": "世界はシンギュラリティを起こした機械群に支配され、人々は息を潜めて生き長らえていた。ある日運び屋ジュードの元に依頼が舞い込む。それは少女型アンドロイドフィリアを輸送して欲しいというものだった。",
+  "series_name": null,
+  "image_thumb": "//img.dlsite.jp/resize/images2/work/professional/VJ016000/VJ015604_img_main_240x240.jpg",
+  "genres": [
+   {
+    "name": "Robot / Android",
+    "id": 254
+   },
+   {
+    "name": "SF",
+    "id": 10
+   },
+   {
+    "name": "Serious",
+    "id": 15
+   },
+   {
+    "name": "Decadent / Immoral",
+    "id": 6
+   },
+   {
+    "name": "Military",
+    "id": 9
+   },
+   {
+    "name": "Long Hair",
+    "id": 167
+   }
+  ],
+  "image_main": {
+   "url": "//img.dlsite.jp/modpub/images2/work/professional/VJ016000/VJ015604_img_main.jpg",
+   "width": "497",
+   "height": "450"
+  },
+  "image_samples": [
+   {
+    "url": "//img.dlsite.jp/modpub/images2/work/professional/VJ016000/VJ015604_img_smpa1.jpg",
+    "width": "640",
+    "height": "360"
+   },
+   {
+    "url": "//img.dlsite.jp/modpub/images2/work/professional/VJ016000/VJ015604_img_smpa2.jpg",
+    "width": "640",
+    "height": "360"
+   },
+   {
+    "url": "//img.dlsite.jp/modpub/images2/work/professional/VJ016000/VJ015604_img_smpa3.jpg",
+    "width": "640",
+    "height": "360"
+   }
+  ]
+ }
+]

@@ -32,7 +32,10 @@ The repository has two complete examples: `extensions/metadata/wikipedia`
 Visual Novel Database: a details source asked as a fallback for visual
 novels,
 with settings, names in several scripts, pictures flagged adult one by
-one, and a service that asks clients to slow down).
+one, and a service that asks clients to slow down). `extensions/metadata/dlsite`
+(unofficial, kept by a community member) finds games only by a product
+code, through an `[ids] pattern`, and flags pictures adult by each
+product's age category.
 
 ## The manifest: `source.toml`
 
