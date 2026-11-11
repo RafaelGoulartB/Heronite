@@ -19,7 +19,7 @@ use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 use gpui_kit::*;
-use heronite_data::console_theme::{GridPanel, Hints, Layout, TabSpec};
+use heronite_data::console_theme::{GridPanel, Hints, KeptFilters, Layout, TabSpec};
 use heronite_data::CollectionGame;
 use heronite_i18n::tr;
 
@@ -85,11 +85,31 @@ pub(crate) fn step(i: usize, n: usize, delta: isize, wrap: bool) -> usize {
 impl CollectionView {
     /// The focus state of tab `tab` (created on first use).
     pub(super) fn tab_nav(&mut self, tab: usize) -> &mut TabNav {
+        let kept = self.console.kept_filters;
         let navs = &mut self.console.tab_navs;
         if navs.len() <= tab {
-            navs.resize_with(tab + 1, TabNav::default);
+            // Grids and carousels start with the filters kept from last time.
+            navs.resize_with(tab + 1, || {
+                let mut nav = TabNav::default();
+                nav.grid.filters = Filters::from_kept(kept);
+                nav.carousel = carousel::Nav::from_kept(kept);
+                nav
+            });
         }
         &mut navs[tab]
+    }
+
+    /// Keeps the Show, Sort and Favourites of tab `tab`'s grid for the next
+    /// time console mode starts (and for the grids not shown yet).
+    pub(super) fn keep_grid_filters(&mut self, tab: usize) {
+        let f = self.tab_nav(tab).grid.filters.clone();
+        self.keep_console_filters(|k| f.keep_in(k));
+    }
+
+    /// Changes the kept filters (in memory and in `console.json`).
+    pub(super) fn keep_console_filters(&mut self, change: impl FnOnce(&mut KeptFilters)) {
+        change(&mut self.console.kept_filters);
+        crate::console::themes::remember_filters(&self.app_paths, self.console.kept_filters);
     }
 
     pub(super) fn render_layout(&mut self, tab: usize, spec: &TabSpec, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {

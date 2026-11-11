@@ -4,7 +4,8 @@
 //! it. ◀ ▶ turn it and LT / RT jump to the previous / next letter (the
 //! letter shows over the covers for a moment); ↑ moves to a row of filter
 //! pills (All, Installed, Favourites, Playing) and ↓ comes back, and with a
-//! single tab LB / RB change the filter from anywhere. The covers fan out
+//! single tab LB / RB change the filter from anywhere (kept for the next
+//! time console mode starts). The covers fan out
 //! from the middle when the carousel first shows and when the filter
 //! changes. GPUI has no 3D transforms, so a cover's pose is its size,
 //! offset, opacity and shade, each cover on a spring of its own distance
@@ -14,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{HeroTitle, TabSpec, TileShape, TileSize};
+use heronite_data::console_theme::{HeroTitle, KeptFilters, TabSpec, TileShape, TileSize};
 use heronite_data::CollectionGame;
 use heronite_i18n::{n_, tr};
 use heronite_images::{Variant, REFLECTION_PART};
@@ -99,6 +100,12 @@ pub(crate) struct Nav {
 }
 
 impl Nav {
+    /// A carousel on the kept pill (one out of range, from an edited file,
+    /// reads as All).
+    pub(crate) fn from_kept(k: KeptFilters) -> Self {
+        Self { filter: if k.carousel < FILTERS.len() { k.carousel } else { 0 }, ..Self::default() }
+    }
+
     /// A new filter, the focus on `index`; the covers fan out again.
     fn set_filter(&mut self, filter: usize, index: usize) {
         self.filter = filter;
@@ -481,6 +488,7 @@ impl CollectionView {
                 let keep = all.get(i).cloned();
                 let at = keep.and_then(|k| self.carousel_keys(spec, next).iter().position(|x| *x == k)).unwrap_or(0);
                 self.tab_nav(tab).carousel.set_filter(next, at);
+                self.keep_console_filters(|k| k.carousel = next);
             }
             return true;
         }
@@ -549,6 +557,14 @@ mod tests {
     use super::*;
     // `gpui_kit::*` above brings gpui's own `test` macro.
     use core::prelude::v1::test;
+
+    /// A carousel starts on the kept pill; one out of range reads as All.
+    #[test]
+    fn starts_on_the_kept_pill() {
+        assert_eq!(Nav::from_kept(KeptFilters { carousel: 1, ..KeptFilters::default() }).filter, 1);
+        assert_eq!(Nav::from_kept(KeptFilters::default()).filter, 0);
+        assert_eq!(Nav::from_kept(KeptFilters { carousel: FILTERS.len(), ..KeptFilters::default() }).filter, 0);
+    }
 
     #[test]
     fn poses_shrink_fade_and_mirror() {

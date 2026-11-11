@@ -6,7 +6,8 @@
 //! theme without one, like Minimal) a grid of the results over the tab that
 //! B closes (`ConsoleUi::results`). A types the search on the on-screen
 //! keyboard, a physical keyboard types into the field directly; X resets
-//! everything; B or Y closes.
+//! everything; B or Y closes. Show, Sort and Favourites are kept for the
+//! next time console mode starts (`console.json`'s `keptFilters`).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -144,6 +145,7 @@ impl CollectionView {
             _ => return true,
         }
         if (self.tab_nav(target).grid.filters.clone(), self.console.search.clone()) != before {
+            self.keep_grid_filters(target);
             self.console_show_filtered();
         }
         true

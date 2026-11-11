@@ -74,6 +74,9 @@ fn prefs_and_store_on_disk() {
     let p = ConsolePrefs { theme: presets::cinema(), based_on: "cinema".into(), ..ConsolePrefs::default() };
     p.save(&paths).unwrap();
     assert_eq!(ConsolePrefs::load(&paths).theme.tabs[0].layout, Layout::Cinema);
+    let kept = KeptFilters { show: 1, sort: 2, favourites: true, carousel: 1 };
+    ConsolePrefs { kept_filters: kept, ..p.clone() }.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).kept_filters, kept);
 
     let mut mine = presets::pulse();
     mine.name = "Meu Tema Ção".into();
@@ -214,4 +217,13 @@ fn deleting_the_theme_in_use_keeps_the_picture_on_screen() {
     ConsolePrefs { theme: saved.clone(), based_on: saved.id.clone(), ..ConsolePrefs::default() }.save(&paths).unwrap();
     store::delete(&paths, &saved.id).unwrap();
     assert!(std::path::Path::new(&saved.background.image).exists());
+}
+
+#[test]
+fn kept_filters_read_leniently() {
+    // A file from before them, and one with a broken value: the rest stays.
+    let old: ConsolePrefs = lenient(json!({ "lastTab": 2 })).unwrap();
+    assert_eq!((old.last_tab, old.kept_filters), (2, KeptFilters::default()));
+    let odd: ConsolePrefs = lenient(json!({ "lastTab": 1, "keptFilters": { "show": "x", "sort": 1, "carousel": 1 } })).unwrap();
+    assert_eq!((odd.last_tab, odd.kept_filters), (1, KeptFilters { sort: 1, carousel: 1, ..KeptFilters::default() }));
 }

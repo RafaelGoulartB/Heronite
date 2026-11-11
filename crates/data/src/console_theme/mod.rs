@@ -679,6 +679,8 @@ pub struct ConsolePrefs {
     pub idle: Idle,
     /// The tab shown last (`nav.startOn: last`).
     pub last_tab: usize,
+    /// The filter choices console mode starts with next time.
+    pub kept_filters: KeptFilters,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -693,9 +695,24 @@ impl Default for ConsolePrefs {
             fullscreen: true,
             idle: Idle::Off,
             last_tab: 0,
+            kept_filters: KeptFilters::default(),
             extra: Map::new(),
         }
     }
+}
+
+/// The console filters that outlast console mode. The Grid's (and the
+/// Filters panel's) Show (index in All / Installed / Not installed), Sort
+/// (Title / Last played / Playtime) and Favourites only; Status and Category
+/// are left out, as they point into statuses and categories that change.
+/// `carousel`: the Carousel's pill (All / Installed / Favourites / Playing).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct KeptFilters {
+    pub show: usize,
+    pub sort: usize,
+    pub favourites: bool,
+    pub carousel: usize,
 }
 
 impl ConsolePrefs {
