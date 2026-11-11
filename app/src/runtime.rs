@@ -179,15 +179,20 @@ impl GameRuntime {
             Some(app_id) => steam_plan(&ctx, game, app_id),
             None => {
                 // Mods are mounted after the plan is built: their files count as the game's.
-                let probe = crate::services::mods::ModsProbe::for_game(&self.paths, game);
-                let plan = build_plan(&ctx, &probe, &game.game, game.meta.as_deref(), &opts);
+                // Where mods are off (Windows, the Flatpak) the plan sees the system as it is.
+                let mods_probe = crate::services::mods::available().then(|| crate::services::mods::ModsProbe::for_game(&self.paths, game));
+                let probe: &dyn heronite_launch::probe::Probe = match &mods_probe {
+                    Some(p) => p,
+                    None => &SystemProbe,
+                };
+                let plan = build_plan(&ctx, probe, &game.game, game.meta.as_deref(), &opts);
                 match &plan {
                     // No default Wine yet: pick one found on this PC and try again.
                     LaunchPlan::Unavailable(reason)
                         if heronite_launch::wine::is_no_wine_error(reason)
                             && heronite_wine::default::ensure_default(&self.paths).is_some() =>
                     {
-                        build_plan(&PlanContext::load(&self.paths), &probe, &game.game, game.meta.as_deref(), &opts)
+                        build_plan(&PlanContext::load(&self.paths), probe, &game.game, game.meta.as_deref(), &opts)
                     }
                     _ => plan,
                 }
