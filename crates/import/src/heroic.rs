@@ -300,11 +300,22 @@ fn copy_settings(paths: &DataPaths, lib: &Library, removed: &BTreeSet<String>) -
     let mut copied = 0;
     for app in apps.into_iter().filter(|a| !removed.contains(*a)) {
         let (from, to) = (lib.root.join("GamesConfig").join(format!("{app}.json")), paths.game_config(app));
-        if from.is_file() && !to.exists() {
-            std::fs::create_dir_all(paths.games_config_dir())?;
-            std::fs::copy(&from, &to)?;
-            copied += 1;
+        if !from.is_file() || to.exists() {
+            continue;
         }
+        std::fs::create_dir_all(paths.games_config_dir())?;
+        // `create_new`: settings this app writes meanwhile are never replaced.
+        let mut out = match std::fs::OpenOptions::new().write(true).create_new(true).open(&to) {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e.into()),
+        };
+        if let Err(e) = std::io::copy(&mut std::fs::File::open(&from)?, &mut out) {
+            drop(out);
+            let _ = std::fs::remove_file(&to);
+            return Err(e.into());
+        }
+        copied += 1;
     }
     Ok(copied)
 }
@@ -447,10 +458,39 @@ mod tests {
         assert_eq!(settings["winePrefix"], "/pfx/ctl");
         assert_eq!(settings["wineVersion"]["name"], "GE");
 
-        // A game the user took out gets nothing.
-        std::fs::remove_file(paths.game_config("w3")).unwrap();
-        sync(&paths, &lib, &BTreeSet::from(["w3".to_string()])).unwrap();
-        assert!(!paths.game_config("w3").exists());
+        // Again: what is here stays as it is.
+        let before = std::fs::read_to_string(paths.game_config("ctl")).unwrap();
+        assert_eq!(copy_settings(&paths, &lib, &BTreeSet::new()).unwrap(), 0);
+        assert_eq!(std::fs::read_to_string(paths.game_config("ctl")).unwrap(), before);
+    }
+
+    /// The games added by hand get their settings once in the Collection,
+    /// the ones an earlier import brought too, but not the ones the user
+    /// took out (the only games `removed` holds for Heroic).
+    #[cfg(unix)]
+    #[test]
+    fn hand_added_games_get_their_heroic_settings_unless_taken_out() {
+        let h = tempfile::tempdir().unwrap();
+        let home = h.path().join("home");
+        let heroic = home.join(".config/heroic");
+        w(&heroic.join("config.json"), "{}");
+        let game = |app: &str| json!({"runner": "sideload", "app_name": app, "title": app, "install": {"executable": "/g/x.exe"}});
+        w(&heroic.join("sideload_apps/library.json"), &json!({"games": [game("kept"), game("gone")]}).to_string());
+        for app in ["kept", "gone"] {
+            let config = json!({ app: {"winePrefix": format!("/pfx/{app}")}, "version": "v0" });
+            w(&heroic.join("GamesConfig").join(format!("{app}.json")), &config.to_string());
+        }
+        let paths = DataPaths::at(h.path().join("data"));
+        let lib = detect(&home, &paths).unwrap().unwrap().heroic.unwrap();
+        let removed = BTreeSet::from(["gone".to_string()]);
+        sync(&paths, &lib, &removed).unwrap();
+        assert!(paths.game_config("kept").is_file());
+        assert!(!paths.game_config("gone").exists());
+
+        // Brought by an earlier import, which left its settings behind.
+        std::fs::remove_file(paths.game_config("kept")).unwrap();
+        sync(&paths, &lib, &removed).unwrap();
+        assert!(paths.game_config("kept").is_file());
     }
 
     #[cfg(unix)]
