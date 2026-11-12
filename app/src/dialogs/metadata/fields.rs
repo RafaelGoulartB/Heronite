@@ -251,7 +251,7 @@ impl MetadataDialog {
             .child(self.lock_button(field, cx))
     }
 
-    pub(super) fn render_fields(&mut self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn render_fields(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let head = |text: &'static str| div().text_size(px(11.5)).text_color(theme::text_dim()).child(text);
         let header = div()
             .flex()
@@ -287,7 +287,7 @@ impl MetadataDialog {
             if !pictures.is_empty() {
                 let mut rows = div().flex().flex_col().mb(px(-1.));
                 for field in pictures {
-                    rows = rows.child(self.picture_row(field, cx));
+                    rows = rows.child(self.picture_row(field, window, cx));
                 }
                 list = list.child(caption(tr!("Pictures")).mt(px(0.))).child(card().child(rows));
             }
