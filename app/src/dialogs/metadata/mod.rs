@@ -35,7 +35,7 @@ use heronite_metadata::{MetadataPreview, MetadataService};
 use indexmap::IndexMap;
 
 use super::art_images::{chain_for_url, picture, DialogImages};
-use super::covers::CoversDialog;
+use super::covers::{CoversDialog, Slot};
 use super::metadata_update::hub::{hub, MetadataHub};
 use super::{DialogCtx, DialogEvent};
 use crate::icons::Icon;
@@ -228,10 +228,11 @@ impl MetadataDialog {
         self.covers_art.as_ref()
     }
 
-    /// "Choose covers…": the Covers dialog over this one.
-    fn open_covers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// "Choose covers…" of a cover's row: the Covers dialog over this one,
+    /// on that cover's shape.
+    fn open_covers(&mut self, slot: Slot, window: &mut Window, cx: &mut Context<Self>) {
         let (ctx, game) = (self.ctx.clone(), self.game.clone());
-        let view = cx.new(|cx| CoversDialog::new(ctx, game, None, window, cx));
+        let view = cx.new(|cx| CoversDialog::new(ctx, game, Some(slot), window, cx));
         let sub = cx.subscribe(&view, |this: &mut Self, view, ev: &DialogEvent, cx| {
             if matches!(ev, DialogEvent::Changed | DialogEvent::ChangedAndClose) {
                 this.covers_art = Some(view.read(cx).art().clone());

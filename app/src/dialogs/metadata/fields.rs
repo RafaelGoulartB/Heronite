@@ -13,6 +13,7 @@ use heronite_i18n::tr;
 
 use super::found_as::busy_line;
 use super::{field_label, format_value, is_picture, Busy, MetadataDialog, KEEP};
+use crate::dialogs::covers::Slot;
 use crate::dialogs::metadata_update::words;
 use crate::icons::Icon;
 use crate::pages::settings::metadata_labels as labels;
@@ -238,17 +239,17 @@ impl MetadataDialog {
                     .flex_none()
                     .gap(px(2.))
                     .child(div().truncate().text_size(px(12.5)).text_color(theme::text_muted()).child(field_label(field)))
-                    .when(field == "cover", |d| {
+                    .when_some(Slot::cover_of_field(field), |d, slot| {
                         d.child(
                             div()
-                                .id("md-choose-covers")
+                                .id(SharedString::from(format!("md-choose-covers-{field}")))
                                 .truncate()
                                 .text_size(px(11.5))
                                 .text_color(theme::accent())
                                 .cursor_pointer()
                                 .hover(|s| s.text_color(theme::text_bright()))
                                 .child(tr!("Choose covers\u{2026}"))
-                                .on_click(cx.listener(|this, _, window, cx| this.open_covers(window, cx))),
+                                .on_click(cx.listener(move |this, _, window, cx| this.open_covers(slot, window, cx))),
                         )
                     }),
             )

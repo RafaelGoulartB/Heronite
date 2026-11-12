@@ -36,6 +36,12 @@ impl Slot {
         }
     }
 
+    /// The cover of a record's field (`cover`, `coverSquare`, `coverWide`);
+    /// `None` for any other field.
+    pub fn cover_of_field(field: &str) -> Option<Slot> {
+        CoverFamily::from_field(field).map(Slot::Cover)
+    }
+
     pub fn parse(id: &str) -> Option<Slot> {
         match id {
             "background" | "hero" => Some(Slot::Background),
