@@ -245,9 +245,10 @@ impl SteamLocator {
     }
 
     /// Steam's `userdata` folder that keeps `app_id`'s saves. Of the Steam
-    /// installs with a `userdata` folder (the chosen one first): the one with
-    /// a folder for the game in an account, else the one whose libraries hold
-    /// the game, else the chosen one. The chosen folder can be a stale
+    /// installs with a `userdata` folder (the chosen one first): one whose
+    /// libraries hold the game (the one with a folder for the game in an
+    /// account if several do), else one with such a folder, else the chosen
+    /// one. The chosen folder can be a stale
     /// install while Steam runs from its Snap or Flatpak.
     pub fn userdata_dir(&self, app_id: &str) -> Option<PathBuf> {
         let installs: Vec<PathBuf> = dedup_existing(std::iter::once(self.steam_path.clone()).chain(self.installs()).collect())
@@ -264,19 +265,42 @@ impl SteamLocator {
                 .chain(library_folders(&install.join("steamapps").join("libraryfolders.vdf")))
                 .any(|lib| lib.join("steamapps").join(&manifest).is_file())
         };
-        let found = if valid_id { installs.iter().find(has_game_folder).or_else(|| installs.iter().find(holds_game)) } else { None };
-        found.or(installs.first()).map(|i| i.join("userdata"))
+        let found = valid_id.then(|| {
+            let holders: Vec<&PathBuf> = installs.iter().filter(|i| holds_game(i)).collect();
+            if holders.is_empty() {
+                installs.iter().find(has_game_folder)
+            } else {
+                holders.iter().copied().find(has_game_folder).or(holders.first().copied())
+            }
+        });
+        found.flatten().or(installs.first()).map(|i| i.join("userdata"))
+    }
+
+    /// Every library's `appmanifest_<id>.acf` as `(steamapps, text)`, in
+    /// library order but fully installed ones first: a manifest left by a move
+    /// to another drive that stopped half way does not stand for the game.
+    fn app_manifests(&self, app_id: &str) -> Vec<(PathBuf, String)> {
+        if app_id.is_empty() || !app_id.bytes().all(|b| b.is_ascii_digit()) {
+            return Vec::new();
+        }
+        let mut found: Vec<(PathBuf, String)> = self
+            .library_roots()
+            .into_iter()
+            .filter_map(|root| {
+                let apps = root.join("steamapps");
+                let text = fs::read_to_string(apps.join(format!("appmanifest_{app_id}.acf"))).ok()?;
+                Some((apps, text))
+            })
+            .collect();
+        found.sort_by_key(|(_, text)| !parse_app_manifest(text, app_id).fully_installed);
+        found
     }
 
     /// Folder of an installed Steam game: `steamapps/common/<installdir>` of
-    /// the first library whose `appmanifest_<id>.acf` lists it.
+    /// the first library whose `appmanifest_<id>.acf` lists it (a fully
+    /// installed one first).
     pub fn install_dir(&self, app_id: &str) -> Option<PathBuf> {
-        if app_id.is_empty() || !app_id.bytes().all(|b| b.is_ascii_digit()) {
-            return None;
-        }
-        self.library_roots().into_iter().find_map(|root| {
-            let apps = root.join("steamapps");
-            let text = fs::read_to_string(apps.join(format!("appmanifest_{app_id}.acf"))).ok()?;
+        self.app_manifests(app_id).into_iter().find_map(|(apps, text)| {
             let doc = Vdf::parse(&text).ok()?;
             let dir = doc.get("AppState")?.str_of("installdir").filter(|d| !d.is_empty())?;
             Some(apps.join("common").join(dir)).filter(|p| p.is_dir())
@@ -285,11 +309,7 @@ impl SteamLocator {
 
     /// `SizeOnDisk` of an installed Steam game's `appmanifest_<id>.acf`, in bytes.
     pub fn size_on_disk(&self, app_id: &str) -> Option<u64> {
-        if app_id.is_empty() || !app_id.bytes().all(|b| b.is_ascii_digit()) {
-            return None;
-        }
-        self.library_roots().into_iter().find_map(|root| {
-            let text = fs::read_to_string(root.join("steamapps").join(format!("appmanifest_{app_id}.acf"))).ok()?;
+        self.app_manifests(app_id).into_iter().find_map(|(_, text)| {
             let doc = Vdf::parse(&text).ok()?;
             doc.get("AppState")?.str_of("SizeOnDisk")?.parse::<u64>().ok().filter(|n| *n > 0)
         })
@@ -818,6 +838,8 @@ mod tests {
             system_roots: vec![],
             platform_roots: vec![stale.clone(), snap.clone()],
         };
+        // The stale folder keeps saves from when it was the Steam in use.
+        fs::create_dir_all(stale.join("userdata/111/1245620/remote")).unwrap();
         assert_eq!(loc.userdata_dir("1245620"), Some(snap.join("userdata")), "its library is listed by the Snap");
         assert_eq!(loc.userdata_dir("620"), Some(snap.join("userdata")), "the Snap has its cloud saves (not installed)");
         assert_eq!(loc.userdata_dir("400"), Some(stale.join("userdata")), "installed in the chosen folder");
@@ -846,14 +868,26 @@ mod tests {
         write(&steam.join("steamapps/appmanifest_620.acf"), &acf("620", "Portal 2", "1026"));
         write(&steam.join("steamapps/appmanifest_400.acf"), &acf("400", "Portal", "4"));
         write(&hdd.join("steamapps/appmanifest_400.acf"), &acf("400", "Portal (old copy)", "1026"));
-        let loc =
-            SteamLocator { home: dir.path().join("home"), steam_path: steam.clone(), system_roots: vec![], platform_roots: vec![steam] };
+        let loc = SteamLocator {
+            home: dir.path().join("home"),
+            steam_path: steam.clone(),
+            system_roots: vec![],
+            platform_roots: vec![steam.clone()],
+        };
         let manifests = read_manifests(&loc);
         let get = |id: &str| manifests.iter().filter(|m| m.app_id == id).collect::<Vec<_>>();
         assert!(get("730").len() == 1 && get("730")[0].fully_installed, "the HDD copy replaces the leftover");
         assert_eq!(get("400")[0].name, "Portal", "an installed one is kept over a later leftover");
         assert!(get("620").len() == 1 && !get("620")[0].fully_installed, "a lone leftover still counts as not installed");
         assert!(is_steam_app_installed(&loc, "730"));
+        // Both folders exist (the copy stopped half way): the installed one.
+        fs::create_dir_all(steam.join("steamapps/common/Counter-Strike 2")).unwrap();
+        fs::create_dir_all(hdd.join("steamapps/common/Counter-Strike 2")).unwrap();
+        let with_dir = |text: String| text.replace("}\n", "\t\"installdir\"\t\t\"Counter-Strike 2\"\n\t\"SizeOnDisk\"\t\t\"SIZE\"\n}\n");
+        write(&steam.join("steamapps/appmanifest_730.acf"), &with_dir(acf("730", "Counter-Strike 2", "1026")).replace("SIZE", "10"));
+        write(&hdd.join("steamapps/appmanifest_730.acf"), &with_dir(acf("730", "Counter-Strike 2", "4")).replace("SIZE", "99"));
+        assert_eq!(loc.install_dir("730"), Some(hdd.join("steamapps/common/Counter-Strike 2")));
+        assert_eq!(loc.size_on_disk("730"), Some(99));
     }
 
     #[test]
