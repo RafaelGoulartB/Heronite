@@ -74,6 +74,8 @@ pub struct CoversDialog {
     visible: usize,
     /// An index of [`Self::found`].
     selected: Option<usize>,
+    /// The source whose pictures alone are listed; `None`: every source.
+    source: Option<&'static str>,
     loading: bool,
     busy: Option<Busy>,
     error: String,
@@ -145,6 +147,7 @@ impl CoversDialog {
             results: ArtImages::default(),
             visible: found::PAGE,
             selected: None,
+            source: None,
             loading: false,
             busy: None,
             error: String::new(),

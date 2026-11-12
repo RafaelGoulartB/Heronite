@@ -151,6 +151,8 @@ pub struct MetadataDialog {
     /// The pictures set by hand there, once it changed one.
     covers_art: Option<CollectionGameArt>,
     fields_scroll: ScrollHandle,
+    /// The tiles of each picture row (`pictures.rs`), for its arrows.
+    tile_scrolls: std::collections::HashMap<&'static str, ScrollHandle>,
     /// The sizes of the pictures read (`pictures.rs`), by address; `None`:
     /// not a picture whose size can be read.
     sizes: std::collections::HashMap<String, Option<(u32, u32)>>,
@@ -208,6 +210,7 @@ impl MetadataDialog {
             covers: None,
             covers_art: None,
             fields_scroll: ScrollHandle::new(),
+            tile_scrolls: Default::default(),
             sizes: Default::default(),
         }
     }
@@ -392,11 +395,10 @@ impl Render for MetadataDialog {
             true => self.render_change(cx),
             false => self.render_found_as(cx),
         };
-        let body = div()
-            .flex()
-            .flex_col()
-            .child(self.render_head(cx))
-            .child(div().flex().gap(px(20.)).h(px(columns_h)).child(left.w(px(310.)).flex_none()).child(self.render_fields(cx)));
+        let body =
+            div().flex().flex_col().child(self.render_head(cx)).child(
+                div().flex().gap(px(20.)).h(px(columns_h)).child(left.w(px(310.)).flex_none()).child(self.render_fields(window, cx)),
+            );
         let footer = self.render_footer(cx);
         let entity = cx.entity().downgrade();
         let main = dialog(

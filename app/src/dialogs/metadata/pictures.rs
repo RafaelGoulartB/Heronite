@@ -34,6 +34,8 @@ const LOW_BACKGROUND: u32 = 960;
 
 /// The height of every tile's picture.
 const TILE_H: f32 = 60.;
+/// The size of the arrows over a row of tiles that does not fit.
+const ARROW: f32 = 28.;
 
 /// The size of a field's tile picture: [`TILE_H`] high, in its shape.
 fn tile_size(field: &str) -> (f32, f32) {
@@ -254,15 +256,30 @@ impl MetadataDialog {
         .child(badges)
     }
 
+    /// The scroll of `field`'s tiles. A new one knows how far it can move
+    /// only once drawn: the next frame draws its arrows.
+    fn tile_scroll(&mut self, field: &'static str, window: &mut Window, cx: &mut Context<Self>) -> ScrollHandle {
+        if let Some(s) = self.tile_scrolls.get(field) {
+            return s.clone();
+        }
+        let s = ScrollHandle::new();
+        self.tile_scrolls.insert(field, s.clone());
+        cx.on_next_frame(window, |_, _, cx| cx.notify());
+        s
+    }
+
     /// A picture's row: its name and "More options…" (the Covers dialog on
     /// its slot: every region's box, the image search, a file), the tiles,
     /// the details and the lock.
-    pub(super) fn picture_row(&mut self, field: &'static str, cx: &mut Context<Self>) -> Div {
+    pub(super) fn picture_row(&mut self, field: &'static str, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let choices = self.choices(field);
         let picked = self.pick(field);
         let frozen = self.frozen(field);
-        // One row: the tiles that do not fit scroll sideways.
-        let mut tiles = div().id(SharedString::from(format!("md-tiles-{field}"))).flex().flex_1().gap(px(5.)).min_w_0().overflow_x_scroll();
+        // One row: the tiles that do not fit scroll sideways, with an arrow
+        // at each side that has more.
+        let scroll = self.tile_scroll(field, window, cx);
+        let mut tiles =
+            div().id(SharedString::from(format!("md-tiles-{field}"))).flex().w_full().gap(px(5.)).overflow_x_scroll().track_scroll(&scroll);
         for choice in &choices {
             let on = choice.ids.contains(&picked);
             tiles = tiles.child(self.picture_tile(field, choice, on, frozen, cx));
@@ -302,7 +319,7 @@ impl MetadataDialog {
                         )
                     }),
             )
-            .child(tiles)
+            .child(div().relative().flex_1().min_w_0().child(tiles).children(scroll_arrows(field, &scroll)))
             .child(self.picture_details(field, &choices))
             .child(self.lock_button(field, cx))
     }
@@ -311,4 +328,57 @@ impl MetadataDialog {
     pub(super) fn picture_fields(fields: &[&'static str]) -> Vec<&'static str> {
         fields.iter().copied().filter(|f| is_picture(f)).collect()
     }
+}
+
+/// The ‹ › over the ends of a row of tiles wider than its room: each
+/// moves it by most of what is in view, and shows only while there is more
+/// that way (known from the last frame).
+fn scroll_arrows(field: &'static str, scroll: &ScrollHandle) -> Vec<Stateful<Div>> {
+    let max = f32::from(scroll.max_offset().x);
+    if max <= 0.5 {
+        return Vec::new();
+    }
+    let at = -f32::from(scroll.offset().x);
+    let step = (f32::from(scroll.bounds().size.width) * 0.8).max(60.);
+    let arrow = |side: &str, ic: Icon, delta: f32| {
+        let scroll = scroll.clone();
+        // Over the pictures: the dark disc of the round buttons, nearly
+        // opaque, with a light ring and a shadow so it holds on any cover.
+        div()
+            .id(SharedString::from(format!("md-tiles-{field}-{side}")))
+            .absolute()
+            .top(px((TILE_H + 8. - ARROW) / 2.))
+            .size(px(ARROW))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded_full()
+            .cursor_pointer()
+            .bg(theme::round_fill(0.95))
+            .border_1()
+            .border_color(theme::ink_a(0.28))
+            .shadow(vec![BoxShadow {
+                color: theme::shadow_a(0.5),
+                offset: point(px(0.), px(1.)),
+                blur_radius: px(6.),
+                spread_radius: px(0.),
+                inset: false,
+            }])
+            .hover(|s| s.bg(theme::round_fill_hover()).border_color(theme::ink_a(0.45)))
+            .child(icon(ic, px(16.), theme::round_icon()))
+            .on_click(move |_, window, _| {
+                let offset = scroll.offset();
+                let x = (f32::from(offset.x) - delta).clamp(-max, 0.);
+                scroll.set_offset(point(px(x), offset.y));
+                window.refresh();
+            })
+    };
+    let mut arrows = Vec::new();
+    if at > 0.5 {
+        arrows.push(arrow("prev", Icon::ChevronLeft, -step).left(px(4.)));
+    }
+    if at < max - 0.5 {
+        arrows.push(arrow("next", Icon::ChevronRight, step).right(px(4.)));
+    }
+    arrows
 }
