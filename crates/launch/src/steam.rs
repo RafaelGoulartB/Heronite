@@ -2,7 +2,7 @@
 //! `libraryfolders.vdf` + `appmanifest_*.acf`, and Steam's log files
 //! (port of `steam.ts`).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -217,10 +217,10 @@ impl SteamLocator {
     /// listed in its `libraryfolders.vdf`.
     pub fn library_roots(&self) -> Vec<PathBuf> {
         let mut roots: Vec<PathBuf> = self.system_roots.clone();
-        let installs = std::iter::once(self.steam_path.clone())
-            .chain(self.system_roots.iter().cloned())
-            .chain(self.platform_roots.iter().cloned())
-            .collect();
+        // The chosen folder's list as before, then those of the other Steam
+        // installs (folders with Steam's `config` or `steam.sh`, not any
+        // leftover folder).
+        let installs = std::iter::once(self.steam_path.clone()).chain(self.installs()).collect();
         for install in dedup_existing(installs) {
             roots.extend(library_folders(&install.join("steamapps").join("libraryfolders.vdf")));
         }
@@ -390,10 +390,12 @@ pub fn parse_app_manifest(text: &str, fallback_app_id: &str) -> SteamManifest {
     }
 }
 
-/// Every `appmanifest_*.acf` in every library, first occurrence of an id wins.
+/// Every `appmanifest_*.acf` in every library, one per id: the first fully
+/// installed one, else the first one. A leftover manifest (an interrupted
+/// move to another drive) must not hide the game installed in a later library.
 pub fn read_manifests(locator: &SteamLocator) -> Vec<SteamManifest> {
-    let mut seen = HashSet::new();
-    let mut out = Vec::new();
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    let mut out: Vec<SteamManifest> = Vec::new();
     for root in locator.library_roots() {
         let steamapps = root.join("steamapps");
         let Ok(rd) = fs::read_dir(&steamapps) else {
@@ -411,8 +413,13 @@ pub fn read_manifests(locator: &SteamLocator) -> Vec<SteamManifest> {
             }
             let text = fs::read_to_string(steamapps.join(&name)).unwrap_or_default();
             let manifest = parse_app_manifest(&text, id);
-            if seen.insert(manifest.app_id.clone()) {
-                out.push(manifest);
+            match seen.get(&manifest.app_id) {
+                None => {
+                    seen.insert(manifest.app_id.clone(), out.len());
+                    out.push(manifest);
+                }
+                Some(&i) if !out[i].fully_installed && manifest.fully_installed => out[i] = manifest,
+                Some(_) => {}
             }
         }
     }
@@ -736,17 +743,55 @@ mod tests {
             "\"AppState\" { \"appid\" \"1245620\" \"installdir\" \"ELDEN RING\" \"StateFlags\" \"4\" }",
         );
         fs::create_dir_all(hdd.join("steamapps/common/ELDEN RING")).unwrap();
+        // Both are Steam installs; a Flatpak folder without `config` is a
+        // leftover whose list (an old drive still on disk) is not read.
+        fs::create_dir_all(stale.join("config")).unwrap();
+        fs::create_dir_all(snap.join("config")).unwrap();
+        let leftover = flatpak_steam_root(&home);
+        let old_drive = dir.path().join("old/SteamLibrary");
+        write(
+            &leftover.join("steamapps/libraryfolders.vdf"),
+            &format!("\"libraryfolders\" {{ \"0\" {{ \"path\" \"{}\" }} }}", vdf_path(&old_drive)),
+        );
+        write(&old_drive.join("steamapps/appmanifest_9.acf"), &acf("9", "Gone", "4"));
 
         let loc = SteamLocator {
             home: home.clone(),
             steam_path: stale.clone(),
             system_roots: vec![],
-            platform_roots: vec![stale.clone(), snap.clone()],
+            platform_roots: vec![stale.clone(), snap.clone(), leftover.clone()],
         };
-        assert_eq!(loc.library_roots(), [stale, snap, hdd.clone()]);
+        assert_eq!(loc.library_roots(), [stale, snap, hdd.clone(), leftover]);
         assert!(is_steam_app_installed(&loc, "400"));
         assert!(is_steam_app_installed(&loc, "730"));
+        assert!(!is_steam_app_installed(&loc, "9"));
         assert_eq!(loc.install_dir("1245620"), Some(hdd.join("steamapps/common/ELDEN RING")));
+    }
+
+    /// A manifest left in the main library (a move to another drive that
+    /// stopped half way) does not hide the game installed on the other drive.
+    #[test]
+    fn a_fully_installed_manifest_beats_an_earlier_leftover() {
+        let dir = tempfile::tempdir().unwrap();
+        let steam = dir.path().join("home/.steam/steam");
+        let hdd = dir.path().join("hdd/SteamLibrary");
+        write(
+            &steam.join("steamapps/libraryfolders.vdf"),
+            &format!("\"libraryfolders\" {{ \"0\" {{ \"path\" \"{}\" }} \"1\" {{ \"path\" \"{}\" }} }}", vdf_path(&steam), vdf_path(&hdd)),
+        );
+        write(&steam.join("steamapps/appmanifest_730.acf"), &acf("730", "Counter-Strike 2", "1026"));
+        write(&hdd.join("steamapps/appmanifest_730.acf"), &acf("730", "Counter-Strike 2", "4"));
+        write(&steam.join("steamapps/appmanifest_620.acf"), &acf("620", "Portal 2", "1026"));
+        write(&steam.join("steamapps/appmanifest_400.acf"), &acf("400", "Portal", "4"));
+        write(&hdd.join("steamapps/appmanifest_400.acf"), &acf("400", "Portal (old copy)", "1026"));
+        let loc =
+            SteamLocator { home: dir.path().join("home"), steam_path: steam.clone(), system_roots: vec![], platform_roots: vec![steam] };
+        let manifests = read_manifests(&loc);
+        let get = |id: &str| manifests.iter().filter(|m| m.app_id == id).collect::<Vec<_>>();
+        assert!(get("730").len() == 1 && get("730")[0].fully_installed, "the HDD copy replaces the leftover");
+        assert_eq!(get("400")[0].name, "Portal", "an installed one is kept over a later leftover");
+        assert!(get("620").len() == 1 && !get("620")[0].fully_installed, "a lone leftover still counts as not installed");
+        assert!(is_steam_app_installed(&loc, "730"));
     }
 
     #[test]
