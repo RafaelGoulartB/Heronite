@@ -569,7 +569,7 @@ impl SettingsPanel {
             it.row = it.row.desc(tr!("Like \u{201c}fr\u{201d} or \u{201c}pt-BR\u{201d}; empty uses the app's language"));
             v.push(it);
         }
-        v.push(Self::c_header(tr!("Launch")));
+        v.push(Self::c_header(tr!("Starting")));
         if game {
             let err = launcher_args_error(&self.input_text("launcherArgs", cx));
             let mut it = self.c_text("launcherArgs", tr!("Game arguments"), cx);
