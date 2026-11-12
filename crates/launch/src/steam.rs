@@ -206,29 +206,23 @@ impl SteamLocator {
         Self { home, steam_path, system_roots, platform_roots }
     }
 
-    /// `steamLibraryRoots`: system roots, libraries from `libraryfolders.vdf`,
+    /// `steamLibraryRoots`: system roots, the libraries listed in the
+    /// `libraryfolders.vdf` of every Steam install (the chosen one first),
     /// then the captured installation candidates, deduplicated and existing.
+    ///
+    /// Every install's list counts, not only the chosen folder's: the chosen
+    /// one can be a stale install (`~/.steam/steam` left from the native
+    /// package) while Steam runs from its Snap or Flatpak, whose own folder is
+    /// a candidate but whose extra libraries (a second drive) are only
+    /// listed in its `libraryfolders.vdf`.
     pub fn library_roots(&self) -> Vec<PathBuf> {
         let mut roots: Vec<PathBuf> = self.system_roots.clone();
-        let vdf_file = self.steam_path.join("steamapps").join("libraryfolders.vdf");
-        if let Ok(text) = fs::read_to_string(&vdf_file) {
-            match Vdf::parse(&text) {
-                Ok(doc) => {
-                    if let Some(folders) = doc.get("libraryfolders") {
-                        for (_, folder) in folders.entries() {
-                            // Modern files nest `path`; very old ones map index -> path.
-                            let path = match folder {
-                                Vdf::Obj(_) => folder.str_of("path"),
-                                Vdf::Str(s) => Some(s.as_str()),
-                            };
-                            if let Some(p) = path.filter(|p| Path::new(p).is_absolute()) {
-                                roots.push(PathBuf::from(p));
-                            }
-                        }
-                    }
-                }
-                Err(e) => log::warn!("{}: {e}", vdf_file.display()),
-            }
+        let installs = std::iter::once(self.steam_path.clone())
+            .chain(self.system_roots.iter().cloned())
+            .chain(self.platform_roots.iter().cloned())
+            .collect();
+        for install in dedup_existing(installs) {
+            roots.extend(library_folders(&install.join("steamapps").join("libraryfolders.vdf")));
         }
         roots.extend(self.platform_roots.iter().cloned());
         dedup_existing(roots)
@@ -316,6 +310,35 @@ impl SteamLocator {
 
 /// Global setting: close Steam once the game that made Heronite open it ends.
 pub const KEY_CLOSE_AFTER_GAME: &str = "heroniteCloseSteamAfterGame";
+
+/// The absolute library paths a `libraryfolders.vdf` lists (none when the
+/// file is missing or broken).
+fn library_folders(vdf_file: &Path) -> Vec<PathBuf> {
+    let Ok(text) = fs::read_to_string(vdf_file) else {
+        return Vec::new();
+    };
+    let doc = match Vdf::parse(&text) {
+        Ok(doc) => doc,
+        Err(e) => {
+            log::warn!("{}: {e}", vdf_file.display());
+            return Vec::new();
+        }
+    };
+    let Some(folders) = doc.get("libraryfolders") else {
+        return Vec::new();
+    };
+    folders
+        .entries()
+        .iter()
+        .filter_map(|(_, folder)| match folder {
+            // Modern files nest `path`; very old ones map index -> path.
+            Vdf::Obj(_) => folder.str_of("path"),
+            Vdf::Str(s) => Some(s.as_str()),
+        })
+        .filter(|p| Path::new(p).is_absolute())
+        .map(PathBuf::from)
+        .collect()
+}
 
 fn dedup_existing(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     let mut seen = HashSet::new();
@@ -687,6 +710,43 @@ mod tests {
         assert!(is_steam_app_installed(&loc, "730"));
         assert!(!is_steam_app_installed(&loc, "620"));
         assert!(!is_steam_app_installed(&loc, ""));
+    }
+
+    /// Issue #318: the chosen folder is a stale native install while Steam
+    /// runs from its Snap, whose `libraryfolders.vdf` lists a second drive.
+    #[test]
+    fn libraries_listed_by_any_install_are_scanned() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        let stale = home.join(".steam/steam");
+        let snap = snap_steam_root(&home);
+        let hdd = dir.path().join("media/HDD/SteamLibrary");
+        write(
+            &stale.join("steamapps/libraryfolders.vdf"),
+            &format!("\"libraryfolders\" {{ \"0\" {{ \"path\" \"{}\" }} }}", vdf_path(&stale)),
+        );
+        write(
+            &snap.join("steamapps/libraryfolders.vdf"),
+            &format!("\"libraryfolders\" {{ \"0\" {{ \"path\" \"{}\" }} \"1\" {{ \"path\" \"{}\" }} }}", vdf_path(&snap), vdf_path(&hdd)),
+        );
+        write(&snap.join("steamapps/appmanifest_400.acf"), &acf("400", "Portal", "4"));
+        write(&hdd.join("steamapps/appmanifest_730.acf"), &acf("730", "Counter-Strike 2", "4"));
+        write(
+            &hdd.join("steamapps/appmanifest_1245620.acf"),
+            "\"AppState\" { \"appid\" \"1245620\" \"installdir\" \"ELDEN RING\" \"StateFlags\" \"4\" }",
+        );
+        fs::create_dir_all(hdd.join("steamapps/common/ELDEN RING")).unwrap();
+
+        let loc = SteamLocator {
+            home: home.clone(),
+            steam_path: stale.clone(),
+            system_roots: vec![],
+            platform_roots: vec![stale.clone(), snap.clone()],
+        };
+        assert_eq!(loc.library_roots(), [stale, snap, hdd.clone()]);
+        assert!(is_steam_app_installed(&loc, "400"));
+        assert!(is_steam_app_installed(&loc, "730"));
+        assert_eq!(loc.install_dir("1245620"), Some(hdd.join("steamapps/common/ELDEN RING")));
     }
 
     #[test]
