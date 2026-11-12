@@ -51,9 +51,10 @@ use serde_json::{json, Value};
 use crate::theme;
 use crate::ui::fields::new_input;
 
+pub use changes::Found;
 pub use general::GlobalView;
 pub use logic::{GameFacts, Section};
-pub use parts::heading;
+pub use parts::{heading, rows};
 pub use reshade::focus_reshade;
 pub(crate) use reshade::Place as ReshadePlace;
 
@@ -181,6 +182,9 @@ pub struct SettingsPanel {
     confirm_reset: bool,
     /// "Show N rarely used settings" is open (closed again on another group).
     show_rare: bool,
+    /// "How the game starts" sits in its own column beside the settings (the
+    /// game page), not at the end of Start.
+    preview_aside: bool,
     /// The rarely used settings of the group drawn that the game left alone
     /// (filled while it is drawn, for the count of that link).
     folded: std::cell::RefCell<Vec<&'static str>>,
@@ -330,6 +334,7 @@ impl SettingsPanel {
             confirm_reset: crate::env::flag("HERONITE_DEBUG_ASK_RESET"),
             // `HERONITE_DEBUG_SHOW_RARE=1`: the rarely used settings start shown.
             show_rare: crate::env::flag("HERONITE_DEBUG_SHOW_RARE"),
+            preview_aside: false,
             folded: Default::default(),
             tool_busy: None,
             winetricks: None,

@@ -8,6 +8,7 @@ mod console_actions;
 mod details;
 mod images;
 mod launch;
+mod page;
 mod sessions;
 
 use std::sync::Arc;
@@ -153,6 +154,8 @@ pub struct GameSettingsDialog {
     /// Console mode: focused row and the open keyboard / picker.
     console_list: crate::console::list::ListNav,
     layer: crate::console::Layer,
+    /// Shown in the game page's body instead of a drawer (`page.rs`).
+    page: Option<page::PageState>,
 }
 
 impl EventEmitter<DialogEvent> for GameSettingsDialog {}
@@ -246,6 +249,7 @@ impl GameSettingsDialog {
             ctx,
             console_list: Default::default(),
             layer: Default::default(),
+            page: None,
         };
         if let Some(text) = this.launch.as_ref().map(|l| l.initial_exe.clone()) {
             this.refresh_launch(&text);
@@ -408,36 +412,65 @@ fn block(el: impl IntoElement) -> AnyElement {
     div().py(px(12.)).child(el).into_any_element()
 }
 
-impl Render for GameSettingsDialog {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if crate::console::active() {
-            return self.render_console(window, cx);
+impl GameSettingsDialog {
+    /// The tab shown.
+    pub fn current_tab(&self) -> Tab {
+        self.tab
+    }
+
+    /// Shows `t` (when the game has it).
+    pub fn show_tab(&mut self, t: Tab, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.tab_list().contains(&t) {
+            return;
         }
-        self.images.update(cx, |im, _| im.frame(window));
+        if let Some((panel, secs)) = self.panel.as_ref() {
+            panel.update(cx, |p, cx| {
+                p.cancel_reset(cx);
+                if let Some(section) = t.section().filter(|s| secs.contains(s)) {
+                    p.set_section(section, window, cx);
+                }
+            });
+        }
+        self.tab = t;
+        if t == Tab::Saves {
+            self.show_backups(cx);
+        }
+        cx.notify();
+    }
+
+    /// The tab bar.
+    fn tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let items: Vec<(Tab, &'static str)> = self.tab_list().into_iter().map(|t| (t, t.label())).collect();
         let entity = cx.entity().downgrade();
-        let panel = self.panel.clone();
-        let tab_bar = tabs("gs", &items, self.tab, move |t, window, cx| {
-            if let Some((panel, _)) = panel.as_ref() {
-                panel.update(cx, |p, cx| {
-                    p.cancel_reset(cx);
-                });
-            }
-            if let (Some(section), Some((panel, secs))) = (t.section(), panel.as_ref()) {
-                if secs.contains(&section) {
-                    panel.update(cx, |p, cx| p.set_section(section, window, cx));
-                }
-            }
-            entity
-                .update(cx, |this, cx| {
-                    this.tab = t;
-                    if t == Tab::Saves {
-                        this.show_backups(cx);
-                    }
-                    cx.notify();
-                })
-                .ok();
-        });
+        tabs("gs", &items, self.tab, move |t, window, cx| {
+            entity.update(cx, |this, cx| this.show_tab(t, window, cx)).ok();
+        })
+    }
+
+    /// "Reset this tab" (or its question, which then takes the place of
+    /// the buttons after it: the bool).
+    fn reset_controls(&self, cx: &mut Context<Self>) -> (Div, bool) {
+        // The panel's tab: its changed settings back to the game defaults.
+        let changed_panel = self.panel.as_ref().map(|(p, _)| p.clone()).filter(|p| self.has_lower() && p.read(cx).tab_changed());
+        let asking = changed_panel.as_ref().is_some_and(|p| p.read(cx).asking_reset());
+        match changed_panel {
+            Some(panel) if asking => (SettingsPanel::reset_question(&panel, "gs-reset"), true),
+            Some(panel) => (
+                div().flex().items_center().gap(px(8.)).child(action_button(
+                    "gs-reset-tab",
+                    ButtonKind::Ghost,
+                    tr!("Reset this tab"),
+                    true,
+                    cx.listener(move |_, _, _, cx| panel.update(cx, |p, cx| p.ask_reset(cx))),
+                )),
+                false,
+            ),
+            None => (div().flex().items_center().gap(px(8.)), false),
+        }
+    }
+
+    /// The tab's content, then the error of the last action.
+    fn tab_body(&mut self, cx: &mut Context<Self>) -> Div {
         let panel_view = self.has_lower().then(|| self.panel.as_ref().map(|(p, _)| p.clone())).flatten();
         let content = match self.tab {
             Tab::Game => div().flex().flex_col().gap(px(6.)).child(self.images_tab(cx)).child(self.details_tab(cx)),
@@ -461,6 +494,21 @@ impl Render for GameSettingsDialog {
                     .child(self.error.clone()),
             );
         }
+        body
+    }
+}
+
+impl Render for GameSettingsDialog {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            return self.render_console(window, cx);
+        }
+        self.images.update(cx, |im, _| im.frame(window));
+        if self.page.is_some() {
+            return self.render_page(window, cx);
+        }
+        let tab_bar = self.tab_bar(cx);
+        let body = self.tab_body(cx);
 
         // "Use defaults" only where a reset exists: the custom images.
         let can_reset = self.tab == Tab::Game && self.busy.is_none() && ArtKind::ALL.iter().any(|k| k.of_art(&self.art).is_some());
@@ -476,25 +524,11 @@ impl Render for GameSettingsDialog {
         } else {
             div().into_any_element()
         });
-        let mut right = div().flex().items_center().gap(px(8.));
-        if self.tab == Tab::Game {
-            right = right.children(self.save_status(cx));
-        }
-        // The panel's tab: its changed settings back to the game defaults.
-        let changed_panel = self.panel.as_ref().map(|(p, _)| p.clone()).filter(|p| self.has_lower() && p.read(cx).tab_changed());
         // While "Reset this tab" is asked, its question takes the buttons' place.
-        let asking = changed_panel.as_ref().is_some_and(|p| p.read(cx).asking_reset());
-        if let (Some(panel), true) = (changed_panel.clone(), asking) {
-            right = SettingsPanel::reset_question(&panel, "gs-reset");
-        } else {
-            if let Some(panel) = changed_panel {
-                right = right.child(action_button(
-                    "gs-reset-tab",
-                    ButtonKind::Ghost,
-                    tr!("Reset this tab"),
-                    true,
-                    cx.listener(move |_, _, _, cx| panel.update(cx, |p, cx| p.ask_reset(cx))),
-                ));
+        let (mut right, asking) = self.reset_controls(cx);
+        if !asking {
+            if self.tab == Tab::Game {
+                right = div().flex().items_center().gap(px(8.)).children(self.save_status(cx)).child(right);
             }
             right =
                 right.child(button("gs-close", ButtonKind::Primary, tr!("Done")).on_click(cx.listener(|this, _, _, cx| this.close(cx))));

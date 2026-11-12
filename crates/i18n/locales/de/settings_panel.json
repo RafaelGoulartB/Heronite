@@ -533,5 +533,8 @@
   "Runs with": "Läuft mit",
   "{fps} FPS": "{fps} FPS",
   "{n} action": "{n} Aktion",
-  "{n} actions": "{n} Aktionen"
+  "{n} actions": "{n} Aktionen",
+  "Back to game": "Zurück zum Spiel",
+  "No setting matches": "Keine Einstellung passt",
+  "This game uses the defaults": "Dieses Spiel nutzt die Standardwerte"
 }

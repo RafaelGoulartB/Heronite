@@ -533,5 +533,8 @@
   "Runs with": "Roda com",
   "{fps} FPS": "{fps} FPS",
   "{n} action": "{n} ação",
-  "{n} actions": "{n} ações"
+  "{n} actions": "{n} ações",
+  "Back to game": "Voltar ao jogo",
+  "No setting matches": "Nenhuma configuração corresponde",
+  "This game uses the defaults": "Este jogo usa os padrões"
 }

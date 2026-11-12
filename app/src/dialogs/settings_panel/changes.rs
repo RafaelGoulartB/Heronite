@@ -487,6 +487,79 @@ fn console_group(row_id: &str) -> Option<&'static Group> {
     group(id).or_else(|| GROUPS.iter().find(|g| g.keys.len() > 1 && g.keys[0] == id))
 }
 
+/// A setting the search or "Changed" found: its group of settings, the
+/// group of the game settings whose rows show it, and its value now.
+#[derive(Clone)]
+pub struct Found {
+    pub setting: &'static Group,
+    pub section: Section,
+    pub value: Option<SharedString>,
+    /// Differs from the defaults.
+    pub changed: bool,
+}
+
+/// Whether every word of `query` is in the setting's label (as shown or in
+/// English) or in the name of its group.
+pub(crate) fn matches(query: &str, setting: &Group, section: Section) -> bool {
+    let hay = format!("{} {} {}", heronite_i18n::tr(setting.label), setting.label, section.label()).to_lowercase();
+    let mut words = query.split_whitespace().map(str::to_lowercase).peekable();
+    words.peek().is_some() && words.all(|w| hay.contains(&w))
+}
+
+/// A console row's value in a few words (on / off, the choice, the text).
+fn value_text(v: &crate::console::list::Value) -> Option<SharedString> {
+    use crate::console::list::Value as V;
+    match v {
+        V::Toggle(on) => Some(if *on { tr!("On") } else { tr!("Off") }.into()),
+        V::Choice { options, index } => options.get(*index).cloned(),
+        V::Number { value, suffix, .. } => Some(format!("{value}{suffix}").into()),
+        V::Text(t) | V::Info(t) if !t.is_empty() => Some(t.clone()),
+        _ => None,
+    }
+}
+
+impl SettingsPanel {
+    /// Every setting the game's groups show for it here (once each, group
+    /// by group), read from the console rows, which follow the same rules.
+    fn settings_shown(&self, cx: &App) -> Vec<Found> {
+        let sections = self.facts().map(|f| f.sections()).unwrap_or_default();
+        let mut out: Vec<Found> = Vec::new();
+        for section in sections {
+            for item in self.console_rows_of(section, cx) {
+                if let Some(setting) = console_group(&item.row.id) {
+                    if !out.iter().any(|f| f.setting.id == setting.id) {
+                        out.push(Found { setting, section, value: value_text(&item.row.value), changed: self.changed(setting) });
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// The settings whose name matches `query`, in every group.
+    pub fn search(&self, query: &str, cx: &App) -> Vec<Found> {
+        self.settings_shown(cx).into_iter().filter(|f| matches(query, f.setting, f.section)).collect()
+    }
+
+    /// The settings this game changed from the defaults, in every group.
+    pub fn changed_settings(&self, cx: &App) -> Vec<Found> {
+        self.settings_shown(cx).into_iter().filter(|f| f.changed).collect()
+    }
+
+    /// One setting back to the defaults (`Found::setting`'s id).
+    pub fn reset_setting(&mut self, id: &str, cx: &mut Context<Self>) {
+        if let Some(g) = group(id) {
+            self.reset(&[g], cx);
+        }
+    }
+
+    /// Opens "Show N rarely used settings" (a found setting may be one).
+    pub fn show_rarely_used(&mut self, cx: &mut Context<Self>) {
+        self.show_rare = true;
+        cx.notify();
+    }
+}
+
 /// `items` without the headers that have no row before the next header (or
 /// the end).
 pub(crate) fn drop_empty_headers<T>(items: Vec<T>, is_header: impl Fn(&T) -> bool) -> Vec<T> {
@@ -497,7 +570,7 @@ pub(crate) fn drop_empty_headers<T>(items: Vec<T>, is_header: impl Fn(&T) -> boo
 #[cfg(test)]
 mod tests {
     // Not `super::*`: GPUI's prelude has its own `test` attribute.
-    use super::{changed_groups, console_group, differs, drop_empty_headers, group, norm, print, shown, GROUPS};
+    use super::{changed_groups, console_group, differs, drop_empty_headers, group, matches, norm, print, shown, GROUPS};
     use crate::dialogs::settings_panel::logic::Section;
     use serde_json::{json, Map, Value};
 
@@ -612,5 +685,18 @@ mod tests {
         let items = vec![(true, 'a'), (false, 'b'), (true, 'c'), (true, 'd'), (false, 'e'), (true, 'f')];
         let kept: Vec<char> = drop_empty_headers(items, |i| i.0).into_iter().map(|i| i.1).collect();
         assert_eq!(kept, ['a', 'b', 'd', 'e']);
+    }
+
+    #[test]
+    fn search_needs_every_word_in_the_label_or_group() {
+        let dlss = group(heronite_launch::gpu::KEY_DLSS_UPGRADE).unwrap();
+        assert!(matches("dlss", dlss, Section::Graphics));
+        assert!(matches("NEWEST dlss", dlss, Section::Graphics));
+        // The group's name counts.
+        assert!(matches("graphics dlss", dlss, Section::Graphics));
+        assert!(!matches("dlss fps", dlss, Section::Graphics));
+        assert!(!matches("   ", dlss, Section::Graphics));
+        let fps = group("fps").unwrap();
+        assert!(matches("fps limit", fps, Section::Performance));
     }
 }

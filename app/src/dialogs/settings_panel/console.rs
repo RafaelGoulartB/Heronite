@@ -122,7 +122,15 @@ impl SettingsPanel {
         if self.winetricks_open() {
             return self.c_winetricks(cx);
         }
-        let v = match self.section {
+        let v = self.console_rows_of(self.section, cx);
+        let v = self.console_fold(v);
+        self.console_tail(v)
+    }
+
+    /// The console rows of `section`, before the rarely used ones fold
+    /// (the search of the game settings reads them too).
+    pub(super) fn console_rows_of(&self, section: Section, cx: &App) -> Vec<Item> {
+        match section {
             Section::Compatibility if self.is_steam() => self.c_proton(),
             // A native game's Compatibility is its sandbox.
             Section::Compatibility if self.native() => self.c_sandbox(),
@@ -145,8 +153,10 @@ impl SettingsPanel {
                     false,
                 )],
             },
-        };
-        let mut v = self.console_fold(v);
+        }
+    }
+
+    fn console_tail(&self, mut v: Vec<Item>) -> Vec<Item> {
         if let Some(n) = &self.notice {
             v.push(Self::c_info("notice", if n.error { tr!("Problem") } else { tr!("Done") }, n.text.clone()));
         }

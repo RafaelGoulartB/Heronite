@@ -391,10 +391,9 @@ impl CollectionView {
             A::RemoveRecent => self.edit_game_lists(key, cx, |paths, g| heronite_data::config_games::remove_recent(paths, &g.app_name)),
             A::OpenFolder => self.open_install_folder(key, cx),
             A::Settings => {
-                let (Some(ctx), Some(g)) = (self.dialog_ctx(), self.lib.as_ref().and_then(|l| l.get(key)).cloned()) else { return };
+                let Some(g) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
                 let tab = crate::dialogs::game_settings::Tab::settings_start(&g);
-                let view = cx.new(|cx| crate::dialogs::game_settings::GameSettingsDialog::new(ctx, g, tab, window, cx));
-                self.open_dialog(view, cx);
+                self.show_game_settings(key, g, tab, window, cx);
             }
             A::EditDetails => {
                 let (Some(ctx), Some(g)) = (self.dialog_ctx(), self.lib.as_ref().and_then(|l| l.get(key)).cloned()) else { return };

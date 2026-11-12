@@ -116,6 +116,8 @@ pub(super) struct FocusProps {
     pub extras: FocusExtras,
     pub related_ui: RelatedUi,
     pub details_ui: DetailsUi,
+    /// The game settings, in the body's place (`page_settings.rs`).
+    pub page: Option<AnyElement>,
 }
 
 /// Panels built outside the focus panel (see `extras.rs`).
@@ -285,6 +287,7 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
         extras,
         related_ui,
         details_ui,
+        page,
     } = props;
     let on_scroll: Rc<dyn Fn(&mut Window, &mut App)> = Rc::from(actions.on_scroll);
     let scrollbar = crate::ui::scrollbar_draggable(
@@ -335,6 +338,47 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
         if lay.narrow { (None, Some(header), None, Some(div().mb(px(24.)).child(left))) } else { (Some(header), None, Some(left), None) };
 
     let on_scroll_wheel = on_scroll.clone();
+    // The settings in the page: the title and the left column stay, the
+    // settings scroll themselves.
+    if let Some(page) = page {
+        let left_col = left_col.map(|left| {
+            div()
+                .id("focus-left")
+                .flex_none()
+                .w(px(lay.offset + lay.left_w + LEFT_PAD))
+                .h_full()
+                .overflow_y_scroll()
+                .pl(px(lay.offset + LEFT_PAD))
+                .pb(px(16.))
+                .child(left)
+        });
+        return div()
+            .id("focus")
+            .flex()
+            .flex_col()
+            .size_full()
+            .min_w_0()
+            .child(
+                div()
+                    .flex_none()
+                    .pt(px(if lay.narrow { 24. } else { 38.4 }))
+                    .pl(px(if lay.narrow { 19.2 } else { lay.offset + LEFT_PAD }))
+                    .pr(px(CONTENT_PAD_R))
+                    .children(top.or(scrolled_header).map(|h| h.max_w(px(lay.left_w + CONTENT_PAD_L + 1480.)))),
+            )
+            .child(
+                div().flex().flex_1().min_h_0().children(left_col).child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .h_full()
+                        .pl(px(if lay.narrow { 19.2 } else { CONTENT_PAD_L }))
+                        .pr(px(if lay.narrow { 19.2 } else { CONTENT_PAD_R }))
+                        .child(page),
+                ),
+            )
+            .into_any_element();
+    }
     div()
         .id("focus")
         .relative()

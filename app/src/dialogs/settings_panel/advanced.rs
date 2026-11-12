@@ -137,7 +137,7 @@ impl SettingsPanel {
         col.children(advanced.titled(tr!("Advanced")))
             .when(extras && self.shows("presets"), |c| c.child(self.presets_section(false, cx)))
             .when(wrappers && self.shows("wrapperOptions"), |c| c.child(self.pair_table(WRAPPERS, cx)))
-            .when(self.has_preview(), |c| c.child(self.preview_section(cx)))
+            .when(self.has_preview() && !self.preview_aside, |c| c.child(self.preview_section(cx)))
     }
 
     /// A Steam game on Windows: Steam starts it as it is, and Heronite runs

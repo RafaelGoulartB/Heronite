@@ -69,6 +69,21 @@ impl SettingsPanel {
         !self.is_steam() && self.facts().is_some_and(|f| f.game.is_some())
     }
 
+    /// "How the game starts" in a column of its own (the game page), shown
+    /// at once; [`Self::preview_aside`] draws it.
+    pub fn set_preview_aside(&mut self, cx: &mut Context<Self>) {
+        self.preview_aside = true;
+        if self.has_preview() {
+            self.open_preview(cx);
+        }
+    }
+
+    /// The column of [`Self::set_preview_aside`], when the game has a launch
+    /// to show.
+    pub fn preview_aside(&mut self, cx: &mut Context<Self>) -> Option<Div> {
+        (self.preview_aside && self.has_preview()).then(|| self.preview_section(cx))
+    }
+
     pub(super) fn open_preview(&mut self, cx: &mut Context<Self>) {
         self.preview.open = true;
         self.build_preview(cx);

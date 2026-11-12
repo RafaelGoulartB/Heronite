@@ -37,8 +37,14 @@ fn row_id(section: Section) -> &'static str {
 impl CollectionView {
     /// Reads the Setup rows of the selected game (the copy Play starts).
     pub(super) fn load_setup(&mut self, cx: &mut Context<Self>) {
-        self.facts.setup = None;
-        let Some(key) = self.selected.clone() else { return };
+        let Some(key) = self.selected.clone() else {
+            self.facts.setup = None;
+            return;
+        };
+        // Read again for the same game: the old rows stay until then.
+        if self.facts.setup.as_ref().is_some_and(|(k, _)| *k != key) {
+            self.facts.setup = None;
+        }
         let Some(game) = self.acting_copy(&key) else { return };
         let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
@@ -63,9 +69,12 @@ impl CollectionView {
     pub(super) fn setup_card(&self, vm: &FocusVm, vh: f32, cx: &mut Context<Self>) -> Option<AnyElement> {
         let setup = self.setup_rows(&vm.key);
         let (shown, hidden) = summary::folded(setup, vh < SHORT_VH, self.facts.setup_all);
+        // The group the settings in the page show.
+        let open = self.page_settings_tab(&vm.key, cx);
         let mut rows: Vec<AnyElement> = Vec::new();
         for r in shown {
             let tab = Tab::of_section(r.section);
+            let current = open == Some(tab);
             let value = div()
                 .flex()
                 .items_center()
@@ -75,6 +84,7 @@ impl CollectionView {
                 .child(icon(Icon::ChevronRight, px(14.), theme::ink_a(0.4)));
             rows.push(
                 clickable(fact_row(r.label, value), row_id(r.section))
+                    .when(current, |d| d.bg(theme::ink_a(0.08)).rounded(px(8.)))
                     .on_click(cx.listener(move |this, _, window, cx| this.open_game_settings_tab(tab, window, cx)))
                     .into_any_element(),
             );
