@@ -481,8 +481,7 @@ impl Render for GameSettingsDialog {
             right = right.children(self.save_status(cx));
         }
         // The panel's tab: its changed settings back to the game defaults.
-        let changed_panel =
-            self.panel.as_ref().map(|(p, _)| p.clone()).filter(|p| self.has_lower() && p.read(cx).tab_changed());
+        let changed_panel = self.panel.as_ref().map(|(p, _)| p.clone()).filter(|p| self.has_lower() && p.read(cx).tab_changed());
         // While "Reset this tab" is asked, its question takes the buttons' place.
         let asking = changed_panel.as_ref().is_some_and(|p| p.read(cx).asking_reset());
         if let (Some(panel), true) = (changed_panel.clone(), asking) {
