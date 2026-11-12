@@ -120,7 +120,6 @@ impl SettingsPanel {
         v.extend(self.c_protondb(rec, |this, i, cx| this.pick_steam_tool(i, cx)));
         if self.steam.as_ref().is_some_and(|s| s.editable) {
             v.push(Self::c_header(tr!("Graphics and libraries")));
-            v.push(self.c_steam_toggle(options::KEY_NVAPI, false, "NVAPI", Some(tr!("DLSS and other NVIDIA features"))));
             v.push(self.c_steam_toggle(
                 options::KEY_WINED3D,
                 false,
@@ -131,10 +130,9 @@ impl SettingsPanel {
             v.push(self.c_sync(true));
             v.push(Self::c_header(tr!("Experimental")));
             v.push(self.c_steam_toggle("enableWineWayland", false, tr!("Wayland driver"), Some(tr!("Proton 10 or newer, or GE-Proton"))));
-            if self.flag("enableWineWayland", false) || self.flag("enableHDR", false) {
-                v.push(self.c_steam_toggle("enableHDR", false, "HDR", Some(tr!("The screen and the game must support it"))));
-            }
             v.push(self.c_steam_toggle("enableWoW64", false, "WoW64", Some(tr!("32-bit games on 64-bit Wine; can break older games"))));
+            v.push(Self::c_header(tr!("Controllers")));
+            v.push(self.c_sdl(!self.steam_fields_editable()));
         }
         v.push(Self::c_header(tr!("Prefix")));
         let prefix = self.steam_drive_c();
@@ -164,22 +162,7 @@ impl SettingsPanel {
             v.extend(self.c_replay(cx));
             return v;
         }
-        v.push(Self::c_header(tr!("On screen")));
-        v.push(self.c_steam_toggle("showFps", false, tr!("FPS counter"), Some(tr!("A small counter for DirectX 9 to 11 games"))));
-        v.push(self.c_steam_toggle(
-            "showMangohud",
-            false,
-            "MangoHud",
-            Some(tr!("FPS, frame times, temperatures and load (needs MangoHud)")),
-        ));
-        v.extend(self.c_replay(cx));
-        v.extend(self.c_fps(true));
-        v.extend(self.c_lsfg(true));
-        if self.steam_fields_editable() {
-            v.push(Self::c_header(tr!("Image")));
-            v.extend(self.c_gamescope(cx));
-        }
-        v.extend(self.c_system(true));
+        v.extend(self.c_perf(true, cx));
         v
     }
 

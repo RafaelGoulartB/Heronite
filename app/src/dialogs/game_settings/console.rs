@@ -1,7 +1,9 @@
 //! Game settings in console mode: full screen, the game's art
 //! on top with its cover and title, tabs on LB / RB, one focused row at a
-//! time. The Heroic tabs are the settings panel's console rows; Launch,
-//! Details and Images have their own rows here.
+//! time. The groups are the settings panel's console rows; Start (Play and
+//! the actions) and Saves (the backups) put their own block above them, the
+//! focus moving between the two at their edges. "Edit details" has its own
+//! rows here.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -38,12 +40,13 @@ impl GameSettingsDialog {
     fn console_set_tab(&mut self, tab: Tab, window: &mut Window, cx: &mut Context<Self>) {
         self.tab = tab;
         self.console_list.reset();
-        if let (Some(section), Some((panel, _))) = (tab.section(), self.panel.as_ref()) {
+        if let (Some(section), Some((panel, _))) = (tab.section().filter(|_| self.has_panel(tab)), self.panel.as_ref()) {
             panel.update(cx, |p, cx| {
                 p.set_section(section, window, cx);
                 p.console_reset();
             });
         }
+        self.console_focus(!self.has_upper(), cx);
         if tab == Tab::Saves {
             if let Some(view) = &self.backups {
                 view.update(cx, |v, cx| {
@@ -57,7 +60,7 @@ impl GameSettingsDialog {
 
     fn console_rows(&self, cx: &App) -> Vec<Row> {
         match self.tab {
-            Tab::Actions => {
+            Tab::Start => {
                 // The action editor takes the whole tab.
                 let mut rows = Vec::new();
                 if self.actions.editor.is_none() {
@@ -275,6 +278,7 @@ impl GameSettingsDialog {
 
         let tabs = self.tab_list();
         let active = tabs.iter().position(|t| *t == self.tab).unwrap_or(0);
+        let details_only = self.details_only;
         let labels: Vec<SharedString> = tabs.iter().map(|t| SharedString::from(t.label())).collect();
         let mut meta = vec![
             self.game.source_label.to_string(),
@@ -321,21 +325,34 @@ impl GameSettingsDialog {
                             .flex_col()
                             .gap(u(4.))
                             .min_w_0()
-                            .child(kit::kicker(tr!("Game settings")))
+                            .child(kit::kicker(if self.details_only { tr!("Edit details") } else { tr!("Game settings") }))
                             .child(kit::title(self.title.clone(), 48.))
                             .child(div().text_size(u(16.)).text_color(theme::text_muted()).child(meta.join(" \u{b7} "))),
                     ),
             );
 
-        let body: AnyElement = match (self.tab.section(), &self.panel) {
-            (Some(_), Some((panel, _))) => div().flex().flex_col().size_full().child(panel.clone()).into_any_element(),
-            _ if self.tab == Tab::Saves && self.backups.is_some() => {
-                div().flex().flex_col().size_full().children(self.backups.clone()).into_any_element()
-            }
-            _ => {
+        let lower = self.has_lower().then(|| self.panel.as_ref().map(|(p, _)| p.clone())).flatten();
+        let upper: Option<AnyElement> = match self.tab {
+            Tab::Game | Tab::Start => {
                 let rows = self.console_rows(cx);
-                self.console_list.render("console-gs", &rows, !self.layer.is_open()).size_full().into_any_element()
+                let active = !self.layer.is_open() && !self.lower;
+                Some(self.console_list.render("console-gs", &rows, active).size_full().into_any_element())
             }
+            Tab::Saves => self.backups.clone().map(|b| div().size_full().child(b).into_any_element()),
+            _ => None,
+        };
+        let body: AnyElement = match (upper, lower) {
+            (Some(up), Some(panel)) => div()
+                .flex()
+                .flex_col()
+                .size_full()
+                .gap(u(10.))
+                .child(div().flex_none().h(relative(0.45)).child(up))
+                .child(div().flex().flex_col().flex_1().min_h_0().child(panel))
+                .into_any_element(),
+            (Some(up), None) => up,
+            (None, Some(panel)) => div().flex().flex_col().size_full().child(panel).into_any_element(),
+            (None, None) => div().into_any_element(),
         };
         let error = (!self.error.is_empty()).then(|| kit::body_text(self.error.clone()).text_color(theme::danger_text()));
         div()
@@ -345,7 +362,7 @@ impl GameSettingsDialog {
             .flex()
             .flex_col()
             .child(header)
-            .child(div().flex_none().px(u(46.)).py(u(12.)).child(kit::tabs(&labels, active)))
+            .when(!details_only, |c| c.child(div().flex_none().px(u(46.)).py(u(12.)).child(kit::tabs(&labels, active))))
             .child(
                 div()
                     .flex()
@@ -369,7 +386,7 @@ impl PadTarget for GameSettingsDialog {
             return true;
         }
         // The Saves tab's keyboard and backup menu keep B and the bumpers.
-        if let (Tab::Saves, Some(view)) = (self.tab, self.backups.clone()) {
+        if let (Tab::Saves, Some(view), false) = (self.tab, self.backups.clone(), self.lower) {
             if view.read(cx).captures(pad) {
                 return view.update(cx, |v, cx| v.on_pad(pad, window, cx));
             }
@@ -383,7 +400,7 @@ impl PadTarget for GameSettingsDialog {
                 self.console_set_tab(tabs[next], window, cx);
                 return true;
             }
-            Pad::B if self.tab == Tab::Actions && self.close_action_editor(cx) => return true,
+            Pad::B if self.tab == Tab::Start && self.close_action_editor(cx) => return true,
             Pad::B if self.cancel_reset_question(cx) => return true,
             Pad::B => {
                 // What the Details tab has pending is saved first.
@@ -392,20 +409,35 @@ impl PadTarget for GameSettingsDialog {
             }
             _ => {}
         }
-        if self.tab.section().is_some() {
-            if let Some((panel, _)) = self.panel.clone() {
-                return panel.update(cx, |p, cx| p.on_pad(pad, window, cx));
+        let (upper, lower) = (self.has_upper(), self.has_lower());
+        if lower && (self.lower || !upper) {
+            let Some((panel, _)) = self.panel.clone() else { return false };
+            if panel.update(cx, |p, cx| p.on_pad(pad, window, cx)) {
+                return true;
+            }
+            // Up from the panel's first row goes to the block above.
+            if pad == Pad::Up && upper {
+                self.console_focus(false, cx);
+                cx.notify();
+                return true;
             }
             return false;
         }
-        if self.tab == Tab::Saves {
-            if let Some(view) = self.backups.clone() {
-                return view.update(cx, |v, cx| v.on_pad(pad, window, cx));
+        let to_lower = |this: &mut Self, cx: &mut Context<Self>| {
+            if pad == Pad::Down && lower {
+                this.console_focus(true, cx);
+                cx.notify();
+                return true;
             }
-            return false;
+            false
+        };
+        if self.tab == Tab::Saves {
+            let Some(view) = self.backups.clone() else { return false };
+            return view.update(cx, |v, cx| v.on_pad(pad, window, cx)) || to_lower(self, cx);
         }
         let rows = self.console_rows(cx);
         match self.console_list.on_pad(pad, &rows) {
+            Outcome::Edge(Pad::Down) if lower => return to_lower(self, cx),
             Outcome::Activate(id) if self.console_action_activate(&id, window, cx) => {}
             Outcome::Changed(id, value) if self.console_action_changed(&id, &value, cx) => {}
             Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "run-as" => {
@@ -447,13 +479,14 @@ impl PadTarget for GameSettingsDialog {
         if let Some(h) = self.layer.hints(cx) {
             return h;
         }
-        if let (Tab::Saves, Some(view)) = (self.tab, &self.backups) {
+        let in_panel = self.has_lower() && (self.lower || !self.has_upper());
+        if let (Tab::Saves, Some(view), false) = (self.tab, &self.backups, in_panel) {
             let mut h = view.read(cx).hints(cx);
             h.push(hint(Btn::Bumpers, tr!("Tabs")));
             h.push(hint(Btn::B, tr!("Done")));
             return h;
         }
-        if self.tab.section().is_some() {
+        if in_panel {
             if let Some((panel, _)) = &self.panel {
                 let mut h = panel.read(cx).hints(cx);
                 h.push(hint(Btn::Bumpers, tr!("Tabs")));

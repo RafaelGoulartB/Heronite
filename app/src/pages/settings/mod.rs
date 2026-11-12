@@ -191,9 +191,9 @@ impl SettingsPage {
             .filter(|s| s.available())
             .unwrap_or(Section::General);
         let defaults_section = match parts.next() {
-            Some("performance" | "other" | "gamescope") => HSection::Performance,
-            Some("launch" | "advanced") => HSection::Launch,
-            Some("gpu") => HSection::Gpu,
+            Some("performance" | "other") => HSection::Performance,
+            Some("launch" | "advanced" | "start") => HSection::Start,
+            Some("gpu" | "graphics" | "gamescope") => HSection::Graphics,
             _ => DEFAULT_SECTIONS[0],
         };
         let (settings, chain, library) = match cx.has_global::<Offer>().then(|| cx.remove_global::<Offer>()) {

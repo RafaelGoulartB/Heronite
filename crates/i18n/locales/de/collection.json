@@ -589,5 +589,11 @@
   "{n} shows a crop in Console mode": "{n} zeigt einen Zuschnitt im Console mode",
   "{n} show a crop in Console mode": "{n} zeigen einen Zuschnitt im Console mode",
   "{n} shows a crop on the desktop": "{n} zeigt einen Zuschnitt im Desktop-Modus",
-  "{n} show a crop on the desktop": "{n} zeigen einen Zuschnitt im Desktop-Modus"
+  "{n} show a crop on the desktop": "{n} zeigen einen Zuschnitt im Desktop-Modus",
+  "All settings": "Alle Einstellungen",
+  "Edit details": "Details bearbeiten",
+  "Edit details…": "Details bearbeiten…",
+  "Name, images, description, tags": "Name, Bilder, Beschreibung, Tags",
+  "Setup": "Einrichtung",
+  "Show all": "Alle zeigen"
 }

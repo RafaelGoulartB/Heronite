@@ -1,33 +1,32 @@
-//! "Performance" tab: what is on screen (overlays), the replay of a game (on
-//! or off, `replay`), the FPS limit, frame generation, the image (gamescope,
-//! Wine's FSR) and system tweaks while playing. Heroic's Other and Gamescope
-//! tabs.
+//! "Performance" group: what is on screen (overlays), the replay of a game
+//! (on or off, `replay`), the FPS limit, frame generation (Lossless Scaling
+//! and NVIDIA's Smooth Motion), latency and system tweaks while playing.
+//! Heroic's Other tab.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use serde_json::{json, Value};
+use serde_json::Value;
 
+use super::gpu::GpuPart;
 use super::logic;
 use super::parts::{column, heading, rows, Rows};
 use super::SettingsPanel;
 use heronite_i18n::tr;
 
 impl SettingsPanel {
+    /// `off`: a Steam game whose launch options cannot change now.
     pub(super) fn perf_tab(&mut self, cx: &mut Context<Self>) -> Div {
-        let native = self.native();
-        let mut col = column().child(heading(tr!("On screen"))).child(self.overlay_rows(false, cx).card());
+        self.perf_rows(false, cx)
+    }
+
+    pub(super) fn perf_rows(&mut self, off: bool, cx: &mut Context<Self>) -> Div {
+        let mut col = column().child(heading(tr!("On screen"))).child(self.overlay_rows(off, cx).card());
         col = self.replay_section(col, cx);
-        col = col.child(self.fps_section(false, cx)).child(self.lsfg_section(false, cx));
-        // Linux games get a line about vkBasalt instead.
-        if self.reshade_applies() || (native && cfg!(not(windows))) {
-            col = col.child(self.reshade_section(cx));
-        }
-        let mut image = rows();
-        if !native {
-            image = self.fsr_rows(image, cx);
-        }
-        col = col.child(self.gamescope_section(image, false, cx));
-        col.child(heading(tr!("System"))).child(self.game_system_rows(false, cx).card())
+        let frames = self.gpu_card(rows(), GpuPart::Frames, off, cx);
+        col = col.child(self.fps_section(off, cx)).child(self.lsfg_section(off, frames, cx));
+        col = col.children(self.gpu_card(rows(), GpuPart::Latency, off, cx).titled(tr!("Latency")));
+        let system = self.game_system_rows(off, cx);
+        col.children(self.gpu_card(system, GpuPart::Tweaks, off, cx).titled(tr!("System")))
     }
 
     /// The FPS counter of DXVK and MangoHud.
@@ -55,33 +54,7 @@ impl SettingsPanel {
         ))
     }
 
-    /// Wine's own FSR upscaling in fullscreen, with its sharpness.
-    fn fsr_rows(&self, mut r: Rows, cx: &mut Context<Self>) -> Rows {
-        r = r.child(self.toggle_row(
-            "fsr",
-            "enableFSR",
-            false,
-            tr!("Wine FSR"),
-            Some(tr!("Upscales fullscreen games running below the screen's resolution (needs a Wine build with the FSR hack)")),
-            false,
-            cx,
-        ));
-        if self.flag("enableFSR", false) {
-            let sharp = self.number("maxSharpness").unwrap_or(5).clamp(1, 5);
-            r = r.field(self.select_row(
-                "fsr-sharpness",
-                Some(tr!("FSR sharpness")),
-                sharp.to_string(),
-                (1..=5).map(|n| (SharedString::from(n.to_string()), n == sharp)).collect(),
-                false,
-                cx,
-                |this, i, _, cx| this.set("maxSharpness", json!(i as i64 + 1), cx),
-            ));
-        }
-        r
-    }
-
-    /// GameMode, keeping the computer awake, controllers.
+    /// GameMode and keeping the computer awake.
     pub(super) fn game_system_rows(&self, disabled: bool, cx: &mut Context<Self>) -> Rows {
         let mut r = rows().child(self.toggle_row(
             "gamemode",
@@ -93,7 +66,7 @@ impl SettingsPanel {
             cx,
         ));
         // Steam keeps the computer awake itself while a game runs.
-        if !self.is_steam() {
+        if !self.is_steam() && self.shows(heronite_launch::keep_awake::KEY) {
             r = r.child(self.toggle_row(
                 "keep-awake",
                 heronite_launch::keep_awake::KEY,
@@ -104,10 +77,12 @@ impl SettingsPanel {
                 cx,
             ));
         }
-        if self.is_steam() || (!self.native() && self.wine_version().kind == "proton") {
-            r = r.child(self.sdl_row(disabled, cx));
-        }
         r
+    }
+
+    /// Whether the game's Proton reads `PROTON_PREFER_SDL` (Steam's too).
+    pub(super) fn has_sdl_row(&self) -> bool {
+        self.is_steam() || (!self.native() && self.wine_version().kind == "proton")
     }
 
     /// `PROTON_PREFER_SDL` (Proton only).

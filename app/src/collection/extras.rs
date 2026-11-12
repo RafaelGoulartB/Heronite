@@ -276,7 +276,7 @@ impl CollectionView {
         v
     }
 
-    /// The game settings on the Game tab, where the time played is edited.
+    /// "Edit details", where the time played is edited.
     pub(super) fn open_playtime_settings(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         use crate::dialogs::game_settings::{GameSettingsDialog, Tab};
         let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(key)) else { return };

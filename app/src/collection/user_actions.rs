@@ -48,7 +48,7 @@ impl CollectionView {
         self.facts.launch_menu_open = false;
         self.context_menu = None;
         let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(key)) else { return };
-        let view = cx.new(|cx| GameSettingsDialog::new(ctx, game, Tab::Actions, window, cx));
+        let view = cx.new(|cx| GameSettingsDialog::new(ctx, game, Tab::Start, window, cx));
         self.open_dialog(view, cx);
     }
 

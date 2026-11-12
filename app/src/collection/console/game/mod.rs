@@ -130,6 +130,10 @@ impl CollectionView {
                     .icon(Icon::Tune)
                     .desc(tr!("Wine / Proton, launch options, Gamescope\u{2026}")),
             );
+            // The Setup card's groups: A opens the settings on that group.
+            for (i, r) in self.setup_rows(&SharedString::from(g.key.clone())).iter().enumerate() {
+                rows.push(Row::info(SharedString::from(format!("setup:{i}")), r.label, r.value.clone()).icon(Icon::ChevronRight));
+            }
         }
         if !playing {
             rows.push(
@@ -150,6 +154,7 @@ impl CollectionView {
                     .desc(tr!("As a non-Steam game in your Steam library")),
             );
         }
+        manage.push(Row::action("x:details", tr!("Edit details")).icon(Icon::Edit).desc(tr!("Name, images, description, tags")));
         manage.push(Row::action("x:ludusavi", tr!("Back up saves (Ludusavi)")).icon(Icon::Save));
         manage.push(
             Row::toggle("hidden", tr!("Hidden"), g.hidden).icon(Icon::VisibilityOff).desc(tr!("Hidden games stay out of the library")),
@@ -481,6 +486,13 @@ impl CollectionView {
                 }
                 "x:as-pc" => self.open_play_as_pc(key, window, cx),
                 "settings" => self.console_game_settings(key, window, cx),
+                id if id.starts_with("setup:") => {
+                    let section = id["setup:".len()..].parse::<usize>().ok().and_then(|i| self.setup_rows(key).get(i)).map(|r| r.section);
+                    if let Some(s) = section {
+                        self.console_game_tab(key, crate::dialogs::game_settings::Tab::of_section(s), window, cx);
+                    }
+                }
+                "x:details" => self.console_game_tab(key, crate::dialogs::game_settings::Tab::Game, window, cx),
                 "playtime" => self.console_edit_playtime(key, window, cx),
                 "recent" => {
                     if let Err(err) = heronite_data::config_games::remove_recent(&self.data_paths, &g.app_name) {

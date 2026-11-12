@@ -62,8 +62,9 @@ impl SettingsPanel {
     }
 
     /// Caption, card and, when it cannot run, what to install. `disabled`:
-    /// a Steam game whose launch options cannot change now.
-    pub(super) fn lsfg_section(&mut self, disabled: bool, cx: &mut Context<Self>) -> Div {
+    /// a Steam game whose launch options cannot change now. `more`: the
+    /// other frame generation (NVIDIA's Smooth Motion), in the same card.
+    pub(super) fn lsfg_section(&mut self, disabled: bool, more: Rows, cx: &mut Context<Self>) -> Div {
         let s = self.lsfg_settings();
         let label = tr!("Lossless Scaling frame generation");
         let about = tr!("Generated frames between the game's own: smoother, a bit more latency. Vulkan and DirectX games (not OpenGL); needs lsfg-vk and Lossless Scaling.");
@@ -75,6 +76,7 @@ impl SettingsPanel {
         if s.enabled && missing.is_none() && self.lsfg.is_some() {
             card = self.lsfg_rows(card, &s, disabled, cx);
         }
+        let card = card.append(more);
         let mut col = div().flex().flex_col().gap(px(6.)).child(heading(tr!("Frame generation"))).child(card.card());
         if let Some(m) = missing {
             col = col.child(missing_card("lsfg", m, cx.listener(|this, _, _, cx| this.load_lsfg(cx))));

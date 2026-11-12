@@ -500,7 +500,7 @@ impl SettingsPanel {
     }
 
     /// The status box at the top of every Steam tab, with "Read again".
-    fn steam_banner(&self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn steam_banner(&self, cx: &mut Context<Self>) -> Div {
         let (text, error) = self.steam_status();
         let loading = self.steam.as_ref().is_some_and(|s| s.snapshot.is_none());
         let mut col = column().child(if error { danger_text(&text).px(px(6.)) } else { hint(&text) });
@@ -575,25 +575,26 @@ impl SettingsPanel {
         col = col.child(heading("Proton")).child(card.card());
         if self.steam.as_ref().is_some_and(|s| s.editable) {
             let off = !self.steam_fields_editable();
-            let sync = rows().field_help(
-                self.sync_select(off, cx),
-                vec![help(tr!("Less CPU overhead in busy games. Fsync is the fastest where the kernel has it."))],
-            );
+            col = col.children(self.proton_graphics(off, cx).titled(tr!("Graphics and libraries")));
+            if self.shows("sync") {
+                let sync = rows().field_help(
+                    self.sync_select(off, cx),
+                    vec![help(tr!("Less CPU overhead in busy games. Fsync is the fastest where the kernel has it."))],
+                );
+                col = col.child(self.marked_heading(tr!("Sync"), "sync", cx)).child(sync.card());
+            }
             col = col
-                .child(heading(tr!("Graphics and libraries")))
-                .child(self.proton_graphics(off, cx).card())
-                .child(self.marked_heading(tr!("Sync"), "sync", cx))
-                .child(sync.card())
-                .child(heading(tr!("Experimental")))
-                .child(self.proton_experimental(off, cx).card());
+                .children(self.experimental_rows(off, cx).titled(tr!("Experimental")))
+                .children(self.proton_rows(off, cx).titled(tr!("Controllers")));
         }
         col.child(heading(tr!("Prefix"))).child(self.steam_prefix_card(cx))
     }
 
+    /// WineD3D (the NVAPI, which DLSS needs, is in Graphics).
     fn proton_graphics(&self, off: bool, cx: &mut Context<Self>) -> super::parts::Rows {
-        rows()
-            .child(self.toggle_row("p-nvapi", options::KEY_NVAPI, false, "NVAPI", Some(tr!("DLSS and other NVIDIA features")), off, cx))
-            .child(self.toggle_row(
+        let mut r = rows();
+        if self.shows(options::KEY_WINED3D) {
+            r = r.child(self.toggle_row(
                 "p-wined3d",
                 options::KEY_WINED3D,
                 false,
@@ -601,32 +602,9 @@ impl SettingsPanel {
                 Some(tr!("OpenGL instead of DXVK and VKD3D: slower, but can help games that misbehave on Vulkan")),
                 off,
                 cx,
-            ))
-    }
-
-    /// Wayland, HDR and WoW64 (Proton 10 or newer, or GE-Proton).
-    fn proton_experimental(&self, off: bool, cx: &mut Context<Self>) -> super::parts::Rows {
-        let mut r = rows().child(self.toggle_row(
-            "p-wayland",
-            "enableWineWayland",
-            false,
-            tr!("Wayland driver"),
-            Some(tr!("Proton 10 or newer, or GE-Proton")),
-            off,
-            cx,
-        ));
-        if self.flag("enableWineWayland", false) || self.flag("enableHDR", false) {
-            r = r.child(self.toggle_row("p-hdr", "enableHDR", false, "HDR", Some(tr!("The screen and the game must support it")), off, cx));
+            ));
         }
-        r.child(self.toggle_row(
-            "p-wow64",
-            "enableWoW64",
-            false,
-            "WoW64",
-            Some(tr!("32-bit games on 64-bit Wine; can break older games")),
-            off,
-            cx,
-        ))
+        r
     }
 
     fn steam_prefix_card(&mut self, cx: &mut Context<Self>) -> Div {
@@ -672,29 +650,13 @@ impl SettingsPanel {
     }
 
     pub(super) fn steam_perf_tab(&mut self, cx: &mut Context<Self>) -> Div {
-        let mut col = column().child(self.steam_banner(cx));
+        let col = column().child(self.steam_banner(cx));
         // The replay is the app's, not Steam's: always there.
         if !self.steam.as_ref().is_some_and(|s| s.editable) {
             return self.replay_section(col, cx);
         }
         let off = !self.steam_fields_editable();
-        col = col.child(heading(tr!("On screen"))).child(self.overlay_rows(off, cx).card());
-        col = self.replay_section(col, cx);
-        col = col.child(self.fps_section(off, cx)).child(self.lsfg_section(off, cx));
-        if self.reshade_applies() {
-            col = col.child(self.reshade_section(cx));
-        }
-        col = col.child(self.gamescope_section(rows(), off, cx));
-        col.child(heading(tr!("System"))).child(self.game_system_rows(off, cx).card())
-    }
-
-    pub(super) fn steam_gpu_tab(&mut self, cx: &mut Context<Self>) -> Div {
-        let col = column().child(self.steam_banner(cx));
-        if !self.steam.as_ref().is_some_and(|s| s.editable) {
-            return col;
-        }
-        let off = !self.steam_fields_editable();
-        col.child(self.gpu_tab(off, cx))
+        col.child(self.perf_rows(off, cx))
     }
 
     /// Steam's launch options as text, for a game Steam starts as it is
@@ -722,22 +684,27 @@ impl SettingsPanel {
             notes.push(help(tr!("Added after the game's command, like -nolauncher")));
             let launch = rows().field_help(self.text_row("launcherArgs", Some(tr!("Game arguments")), None, cx), notes);
             col = col.child(heading(tr!("Starting"))).child(launch.card());
-            col = col.child(self.scripts_section(true, cx));
-            let logs = rows().child(self.toggle_row(
-                "p-log",
-                "verboseLogs",
-                false,
-                tr!("Proton logs"),
-                Some(tr!("Writes steam-<app id>.log in your home folder")),
-                off,
-                cx,
-            ));
-            col = col
-                .child(heading(tr!("Advanced")))
-                .child(logs.card())
-                .child(self.presets_section(off, cx))
-                .child(self.pair_table(WRAPPERS, cx))
-                .child(self.pair_table(ENV, cx));
+            col = col.children(self.scripts_section(true, cx));
+            let mut logs = rows();
+            if self.shows("verboseLogs") {
+                logs = logs.child(self.toggle_row(
+                    "p-log",
+                    "verboseLogs",
+                    false,
+                    tr!("Proton logs"),
+                    Some(tr!("Writes steam-<app id>.log in your home folder")),
+                    off,
+                    cx,
+                ));
+            }
+            col = col.children(logs.titled(tr!("Advanced")));
+            if self.shows("presets") {
+                col = col.child(self.presets_section(off, cx));
+            }
+            if self.shows("wrapperOptions") {
+                col = col.child(self.pair_table(WRAPPERS, cx));
+            }
+            col = col.child(self.pair_table(ENV, cx));
         }
         let line = rows().field_help(
             self.text_row("steamLine", Some(tr!("Steam launch options")), None, cx),
