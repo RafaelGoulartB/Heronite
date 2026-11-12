@@ -244,6 +244,30 @@ impl SteamLocator {
             .collect()
     }
 
+    /// Steam's `userdata` folder that keeps `app_id`'s saves. Of the Steam
+    /// installs with a `userdata` folder (the chosen one first): the one with
+    /// a folder for the game in an account, else the one whose libraries hold
+    /// the game, else the chosen one. The chosen folder can be a stale
+    /// install while Steam runs from its Snap or Flatpak.
+    pub fn userdata_dir(&self, app_id: &str) -> Option<PathBuf> {
+        let installs: Vec<PathBuf> = dedup_existing(std::iter::once(self.steam_path.clone()).chain(self.installs()).collect())
+            .into_iter()
+            .filter(|i| i.join("userdata").is_dir())
+            .collect();
+        let valid_id = !app_id.is_empty() && app_id.bytes().all(|b| b.is_ascii_digit());
+        let has_game_folder = |install: &&PathBuf| {
+            fs::read_dir(install.join("userdata")).is_ok_and(|rd| rd.flatten().any(|account| account.path().join(app_id).is_dir()))
+        };
+        let holds_game = |install: &&PathBuf| {
+            let manifest = format!("appmanifest_{app_id}.acf");
+            std::iter::once(install.to_path_buf())
+                .chain(library_folders(&install.join("steamapps").join("libraryfolders.vdf")))
+                .any(|lib| lib.join("steamapps").join(&manifest).is_file())
+        };
+        let found = if valid_id { installs.iter().find(has_game_folder).or_else(|| installs.iter().find(holds_game)) } else { None };
+        found.or(installs.first()).map(|i| i.join("userdata"))
+    }
+
     /// Folder of an installed Steam game: `steamapps/common/<installdir>` of
     /// the first library whose `appmanifest_<id>.acf` lists it.
     pub fn install_dir(&self, app_id: &str) -> Option<PathBuf> {
@@ -766,6 +790,44 @@ mod tests {
         assert!(is_steam_app_installed(&loc, "730"));
         assert!(!is_steam_app_installed(&loc, "9"));
         assert_eq!(loc.install_dir("1245620"), Some(hdd.join("steamapps/common/ELDEN RING")));
+    }
+
+    /// Restoring a Steam game's saves goes to the `userdata` of the Steam that
+    /// has the game, not to a stale chosen folder.
+    #[test]
+    fn userdata_of_the_install_that_has_the_game() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        let stale = home.join(".steam/steam");
+        let snap = snap_steam_root(&home);
+        let hdd = dir.path().join("media/HDD/SteamLibrary");
+        for install in [&stale, &snap] {
+            fs::create_dir_all(install.join("config")).unwrap();
+            fs::create_dir_all(install.join("userdata/111")).unwrap();
+        }
+        write(
+            &snap.join("steamapps/libraryfolders.vdf"),
+            &format!("\"libraryfolders\" {{ \"0\" {{ \"path\" \"{}\" }} \"1\" {{ \"path\" \"{}\" }} }}", vdf_path(&snap), vdf_path(&hdd)),
+        );
+        write(&hdd.join("steamapps/appmanifest_1245620.acf"), &acf("1245620", "ELDEN RING", "4"));
+        write(&stale.join("steamapps/appmanifest_400.acf"), &acf("400", "Portal", "4"));
+        fs::create_dir_all(snap.join("userdata/111/620/remote")).unwrap();
+        let loc = SteamLocator {
+            home: home.clone(),
+            steam_path: stale.clone(),
+            system_roots: vec![],
+            platform_roots: vec![stale.clone(), snap.clone()],
+        };
+        assert_eq!(loc.userdata_dir("1245620"), Some(snap.join("userdata")), "its library is listed by the Snap");
+        assert_eq!(loc.userdata_dir("620"), Some(snap.join("userdata")), "the Snap has its cloud saves (not installed)");
+        assert_eq!(loc.userdata_dir("400"), Some(stale.join("userdata")), "installed in the chosen folder");
+        assert_eq!(loc.userdata_dir("9"), Some(stale.join("userdata")), "unknown game: the chosen folder");
+        assert_eq!(loc.userdata_dir("../x"), Some(stale.join("userdata")), "not an id: the chosen folder");
+        // The chosen folder without `userdata`: the other install.
+        fs::remove_dir_all(stale.join("userdata")).unwrap();
+        assert_eq!(loc.userdata_dir("400"), Some(snap.join("userdata")));
+        let none = SteamLocator { home: home.clone(), steam_path: home.join("missing"), system_roots: vec![], platform_roots: vec![] };
+        assert_eq!(none.userdata_dir("400"), None);
     }
 
     /// A manifest left in the main library (a move to another drive that
