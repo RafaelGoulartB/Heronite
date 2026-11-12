@@ -73,6 +73,10 @@ impl MetadataService {
         let regions = box_regions(d, &ctx);
         let base = &self.http.endpoints.launchbox_images;
         let files: Vec<String> = lb_map::pictures_for(&lb, kind).into_iter().take(MAX_PICTURES).map(|i| i.file.clone()).collect();
+        // Only the pictures listed (and sized): another kind's stay.
+        let mut lb = lb;
+        let listed = lb_map::pictures_for(&lb, kind).into_iter().map(|i| i.file.clone()).collect::<Vec<_>>();
+        lb.images.retain(|i| files.contains(&i.file) || !listed.contains(&i.file));
         let mut sizes: Vec<(String, Option<(u32, u32)>)> = Vec::new();
         for batch in files.chunks(AT_ONCE) {
             std::thread::scope(|s| {
@@ -81,8 +85,6 @@ impl MetadataService {
             });
         }
         let size_of = |img: &launchbox::index::LbImage| sizes.iter().find(|(f, _)| *f == img.file).and_then(|(_, s)| *s);
-        let mut out = lb_map::choices(&lb, kind, &regions, base, size_of);
-        out.truncate(MAX_PICTURES);
-        out
+        lb_map::choices(&lb, kind, &regions, base, size_of)
     }
 }

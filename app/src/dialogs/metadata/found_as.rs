@@ -110,7 +110,7 @@ impl MetadataDialog {
                     .join(" \u{b7} ");
                 let left_out = !used;
                 let how = if left_out && !review {
-                    tr!("{game} (left out: another game)", game = hit.title.clone().unwrap_or_default())
+                    tr!("{game} (left out: another game)", game = hit.title.clone().unwrap_or_else(|| full.clone()))
                 } else if agreed.is_some_and(|a| a.is(hit)) {
                     sure = true;
                     [by.map(str::to_owned), platform].into_iter().flatten().collect::<Vec<_>>().join(" \u{b7} ")

@@ -53,14 +53,16 @@ const PNG: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
 
 /// The size of the picture at `url`, from the first bytes of the answer
 /// (read until [`read_head`] knows, at most [`HEAD_MAX`]; the rest is
-/// dropped, for servers that ignore `Range`). `Err`: no answer, or an HTTP
-/// error; `Ok(None)`: not a picture whose size can be read.
+/// dropped, for servers that ignore `Range`). `Err`: no answer, or one to
+/// ask again (a server error, a timeout, too many requests); `Ok(None)`:
+/// no picture whose size can be read there (gone, refused, not a picture).
 pub fn fetch_size(http: &Http, url: &str) -> Result<Option<(u32, u32)>> {
     let r = http.get(url).header("User-Agent", APP_UA).timeout(HEAD_TIMEOUT).send_head(HEAD_MAX, |head| read_head(head) != Head::More)?;
-    if !r.ok() {
-        anyhow::bail!("HTTP {}", r.status);
+    match r.status {
+        _ if r.ok() => Ok(picture_size(&r.body)),
+        408 | 429 | 500.. => anyhow::bail!("HTTP {}", r.status),
+        _ => Ok(None),
     }
-    Ok(picture_size(&r.body))
 }
 
 /// The size of the picture in the file `path`, from its first bytes.

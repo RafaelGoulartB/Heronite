@@ -210,7 +210,10 @@ impl MetadataDialog {
             _ => self.pick(field),
         };
         let Some(choice) = choices.iter().find(|c| c.ids.contains(&shown) || c.pick == shown) else {
-            return col.child(div().text_size(px(12.)).text_color(theme::text_dim()).child(tr!("No source has it")));
+            // No source, or keeping what the game has, which is nothing (a
+            // locked field, or one the merge leaves as it is).
+            let text = if choices.is_empty() { tr!("No source has it") } else { tr!("Empty") };
+            return col.child(div().text_size(px(12.)).text_color(theme::text_dim()).child(text));
         };
         let url = self.value_of(field, &choice.pick);
         let size = self.size_of(&url);

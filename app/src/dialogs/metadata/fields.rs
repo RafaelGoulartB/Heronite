@@ -291,11 +291,14 @@ impl MetadataDialog {
                 }
                 list = list.child(caption(tr!("Pictures")).mt(px(0.))).child(card().child(rows));
             }
-            let mut rows = div().flex().flex_col().mb(px(-1.)).child(header);
-            for field in fields.into_iter().filter(|f| !is_picture(f)) {
-                rows = rows.child(self.field_row(field, cx));
+            let details: Vec<&'static str> = fields.into_iter().filter(|f| !is_picture(f)).collect();
+            if !details.is_empty() {
+                let mut rows = div().flex().flex_col().mb(px(-1.)).child(header);
+                for field in details {
+                    rows = rows.child(self.field_row(field, cx));
+                }
+                list = list.child(caption(tr!("Details")).when(first, |d| d.mt(px(0.)))).child(card().child(rows));
             }
-            list = list.child(caption(tr!("Details")).when(first, |d| d.mt(px(0.)))).child(card().child(rows));
         }
         div().flex().flex_col().flex_1().min_w_0().min_h_0().child(list)
     }

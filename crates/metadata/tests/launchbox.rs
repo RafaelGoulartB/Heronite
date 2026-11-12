@@ -99,6 +99,8 @@ fn mock(published: Arc<Mutex<Published>>, sizes: Arc<Mutex<HashMap<String, (u16,
     let base: Arc<OnceLock<String>> = Arc::new(OnceLock::new());
     let b = base.clone();
     let server = Server::start(move |req: &Req| match req.path() {
+        "/lbimages/gone.jpg" => Resp::status(404),
+        "/lbimages/busy.jpg" => Resp::status(503),
         p if p.starts_with("/lbimages/") => {
             let file = p.trim_start_matches("/lbimages/");
             let (w, h) = sizes.lock().get(file).copied().unwrap_or((1000, 1400));
@@ -577,4 +579,20 @@ fn the_covers_dialog_offers_every_regions_box() {
     assert!(s.svc.launchbox_pictures(&args("hk", "Hollow Knight"), "Hollow Knight", ArtKind::Cover).is_empty());
     s.svc.set_source_enabled("launchbox", false).unwrap();
     assert!(s.svc.launchbox_pictures(&game, "Super Metroid", ArtKind::Cover).is_empty());
+}
+
+/// A picture the image server does not have is remembered as such (asked
+/// once); one it could not answer for now is asked again.
+#[test]
+fn a_missing_picture_is_asked_once() {
+    let s = setup();
+    let lb = launchbox::LaunchBox::new();
+    let base = format!("{}/lbimages", s.server.base);
+    let asked = |file: &str| s.server.count(|r| r.path() == format!("/lbimages/{file}"));
+    for _ in 0..2 {
+        assert_eq!(lb.picture_size(&s.svc.http, &base, "gone.jpg"), None);
+        assert_eq!(lb.picture_size(&s.svc.http, &base, "busy.jpg"), None);
+    }
+    assert_eq!((asked("gone.jpg"), asked("busy.jpg")), (1, 2));
+    assert_eq!(lb.picture_size(&s.svc.http, &base, METROID_NA), Some((4209, 2937)));
 }

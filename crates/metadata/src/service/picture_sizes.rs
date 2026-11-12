@@ -1,7 +1,8 @@
 //! The sizes of the pictures a dialog shows (the Metadata dialog's covers
 //! and backgrounds), read from each picture's first bytes
-//! ([`crate::picture_size`]) and remembered while the app runs: an address
-//! keeps its picture, and a local copy is one file for good.
+//! ([`crate::picture_size`]). A web address keeps its picture: its size is
+//! remembered while the app runs. A local copy is read each time (a few
+//! bytes of a file): a fetch writes a new picture under the same name.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -22,9 +23,10 @@ pub(super) struct Sizes(Mutex<HashMap<String, Option<(u32, u32)>>>);
 
 impl MetadataService {
     /// The size of each picture of `urls` (`http(s)`, `localart://`, a
-    /// `file:` address or a path), read from its first bytes, a few at once,
-    /// and remembered. `None` for one that cannot be read: not a picture, a
-    /// missing file, or no answer (asked again next time). Blocking.
+    /// `file:` address or a path), read from its first bytes, a few at once
+    /// (a web address's remembered). `None` for one that cannot be read: not
+    /// a picture, a missing file, or no answer (asked again next time).
+    /// Blocking.
     pub fn picture_sizes(&self, urls: &[String]) -> Vec<(String, Option<(u32, u32)>)> {
         let mut out: Vec<(String, Option<(u32, u32)>)> = Vec::new();
         let mut unknown: Vec<&String> = Vec::new();
@@ -39,32 +41,36 @@ impl MetadataService {
             }
         }
         for batch in unknown.chunks(AT_ONCE) {
-            let read: Vec<(String, Option<Option<(u32, u32)>>)> = std::thread::scope(|s| {
+            let read: Vec<(String, Read)> = std::thread::scope(|s| {
                 let reads: Vec<_> = batch.iter().map(|url| (*url, s.spawn(move || self.read_size(url)))).collect();
-                reads.into_iter().map(|(url, r)| (url.clone(), r.join().ok().flatten())).collect()
+                reads.into_iter().map(|(url, r)| (url.clone(), r.join().unwrap_or(Read::Unanswered))).collect()
             });
             let mut known = self.sizes.0.lock();
-            for (url, size) in read {
-                if let Some(size) = size {
-                    if known.len() >= CAP {
-                        known.clear();
+            for (url, read) in read {
+                let size = match read {
+                    Read::Remembered(size) => {
+                        if known.len() >= CAP {
+                            known.clear();
+                        }
+                        known.insert(url.clone(), size);
+                        size
                     }
-                    known.insert(url.clone(), size);
-                }
-                out.push((url, size.flatten()));
+                    Read::Once(size) => size,
+                    Read::Unanswered => None,
+                };
+                out.push((url, size));
             }
         }
         out
     }
 
-    /// One picture's size: `None` when it got no answer (not remembered).
-    fn read_size(&self, url: &str) -> Option<Option<(u32, u32)>> {
+    fn read_size(&self, url: &str) -> Read {
         if url.starts_with("http://") || url.starts_with("https://") {
             return match fetch_size(&self.http, url) {
-                Ok(size) => Some(size),
+                Ok(size) => Read::Remembered(size),
                 Err(e) => {
                     log::info!("Picture size of {} not read: {e:#}", url.split(['?', '#']).next().unwrap_or(url));
-                    None
+                    Read::Unanswered
                 }
             };
         }
@@ -74,8 +80,18 @@ impl MetadataService {
             let rest = url.strip_prefix("file://").or_else(|| url.strip_prefix("file:")).unwrap_or(url);
             Some(PathBuf::from(heronite_data::paths::percent_decode(rest)))
         };
-        Some(path.and_then(|p| file_size(&p)))
+        Read::Once(path.and_then(|p| file_size(&p)))
     }
+}
+
+/// What reading one picture's size gave.
+enum Read {
+    /// A web address's answer, kept while the app runs.
+    Remembered(Option<(u32, u32)>),
+    /// A local file's, read again next time.
+    Once(Option<(u32, u32)>),
+    /// No answer: asked again next time.
+    Unanswered,
 }
 
 #[cfg(test)]
@@ -102,8 +118,10 @@ mod tests {
         ];
         let sizes = svc.picture_sizes(&urls);
         assert_eq!(sizes, [(urls[0].clone(), Some((1400, 1240))), (urls[1].clone(), None), (urls[2].clone(), None)]);
-        // Remembered: the file gone, the size stays.
-        std::fs::remove_file(art.join("cover-square.png")).unwrap();
-        assert_eq!(svc.picture_sizes(&urls[..1]), [(urls[0].clone(), Some((1400, 1240)))]);
+        // A fetch writes another picture under the same name: read again.
+        png[16..20].copy_from_slice(&600u32.to_be_bytes());
+        png[20..24].copy_from_slice(&900u32.to_be_bytes());
+        std::fs::write(art.join("cover-square.png"), &png).unwrap();
+        assert_eq!(svc.picture_sizes(&urls[..1]), [(urls[0].clone(), Some((600, 900)))]);
     }
 }
