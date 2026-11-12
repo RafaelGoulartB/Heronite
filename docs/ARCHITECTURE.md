@@ -312,8 +312,9 @@ text size) and applies it.
   that asks the launcher to start them, the launcher's play time moves up
   when it is ahead, and a game gone from the launcher stays as not
   installed. `heroic` copies the games added by hand in Heroic (they start
-  here, with their `GamesConfig`) and adds its Epic, GOG and Amazon install
-  records to this app's. Which launchers are imported lives in
+  here) and adds its Epic, GOG and Amazon install records to this app's;
+  each of those games gets Heroic's `GamesConfig` (its Wine prefix) while
+  it has none here. Which launchers are imported lives in
   `local_library/launcher-imports.json`; the app's `services::launcher_imports`
   keeps them in sync. A `launcher` game's plan is a native process with a
   `Handoff`: when the launcher returns at once (Lutris already open passes
