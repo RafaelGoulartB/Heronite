@@ -1,15 +1,18 @@
 //! A LaunchBox game as a candidate's record and as a search hit: the
-//! fields it fills, its score, its game modes, and which box art region
-//! is shown.
+//! fields it fills, its score, its game modes, which box art region is
+//! shown and which cover family its shape fills; and its pictures as the
+//! Covers dialog offers them.
 
+use heronite_data::cover_family::CoverFamily;
 use heronite_data::models::CollectionGameMetadata;
 use heronite_data::num::JsNum;
 use heronite_i18n::Lang;
 
 use super::index::{ImageKind, LbGame, LbImage};
 use super::SOURCE;
+use crate::picture_size::family_of;
 use crate::platforms::{self, Database};
-use crate::types::{release_year, SourceHit};
+use crate::types::{release_year, ArtKind, RegionImage, SourceHit, WebImage};
 use crate::util::{blank_metadata, encode_uri_component, unique_names12};
 
 /// The fewest votes a community rating needs to be a score: two thirds of
@@ -80,8 +83,14 @@ fn pick<'a>(images: &'a [LbImage], kinds: &[ImageKind], order: &[String]) -> Opt
     kinds.iter().find_map(|kind| images.iter().filter(|i| i.kind == *kind).min_by_key(|i| (rank(i), i.file.as_str())))
 }
 
+/// The box art of `game` in the best region of `order` (a box made up
+/// from scans when no region has a real one).
+pub fn box_front<'a>(game: &'a LbGame, order: &[String]) -> Option<&'a LbImage> {
+    pick(&game.images, &[ImageKind::BoxFront, ImageKind::BoxFrontReconstructed], order)
+}
+
 /// LaunchBox's picture address of `file`.
-fn image_url(base: &str, file: &str) -> String {
+pub(crate) fn image_url(base: &str, file: &str) -> String {
     let path: Vec<String> = file.split('/').map(encode_uri_component).collect();
     format!("{}/{}", base.trim_end_matches('/'), path.join("/"))
 }
@@ -120,7 +129,19 @@ pub fn platform_name(lb: &str) -> String {
 }
 
 /// What the source fills for `game`, with box art of `regions`' order.
-pub fn record(app_name: &str, runner: &str, game: &LbGame, regions: &[String], images_base: &str) -> CollectionGameMetadata {
+/// The box art is the tall cover (as it always was, whatever its shape)
+/// and, when `box_family` (the family its size says, when read) is the
+/// square or the wide one, that family's cover too: a CD case or a
+/// landscape box is the game's real square or wide cover, ahead of the
+/// square art LaunchBox has for some games.
+pub fn record(
+    app_name: &str,
+    runner: &str,
+    game: &LbGame,
+    regions: &[String],
+    images_base: &str,
+    box_family: Option<CoverFamily>,
+) -> CollectionGameMetadata {
     let mut md = blank_metadata(app_name, runner);
     let d = &game.detail;
     md.title = Some(game.name.clone());
@@ -133,10 +154,51 @@ pub fn record(app_name: &str, runner: &str, game: &LbGame, regions: &[String], i
     md.critic_score = score(d.rating, d.votes);
     md.platforms = vec![platform_name(&game.platform)];
     let url = |img: &LbImage| image_url(images_base, &img.file);
-    md.cover_url = pick(&game.images, &[ImageKind::BoxFront, ImageKind::BoxFrontReconstructed], regions).map(url);
+    let front = box_front(game, regions);
+    md.cover_url = front.map(url);
     md.hero_url = pick(&game.images, &[ImageKind::Background], regions).map(url);
-    md.cover_square_url = pick(&game.images, &[ImageKind::Square], regions).map(url);
+    let shaped = |family: CoverFamily| front.filter(|_| box_family == Some(family)).map(url);
+    md.cover_square_url = shaped(CoverFamily::Square).or_else(|| pick(&game.images, &[ImageKind::Square], regions).map(url));
+    md.cover_wide_url = shaped(CoverFamily::Wide);
     md
+}
+
+/// The pictures of `game` the Covers dialog offers for a picture of
+/// `kind`: every region's box art for a cover (and LaunchBox's square art
+/// for the square one), the backgrounds for a background.
+pub fn pictures_for(game: &LbGame, kind: ArtKind) -> Vec<&LbImage> {
+    let kinds: &[ImageKind] = match kind {
+        ArtKind::Hero => &[ImageKind::Background],
+        ArtKind::CoverSquare => &[ImageKind::BoxFront, ImageKind::BoxFrontReconstructed, ImageKind::Square],
+        ArtKind::Cover | ArtKind::CoverWide => &[ImageKind::BoxFront, ImageKind::BoxFrontReconstructed],
+    };
+    game.images.iter().filter(|i| kinds.contains(&i.kind)).collect()
+}
+
+/// [`pictures_for`] as the dialog lists them, with their sizes from `size`
+/// (0 x 0 when not read):
+/// for a cover, those of the cover's shape first; then by `regions`' order,
+/// real boxes before made-up ones.
+pub fn choices(
+    game: &LbGame,
+    kind: ArtKind,
+    regions: &[String],
+    images_base: &str,
+    size: impl Fn(&LbImage) -> Option<(u32, u32)>,
+) -> Vec<RegionImage> {
+    let rank = |img: &LbImage| regions.iter().position(|r| *r == img.region).unwrap_or(regions.len());
+    let mut out: Vec<(bool, usize, ImageKind, RegionImage)> = pictures_for(game, kind)
+        .into_iter()
+        .map(|img| {
+            let (width, height) = size(img).unwrap_or((0, 0));
+            let off_shape = kind.family().is_some_and(|f| width == 0 || family_of(width, height) != f);
+            let url = image_url(images_base, &img.file);
+            let image = WebImage { thumb_url: url.clone(), image_url: url, width, height };
+            (off_shape, rank(img), img.kind, RegionImage { region: img.region.clone(), image })
+        })
+        .collect();
+    out.sort_by(|a, b| (a.0, a.1, a.2 as u8, &a.3.image.image_url).cmp(&(b.0, b.1, b.2 as u8, &b.3.image.image_url)));
+    out.into_iter().map(|(.., c)| c).collect()
 }
 
 /// `game` as a search hit: its platform shown, its box art as the thumbnail.
@@ -147,8 +209,7 @@ pub fn hit(game: &LbGame, regions: &[String], images_base: &str) -> SourceHit {
         title: Some(game.name.clone()),
         year: release_year(game.released.as_deref()),
         platform: Some(platform_name(&game.platform)),
-        thumb_url: pick(&game.images, &[ImageKind::BoxFront, ImageKind::BoxFrontReconstructed], regions)
-            .map(|i| image_url(images_base, &i.file)),
+        thumb_url: box_front(game, regions).map(|i| image_url(images_base, &i.file)),
         matched_by: None,
         alt_title: None,
         thumb_adult: false,

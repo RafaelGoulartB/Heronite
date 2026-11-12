@@ -93,7 +93,7 @@ fn cover_families_by_source() {
     let reg = registry();
     let gives = |field: &str| reg.descriptors().filter(|d| d.provides(field)).map(|d| d.id.as_str()).collect::<Vec<_>>();
     assert_eq!(gives("coverSquare"), ["launchbox", "steamgriddb", "libretro"]);
-    assert_eq!(gives("coverWide"), ["steam", "store", "steamgriddb", "libretro"]);
+    assert_eq!(gives("coverWide"), ["steam", "store", "launchbox", "steamgriddb", "libretro"]);
     // The tall cover keeps its sources; IGDB and Lutris give only that one.
     assert_eq!(gives("cover"), ["igdb", "steam", "store", "lutris", "playnite", "launchbox", "steamgriddb", "libretro", "webimages"]);
     // No background: its screenshots are 240 to 512 px wide.

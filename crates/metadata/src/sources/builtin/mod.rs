@@ -24,6 +24,7 @@ use crate::lutris::{fetch_lutris_metadata, search_lutris};
 use crate::providers::{fetch_playnite_metadata, metadata_from_store_game, PlayniteSource, StoreLibraries};
 use crate::steam::{self, SteamState};
 use crate::types::{ArtKind, Lookup, MatchedBy, MetadataCandidate, SourceHit};
+pub(crate) use launchbox_source::box_regions;
 use launchbox_source::{region_label, LaunchBoxSource};
 use libretro_source::LibretroSource;
 
@@ -184,7 +185,7 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
             also_for: Some(AlsoFor { option: PC_GAMES.into(), applies_to: AppliesTo::Pc }),
             leads_for: Some(AppliesTo::Emulated),
             about: Some(n_!(
-                "The LaunchBox Games Database (gamesdb.launchbox-app.com), made for emulated games: it knows each platform's games by their dump names, with box art by region. Downloaded once to this PC and refreshed every week while it is on. Heronite is not affiliated with LaunchBox."
+                "The LaunchBox Games Database (gamesdb.launchbox-app.com), made for emulated games: it knows each platform's games by their dump names, with box art by region. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Downloaded once to this PC and refreshed every week while it is on. Heronite is not affiliated with LaunchBox."
             )
             .into()),
             options: vec![
@@ -216,6 +217,7 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
                     "cover",
                     "hero",
                     "coverSquare",
+                    "coverWide",
                 ],
             )
         },

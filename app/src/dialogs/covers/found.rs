@@ -1,7 +1,8 @@
 //! The right column: for the picked slot, the picture it shows now, then
-//! the pictures SteamGridDB and the web found for it, each in the slot's
-//! shape with its source's mark and size, a search field and "Load more".
-//! A family that is not kept offers to keep it instead.
+//! the pictures LaunchBox (the game's boxes of every region), SteamGridDB
+//! and the web found for it, each in the slot's shape with its source's
+//! mark, its region and its size, a search field and "Load more". A family
+//! that is not kept offers to keep it instead.
 
 use std::time::Duration;
 
@@ -25,6 +26,11 @@ use crate::ui::icon;
 /// Pictures listed before the first "Load more", and added by each.
 pub(super) const PAGE: usize = 15;
 
+const LAUNCHBOX: &str = heronite_metadata::launchbox::SOURCE;
+
+/// A found picture as a tile draws it: its source, region and picture.
+type Tile = (&'static str, String, WebImage);
+
 /// Width of a found picture of each slot (its height follows the shape).
 fn tile_w(slot: Slot) -> f32 {
     match slot {
@@ -34,15 +40,28 @@ fn tile_w(slot: Slot) -> f32 {
     }
 }
 
+/// A picture found: its source, the region it is of (LaunchBox's box art;
+/// `""` for none) and the picture.
+pub(super) struct Found<'a> {
+    pub(super) source: &'static str,
+    pub(super) region: &'a str,
+    pub(super) image: &'a WebImage,
+}
+
 impl CoversDialog {
-    /// Every picture found for the slot, SteamGridDB's first, with its source.
-    pub(super) fn found(&self) -> Vec<(&'static str, &WebImage)> {
-        let sgdb = self.results.steamgrid.iter().map(|i| (ids::STEAMGRIDDB, i));
-        sgdb.chain(self.results.web.iter().map(|i| (ids::WEB_IMAGES, i))).collect()
+    /// Every picture found for the slot: the game's boxes from LaunchBox
+    /// first, then SteamGridDB's and the web's.
+    pub(super) fn found(&self) -> Vec<Found<'_>> {
+        let r = &self.results;
+        let launchbox = r.launchbox.iter().map(|c| Found { source: LAUNCHBOX, region: &c.region, image: &c.image });
+        let sgdb = r.steamgrid.iter().map(|image| Found { source: ids::STEAMGRIDDB, region: "", image });
+        let web = r.web.iter().map(|image| Found { source: ids::WEB_IMAGES, region: "", image });
+        launchbox.chain(sgdb).chain(web).collect()
     }
 
     fn sources_found(&self) -> usize {
-        usize::from(!self.results.steamgrid.is_empty()) + usize::from(!self.results.web.is_empty())
+        let r = &self.results;
+        [r.launchbox.is_empty(), r.steamgrid.is_empty(), r.web.is_empty()].iter().filter(|empty| !**empty).count()
     }
 
     /// The source's mark and a few words under a picture.
@@ -88,10 +107,13 @@ impl CoversDialog {
         Some(Self::tile_frame("cv-now".into(), false).w(px(w + 12.)).child(pic).child(self.tile_label(None, text)))
     }
 
-    fn found_tile(&mut self, i: usize, source: &'static str, image: WebImage, w: f32, h: f32, cx: &mut Context<Self>) -> Stateful<Div> {
+    fn found_tile(&mut self, i: usize, (source, region, image): Tile, w: f32, h: f32, cx: &mut Context<Self>) -> Stateful<Div> {
         let selected = self.selected == Some(i);
         let pic = self.picture_box("found", &[ImageRef::Url(image.thumb_url.clone())], w, h, cx);
-        let size = if image.width > 0 && image.height > 0 { format!("{}\u{d7}{}", image.width, image.height) } else { String::new() };
+        let size = (image.width > 0 && image.height > 0).then(|| format!("{}\u{d7}{}", image.width, image.height));
+        // LaunchBox's region names are English; the ones Settings offers are translated.
+        let region = (!region.is_empty()).then(|| heronite_i18n::tr(&region).to_owned());
+        let size = region.into_iter().chain(size).collect::<Vec<_>>().join(" \u{b7} ");
         Self::tile_frame(SharedString::from(format!("cv-found-{i}")), selected)
             .w(px(w + 12.))
             .cursor_pointer()
@@ -201,11 +223,11 @@ impl CoversDialog {
         let h = (w / self.slot.aspect()).round();
         let mut tiles = div().flex().flex_wrap().gap(px(8.));
         tiles = tiles.children(self.now_tile(w, h, cx));
-        let found: Vec<(&'static str, WebImage)> = self.found().into_iter().map(|(s, i)| (s, i.clone())).collect();
+        let found: Vec<Tile> = self.found().into_iter().map(|f| (f.source, f.region.to_owned(), f.image.clone())).collect();
         let total = found.len();
         if !self.loading {
-            for (i, (source, image)) in found.into_iter().take(self.visible).enumerate() {
-                tiles = tiles.child(self.found_tile(i, source, image, w, h, cx));
+            for (i, tile) in found.into_iter().take(self.visible).enumerate() {
+                tiles = tiles.child(self.found_tile(i, tile, w, h, cx));
             }
         }
         let mut grid = div().id("cv-grid").flex().flex_col().gap(px(10.)).flex_1().min_h_0().overflow_y_scroll().pr(px(4.)).child(tiles);

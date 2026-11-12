@@ -74,12 +74,12 @@ pub const ALL_FIELDS: [&str; 16] = [
 pub const SOURCE_IDS: [&str; 7] = ["igdb", "steam", "store", "playnite", "lutris", "launchbox", "manual"];
 
 /// Sources added after `fieldPriority` lists were already saved in
-/// every settings file (the lists are written whole). A saved list that is
-/// the default without them still reads as the default, and a list the
-/// user set that lacks one gets it at the end where the default names it
-/// (see `heronite_metadata::sources::order`), so a new source fills those
-/// fields without a migration of the file. In the order they were added: a
-/// list saved between two of them lacks only the later ones.
+/// every settings file (the lists are written whole), to some fields or
+/// later to more fields (LaunchBox to the wide cover after libretro). A
+/// saved list that is the default without some of them still reads as the
+/// default, and a list the user set that lacks one gets it at the end
+/// where the default names it (see `heronite_metadata::sources::order`),
+/// so a new source fills those fields without a migration of the file.
 pub const ADDED_SOURCES: [&str; 2] = ["launchbox", "libretro"];
 
 /// Ids of extensions that the default lists of some saved files name, as
@@ -110,10 +110,10 @@ pub fn default_field_priority(field: &str) -> Vec<String> {
         "ageRatings" => &["igdb", "steam"],
         "cover" => &["igdb", "steam", "lutris", "playnite", "store", "launchbox", "libretro"],
         "hero" => &["igdb", "steam", "lutris", "playnite", "launchbox"],
-        // Official art first (Steam's header, the store's wide box art),
-        // then SteamGridDB's.
         "coverSquare" => &["steamgriddb", "launchbox", "libretro"],
-        "coverWide" => &["steam", "store", "steamgriddb", "libretro"],
+        // Official art first (Steam's header, the store's wide box art,
+        // LaunchBox's landscape boxes), then SteamGridDB's.
+        "coverWide" => &["steam", "store", "launchbox", "steamgriddb", "libretro"],
         _ => &[],
     };
     list.iter().map(|s| s.to_string()).collect()
@@ -752,7 +752,7 @@ mod tests {
         let v = json_store::read_value(&paths.collection_settings()).unwrap();
         assert_eq!(v["metadata"]["keepCoverFamilies"], json!(["wide"]));
         assert_eq!(v["metadata"]["fillCoverFamilies"], true);
-        assert_eq!(v["metadata"]["fieldPriority"]["coverWide"], json!(["steam", "store", "steamgriddb", "libretro"]));
+        assert_eq!(v["metadata"]["fieldPriority"]["coverWide"], json!(["steam", "store", "launchbox", "steamgriddb", "libretro"]));
         let s = set_fill_cover_families(&paths, false).unwrap();
         assert!(!s.metadata.fill_cover_families);
         let v = json_store::read_value(&paths.collection_settings()).unwrap();

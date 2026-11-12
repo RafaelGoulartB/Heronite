@@ -6,8 +6,9 @@
 //!   dot (its own picture, cropped from another, none); a family that is not
 //!   kept says so and can be turned on. Then the background.
 //! - Right (`found.rs`): for the picked slot, the picture it shows now, then
-//!   what SteamGridDB and the web found for it (in its shape), a search field
-//!   and "Load more". "Use for <family>" saves the one picked.
+//!   what LaunchBox (the game's boxes of every region), SteamGridDB and the
+//!   web found for it (in its shape), a search field and "Load more". "Use
+//!   for <family>" saves the one picked.
 //! - Footer: "Choose a file…", "From a screenshot…" and "Reset" (back to
 //!   what the sources gave) for the slot, Close.
 //!
