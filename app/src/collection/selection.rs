@@ -29,7 +29,7 @@ use crate::dialogs::DialogEvent;
 pub(super) enum DockPop {
     Status,
     Categories,
-    /// "Fill what is missing" and "More options…" (`metadata_menu.rs`).
+    /// "Fill what is missing" and "Update metadata…" (`metadata_menu.rs`).
     Metadata,
 }
 

@@ -475,7 +475,7 @@ the UI thread (once per selection, when the menu first opens), or "Nothing is mi
 disabled. Enter does it while the popover is open (the dock's rows show the key; the context menu's do not).
 "Fix matches…" (hint "Check which game each one is", or "3 of these wait for review" when some of the selection are in
 the review queue) opens "Review matches" on the selection: the games waiting for review first, then the others, whose
-proposals are asked from the sources live (`fix_selection_matches`). "More options…" (hint "Pick the games, fields and
+proposals are asked from the sources live (`fix_selection_matches`). "Update metadata…" (hint "Pick the games, fields and
 sources") opens "Update metadata" on the selection. The selection's context menu has the same rows in its
 "Metadata" flyout (hover or click, like Status and Categories).
 "Download square covers" (or wide; a row after "Fill what is missing" for each family a view draws, other than the
@@ -488,7 +488,7 @@ missing" also fills the kept families.
 **Update metadata** (`dialogs/metadata_update/`: `mod.rs` the dialog and its stepper, `games.rs`, `what.rs` and
 `results.rs` the three steps, `words.rs` how an outcome reads, shared with the pill, `hub.rs` the owner of the jobs,
 `fake.rs` the debug jobs): one dialog, 760px, to update the details and pictures of several games. It opens from the
-Metadata popover's "More options…" (on the selection), from the palette's "Update metadata…" (Actions; on the selection
+Metadata popover's "Update metadata…" (on the selection), from the palette's "Update metadata…" (Actions; on the selection
 when games are selected, else on the games on screen) and from Settings → Metadata's "Update metadata…" (on the games on
 screen); opened while an update runs, or from the pill's "See all", it goes straight to step 3. A stepper of three
 numbered pills (Games, What to update, Update) heads it: the active one is tinted and any other is clicked when it can be
@@ -629,9 +629,12 @@ context menu's and the palette's "Metadata" (a game action) and from Game settin
 it over the drawer (Apply then updates the drawer's details). It asks every source when it opens ("Asking every
 source…"), and again after a match is pinned and after "Search every source again". The head has the cover, the title and
 "Steam · last updated 3 weeks ago".
-- **Found as** (left, 310px): a row per details source that was asked: its mark, its name and the game it matched ("Hades
-  · 2020 · by its Steam id"; after the title and year, how it found it: "by its id", "by its Steam id", "by ROM hash",
-  "by name" or "by a similar name"), or "Not found" or "Could not be reached". "Change" (on a found match) and "Search" (on
+- **Found as** (left, 310px): the game most of the sources the merge uses found, once (its title, the year muted; titles
+  compared by letters and digits, the first source wins a tie), then one card with a 30 px line per details source that
+  was asked: its 18 px mark, its name and only what differs from that game: for the same game a green check and how it
+  found it ("by its id", "by its Steam id", "by ROM hash", "by name", "by a similar name", and the platform for a source
+  of emulated games), for another name "as “…”" with its year and how, or "Not found" or "Could not be reached". The
+  line's tooltip has the whole match ("Hades · 2020 · by its Steam id"). "Change" (on a found match) and "Search" (on
   a source that found nothing) are on sources that can be searched. A pinned match, one the user chose, has a pin with the
   tooltip "Pinned: every update uses this game". A match the merge ignored because it is another game than the others
   found is amber and reads "(left out: another game)" (not while the game waits for review, where nothing is merged).
@@ -648,12 +651,21 @@ source…"), and again after a match is pinned and after "Search every source ag
   unpins it. A line says why there are no hits ("Nothing found for “zelda”.", "This source is off.", "This source needs a
   key: add it in Settings → Metadata.", "Could not reach this source. Check your connection and try again."). Esc closes
   Change, then an open select, then the dialog.
-- **The fields** (right): a header (Field, What will be saved, Source), then a row per field that has a value now or
-  from some source, in the usual order, with a cover row per kept family after the tall one, "Cover · Tall", "Cover ·
-  Square" and "Cover · Wide" (the tall one always, the others even when no source has a picture of that shape), and
-  "Choose covers…" under the tall row's name, which opens "Covers" over this dialog (Esc closes it first; a picture set
-  there reaches the drawer behind): the field's name, the value that will be saved (two lines at most, "Empty" when
-  none; a cover or a background as a small picture), where it comes from, and the lock. Sources with the same value are
+- **The fields** (right), in one list that scrolls, as two captioned cards like Settings' (`ui::controls::caption`). First
+  "Pictures" (`pictures.rs`): a cover row per kept family,
+  "Cover · Tall", "Cover · Square" and "Cover · Wide" (the tall one always, the others even when no source has a
+  picture of that shape), then "Background" when it has a value; each row has "More options…" under its name, which
+  opens "Covers" over this dialog on that picture's slot (Esc closes it first; a picture set there reaches the drawer
+  behind). Each value is a tile in the picture's own shape, every tile 60 px high so the rows stay low, with the
+  sources' marks over its corner ("Now" when only the game has it); a click picks it (accent border and check), and
+  the tile under the pointer shows its details beside the tiles: who has it ("· now" when the game has it), its size (read from the picture's first bytes,
+  `MetadataService::picture_sizes`, "…" while read) and badges: "Own shape" (green) or "Cropped: the picture is
+  square / wide / tall" (amber; a background is meant to be wide), "Low resolution" (amber: under 200 px on a cover's
+  short side, under 960 px of a background's width), and "Set in Covers" (tooltip "Your picture from Covers is shown
+  instead") when a picture set by hand wins. The tiles are one row; those that do not fit scroll sideways. A tile whose size says it is cropped or low resolution has an amber warning in its corner. Then
+  the "Details" card: a header (Field, What will be saved, Source) and a row per other field that has a value now or from some
+  source, in the usual order: the field's name, the value that will be saved (two lines at most, "Empty" when
+  none), where it comes from, and the lock. Sources with the same value are
   one choice ("IGDB + Lutris"), and so is the game's value ("· current"); with two choices or more they are segments on
   an `ink_a(.06)` track, written out (the source names, "Keep current" when only the game has it), the picked one in
   the accent. A click picks it; the segment under the pointer shows its value in the middle without picking. With one

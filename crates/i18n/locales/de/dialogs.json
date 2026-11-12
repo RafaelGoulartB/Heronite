@@ -541,9 +541,16 @@
   "Cover · Tall": "Cover · Hochformat",
   "Cover · Square": "Cover · Quadratisch",
   "Cover · Wide": "Cover · Breitbild",
-  "Choose covers…": "Cover wählen…",
   "Not asked: the others found it": "Nicht gefragt: Die anderen haben es gefunden",
   "Needs a download: {sources}": "Download nötig: {sources}",
   "Download its database in Settings → Metadata first: {sources}.": "Lade zuerst die Datenbank in Einstellungen → Metadaten herunter: {sources}.",
-  "Stopped after errors: {sources}": "Nach Fehlern gestoppt: {sources}"
+  "Stopped after errors: {sources}": "Nach Fehlern gestoppt: {sources}",
+  "Own shape": "Eigenes Format",
+  "Cropped: the picture is square": "Zugeschnitten: das Bild ist quadratisch",
+  "Cropped: the picture is wide": "Zugeschnitten: das Bild ist breit",
+  "Cropped: the picture is tall": "Zugeschnitten: das Bild ist hochkant",
+  "Low resolution": "Geringe Auflösung",
+  "Your picture from Covers is shown instead": "Stattdessen wird dein Bild aus „Cover“ gezeigt",
+  "as “{title}”": "als „{title}“",
+  "Set in Covers": "In „Cover“ gewählt"
 }

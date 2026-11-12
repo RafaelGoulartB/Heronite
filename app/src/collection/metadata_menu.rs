@@ -2,7 +2,7 @@
 //! button and the context menu's "Metadata" flyout share its rows. "Fill
 //! what is missing" runs at once (the header pill then shows it; Enter does
 //! it while the dock's menu is open); "Fix matches…" opens "Review matches"
-//! on the selection; "More options…" opens the "Update metadata" dialog on
+//! on the selection; "Update metadata…" opens the "Update metadata" dialog on
 //! the selection; "Download <family> covers" (one per family a view draws
 //! that some of the selection show cropped) downloads them for those games.
 //! What "Fill" would look at is counted
@@ -60,7 +60,7 @@ enum Row {
     /// "Download <family> covers": the selection shows some cropped.
     DownloadCovers(CoverFamily),
     FixMatches,
-    MoreOptions,
+    UpdateMetadata,
 }
 
 impl Row {
@@ -69,7 +69,7 @@ impl Row {
             Self::FillMissing => Icon::AutoAwesome,
             Self::DownloadCovers(_) => Icon::Collections,
             Self::FixMatches => Icon::TravelExplore,
-            Self::MoreOptions => Icon::Tune,
+            Self::UpdateMetadata => Icon::Tune,
         }
     }
 
@@ -78,7 +78,7 @@ impl Row {
             Self::FillMissing => tr!("Fill what is missing"),
             Self::DownloadCovers(f) => words::download(f),
             Self::FixMatches => tr!("Fix matches\u{2026}"),
-            Self::MoreOptions => tr!("More options\u{2026}"),
+            Self::UpdateMetadata => tr!("Update metadata\u{2026}"),
         }
     }
 
@@ -200,7 +200,7 @@ impl CollectionView {
         let cropped = self.meta_menu.counts.iter().flat_map(|c| c.cropped.iter()).filter(|(f, n)| **n > 0 && **f != CoverFamily::Tall);
         std::iter::once(Row::FillMissing)
             .chain(cropped.map(|(f, _)| Row::DownloadCovers(*f)))
-            .chain([Row::FixMatches, Row::MoreOptions])
+            .chain([Row::FixMatches, Row::UpdateMetadata])
             .collect()
     }
 
@@ -228,7 +228,7 @@ impl CollectionView {
                         (crop_hint(n, self.meta_menu.families.as_ref(), f), true)
                     }
                     Row::FixMatches => (self.fix_hint(), true),
-                    Row::MoreOptions => (tr!("Pick the games, fields and sources").to_string(), true),
+                    Row::UpdateMetadata => (tr!("Pick the games, fields and sources").to_string(), true),
                 };
                 let text = div()
                     .flex()
@@ -251,7 +251,7 @@ impl CollectionView {
                     }
                     Row::DownloadCovers(f) => this.download_selection_covers(f, cx),
                     Row::FixMatches => this.fix_selection_matches(window, cx),
-                    Row::MoreOptions => {
+                    Row::UpdateMetadata => {
                         this.open_metadata_update(true, window, cx);
                     }
                 }))

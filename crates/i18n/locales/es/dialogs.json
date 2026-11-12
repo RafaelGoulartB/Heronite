@@ -541,9 +541,16 @@
   "Cover · Tall": "Portada · Vertical",
   "Cover · Square": "Portada · Cuadrada",
   "Cover · Wide": "Portada · Panorámica",
-  "Choose covers…": "Elegir portadas…",
   "Not asked: the others found it": "Sin consultar: las otras lo encontraron",
   "Needs a download: {sources}": "Necesita una descarga: {sources}",
   "Download its database in Settings → Metadata first: {sources}.": "Descarga antes su base de datos en Ajustes → Metadatos: {sources}.",
-  "Stopped after errors: {sources}": "Detenidas tras errores: {sources}"
+  "Stopped after errors: {sources}": "Detenidas tras errores: {sources}",
+  "Own shape": "Forma propia",
+  "Cropped: the picture is square": "Recortada: la imagen es cuadrada",
+  "Cropped: the picture is wide": "Recortada: la imagen es ancha",
+  "Cropped: the picture is tall": "Recortada: la imagen es vertical",
+  "Low resolution": "Baja resolución",
+  "Your picture from Covers is shown instead": "Se muestra en su lugar tu imagen de Portadas",
+  "as “{title}”": "como “{title}”",
+  "Set in Covers": "Elegida en Portadas"
 }
