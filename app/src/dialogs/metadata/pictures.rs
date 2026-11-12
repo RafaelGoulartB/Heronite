@@ -16,7 +16,7 @@ use heronite_i18n::tr;
 use heronite_metadata::picture_size::family_of;
 use heronite_metadata::ArtKind;
 
-use super::fields::{Choice, LABEL_W, LOCK_W};
+use super::fields::{Choice, LABEL_W};
 use super::{field_label, is_picture, MetadataDialog};
 use crate::dialogs::covers::Slot;
 use crate::dialogs::metadata_update::words;
@@ -227,7 +227,11 @@ impl MetadataDialog {
             }
         }
         if self.custom_art(field) {
-            badges = badges.child(badge(tr!("Your picture from Covers is shown instead").to_string(), Tone::Info));
+            badges = badges.child(
+                badge(tr!("Set in Covers").to_string(), Tone::Info)
+                    .id(SharedString::from(format!("md-custom-{field}")))
+                    .tooltip(crate::ui::tooltip(tr!("Your picture from Covers is shown instead"))),
+            );
         }
         let size_text = match (size, self.sizes.contains_key(&url)) {
             (Some((w, h)), _) => Some(format!("{w}\u{d7}{h}")),
@@ -254,7 +258,8 @@ impl MetadataDialog {
         let choices = self.choices(field);
         let picked = self.pick(field);
         let frozen = self.frozen(field);
-        let mut tiles = div().flex().flex_1().flex_wrap().gap(px(5.)).min_w_0();
+        // One row: the tiles that do not fit scroll sideways.
+        let mut tiles = div().id(SharedString::from(format!("md-tiles-{field}"))).flex().flex_1().gap(px(5.)).min_w_0().overflow_x_scroll();
         for choice in &choices {
             let on = choice.ids.contains(&picked);
             tiles = tiles.child(self.picture_tile(field, choice, on, frozen, cx));
@@ -302,20 +307,5 @@ impl MetadataDialog {
     /// The fields drawn as pictures, in the order shown.
     pub(super) fn picture_fields(fields: &[&'static str]) -> Vec<&'static str> {
         fields.iter().copied().filter(|f| is_picture(f)).collect()
-    }
-
-    /// The title of a group of rows ("Pictures", "Details").
-    pub(super) fn group_title(text: &'static str) -> Div {
-        div()
-            .flex()
-            .flex_none()
-            .items_center()
-            .gap(px(8.))
-            .px(px(14.))
-            .pt(px(12.))
-            .pb(px(4.))
-            .child(div().flex_none().text_size(px(11.5)).font_weight(theme::W_BOLD).text_color(theme::text_dim()).child(text))
-            .child(div().flex_1().h(px(1.)).bg(theme::row_separator()))
-            .child(div().w(px(LOCK_W)).flex_none())
     }
 }

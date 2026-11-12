@@ -550,5 +550,7 @@
   "Cropped: the picture is wide": "Zugeschnitten: das Bild ist breit",
   "Cropped: the picture is tall": "Zugeschnitten: das Bild ist hochkant",
   "Low resolution": "Geringe Auflösung",
-  "Your picture from Covers is shown instead": "Stattdessen wird dein Bild aus „Cover“ gezeigt"
+  "Your picture from Covers is shown instead": "Stattdessen wird dein Bild aus „Cover“ gezeigt",
+  "as “{title}”": "als „{title}“",
+  "Set in Covers": "In „Cover“ gewählt"
 }

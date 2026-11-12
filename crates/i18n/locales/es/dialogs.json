@@ -550,5 +550,7 @@
   "Cropped: the picture is wide": "Recortada: la imagen es ancha",
   "Cropped: the picture is tall": "Recortada: la imagen es vertical",
   "Low resolution": "Baja resolución",
-  "Your picture from Covers is shown instead": "Se muestra en su lugar tu imagen de Portadas"
+  "Your picture from Covers is shown instead": "Se muestra en su lugar tu imagen de Portadas",
+  "as “{title}”": "como “{title}”",
+  "Set in Covers": "Elegida en Portadas"
 }

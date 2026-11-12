@@ -1,7 +1,7 @@
-//! The fields: a row per field that has a value now or from a source, the
-//! pictures first (`pictures.rs`), then the others under "Details": the
-//! value that will be saved (two lines at most), where it comes from and
-//! the lock. Sources that have the same
+//! The fields: a row per field that has a value now or from a source, in
+//! two captioned cards that scroll together: "Pictures" (`pictures.rs`),
+//! then "Details": the value that will be saved (two lines at most), where
+//! it comes from and the lock. Sources that have the same
 //! value are one choice ("IGDB + Lutris"), and so is what the game has
 //! ("· current"); with two choices or more they are segments to pick from
 //! (the segment under the pointer shows its value), with one a line says
@@ -18,12 +18,26 @@ use crate::dialogs::metadata_update::words;
 use crate::icons::Icon;
 use crate::pages::settings::metadata_labels as labels;
 use crate::theme;
+use crate::ui::controls::caption;
 use crate::ui::icon;
 
 const ROW_H: f32 = 50.;
+
+/// A card of rows (the pictures', the other fields'), as Settings draws one.
+fn card() -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .flex_none()
+        .rounded(px(theme::R_CARD))
+        .bg(theme::card_fill())
+        .border_1()
+        .border_color(theme::card_border())
+        .overflow_hidden()
+}
 pub(super) const LABEL_W: f32 = 110.;
 const SOURCE_W: f32 = 270.;
-pub(super) const LOCK_W: f32 = 28.;
+const LOCK_W: f32 = 28.;
 
 /// One value of a field and who has it: source ids, and [`KEEP`] when the
 /// game has it now.
@@ -256,11 +270,11 @@ impl MetadataDialog {
         let mut list = div().id("md-fields").flex().flex_col().flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.fields_scroll);
         if self.preview.is_none() {
             if self.busy == Some(Busy::Preview) {
-                list = list.child(div().p(px(14.)).child(busy_line(tr!("The fields appear when the sources answered."))));
+                list = list.child(busy_line(tr!("The fields appear when the sources answered.")));
             }
         } else if fields.is_empty() {
             list = list.child(
-                div()
+                card()
                     .p(px(16.))
                     .text_size(px(13.))
                     .line_height(px(18.))
@@ -269,27 +283,20 @@ impl MetadataDialog {
             );
         } else {
             let pictures = Self::picture_fields(&fields);
+            let first = pictures.is_empty();
             if !pictures.is_empty() {
-                list = list.child(Self::group_title(tr!("Pictures")));
+                let mut rows = div().flex().flex_col().mb(px(-1.));
                 for field in pictures {
-                    list = list.child(self.picture_row(field, cx));
+                    rows = rows.child(self.picture_row(field, cx));
                 }
+                list = list.child(caption(tr!("Pictures")).mt(px(0.))).child(card().child(rows));
             }
-            list = list.child(Self::group_title(tr!("Details"))).child(header);
+            let mut rows = div().flex().flex_col().mb(px(-1.)).child(header);
             for field in fields.into_iter().filter(|f| !is_picture(f)) {
-                list = list.child(self.field_row(field, cx));
+                rows = rows.child(self.field_row(field, cx));
             }
+            list = list.child(caption(tr!("Details")).when(first, |d| d.mt(px(0.)))).child(card().child(rows));
         }
-        div()
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_w_0()
-            .rounded(px(theme::R_CARD))
-            .bg(theme::card_fill())
-            .border_1()
-            .border_color(theme::card_border())
-            .overflow_hidden()
-            .child(list)
+        div().flex().flex_col().flex_1().min_w_0().min_h_0().child(list)
     }
 }
