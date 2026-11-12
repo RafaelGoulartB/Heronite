@@ -1,6 +1,7 @@
-//! The fields: a row per field that has a value now or from a source. The
-//! value that will be saved (two lines at most; covers and backgrounds as
-//! pictures), where it comes from and the lock. Sources that have the same
+//! The fields: a row per field that has a value now or from a source, the
+//! pictures first (`pictures.rs`), then the others under "Details": the
+//! value that will be saved (two lines at most), where it comes from and
+//! the lock. Sources that have the same
 //! value are one choice ("IGDB + Lutris"), and so is what the game has
 //! ("· current"); with two choices or more they are segments to pick from
 //! (the segment under the pointer shows its value), with one a line says
@@ -13,7 +14,6 @@ use heronite_i18n::tr;
 
 use super::found_as::busy_line;
 use super::{field_label, format_value, is_picture, Busy, MetadataDialog, KEEP};
-use crate::dialogs::covers::Slot;
 use crate::dialogs::metadata_update::words;
 use crate::icons::Icon;
 use crate::pages::settings::metadata_labels as labels;
@@ -21,25 +21,25 @@ use crate::theme;
 use crate::ui::icon;
 
 const ROW_H: f32 = 50.;
-const LABEL_W: f32 = 110.;
+pub(super) const LABEL_W: f32 = 110.;
 const SOURCE_W: f32 = 270.;
-const LOCK_W: f32 = 28.;
+pub(super) const LOCK_W: f32 = 28.;
 
 /// One value of a field and who has it: source ids, and [`KEEP`] when the
 /// game has it now.
-struct Choice {
-    ids: Vec<String>,
+pub(super) struct Choice {
+    pub(super) ids: Vec<String>,
     /// The id a click picks: the merge's pick when it is one of `ids`, else
     /// the first source, else [`KEEP`].
-    pick: String,
+    pub(super) pick: String,
 }
 
 impl Choice {
-    fn keeps(&self) -> bool {
+    pub(super) fn keeps(&self) -> bool {
         self.ids.iter().any(|id| id == KEEP)
     }
 
-    fn sources(&self) -> impl Iterator<Item = &String> {
+    pub(super) fn sources(&self) -> impl Iterator<Item = &String> {
         self.ids.iter().filter(|id| *id != KEEP)
     }
 }
@@ -47,7 +47,7 @@ impl Choice {
 impl MetadataDialog {
     /// The values `field` can take, in the order of the sources, what the
     /// game has last; sources with the same value are one choice.
-    fn choices(&self, field: &str) -> Vec<Choice> {
+    pub(super) fn choices(&self, field: &str) -> Vec<Choice> {
         let mut ids: Vec<String> = self
             .preview
             .as_ref()
@@ -164,7 +164,7 @@ impl MetadataDialog {
 
     /// The value shown in the middle: the segment under the pointer's,
     /// else the pick's.
-    fn shown_value(&mut self, field: &'static str, cx: &mut Context<Self>) -> AnyElement {
+    fn shown_value(&self, field: &'static str) -> AnyElement {
         let source = match &self.hover {
             Some((f, s)) if *f == field => s.clone(),
             _ => self.pick(field),
@@ -172,14 +172,6 @@ impl MetadataDialog {
         let value = self.value_of(field, &source);
         if value.is_empty() {
             return div().text_size(px(12.5)).text_color(theme::text_dim()).child(tr!("Empty")).into_any_element();
-        }
-        if is_picture(field) {
-            let (w, h) = match field {
-                "cover" => (27., 40.),
-                "coverSquare" => (40., 40.),
-                _ => (71., 40.),
-            };
-            return self.thumb(&value, w, h, cx).into_any_element();
         }
         div()
             .text_size(px(13.))
@@ -191,7 +183,7 @@ impl MetadataDialog {
             .into_any_element()
     }
 
-    fn lock_button(&self, field: &'static str, cx: &mut Context<Self>) -> Stateful<Div> {
+    pub(super) fn lock_button(&self, field: &'static str, cx: &mut Context<Self>) -> Stateful<Div> {
         let locked = self.locked(field);
         let warn: Hsla = theme::warning().into();
         div()
@@ -238,22 +230,9 @@ impl MetadataDialog {
                     .w(px(LABEL_W))
                     .flex_none()
                     .gap(px(2.))
-                    .child(div().truncate().text_size(px(12.5)).text_color(theme::text_muted()).child(field_label(field)))
-                    .when_some(Slot::cover_of_field(field), |d, slot| {
-                        d.child(
-                            div()
-                                .id(SharedString::from(format!("md-choose-covers-{field}")))
-                                .truncate()
-                                .text_size(px(11.5))
-                                .text_color(theme::accent())
-                                .cursor_pointer()
-                                .hover(|s| s.text_color(theme::text_bright()))
-                                .child(tr!("Choose covers\u{2026}"))
-                                .on_click(cx.listener(move |this, _, window, cx| this.open_covers(slot, window, cx))),
-                        )
-                    }),
+                    .child(div().truncate().text_size(px(12.5)).text_color(theme::text_muted()).child(field_label(field))),
             )
-            .child(div().flex().flex_1().min_w_0().items_center().child(self.shown_value(field, cx)))
+            .child(div().flex().flex_1().min_w_0().items_center().child(self.shown_value(field)))
             .child(source)
             .child(self.lock_button(field, cx))
     }
@@ -265,7 +244,7 @@ impl MetadataDialog {
             .flex_none()
             .items_center()
             .gap(px(12.))
-            .h(px(36.))
+            .h(px(30.))
             .px(px(14.))
             .border_b_1()
             .border_color(theme::row_separator())
@@ -275,11 +254,6 @@ impl MetadataDialog {
             .child(div().w(px(LOCK_W)).flex_none());
         let fields = self.visible_fields();
         let mut list = div().id("md-fields").flex().flex_col().flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.fields_scroll);
-        if self.scroll_to_covers && self.kept.len() > 1 {
-            if let Some(i) = fields.iter().position(|f| *f == "cover") {
-                self.fields_scroll.scroll_to_item(i + self.kept.len());
-            }
-        }
         if self.preview.is_none() {
             if self.busy == Some(Busy::Preview) {
                 list = list.child(div().p(px(14.)).child(busy_line(tr!("The fields appear when the sources answered."))));
@@ -294,7 +268,15 @@ impl MetadataDialog {
                     .child(tr!("No source found this game, and it has no details yet. Search a source by another name, on the left.")),
             );
         } else {
-            for field in fields {
+            let pictures = Self::picture_fields(&fields);
+            if !pictures.is_empty() {
+                list = list.child(Self::group_title(tr!("Pictures")));
+                for field in pictures {
+                    list = list.child(self.picture_row(field, cx));
+                }
+            }
+            list = list.child(Self::group_title(tr!("Details"))).child(header);
+            for field in fields.into_iter().filter(|f| !is_picture(f)) {
                 list = list.child(self.field_row(field, cx));
             }
         }
@@ -308,7 +290,6 @@ impl MetadataDialog {
             .border_1()
             .border_color(theme::card_border())
             .overflow_hidden()
-            .child(header)
             .child(list)
     }
 }

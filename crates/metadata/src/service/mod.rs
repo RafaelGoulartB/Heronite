@@ -15,6 +15,7 @@ mod fetch;
 mod gather;
 mod job_run;
 mod launchbox_art;
+mod picture_sizes;
 mod review;
 mod source_settings;
 mod tag_fill;
@@ -100,6 +101,8 @@ pub struct MetadataService {
     downloads: source_settings::Downloads,
     /// LaunchBox's index, shared with its source: the Covers dialog asks it too.
     launchbox: Arc<crate::launchbox::LaunchBox>,
+    /// The picture sizes read for the dialogs.
+    sizes: picture_sizes::Sizes,
 }
 
 impl MetadataService {
@@ -138,6 +141,7 @@ impl MetadataService {
             steam_tags: Default::default(),
             downloads: Default::default(),
             launchbox,
+            sizes: Default::default(),
         }
     }
 

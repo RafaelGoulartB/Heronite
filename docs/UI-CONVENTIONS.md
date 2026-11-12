@@ -648,12 +648,20 @@ source…"), and again after a match is pinned and after "Search every source ag
   unpins it. A line says why there are no hits ("Nothing found for “zelda”.", "This source is off.", "This source needs a
   key: add it in Settings → Metadata.", "Could not reach this source. Check your connection and try again."). Esc closes
   Change, then an open select, then the dialog.
-- **The fields** (right): a header (Field, What will be saved, Source), then a row per field that has a value now or
-  from some source, in the usual order, with a cover row per kept family after the tall one, "Cover · Tall", "Cover ·
-  Square" and "Cover · Wide" (the tall one always, the others even when no source has a picture of that shape), and
-  "Choose covers…" under the tall row's name, which opens "Covers" over this dialog (Esc closes it first; a picture set
-  there reaches the drawer behind): the field's name, the value that will be saved (two lines at most, "Empty" when
-  none; a cover or a background as a small picture), where it comes from, and the lock. Sources with the same value are
+- **The fields** (right), in one list that scrolls. First "Pictures" (`pictures.rs`): a cover row per kept family,
+  "Cover · Tall", "Cover · Square" and "Cover · Wide" (the tall one always, the others even when no source has a
+  picture of that shape), then "Background" when it has a value; each row has "More options…" under its name, which
+  opens "Covers" over this dialog on that picture's slot (Esc closes it first; a picture set there reaches the drawer
+  behind). Each value is a tile in the picture's own shape, every tile 60 px high so the rows stay low, with the
+  sources' marks over its corner ("Now" when only the game has it); a click picks it (accent border and check), and
+  the tile under the pointer shows its details beside the tiles: who has it ("· now" when the game has it), its size (read from the picture's first bytes,
+  `MetadataService::picture_sizes`, "…" while read) and badges: "Own shape" (green) or "Cropped: the picture is
+  square / wide / tall" (amber; a background is meant to be wide), "Low resolution" (amber: under 200 px on a cover's
+  short side, under 960 px of a background's width), and "Your picture from Covers is shown instead" when a picture set
+  by hand wins. A tile whose size says it is cropped or low resolution has an amber warning in its corner. Then
+  "Details": a header (Field, What will be saved, Source) and a row per other field that has a value now or from some
+  source, in the usual order: the field's name, the value that will be saved (two lines at most, "Empty" when
+  none), where it comes from, and the lock. Sources with the same value are
   one choice ("IGDB + Lutris"), and so is the game's value ("· current"); with two choices or more they are segments on
   an `ink_a(.06)` track, written out (the source names, "Keep current" when only the game has it), the picked one in
   the accent. A click picks it; the segment under the pointer shows its value in the middle without picking. With one

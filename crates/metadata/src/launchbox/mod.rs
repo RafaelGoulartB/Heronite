@@ -35,7 +35,7 @@ mod tests;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use anyhow::Result;
 use heronite_data::paths::DataPaths;
@@ -45,8 +45,8 @@ pub use build::{build, BadArchive, Built};
 use fetch::{drop_archive, fetch_archive, now_secs, Archive, Files, Stored};
 use index::{Index, LbGame, NameHit};
 
-use crate::http::{Http, APP_UA};
-use crate::picture_size::{read_head, Head};
+use crate::http::Http;
+use crate::picture_size::fetch_size;
 use crate::platforms::{self, Database, LAUNCHBOX_PC};
 use crate::rom_names::{match_key, shorter_keys, strip_extension};
 use crate::sources::download::{is_cancelled, DownloadProgress, DownloadState};
@@ -63,11 +63,6 @@ const SEARCH_RESULTS: usize = 20;
 const SEARCH_SCAN: usize = 300;
 /// The shortest key a loose match starts from: shorter ones begin too many names.
 const MIN_LOOSE_KEY: usize = 5;
-/// The most of a picture read to learn its size: its frame header comes
-/// within the first 16 KB of most of LaunchBox's JPEGs.
-const HEAD_MAX: usize = 512 * 1024;
-/// How long reading a picture's size may take.
-const HEAD_TIMEOUT: Duration = Duration::from_secs(10);
 /// Picture sizes remembered at most; past it the memory starts over.
 const SIZES_CAP: usize = 20_000;
 
@@ -265,25 +260,15 @@ impl LaunchBox {
     }
 
     /// The size of the picture `file` (under `images_base`), read from its
-    /// first bytes (the server ignores `Range`: the rest of the answer is
-    /// dropped) and remembered. `None` when it cannot be read: no answer
-    /// (asked again next time), or not a PNG or JPEG.
+    /// first bytes ([`fetch_size`]: the server ignores `Range`, the rest of
+    /// the answer is dropped) and remembered. `None` when it cannot be
+    /// read: no answer (asked again next time), or not a picture.
     pub fn picture_size(&self, http: &Http, images_base: &str, file: &str) -> Option<(u32, u32)> {
         if let Some(known) = self.sizes.lock().get(file) {
             return *known;
         }
-        let url = map::image_url(images_base, file);
-        let sent =
-            http.get(&url).header("User-Agent", APP_UA).timeout(HEAD_TIMEOUT).send_head(HEAD_MAX, |head| read_head(head) != Head::More);
-        let size = match sent {
-            Ok(r) if r.ok() => match read_head(&r.body) {
-                Head::Size(w, h) => Some((w, h)),
-                _ => None,
-            },
-            Ok(r) => {
-                log::info!("LaunchBox picture {file}: HTTP {}", r.status);
-                return None;
-            }
+        let size = match fetch_size(http, &map::image_url(images_base, file)) {
+            Ok(size) => size,
             Err(e) => {
                 log::info!("LaunchBox picture {file} not read: {e:#}");
                 return None;
