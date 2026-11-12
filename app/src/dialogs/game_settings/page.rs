@@ -217,14 +217,16 @@ impl GameSettingsDialog {
     pub(super) fn render_page(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let width = self.page.as_ref().map_or(1200., |p| p.width);
         let bar = self.page_bar(cx);
-        let main = if self.filtering() {
+        let filtering = self.filtering();
+        let main = if filtering {
             self.results(cx)
         } else {
             let (reset, _) = self.reset_controls(cx);
             self.tab_body(cx).child(div().flex().justify_end().pt(px(6.)).child(reset))
         };
         let preview = self.panel.clone().and_then(|(p, _)| p.update(cx, |p, cx| p.preview_aside(cx)));
-        let (beside, under) = if width >= ASIDE_FROM_W { (preview, None) } else { (None, preview) };
+        // Under the settings it would follow the search results: not then.
+        let (beside, under) = if width >= ASIDE_FROM_W { (preview, None) } else { (None, preview.filter(|_| !filtering)) };
         let body = div()
             .id("gs-page-body")
             .flex_1()
