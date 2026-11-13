@@ -12,6 +12,10 @@
 //!   grabbed while it is open) or closes it.
 //! - While open, the presses become navigation, with held directions and the
 //!   left stick repeating.
+//! - With [`Options::console_hold`] (no game runs), Guide held alone for
+//!   [`CONSOLE_HOLD`] while closed asks for console mode instead
+//!   ([`Event::ConsoleMode`]); its release then opens nothing. A tap still
+//!   opens the overlay.
 
 use std::time::{Duration, Instant};
 
@@ -59,6 +63,9 @@ impl Button {
     }
 }
 
+/// How long Guide is held for console mode ([`Options::console_hold`]).
+pub const CONSOLE_HOLD: Duration = Duration::from_millis(1000);
+
 /// What the overlay hears.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
@@ -79,6 +86,13 @@ pub enum Event {
     Press(Button),
     /// The connected controllers changed.
     Controllers(Vec<super::Controller>),
+    /// Guide went down while closed, with [`Options::console_hold`]: held
+    /// until [`CONSOLE_HOLD`] after this, it is console mode.
+    ConsoleHolding(Instant),
+    /// That Guide came up early, or became a chord.
+    ConsoleCancelled,
+    /// Held for [`CONSOLE_HOLD`]: enter console mode (its release opens nothing).
+    ConsoleMode,
 }
 
 /// Grab changes the thread applies (device ids are the thread's).
@@ -100,6 +114,9 @@ pub struct Options {
     pub moment: bool,
     /// Guide + X saves the replay (unless X is the screenshot button).
     pub replay: bool,
+    /// Guide held alone enters console mode ([`Event::ConsoleMode`]); the
+    /// app turns it on while no game runs.
+    pub console_hold: bool,
 }
 
 /// First repeat after this long, then every [`REPEAT_EVERY`] (same pace as
@@ -125,11 +142,20 @@ pub(super) struct Core {
     held: Option<(usize, Button, Instant)>,
     /// Where the left stick points (past the threshold).
     stick: Option<(usize, Button)>,
+    /// When the held Guide went down, while it may still be console mode.
+    console: Option<Instant>,
 }
 
 impl Core {
     pub fn new(opts: Options) -> Self {
-        Self { opts, open: false, guide: None, held: None, stick: None }
+        Self { opts, open: false, guide: None, held: None, stick: None, console: None }
+    }
+
+    /// The Guide held for console mode will not be: tell the app.
+    fn cancel_console(&mut self, out: &mut Output) {
+        if self.console.take().is_some() {
+            out.events.push(Event::ConsoleCancelled);
+        }
     }
 
     #[cfg(any(windows, test))]
@@ -147,8 +173,12 @@ impl Core {
     pub fn button(&mut self, dev: usize, b: Button, down: bool, now: Instant) -> Output {
         let mut out = Output::default();
         if b == Button::Guide {
-            self.guide_button(dev, down, &mut out);
+            self.guide_button(dev, down, now, &mut out);
             return out;
+        }
+        if down && self.guide.is_some() {
+            // A chord, not console mode.
+            self.cancel_console(&mut out);
         }
         if let Some((gdev, used)) = &mut self.guide {
             // A chord: Guide is held (on any controller).
@@ -184,7 +214,7 @@ impl Core {
         out
     }
 
-    fn guide_button(&mut self, dev: usize, down: bool, out: &mut Output) {
+    fn guide_button(&mut self, dev: usize, down: bool, now: Instant, out: &mut Output) {
         if down {
             if self.guide.is_none() {
                 self.guide = Some((dev, false));
@@ -192,6 +222,10 @@ impl Core {
                 // Even while open (where it is normally held already): a grab
                 // that fails tells that another program owns the controller.
                 out.grabs.push(Grab::Hold(dev));
+                if self.opts.console_hold && !self.open {
+                    self.console = Some(now);
+                    out.events.push(Event::ConsoleHolding(now));
+                }
             }
             return;
         }
@@ -200,6 +234,7 @@ impl Core {
             return;
         }
         self.guide = None;
+        self.cancel_console(out);
         if used {
             if !self.open {
                 out.grabs.push(Grab::ReleaseAll);
@@ -281,6 +316,7 @@ impl Core {
         let mut out = Output::default();
         if self.guide_held_on(dev) {
             self.guide = None;
+            self.cancel_console(&mut out);
             if !self.open {
                 out.grabs.push(Grab::ReleaseAll);
             }
@@ -293,6 +329,7 @@ impl Core {
         let mut out = Output::default();
         if self.guide.is_some_and(|(d, _)| d == dev) {
             self.guide = None;
+            self.cancel_console(&mut out);
             // A chord may have grabbed other controllers: the game gets them back.
             if !self.open {
                 out.grabs.push(Grab::ReleaseAll);
@@ -318,6 +355,8 @@ impl Core {
         if let Some((_, used)) = &mut self.guide {
             *used = true;
         }
+        // The app moved on: it drops a console hold on its own.
+        self.console = None;
         self.held = None;
         self.stick = None;
     }
@@ -360,11 +399,27 @@ impl Core {
 
     /// How long the thread may sleep before [`Core::tick`] has a repeat.
     pub fn wait(&self, now: Instant) -> Option<Duration> {
-        self.held.map(|(_, _, at)| at.saturating_duration_since(now))
+        let repeat = self.held.map(|(_, _, at)| at.saturating_duration_since(now));
+        let console = self.console.map(|since| (since + CONSOLE_HOLD).saturating_duration_since(now));
+        match (repeat, console) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
     }
 
-    /// The repeat due at `now`, if any.
+    /// The repeat due at `now`, or console mode once Guide was held long
+    /// enough.
     pub fn tick(&mut self, now: Instant) -> Option<Event> {
+        if let Some(since) = self.console {
+            if now.saturating_duration_since(since) >= CONSOLE_HOLD {
+                self.console = None;
+                // Its release opens nothing.
+                if let Some((_, used)) = &mut self.guide {
+                    *used = true;
+                }
+                return Some(Event::ConsoleMode);
+            }
+        }
         let (dev, b, at) = self.held?;
         if now < at || !self.open {
             return None;
@@ -378,7 +433,8 @@ impl Core {
 mod tests {
     use super::*;
 
-    const ALL: Options = Options { screenshot: true, screenshot_button: Button::RB, volume: true, moment: true, replay: true };
+    const ALL: Options =
+        Options { screenshot: true, screenshot_button: Button::RB, volume: true, moment: true, replay: true, console_hold: false };
 
     fn press(core: &mut Core, dev: usize, b: Button) -> Output {
         let now = Instant::now();
@@ -464,7 +520,14 @@ mod tests {
 
     #[test]
     fn disabled_shortcuts_still_swallow_the_chord() {
-        let mut c = Core::new(Options { screenshot: false, screenshot_button: Button::RB, volume: false, moment: false, replay: false });
+        let mut c = Core::new(Options {
+            screenshot: false,
+            screenshot_button: Button::RB,
+            volume: false,
+            moment: false,
+            replay: false,
+            console_hold: false,
+        });
         let now = Instant::now();
         c.button(0, Button::Guide, true, now);
         assert!(c.button(0, Button::RB, true, now).events.is_empty());
@@ -610,5 +673,59 @@ mod tests {
         assert_eq!(c.button(0, Button::Up, true, now).events, vec![Event::Volume(1)]);
         assert!(c.button(0, Button::Guide, false, now).events.is_empty());
         assert_eq!(c.tick(now + REPEAT_AFTER), None);
+    }
+
+    const CONSOLE: Options = Options { console_hold: true, ..ALL };
+
+    #[test]
+    fn guide_held_alone_is_console_mode_and_opens_nothing() {
+        let mut c = Core::new(CONSOLE);
+        let t0 = Instant::now();
+        let down = c.button(0, Button::Guide, true, t0);
+        assert_eq!(down.events, vec![Event::ConsoleHolding(t0)]);
+        assert_eq!(down.grabs, vec![Grab::Hold(0)], "grabbed as always");
+        assert_eq!(c.wait(t0), Some(CONSOLE_HOLD));
+        assert_eq!(c.tick(t0 + CONSOLE_HOLD / 2), None);
+        assert_eq!(c.tick(t0 + CONSOLE_HOLD), Some(Event::ConsoleMode));
+        assert_eq!(c.tick(t0 + CONSOLE_HOLD * 3), None, "once");
+        let up = c.button(0, Button::Guide, false, t0 + CONSOLE_HOLD * 3);
+        assert!(up.events.is_empty(), "no overlay after it: {:?}", up.events);
+        assert_eq!(up.grabs, vec![Grab::ReleaseAll]);
+    }
+
+    #[test]
+    fn a_guide_tap_or_chord_still_does_what_it_did() {
+        let mut c = Core::new(CONSOLE);
+        let t0 = Instant::now();
+        c.button(0, Button::Guide, true, t0);
+        let up = c.button(0, Button::Guide, false, t0 + CONSOLE_HOLD / 4);
+        assert_eq!(up.events, vec![Event::ConsoleCancelled, Event::Open], "a tap opens the overlay");
+        assert_eq!(c.tick(t0 + CONSOLE_HOLD * 2), None);
+        // Open: Guide does not count for console mode.
+        assert!(c.button(0, Button::Guide, true, t0).events.is_empty());
+        c.button(0, Button::Guide, false, t0);
+        assert!(!c.open);
+        // A chord cancels it.
+        c.button(0, Button::Guide, true, t0);
+        let rb = c.button(0, Button::RB, true, t0 + CONSOLE_HOLD / 4);
+        assert_eq!(rb.events, vec![Event::ConsoleCancelled, Event::Screenshot]);
+        assert_eq!(c.tick(t0 + CONSOLE_HOLD * 2), None);
+        // Without the option, nothing changes.
+        let mut plain = Core::new(ALL);
+        assert!(plain.button(0, Button::Guide, true, t0).events.is_empty());
+        assert_eq!(plain.tick(t0 + CONSOLE_HOLD * 2), None);
+        assert_eq!(plain.button(0, Button::Guide, false, t0 + CONSOLE_HOLD * 2).events, vec![Event::Open]);
+    }
+
+    #[test]
+    fn a_lost_guide_cancels_console_mode() {
+        let mut c = Core::new(CONSOLE);
+        let t0 = Instant::now();
+        c.button(3, Button::Guide, true, t0);
+        assert_eq!(c.lost_guide(3).events, vec![Event::ConsoleCancelled]);
+        assert_eq!(c.tick(t0 + CONSOLE_HOLD * 2), None);
+        c.button(3, Button::Guide, true, t0);
+        assert_eq!(c.removed(3, 0).events, vec![Event::ConsoleCancelled]);
+        assert_eq!(c.tick(t0 + CONSOLE_HOLD * 2), None);
     }
 }

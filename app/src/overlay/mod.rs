@@ -36,7 +36,7 @@ mod moment;
 pub mod panel;
 mod replay;
 mod toast;
-mod window;
+pub(crate) mod window;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -228,7 +228,7 @@ impl OverlayService {
     /// Settings changed them (already saved).
     pub fn set_prefs(&mut self, prefs: OverlayPrefs, cx: &mut Context<Self>) {
         if let Some(w) = &self.watcher {
-            w.set_options(options(&prefs));
+            w.set_options(options(&prefs, self.games.is_empty()));
         }
         let enabled = prefs.enabled;
         self.prefs = prefs;
@@ -253,6 +253,7 @@ impl OverlayService {
                     None => self.games.push(RunningGame { app_name: app_name.clone(), pid: Some(*pid), started: Instant::now() }),
                 }
                 self.sync_watcher(cx);
+                self.send_options();
             }
             LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => {
                 self.games.retain(|g| &g.app_name != app_name);
@@ -261,6 +262,7 @@ impl OverlayService {
                     self.close_panel(cx);
                 }
                 self.sync_watcher(cx);
+                self.send_options();
             }
             LaunchEvent::Launching { .. } | LaunchEvent::Preparing { .. } | LaunchEvent::Status { .. } => {}
         }
@@ -286,6 +288,28 @@ impl OverlayService {
         self.live_changes.insert(app_name.to_string(), change);
     }
 
+    /// What the watcher does with Guide follows the games and
+    /// `console::summon`'s options.
+    fn send_options(&self) {
+        if let Some(w) = &self.watcher {
+            w.set_options(options(&self.prefs, self.games.is_empty()));
+        }
+    }
+
+    /// `console::summon`'s options changed.
+    pub fn summon_changed(cx: &mut App) {
+        if let Some(g) = cx.try_global::<OverlayGlobal>() {
+            g.0.read(cx).send_options();
+        }
+    }
+
+    /// Whether the Guide button is the overlay's now (its input thread runs:
+    /// a game runs, or it may open without one). The button held to enter
+    /// console mode keeps off it then (`console::summon`).
+    pub fn listening(cx: &App) -> bool {
+        cx.try_global::<OverlayGlobal>().is_some_and(|g| g.0.read(cx).watcher.is_some())
+    }
+
     /// Whether it can open now: on, and a game runs (or it may open without).
     fn active(&self) -> bool {
         self.prefs.enabled && (!self.games.is_empty() || self.prefs.without_game)
@@ -306,7 +330,7 @@ impl OverlayService {
             return;
         }
         let (tx, mut rx) = unbounded();
-        match Watcher::start(options(&self.prefs), move |ev| {
+        match Watcher::start(options(&self.prefs, self.games.is_empty()), move |ev| {
             let _ = tx.unbounded_send(ev);
         }) {
             Ok(w) => self.watcher = Some(w),
@@ -438,6 +462,10 @@ impl OverlayService {
                     }
                 }
             }
+            // Not during this update: `console::summon` asks about the overlay.
+            Event::ConsoleHolding(since) => cx.defer(move |cx| crate::console::summon::overlay_hold(Some(since), cx)),
+            Event::ConsoleCancelled => cx.defer(|cx| crate::console::summon::overlay_hold(None, cx)),
+            Event::ConsoleMode => cx.defer(crate::console::summon::overlay_held),
             Event::Controllers(list) => {
                 self.controllers = list;
                 if let Some(panel) = self.panel {
@@ -701,12 +729,14 @@ impl OverlayService {
     }
 }
 
-fn options(prefs: &OverlayPrefs) -> Options {
+/// `idle`: no game runs (Guide held may enter console mode then).
+fn options(prefs: &OverlayPrefs, idle: bool) -> Options {
     Options {
         screenshot: prefs.screenshot_shortcut,
         screenshot_button: prefs.screenshot_button.into(),
         volume: prefs.volume_shortcut,
         moment: prefs.moment_shortcut,
         replay: prefs.replay_shortcut && heronite_platform::supported(heronite_platform::Feature::Replay),
+        console_hold: idle && crate::console::summon::guide_held_wanted(),
     }
 }

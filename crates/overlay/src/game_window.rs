@@ -1,6 +1,7 @@
 //! The game's window on the desktop: whether another one has the focus, and
 //! giving it back ("Back to game" in the overlay, after "Back to Heronite" or
-//! a switch to another app).
+//! a switch to another app). Heronite's own window too, by its pid (console
+//! mode's button, `console::summon`).
 //!
 //! Only Hyprland can be asked (`hyprctl`): its windows carry the pid they
 //! belong to, which says which one is the game's. Elsewhere nothing does, so

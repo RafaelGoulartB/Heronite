@@ -218,6 +218,33 @@ str_enum! {
     pub enum AutoConsole { Off = "off", Ask = "ask", On = "on" } default Off
 }
 str_enum! {
+    /// The button held (1 s) to enter console mode from anywhere, and the one
+    /// the "Ask" notice asks for. `Auto` is the system's: Guide on Linux,
+    /// Back + Start on Windows (XInput does not report Guide).
+    pub enum ConsoleButton {
+        Auto = "auto",
+        Off = "off",
+        Guide = "guide",
+        BackStart = "backStart",
+        Bumpers = "bumpers",
+    } default Auto
+}
+
+impl ConsoleButton {
+    /// The ones Settings offers, in its order.
+    pub const CHOICES: [ConsoleButton; 4] = [ConsoleButton::Off, ConsoleButton::Guide, ConsoleButton::BackStart, ConsoleButton::Bumpers];
+
+    /// `Auto` made the system's button.
+    pub fn resolved(self) -> Self {
+        match self {
+            ConsoleButton::Auto if cfg!(windows) => ConsoleButton::BackStart,
+            ConsoleButton::Auto => ConsoleButton::Guide,
+            b => b,
+        }
+    }
+}
+
+str_enum! {
     pub enum OpenIn { Last = "last", Console = "console", Desktop = "desktop" } default Last
 }
 str_enum! {
@@ -672,6 +699,8 @@ pub struct ConsolePrefs {
     /// they differ).
     pub based_on: String,
     pub auto_console: AutoConsole,
+    /// Held to enter console mode from anywhere (see [`ConsoleButton`]).
+    pub console_button: ConsoleButton,
     pub open_in: OpenIn,
     /// Console mode fills the screen: entering it goes fullscreen and leaving
     /// it switches back (F11 still toggles).
@@ -691,6 +720,7 @@ impl Default for ConsolePrefs {
             theme: presets::default_theme(),
             based_on: presets::DEFAULT.into(),
             auto_console: AutoConsole::Off,
+            console_button: ConsoleButton::Auto,
             open_in: OpenIn::Last,
             fullscreen: true,
             idle: Idle::Off,

@@ -1175,6 +1175,23 @@ the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
 `HERONITE_DEBUG_DIALOG=...`, `HERONITE_DEBUG_PAGE=...`. Copy
 `~/.local/share/heronite/images-cache` into the fixture or no art appears at all.
 
+**Entering console mode from anywhere** (`app/src/console/summon.rs`, by user decision: the corner notice with a ring,
+issue #253): the app's, not the window's, so it works with the window closed to the tray or behind another app. "When a
+controller connects" (Settings → Console mode → Startup) does nothing, enters console mode, or asks: a notice in the
+bottom right corner of the screen (a layer-shell surface over every window, like the overlay's notices; a desktop
+notification without layer-shell) for 8 s, "Controller connected", the controller's name and "Hold Guide to enter
+console mode", a line at the bottom running out. "Button to enter console mode" (Off / Hold Guide / Hold Back + Start /
+Hold LB + RB; Guide on Linux and Back + Start on Windows unless changed, as XInput does not report Guide) held for a second
+enters it from anywhere, asked or not; while it is held the notice shows a ring filling around the controller, then
+"Opening console mode…" as the window comes out of the tray (or to the front: on Hyprland through `hyprctl`) in console
+mode. With that button off, Ask still asks for the system's button. Nothing happens while a game runs or while console
+mode is in front. The controllers are read without focus (`console::input::start_buttons`: gilrs, SDL on Windows),
+which also tells when one connects (so Ask now works on Windows too). While the overlay listens without a game (its
+"without a game" option) it owns Guide: a tap opens the overlay, and held for a second its core reports console mode
+instead (`Options::console_hold`, `Event::ConsoleHolding` / `ConsoleCancelled` / `ConsoleMode`); the ring then shows
+after 250 ms, so a tap does not flash it. `HERONITE_DEBUG_SUMMON=ask|hold|hold-anytime|opening[:window]` shows the
+notice in that state, frozen, for a made-up controller (`:window` in a normal window, for captures).
+
 **In-game overlay** (`app/src/overlay/`, Settings → Overlay; off by default, options in `overlay.json` of the app
 state): during a game launched by the app, the controller's Guide button opens a panel over the game (by user decision:
 proposal 1 "Guide lateral, estilo Xbox"). It is a Wayland layer-shell surface on the overlay layer (no keyboard focus, so

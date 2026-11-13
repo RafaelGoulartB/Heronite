@@ -98,5 +98,12 @@ label_fn!(side_name, Side { Left => n_!("Left"), Right => n_!("Right") });
 label_fn!(grid_panel_name, GridPanel { Title => n_!("Name above"), Right => n_!("Panel on the right") });
 label_fn!(wheel_items_name, WheelItems { Name => n_!("Name"), Logo => n_!("Logo") });
 label_fn!(open_in_name, OpenIn { Last => n_!("As I left it"), Console => n_!("In console mode"), Desktop => n_!("In desktop mode") });
+label_fn!(console_button_name, ConsoleButton {
+    Auto => n_!("Hold Guide"),
+    Off => n_!("Off"),
+    Guide => n_!("Hold Guide"),
+    BackStart => n_!("Hold Back + Start"),
+    Bumpers => n_!("Hold LB + RB"),
+});
 label_fn!(auto_console_name, AutoConsole { Off => n_!("Nothing"), Ask => n_!("Ask"), On => n_!("Enter console mode") });
 label_fn!(idle_name, Idle { Off => n_!("Nothing"), Attract => n_!("Show the games by themselves"), Dim => n_!("Dim the screen") });
