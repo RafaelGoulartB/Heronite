@@ -166,16 +166,7 @@ impl SettingsPanel {
         }
         v.push(Self::c_header(tr!("On screen")));
         v.push(self.c_steam_toggle("showFps", false, tr!("FPS counter"), Some(tr!("A small counter for DirectX 9 to 11 games"))));
-        v.push(self.c_steam_toggle(
-            "showMangohud",
-            false,
-            "MangoHud",
-            Some(tr!("FPS, frame times, temperatures and load (needs MangoHud)")),
-        ));
-        if self.flag("showMangohud", false) {
-            let help = self.mangohud_hidden_help();
-            v.push(self.c_steam_toggle(heronite_launch::fps_limit::KEY_MANGOHUD_HIDDEN, false, tr!("Start hidden"), Some(&help)).sub());
-        }
+        v.push(self.c_mangohud(!self.steam_fields_editable()));
         v.extend(self.c_replay(cx));
         v.extend(self.c_fps(true));
         v.extend(self.c_lsfg(true));

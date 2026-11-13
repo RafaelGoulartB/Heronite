@@ -1210,7 +1210,8 @@ microphone (the default source; the outputs' monitors are left out) and its mute
 `GAMESCOPE_FPS_LIMIT` atom set with `xprop`; DXVK / VKD3D cannot); the value lasts for the session. With MangoHud a
 "Show MangoHud" switch row comes before it (the same file's `no_display`; plain rows, by user decision: no card around
 them): hiding the HUD keeps the limit, so the limit stays editable and says so. A game whose
-MangoHud is set to "Start hidden" (Performance, under MangoHud; `heroniteMangohudHidden`, written as `no_display=1` in
+MangoHud starts hidden (Performance: the eye button beside MangoHud's switch, "Shown" / "Hidden", while it is on;
+console mode: the MangoHud row's third value, "On, starts hidden"; `heroniteMangohudHidden`, written as `no_display=1` in
 `MANGOHUD_CONFIG`, which a Steam game's launch options read back; `no_display` alone stays "MangoHud off, only
 limiting") starts with that switch off. Home's rows scroll to keep the focus in
 sight when the panel is short for them. Home's captures share one "Capture" row (by user decision: option B2): a round button each
