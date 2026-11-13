@@ -1196,7 +1196,10 @@ them): hiding the HUD keeps the limit, so the limit stays editable and says so. 
 sight when the panel is short for them. Home's captures share one "Capture" row (by user decision: option B2): a round button each
 for the screenshot, the replay (while it records) and the moment (with a journal), ◀ ▶ choose one, A runs it and the
 description and the A hint name it; a click on a button runs that one. With only the screenshot it is a plain "Take
-screenshot" row. The Screenshots and Notes tabs keep their own rows. Steam games are
+screenshot" row. The Screenshots and Notes tabs keep their own rows. "Back to game" comes before "Back to Heronite" only
+while the game has a window and another one has the focus (`heronite_overlay::game_window`, read when the panel opens):
+it gives that window the focus and closes the panel. Only Hyprland can be asked (`hyprctl clients -j` has each window's
+pid); elsewhere the row never shows. `HERONITE_DEBUG_OVERLAY_AWAY=1` shows it for the debug game (nothing focused). Steam games are
 started by Steam, so the launch cannot move MangoHud's limit into a file of ours: they have no live limit (editing the
 user's `MangoHud.conf` or their Steam launch options was ruled out). An Achievements tab (last, so the other tabs keep
 their place when it appears; `panel/achievements.rs`) shows when the game has a set in the achievements service,

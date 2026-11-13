@@ -35,6 +35,9 @@ pub struct Data {
     /// The game's journal key and journal (`None` while read, or without
     /// the session's runner).
     pub journal: Option<(String, GameJournal)>,
+    /// The game has a window and another one has the focus (`false` where
+    /// the desktop cannot say: see `heronite_overlay::game_window`).
+    pub game_away: bool,
 }
 
 struct Loaded {
@@ -87,6 +90,7 @@ impl OverlayPanel {
     pub(super) fn load_all(&mut self, paths: DataPaths, cx: &mut Context<Self>) {
         self.load_audio(cx);
         self.load_batteries(cx);
+        self.load_game_window(cx);
         // Play time, status and captures are the game's.
         let Some(game) = &self.game else { return };
         let app_name = game.game.app_name.clone();
@@ -116,6 +120,25 @@ impl OverlayPanel {
             let state = cx.background_spawn(async move { audio::read(pid) }).await;
             this.update(cx, |this, cx| {
                 this.data.audio = Some(state);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Whether the game lost the focus to another window ("Back to game").
+    fn load_game_window(&mut self, cx: &mut Context<Self>) {
+        // `HERONITE_DEBUG_OVERLAY_AWAY=1` shows the row for the debug game.
+        if crate::env::flag("HERONITE_DEBUG_OVERLAY_AWAY") {
+            self.data.game_away = true;
+            return;
+        }
+        let Some(pid) = self.game.as_ref().and_then(|g| g.game.pid) else { return };
+        cx.spawn(async move |this, cx| {
+            let away = cx.background_spawn(async move { heronite_overlay::game_window::away(pid) }).await;
+            this.update(cx, |this, cx| {
+                this.data.game_away = away;
                 cx.notify();
             })
             .ok();

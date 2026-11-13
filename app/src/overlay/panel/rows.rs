@@ -121,6 +121,10 @@ impl OverlayPanel {
             rows.push(Row::choice("status", tr!("Status"), options, index).icon(Icon::Flag));
         }
         rows.extend(self.achievements_home_row());
+        // Only while another window has the focus (after "Back to Heronite", say).
+        if self.data.game_away {
+            rows.push(Row::action("game", tr!("Back to game")).icon(Icon::SportsEsports).desc(tr!("Brings its window to the front")));
+        }
         rows.push(Row::action("launcher", tr!("Back to Heronite")).icon(Icon::Home).desc(tr!("The game keeps running")));
         rows.push(Row::action("quit", tr!("Quit game")).icon(Icon::PowerSettingsNew).danger());
         rows
@@ -251,6 +255,7 @@ impl OverlayPanel {
             "capture" => self.with_service(cx, |s, cx| s.screenshot(cx)),
             "replay" => self.with_service(cx, |s, cx| s.save_replay(cx)),
             "launcher" => self.with_service(cx, |s, cx| s.show_launcher(cx)),
+            "game" => self.back_to_game(cx),
             "quit" => self.ask(Confirm::Quit),
             id if self.notes_activate(id, cx) => {}
             id if self.achievements_activate(id, cx) => {}
@@ -423,6 +428,28 @@ impl OverlayPanel {
                 })
                 .ok();
             }
+        })
+        .detach();
+    }
+
+    /// Gives the focus back to the game's window and closes the panel.
+    fn back_to_game(&mut self, cx: &mut Context<Self>) {
+        if crate::env::value("HERONITE_DEBUG_OVERLAY").is_some() {
+            log::info!("overlay debug: back to the game skipped");
+            return;
+        }
+        let Some(pid) = self.game.as_ref().and_then(|g| g.game.pid) else { return };
+        cx.spawn(async move |this, cx| {
+            let res = cx.background_spawn(async move { heronite_overlay::game_window::focus(pid) }).await;
+            this.update(cx, |this, cx| match res {
+                Ok(()) => this.close(cx),
+                Err(e) => {
+                    log::warn!("overlay: back to the game: {e}");
+                    this.error = Some(tr!("Could not go back to the game: {err}", err = e).into());
+                    cx.notify();
+                }
+            })
+            .ok();
         })
         .detach();
     }
