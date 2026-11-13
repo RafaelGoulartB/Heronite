@@ -239,7 +239,7 @@ fn a_shortened_name_is_a_fuzzy_match_and_the_chain_is_ordered() {
 fn the_regions_follow_the_interface_language() {
     use heronite_i18n::Lang;
     // The server has only the German box.
-    for (lang, expected_first) in [(Lang::De, "Germany"), (Lang::PtBr, "Brazil"), (Lang::Es, "Spain")] {
+    for (lang, expected_first) in [(Lang::De, "Germany"), (Lang::PtBr, "Brazil"), (Lang::Es, "Spain"), (Lang::Fr, "France")] {
         let regions = heronite_metadata::libretro::names::regions_for(lang);
         assert_eq!(regions[0], expected_first);
     }

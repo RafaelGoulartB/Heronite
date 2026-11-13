@@ -47,6 +47,7 @@ fn region_of(lang: Lang) -> &'static str {
         Lang::PtBr => "Brazil",
         Lang::Es => "Spain",
         Lang::De => "Germany",
+        Lang::Fr => "France",
     }
 }
 
@@ -227,6 +228,7 @@ mod tests {
     #[test]
     fn regions_follow_the_choice_then_the_language() {
         assert_eq!(region_order("auto", Lang::En)[..4], ["North America", "United States", "Canada", "World"]);
+        assert_eq!(region_order("auto", Lang::Fr)[..4], ["France", "Europe", "World", ""]);
         assert_eq!(region_order("auto", Lang::De)[..4], ["Germany", "Europe", "World", ""]);
         assert_eq!(region_order("auto", Lang::PtBr)[..4], ["Brazil", "South America", "World", ""]);
         assert_eq!(region_order("Japan", Lang::En)[..4], ["Japan", "Asia", "World", ""]);

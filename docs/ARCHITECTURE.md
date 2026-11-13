@@ -24,7 +24,7 @@ the UI.
 
 ```
 app (bin heronite-rs) ── GPUI UI, desktop integration
- ├─ heronite-i18n       interface language: tr!/trn! and the pt-BR, es and de strings (no GPUI)
+ ├─ heronite-i18n       interface language: tr!/trn! and the pt-BR, es, de and fr strings (no GPUI)
  ├─ heronite-data       data folder files, paths, Heroic migration, safe writes, processes
  ├─ heronite-backup     backups of the data folder and app state:
  │                      incremental snapshots, retention, restore    → data
@@ -154,7 +154,7 @@ text size) and applies it.
   version wrote are kept as read, and a condition on a value the game lacks never matches).
 - **heronite-i18n:** English text is the key (`tr!("Play")`); Portuguese
   lives in `locales/pt-BR/*.json`, Spanish (neutral, `tú`) in
-  `locales/es/*.json` and German (`du`) in `locales/de/*.json`, embedded at build time (one folder per language) and
+  `locales/es/*.json`, German (`du`) in `locales/de/*.json` and French (`vous`) in `locales/fr/*.json`, embedded at build time (one folder per language) and
   loaded the first time it is needed. The language follows the system unless one is
   picked in Settings → General (`language` in `appearance.json`); switching
   redraws the windows. `tests/coverage.rs` scans the workspace: every key
