@@ -193,9 +193,13 @@ script:
 
     #[test]
     fn missing_archivers_block() {
-        let c = check_with(&script(OK), &|names| !names.contains(&"7z"));
+        let rar = script(&OK.replace("patch.7z", "patch.rar"));
+        let c = check_with(&rar, &|_| false);
         assert!(c.blocked());
-        assert!(c.issues.iter().any(|i| i.text.contains("7z")), "{:?}", c.issues);
+        assert!(c.issues.iter().any(|i| i.text.contains("unrar")), "{:?}", c.issues);
+        // A 7z (and a zip) is opened in process: nothing to install.
+        let c = check_with(&script(OK), &|_| false);
+        assert!(!c.issues.iter().any(|i| i.text.contains("7z")), "{:?}", c.issues);
     }
 
     #[test]

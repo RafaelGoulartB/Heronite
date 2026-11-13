@@ -1,7 +1,9 @@
-//! The `extract` step, through the system's archivers: `tar` (any
-//! compression it knows), `unzip`, `7z` / `7za` / `7zz`, `unrar`,
-//! `innoextract` (Inno Setup and GOG installers) and `bsdtar` as the catch
-//! all. The archive goes to a temporary folder inside the destination first;
+//! The `extract` step. Zip, 7z and a lone `.gz` are opened in process
+//! ([`crate::builtin`]), with an archiver on the PATH as the fallback for
+//! what that does not read. The rest go through the system's archivers:
+//! `tar` (any compression it knows; on Windows its own `tar.exe`), `unrar`,
+//! `7z` / `7za` / `7zz`, `innoextract` (Inno Setup and GOG installers) and
+//! `bsdtar` as the catch all. The archive goes to a temporary folder inside the destination first;
 //! a single top folder is then merged into the destination (unless
 //! `nomerge`), and an archive that held one more archive is opened too.
 
@@ -11,6 +13,7 @@ use std::process::Command;
 
 use heronite_i18n::tr;
 
+use crate::builtin;
 use crate::exec::{run, run_ok, which_any, Io};
 use crate::fsops::move_contents;
 
@@ -37,10 +40,11 @@ impl Format {
     pub fn tools(self) -> &'static [&'static [&'static str]] {
         match self {
             Format::Tar => &[&["tar", "bsdtar"]],
-            Format::Zip => &[&["unzip", "7z", "7za", "7zz", "bsdtar"]],
-            Format::SevenZip => &[&["7z", "7za", "7zz", "bsdtar"]],
+            // Opened in process (`builtin`); an archiver is only a fallback.
+            Format::Zip | Format::SevenZip | Format::Gzip => &[],
+            // Windows' own tar.exe is libarchive, which reads RAR.
+            Format::Rar if cfg!(windows) => &[&["unrar", "7z", "7za", "7zz", "bsdtar", "tar"]],
             Format::Rar => &[&["unrar", "7z", "7za", "7zz", "bsdtar"]],
-            Format::Gzip => &[&["gzip", "7z", "7za", "7zz"]],
             Format::Inno => &[&["innoextract"]],
             Format::Exe => &[&["innoextract", "7z", "7za", "7zz"]],
             Format::Deb => &[&["bsdtar", "ar"], &["tar", "bsdtar"]],
@@ -178,34 +182,33 @@ fn unpack(archive: &Path, out: &Path, format: Format, io: &Io) -> Result<(), Str
             crate::fsops::make_executable(&target)
         }
         Format::Tar => {
-            let bin = tool(&["tar", "bsdtar"])?;
+            let bin = match builtin::windows_tar() {
+                Some(tar) => tar.into_os_string(),
+                None => tool(&["tar", "bsdtar"])?.into(),
+            };
             run_ok(Command::new(bin).arg("-xf").arg(archive).arg("-C").arg(out), io, None)
         }
-        Format::Zip => {
-            if let Some(unzip) = which_any(&["unzip"]) {
-                // 1: warnings only (odd timestamps, names).
-                return run_ok(Command::new(unzip).args(["-o", "-qq"]).arg(archive).arg("-d").arg(out), io, Some(1));
-            }
-            seven_zip_or_bsdtar(archive, out, io)
-        }
-        Format::SevenZip | Format::Gzip => {
-            if format == Format::Gzip && which_any(SEVEN_ZIP).is_none() {
-                let gzip = tool(&["gzip"])?;
-                let name = archive.file_stem().unwrap_or_default();
-                let target = out.join(name);
-                let mut cmd = Command::new("sh");
-                cmd.args(["-c", "exec \"$0\" -dc \"$1\" > \"$2\"", &gzip]).arg(archive).arg(&target);
-                return run_ok(&mut cmd, io, None);
-            }
-            seven_zip_or_bsdtar(archive, out, io)
-        }
+        Format::Zip => builtin_first(
+            out,
+            io,
+            || builtin::unzip(archive, out, io),
+            || {
+                if let Some(unzip) = which_any(&["unzip"]) {
+                    // 1: warnings only (odd timestamps, names).
+                    return Some(run_ok(Command::new(unzip).args(["-o", "-qq"]).arg(archive).arg("-d").arg(out), io, Some(1)));
+                }
+                seven_zip_or_tar(archive, out, io)
+            },
+        ),
+        Format::SevenZip => builtin_first(out, io, || builtin::un7z(archive, out, io), || seven_zip_or_tar(archive, out, io)),
+        Format::Gzip => builtin_first(out, io, || builtin::gunzip(archive, out, io), || seven_zip_or_tar(archive, out, io)),
         Format::Rar => {
             if let Some(unrar) = which_any(&["unrar"]) {
                 let mut dir = out.as_os_str().to_os_string();
                 dir.push("/");
                 return run_ok(Command::new(unrar).args(["x", "-o+", "-y", "-idq"]).arg(archive).arg(dir), io, None);
             }
-            seven_zip_or_bsdtar(archive, out, io)
+            seven_zip_or_tar(archive, out, io).unwrap_or_else(|| Err(builtin::no_tool("RAR")))
         }
         Format::Inno => innoextract(archive, out, io),
         Format::Exe => {
@@ -240,12 +243,34 @@ fn unpack(archive: &Path, out: &Path, format: Format, io: &Io) -> Result<(), Str
     }
 }
 
-fn seven_zip_or_bsdtar(archive: &Path, out: &Path, io: &Io) -> Result<(), String> {
+/// The in-process extractor, then (for a method or header it does not read)
+/// an archiver, from an empty folder again. Without an archiver the in-process
+/// error is what the user sees.
+fn builtin_first(
+    out: &Path,
+    io: &Io,
+    builtin: impl FnOnce() -> Result<(), builtin::Failure>,
+    fallback: impl FnOnce() -> Option<Result<(), String>>,
+) -> Result<(), String> {
+    let why = match builtin() {
+        Ok(()) => return Ok(()),
+        Err(builtin::Failure::Cancelled) => return Err(builtin::Failure::Cancelled.into_message()),
+        Err(builtin::Failure::Unreadable(why)) => why,
+    };
+    (io.log)(&format!("the built-in extractor could not open it ({why}); trying an archiver"));
+    let _ = fs::remove_dir_all(out);
+    fs::create_dir_all(out).map_err(|e| format!("{}: {e}", out.display()))?;
+    fallback().unwrap_or(Err(why))
+}
+
+/// 7-Zip, else bsdtar, else Windows' own tar.exe (libarchive); `None` when
+/// there is none of them.
+fn seven_zip_or_tar(archive: &Path, out: &Path, io: &Io) -> Option<Result<(), String>> {
     if let Some(bin) = which_any(SEVEN_ZIP) {
-        return run_ok(Command::new(bin).args(["x", "-y", "-aoa"]).arg(format!("-o{}", out.display())).arg(archive), io, None);
+        return Some(run_ok(Command::new(bin).args(["x", "-y", "-aoa"]).arg(format!("-o{}", out.display())).arg(archive), io, None));
     }
-    let bin = tool(&["bsdtar", "7z"])?;
-    run_ok(Command::new(bin).arg("-xf").arg(archive).arg("-C").arg(out), io, None)
+    let bin = which_any(&["bsdtar"]).map(Into::into).or_else(|| builtin::windows_tar().map(PathBuf::into_os_string))?;
+    Some(run_ok(Command::new(bin).arg("-xf").arg(archive).arg("-C").arg(out), io, None))
 }
 
 /// GOG installers keep the game in `app/` (and some files in
@@ -275,7 +300,6 @@ fn innoextract(archive: &Path, out: &Path, io: &Io) -> Result<(), String> {
 mod tests {
     use super::*;
 
-    #[cfg(unix)]
     fn io() -> (Box<dyn Fn() -> bool>, Box<dyn Fn(&str)>) {
         (Box::new(|| false), Box::new(|_| {}))
     }
@@ -295,6 +319,46 @@ mod tests {
         assert_eq!(guess(&f), Format::Zip);
         fs::write(&f, b"\x1f\x8bxx").unwrap();
         assert_eq!(guess(&f), Format::Tar);
+    }
+
+    #[test]
+    fn a_zip_and_a_7z_are_extracted_with_no_archiver() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let zip = d.join("mod.zip");
+        let mut w = zip::ZipWriter::new(fs::File::create(&zip).unwrap());
+        w.start_file("Mod-1.0/Data/a.esp", zip::write::SimpleFileOptions::default()).unwrap();
+        w.write_all(b"plugin").unwrap();
+        w.finish().unwrap();
+        let seven = d.join("mod.7z");
+        let mut w = sevenz_rust2::ArchiveWriter::new(fs::File::create(&seven).unwrap()).unwrap();
+        w.push_archive_entry(sevenz_rust2::ArchiveEntry::new_file("Mod-1.0/Data/b.esp"), Some(&b"other"[..])).unwrap();
+        w.finish().unwrap();
+        let (cancel, log) = io();
+        let io = Io { cancel: &*cancel, log: &*log };
+        extract(&zip, &d.join("z"), None, true, &io).unwrap();
+        assert_eq!(fs::read(d.join("z/Data/a.esp")).unwrap(), b"plugin");
+        extract(&seven, &d.join("s"), None, false, &io).unwrap();
+        assert_eq!(fs::read(d.join("s/Mod-1.0/Data/b.esp")).unwrap(), b"other");
+        let leftovers = fs::read_dir(d.join("s")).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().starts_with('.')).count();
+        assert_eq!(leftovers, 0, "the temporary folder is removed");
+    }
+
+    /// Windows' own tar.exe opens a tar.gz, whatever `tar` the PATH has.
+    #[cfg(windows)]
+    #[test]
+    fn windows_tar_opens_a_tarball() {
+        let Some(tar) = builtin::windows_tar() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        fs::create_dir_all(d.join("src/Mod/Data")).unwrap();
+        fs::write(d.join("src/Mod/Data/a.esp"), "plugin").unwrap();
+        let archive = d.join("mod.tar.gz");
+        assert!(Command::new(&tar).arg("-czf").arg(&archive).arg("-C").arg(d.join("src")).arg("Mod").status().unwrap().success());
+        let (cancel, log) = io();
+        extract(&archive, &d.join("out"), None, true, &Io { cancel: &*cancel, log: &*log }).unwrap();
+        assert_eq!(fs::read_to_string(d.join("out/Data/a.esp")).unwrap(), "plugin");
     }
 
     // The `tar` on the PATH can be Git's GNU tar, which takes the `C:` of a path for a host.

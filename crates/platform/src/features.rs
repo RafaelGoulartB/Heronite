@@ -190,11 +190,10 @@ const fn built_in(feature: Feature) -> bool {
         | Feature::StoreClients
         | Feature::LauncherImports
         | Feature::SteamGameSettings
-        | Feature::XboxStore => true,
+        | Feature::XboxStore
+        | Feature::Mods => true,
         Feature::Overlay => cfg!(windows),
-        // Mods on Windows wait until mod archives open without 7-Zip or
-        // bsdtar on the PATH, and the game folder is put back reliably.
-        Feature::Mods | Feature::Wine | Feature::HeroicMigration | Feature::Replay | Feature::Sandbox | Feature::Wrappers => false,
+        Feature::Wine | Feature::HeroicMigration | Feature::Replay | Feature::Sandbox | Feature::Wrappers => false,
     }
 }
 
@@ -273,7 +272,7 @@ mod tests {
         if cfg!(windows) {
             assert!(built_in(Feature::XboxStore));
             assert!(built_in(Feature::SteamGameSettings), "the launch options line");
-            assert!(!built_in(Feature::Mods), "the mod manager is Linux only for now");
+            assert!(built_in(Feature::Mods), "the mod manager, with its files put into the game folder");
         }
     }
 
