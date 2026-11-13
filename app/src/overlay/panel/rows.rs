@@ -15,6 +15,44 @@ use crate::overlay::{LiveChange, OverlayService};
 /// (`OverlayPanel::render_body` draws them in one card).
 pub(super) const MANGOHUD: &str = "mangohud";
 pub(super) const FPS: &str = "fps";
+/// Home's "Capture" row: one round button per [`Capture`], ◀ ▶ choose one
+/// and A runs it (`OverlayPanel::render_capture` draws it).
+pub(super) const CAPTURES: &str = "captures";
+
+/// What Home's "Capture" row can do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Capture {
+    Shot,
+    Replay,
+    Moment,
+}
+
+impl Capture {
+    /// The row that does the same on its own (see `OverlayPanel::activate`).
+    fn id(self) -> &'static str {
+        match self {
+            Capture::Shot => "capture",
+            Capture::Replay => "replay",
+            Capture::Moment => "moment",
+        }
+    }
+
+    pub(super) fn icon(self) -> Icon {
+        match self {
+            Capture::Shot => Icon::PhotoCamera,
+            Capture::Replay => Icon::Videocam,
+            Capture::Moment => Icon::Flag,
+        }
+    }
+
+    pub(super) fn label(self) -> String {
+        match self {
+            Capture::Shot => tr!("Take screenshot").into(),
+            Capture::Replay => tr!("Save replay").into(),
+            Capture::Moment => tr!("Mark this moment").into(),
+        }
+    }
+}
 
 impl OverlayPanel {
     pub(super) fn rows(&self) -> Vec<Row> {
@@ -46,14 +84,16 @@ impl OverlayPanel {
             rows.push(Row::action("launcher", tr!("Open Heronite")).icon(Icon::Home));
             return rows;
         };
-        rows.push(Row::action("capture", tr!("Take screenshot")).icon(Icon::PhotoCamera));
-        rows.extend(self.replay_row());
-        if self.data.journal.is_some() {
-            rows.push(
-                Row::action("moment", tr!("Mark this moment"))
-                    .icon(Icon::Flag)
-                    .desc(tr!("Saves the time and a screenshot. Write about it later.")),
-            );
+        match self.chosen_capture() {
+            // Alone, the screenshot is a row like any other.
+            (_, all) if all.len() < 2 => rows.push(Row::action("capture", tr!("Take screenshot")).icon(Icon::PhotoCamera)),
+            (at, all) => {
+                let desc = match (all[at], self.replay) {
+                    (Capture::Replay, Some(replay)) => tr!("Save replay · the last {n} s", n = replay.seconds).to_string(),
+                    (chosen, _) => chosen.label(),
+                };
+                rows.push(Row::action(CAPTURES, tr!("Capture")).icon(Icon::PhotoCamera).desc(desc));
+            }
         }
         // Only when the game's limiter can change while it runs.
         if let Some(now) = &game.fps {
@@ -85,6 +125,31 @@ impl OverlayPanel {
         rows.push(Row::action("launcher", tr!("Back to Heronite")).icon(Icon::Home).desc(tr!("The game keeps running")));
         rows.push(Row::action("quit", tr!("Quit game")).icon(Icon::PowerSettingsNew).danger());
         rows
+    }
+
+    /// What Home's "Capture" row offers now, and the one chosen in it.
+    pub(super) fn chosen_capture(&self) -> (usize, Vec<Capture>) {
+        let mut all = vec![Capture::Shot];
+        if self.replay.is_some_and(|r| r.on) {
+            all.push(Capture::Replay);
+        }
+        if self.data.journal.is_some() {
+            all.push(Capture::Moment);
+        }
+        (self.capture.min(all.len() - 1), all)
+    }
+
+    /// A press on Home's "Capture" row: ◀ ▶ choose, A runs the chosen one.
+    pub(super) fn capture_pad(&mut self, pad: crate::console::Pad, cx: &mut Context<Self>) -> bool {
+        use crate::console::Pad;
+        let (at, all) = self.chosen_capture();
+        match pad {
+            Pad::Left => self.capture = at.saturating_sub(1),
+            Pad::Right => self.capture = (at + 1).min(all.len() - 1),
+            Pad::A => self.activate(all[at].id(), cx),
+            _ => return false,
+        }
+        true
     }
 
     /// "Save replay", while the replay records.

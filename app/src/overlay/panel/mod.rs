@@ -22,7 +22,7 @@ use heronite_overlay::audio::AudioState;
 use heronite_overlay::input::{Button, Controller};
 
 use self::data::Data;
-use self::rows::{FPS, MANGOHUD};
+use self::rows::{CAPTURES, FPS, MANGOHUD};
 use super::{GameNow, OverlayService};
 use crate::console::kit::{self, u};
 use crate::console::list::{self, ListNav, Row};
@@ -98,6 +98,8 @@ pub struct OverlayPanel {
     /// Focused capture in the Screenshots grid (`None` = the rows have it).
     grid: Option<usize>,
     grid_scroll: ScrollHandle,
+    /// The button chosen in Home's "Capture" row.
+    capture: usize,
     /// The rows drawn with the mixer or MangoHud's card (they scroll when the
     /// panel is short for them).
     rows_scroll: ScrollHandle,
@@ -179,6 +181,7 @@ impl OverlayPanel {
             confirm_nav: ListNav::default(),
             grid: None,
             grid_scroll: ScrollHandle::new(),
+            capture: 0,
             rows_scroll: ScrollHandle::new(),
             viewer: None,
             error: None,
@@ -322,6 +325,9 @@ impl OverlayPanel {
             if mixer::is_mixer(&id) && self.mixer_pad(&id, pad, cx) {
                 return true;
             }
+            if id.as_ref() == CAPTURES && self.capture_pad(pad, cx) {
+                return true;
+            }
         }
         if pad == Pad::Y && self.tab() == Tab::Notes && self.data.journal.is_some() {
             self.with_service(cx, |s, cx| s.mark_moment(cx));
@@ -386,6 +392,15 @@ impl OverlayPanel {
             }
             h.push(hint(Btn::B, tr!("Close")));
             return h;
+        }
+        if self.grid.is_none() && self.nav.focused(&rows).is_some_and(|r| r.id.as_ref() == CAPTURES) {
+            let (at, all) = self.chosen_capture();
+            return vec![
+                hint(Btn::LeftRight, tr!("Choose")),
+                hint(Btn::A, all[at].label()),
+                hint(Btn::B, tr!("Close")),
+                hint(Btn::Bumpers, tr!("Tabs")),
+            ];
         }
         if self.grid.is_some() && notes {
             return vec![hint(Btn::A, tr!("View")), hint(Btn::Y, tr!("Note")), hint(Btn::B, tr!("Close")), hint(Btn::Bumpers, tr!("Tabs"))];
@@ -477,6 +492,60 @@ impl OverlayPanel {
             .child(self.glyph(Btn::RB).on_pads([Pad::RB]))
     }
 
+    /// Home's "Capture" row: its label, then a round button per capture.
+    /// `route` brings the focus to the row (`None`: the rows take no clicks).
+    fn render_capture(&self, r: &Row, focused: bool, route: Option<&[Pad]>) -> Div {
+        let (at, all) = self.chosen_capture();
+        let fg: Hsla = if focused { theme::console_on_focus().into() } else { theme::text_primary().into() };
+        let buttons = all.iter().enumerate().map(|(i, c)| {
+            // The mouse over a button chooses it, a click runs it.
+            let to: Vec<Pad> = route
+                .map(|route| {
+                    let step = if i > at { Pad::Right } else { Pad::Left };
+                    route.iter().copied().chain(pointer::repeat(step, i.abs_diff(at))).collect()
+                })
+                .unwrap_or_default();
+            let click: Vec<Pad> = route.map(|_| to.iter().copied().chain([Pad::A]).collect()).unwrap_or_default();
+            let (bg, ink): (Hsla, Hsla) = match (focused, i == at) {
+                (true, true) => (fg, theme::console_focus().into()),
+                (true, false) => (theme::black_a(0.08), fg),
+                (false, _) => (theme::white_a(0.1), fg),
+            };
+            div()
+                .flex_none()
+                .size(u(40.))
+                .rounded_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(bg)
+                .on_hover_pads(to)
+                .on_pads(click)
+                .child(icon(c.icon(), u(20.), ink))
+        });
+        let row = kit::row_base(focused)
+            .children(r.icon.map(|ic| icon(ic, u(22.), fg)))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_w_0()
+                    .py(u(10.))
+                    .child(div().text_size(u(18.)).text_color(fg).truncate().child(r.label.clone()))
+                    .children(
+                        r.desc
+                            .clone()
+                            .filter(|_| focused)
+                            .map(|d| div().text_size(u(13.)).line_height(u(18.)).truncate().text_color(Hsla { a: 0.7, ..fg }).child(d)),
+                    ),
+            )
+            .child(div().flex().flex_none().gap(u(8.)).children(buttons));
+        // A click on the row itself runs the chosen one.
+        let click: Vec<Pad> = route.map(|route| route.iter().copied().chain([Pad::A]).collect()).unwrap_or_default();
+        div().on_hover_pads(route.map(<[Pad]>::to_vec).unwrap_or_default()).on_pads(click).child(row)
+    }
+
     fn apps_playing(&self) -> bool {
         self.data.audio.as_ref().and_then(|a| a.as_ref()).is_some_and(|a| !a.apps.is_empty())
     }
@@ -534,10 +603,10 @@ impl OverlayPanel {
             None => Some((&placeholder, true)),
             Some(None) => None,
         };
-        let has_card = rows.iter().any(|r| r.id.as_ref() == MANGOHUD);
+        let has_card = rows.iter().any(|r| matches!(r.id.as_ref(), MANGOHUD | CAPTURES));
         let list = match audio.filter(|_| has_mixer) {
-            // With the mixer or MangoHud's card: the rows are drawn here
-            // (short lists, no scrolling).
+            // With the mixer, MangoHud's card or the "Capture" row: the rows
+            // are drawn here.
             audio if has_mixer || has_card => {
                 self.nav.clamp(&rows);
                 let focus = list_active.then(|| rows.get(self.nav.focus).map(|r| r.id.clone())).flatten();
@@ -602,6 +671,11 @@ impl OverlayPanel {
                                 card = card.child(div().h(u(1.)).mx(u(14.)).bg(theme::white_a(0.08))).child(plain(i + 1, fps));
                             }
                             list = list.child(div().py(u(2.)).child(card));
+                            child += 1;
+                        }
+                        CAPTURES => {
+                            let route = routes.get(CAPTURES).map(Vec::as_slice);
+                            list = list.child(self.render_capture(r, list_active && i == self.nav.focus, route));
                             child += 1;
                         }
                         _ => {

@@ -1193,7 +1193,10 @@ microphone (the default source; the outputs' monitors are left out) and its mute
 `GAMESCOPE_FPS_LIMIT` atom set with `xprop`; DXVK / VKD3D cannot); the value lasts for the session. With MangoHud it
 sits in a card under a "Show MangoHud" switch (the same file's `no_display`): hiding the HUD keeps the limit, so the
 limit stays editable and says so. Rows drawn with the mixer or that card scroll to keep the focus in sight when the
-panel is short for them. Steam games are
+panel is short for them. Home's captures share one "Capture" row (by user decision: option B2): a round button each
+for the screenshot, the replay (while it records) and the moment (with a journal), ◀ ▶ choose one, A runs it and the
+description and the A hint name it; a click on a button runs that one. With only the screenshot it is a plain "Take
+screenshot" row. The Screenshots and Notes tabs keep their own rows. Steam games are
 started by Steam, so the launch cannot move MangoHud's limit into a file of ours: they have no live limit (editing the
 user's `MangoHud.conf` or their Steam launch options was ruled out). An Achievements tab (last, so the other tabs keep
 their place when it appears; `panel/achievements.rs`) shows when the game has a set in the achievements service,
