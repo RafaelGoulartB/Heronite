@@ -211,8 +211,9 @@ mod tests {
 
     #[test]
     fn a_listener_that_leaves_has_its_channel_closed() {
-        let (a, rx_a) = start().expect("the controller thread starts");
-        let (b, rx_b) = start().expect("a second listener shares it");
+        let (a, rx_a) = start(Translator::default()).expect("the controller thread starts");
+        // One reading the buttons as they are (`start_buttons`) shares it too.
+        let (b, rx_b) = start(Translator::buttons()).expect("a second listener shares it");
         drop(a);
         // Ends once the hub let go of the sender; only connection news can
         // come before (from controllers on this machine).
