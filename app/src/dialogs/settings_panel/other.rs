@@ -3,8 +3,10 @@
 //! Wine's FSR) and system tweaks while playing. Heroic's Other and Gamescope
 //! tabs.
 
+use crate::ui::controls::with_sub_rows;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_launch::fps_limit::KEY_MANGOHUD_HIDDEN;
 use serde_json::{json, Value};
 
 use super::logic;
@@ -44,7 +46,7 @@ impl SettingsPanel {
                 cx,
             ));
         }
-        r.child(self.toggle_row(
+        let mangohud = self.toggle_row(
             "mangohud",
             "showMangohud",
             false,
@@ -52,7 +54,31 @@ impl SettingsPanel {
             Some(tr!("FPS, frame times, temperatures and load (needs MangoHud)")),
             disabled,
             cx,
-        ))
+        );
+        // Only with MangoHud on, under it.
+        let mut sub = Vec::new();
+        if self.flag("showMangohud", false) {
+            sub.push(self.toggle_row(
+                "mangohud-hidden",
+                KEY_MANGOHUD_HIDDEN,
+                false,
+                tr!("Start hidden"),
+                Some(&self.mangohud_hidden_help()),
+                disabled,
+                cx,
+            ));
+        }
+        r.child(with_sub_rows(mangohud, sub))
+    }
+
+    /// What shows MangoHud when it starts hidden: the in-game overlay can
+    /// for the games Heronite starts, not for Steam's.
+    pub(super) fn mangohud_hidden_help(&self) -> String {
+        if self.steam.is_some() {
+            tr!("Its toggle key shows it (Right Shift + F12 unless changed).").into()
+        } else {
+            tr!("Its toggle key (Right Shift + F12 unless changed) or the in-game overlay shows it.").into()
+        }
     }
 
     /// Wine's own FSR upscaling in fullscreen, with its sharpness.

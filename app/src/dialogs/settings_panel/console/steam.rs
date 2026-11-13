@@ -172,6 +172,10 @@ impl SettingsPanel {
             "MangoHud",
             Some(tr!("FPS, frame times, temperatures and load (needs MangoHud)")),
         ));
+        if self.flag("showMangohud", false) {
+            let help = self.mangohud_hidden_help();
+            v.push(self.c_steam_toggle(heronite_launch::fps_limit::KEY_MANGOHUD_HIDDEN, false, tr!("Start hidden"), Some(&help)).sub());
+        }
         v.extend(self.c_replay(cx));
         v.extend(self.c_fps(true));
         v.extend(self.c_lsfg(true));

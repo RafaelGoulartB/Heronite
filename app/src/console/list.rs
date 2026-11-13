@@ -55,6 +55,9 @@ pub struct Row {
     pub compact: bool,
     /// A picture drawn in place of the value (a capture's preview).
     pub image: Option<std::path::PathBuf>,
+    /// Only matters because of the row above it (shown while that one is
+    /// on): drawn indented along a line.
+    pub sub: bool,
 }
 
 impl Row {
@@ -70,6 +73,7 @@ impl Row {
             changed: false,
             compact: false,
             image: None,
+            sub: false,
         }
     }
     pub fn action(id: impl Into<SharedString>, label: impl Into<SharedString>) -> Self {
@@ -122,6 +126,11 @@ impl Row {
     }
     pub fn compact(mut self) -> Self {
         self.compact = true;
+        self
+    }
+    /// See [`Row::sub`].
+    pub fn sub(mut self) -> Self {
+        self.sub = true;
         self
     }
     pub fn image(mut self, path: Option<std::path::PathBuf>) -> Self {
@@ -484,7 +493,7 @@ pub fn render_row_at(r: &Row, focused: bool, route: Option<&[Pad]>) -> Div {
             .into_any_element(),
         None => value,
     };
-    kit::row_base(focused)
+    let row = kit::row_base(focused)
         .when(!r.enabled, |d| d.opacity(0.4))
         .children(r.icon.map(|ic| icon(ic, u(22.), label_color)))
         .child(
@@ -512,7 +521,16 @@ pub fn render_row_at(r: &Row, focused: bool, route: Option<&[Pad]>) -> Div {
                         .child(d)
                 })),
         )
-        .child(value)
+        .child(value);
+    if !r.sub {
+        return row;
+    }
+    // Indented, along a line from the row above.
+    div()
+        .relative()
+        .pl(u(34.))
+        .child(div().absolute().left(u(22.)).top_0().bottom_0().w(u(2.)).rounded_full().bg(theme::white_a(0.12)))
+        .child(row)
 }
 
 /// A small console dialog: title, message lines, an optional error and the

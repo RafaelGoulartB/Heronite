@@ -66,6 +66,12 @@ pub(super) fn item(row: Row, act: Act) -> Item {
 }
 
 impl Item {
+    /// Drawn under the row before it, indented ([`Row::sub`]).
+    pub(super) fn sub(mut self) -> Self {
+        self.row = self.row.sub();
+        self
+    }
+
     fn desc_item(mut self, d: &str) -> Self {
         self.row = self.row.desc(d.to_string());
         self
@@ -363,6 +369,10 @@ impl SettingsPanel {
             Some(tr!("FPS, frame times, temperatures and load (needs MangoHud)")),
             false,
         ));
+        if self.flag("showMangohud", false) {
+            let help = self.mangohud_hidden_help();
+            v.push(self.c_toggle(heronite_launch::fps_limit::KEY_MANGOHUD_HIDDEN, false, tr!("Start hidden"), Some(&help), false).sub());
+        }
         v.extend(self.c_replay(cx));
         v.extend(self.c_fps(false));
         v.extend(self.c_lsfg(false));

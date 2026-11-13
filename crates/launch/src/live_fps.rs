@@ -114,7 +114,7 @@ pub fn prepare(cmd: &mut Command, app_name: &str, probe: &dyn Probe) -> Option<L
     // Ours, or none at all (the HUD without a limit): anything else is the
     // user's own and stays as it is.
     let (limit, smooth, hud) = match cmd.env.get(MANGOHUD_CONFIG) {
-        Some(c) => fps_limit::read_mangohud_config(c)?,
+        Some(c) => fps_limit::read_mangohud_config(c).map(|(l, s, hud)| (l, s, hud == fps_limit::Hud::Shown))?,
         None if probe.env_var(MANGOHUD_CONFIG).is_some() => return None,
         None => (0, false, true),
     };
@@ -253,6 +253,17 @@ mod tests {
         let now = saved.current();
         assert_eq!((now.limit(), now.hud()), (90, Some(false)));
         assert_eq!(LiveFps::Gamescope { limit: 50 }.current(), LiveFps::Gamescope { limit: 50 });
+    }
+
+    #[test]
+    fn mangohud_started_hidden_can_be_shown_from_the_overlay() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut c = cmd("/usr/bin/mangohud", &["/games/run.sh"], &[("MANGOHUD_CONFIG", "read_cfg,no_display=1")]);
+        let live = prepare(&mut c, "g", &probe(tmp.path())).unwrap();
+        assert_eq!((live.limit(), live.hud()), (0, Some(false)));
+        assert_eq!(c.env["MANGOHUD_CONFIG"], "read_cfg", "no_display moves into the file");
+        let LiveFps::MangoHud { file, .. } = &live else { unreachable!() };
+        assert!(std::fs::read_to_string(file).unwrap().ends_with("fps_limit=0\nno_display=1\n"));
     }
 
     #[test]
