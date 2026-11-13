@@ -9,7 +9,7 @@ use heronite_i18n::tr;
 
 use super::context_menu::{item, place_flyout};
 use super::CollectionView;
-use crate::dialogs::game_settings::{GameSettingsDialog, Tab};
+use crate::dialogs::game_settings::Tab;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::game_actions::{icon_of, menu_note};
@@ -47,9 +47,8 @@ impl CollectionView {
     pub(super) fn open_actions_editor(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.facts.launch_menu_open = false;
         self.context_menu = None;
-        let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(key)) else { return };
-        let view = cx.new(|cx| GameSettingsDialog::new(ctx, game, Tab::Actions, window, cx));
-        self.open_dialog(view, cx);
+        let Some(game) = self.game_for(key) else { return };
+        self.show_game_settings(key, game, Tab::Start, window, cx);
     }
 
     /// The context menu's flyout of the Play row: the actions, then "Edit actions".

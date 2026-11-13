@@ -17,6 +17,7 @@ mod fps_limit;
 mod gamescope;
 mod general;
 mod gpu;
+mod graphics;
 mod launch_preview;
 pub mod logic;
 mod lsfg;
@@ -31,6 +32,7 @@ mod sandbox;
 mod saves;
 mod shared_folders;
 mod steam;
+pub mod summary;
 mod wine;
 mod winetricks;
 
@@ -49,8 +51,10 @@ use serde_json::{json, Value};
 use crate::theme;
 use crate::ui::fields::new_input;
 
+pub use changes::Found;
 pub use general::GlobalView;
 pub use logic::{GameFacts, Section};
+pub use parts::{heading, rows};
 pub use reshade::focus_reshade;
 pub(crate) use reshade::Place as ReshadePlace;
 
@@ -176,6 +180,14 @@ pub struct SettingsPanel {
     pub(super) notice: Option<Notice>,
     /// "Reset this tab" asked for and waiting for its answer.
     confirm_reset: bool,
+    /// "Show N rarely used settings" is open (closed again on another group).
+    show_rare: bool,
+    /// "How the game starts" sits in its own column beside the settings (the
+    /// game page), not at the end of Start.
+    preview_aside: bool,
+    /// The rarely used settings of the group drawn that the game left alone
+    /// (filled while it is drawn, for the count of that link).
+    folded: std::cell::RefCell<Vec<&'static str>>,
     /// Name of the Wine tool running.
     pub(super) tool_busy: Option<&'static str>,
     /// The Winetricks page, while open (it takes the tab's place).
@@ -320,6 +332,10 @@ impl SettingsPanel {
             notice: None,
             // `HERONITE_DEBUG_ASK_RESET=1`: "Reset this tab" starts asked (screenshots).
             confirm_reset: crate::env::flag("HERONITE_DEBUG_ASK_RESET"),
+            // `HERONITE_DEBUG_SHOW_RARE=1`: the rarely used settings start shown.
+            show_rare: crate::env::flag("HERONITE_DEBUG_SHOW_RARE"),
+            preview_aside: false,
+            folded: Default::default(),
             tool_busy: None,
             winetricks: None,
             launch_options: Vec::new(),
@@ -362,7 +378,7 @@ impl SettingsPanel {
             this.global_wine = Some(logic::wine_of(&game_config::load_global(&this.paths, &this.home)).name);
         }
         this.load_lsfg(cx);
-        if this.section == Section::Performance {
+        if this.section == Section::Graphics {
             this.load_reshade(false, cx);
         }
         this.load_gpu(cx);
@@ -429,16 +445,17 @@ impl SettingsPanel {
         }
     }
 
-    /// Switches tab (closing open menus).
+    /// Switches group (closing open menus).
     pub fn set_section(&mut self, section: Section, window: &mut Window, cx: &mut Context<Self>) {
         if self.section != section {
             self.section = section;
             self.open_select = None;
             self.notice = None;
             self.confirm_reset = false;
+            self.show_rare = false;
             self.env_error.clear();
             self.maybe_detect_saves(window, cx);
-            if section == Section::Performance && self.reshade.overview.is_none() {
+            if section == Section::Graphics && self.reshade.overview.is_none() {
                 self.load_reshade(false, cx);
             }
             cx.notify();
@@ -739,23 +756,22 @@ impl Render for SettingsPanel {
         if crate::console::active() {
             return self.render_console(window, cx);
         }
+        self.folded.borrow_mut().clear();
         let content = match self.section {
             Section::Compatibility if self.winetricks_open() => self.winetricks_tab(cx),
             Section::Compatibility if self.is_steam() => self.proton_tab(cx),
-            Section::Performance if self.is_steam() => self.steam_perf_tab(cx),
-            Section::Performance if self.facts().is_some_and(|f| logic::reshade_only(f.run_kind)) => {
-                parts::column().child(self.reshade_section(cx))
-            }
-            Section::Launch if self.is_steam() => self.steam_launch_tab(cx),
-            Section::Gpu if self.is_steam() => self.steam_gpu_tab(cx),
-            Section::General => self.general_tab(window, cx),
+            // A native game's Compatibility is its sandbox.
+            Section::Compatibility if self.native() => self.sandbox_tab(cx),
             Section::Compatibility => self.compat_tab(window, cx),
+            Section::Graphics => self.graphics_tab(cx),
+            Section::Performance if self.is_steam() => self.steam_perf_tab(cx),
             Section::Performance => self.perf_tab(cx),
-            Section::Gpu => self.gpu_tab(false, cx),
-            Section::Launch => self.launch_opts_tab(window, cx),
+            Section::Start if self.is_steam() => self.steam_launch_tab(cx),
+            Section::Start => self.launch_opts_tab(window, cx),
+            Section::General => self.general_tab(window, cx),
             Section::Saves => self.saves_tab(window, cx),
-            Section::Sandbox => self.sandbox_tab(cx),
         };
+        let rare = if self.winetricks_open() { None } else { self.rare_link(cx) };
         // The Settings page says nothing about saving: every setting there saves at once.
         let mut footer = div()
             .flex()
@@ -782,7 +798,15 @@ impl Render for SettingsPanel {
                 .text_color(if n.error { theme::danger_text() } else { theme::success() })
                 .child(n.text)
         });
-        div().flex().flex_col().gap(px(8.)).child(content).children(notice).when(self.is_game(), |d| d.child(footer)).into_any_element()
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .child(content)
+            .children(rare)
+            .children(notice)
+            .when(self.is_game(), |d| d.child(footer))
+            .into_any_element()
     }
 }
 

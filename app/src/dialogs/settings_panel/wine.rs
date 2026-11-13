@@ -16,7 +16,7 @@ use heronite_launch::{PlanContext, SystemProbe};
 use serde_json::Value;
 
 use super::logic::{self, RunKind};
-use super::parts::{column, danger_text, heading, help, rows};
+use super::parts::{column, danger_text, heading, help, rows, Rows};
 use super::protondb::{best_ge, ProtonDb, Recommendation};
 use super::{Notice, SettingsPanel, Target};
 use crate::theme;
@@ -58,7 +58,7 @@ impl SettingsPanel {
             prefix = prefix.child(self.tools_row(cx));
         }
         col = col.child(heading(tr!("Prefix"))).child(prefix.card());
-        if self.shows_game_fixes() {
+        if self.shows_game_fixes() && self.shows("umuId") {
             col = col.child(self.game_fixes_section(cx));
         }
 
@@ -89,16 +89,7 @@ impl SettingsPanel {
                 cx,
             ));
         }
-        graphics = graphics.child(self.toggle_row(
-            "auto-dxvk-nvapi",
-            "autoInstallDxvkNvapi",
-            false,
-            "DXVK-NVAPI",
-            Some(tr!("DLSS and other NVIDIA features (needs DXVK)")),
-            !dxvk_on || tools_busy,
-            cx,
-        ));
-        if self.is_game() && !self.native() && logic::offers_system_libs(&wine) {
+        if self.is_game() && !self.native() && logic::offers_system_libs(&wine) && self.shows("preferSystemLibs") {
             graphics = graphics.child(self.toggle_row(
                 "system-libs",
                 "preferSystemLibs",
@@ -109,51 +100,82 @@ impl SettingsPanel {
                 cx,
             ));
         }
-        col = col.child(heading(tr!("Graphics and libraries"))).child(graphics.card());
+        col = col.children(graphics.titled(tr!("Graphics and libraries")));
 
-        let sync = rows().field_help(
-            self.sync_select(false, cx),
-            vec![help(tr!("Less CPU overhead in busy games. Fsync is the fastest where the kernel has it."))],
-        );
-        col = col.child(self.marked_heading(tr!("Sync"), "sync", cx)).child(sync.card());
-
-        let mut experimental = rows().child(self.toggle_row(
-            "wayland",
-            "enableWineWayland",
-            false,
-            tr!("Wayland driver"),
-            Some(tr!("Runs the game on Wayland instead of X11; needs a Wine build that has it")),
-            false,
-            cx,
-        ));
-        if self.flag("enableWineWayland", false) {
-            experimental = experimental.child(self.toggle_row(
-                "hdr",
-                "enableHDR",
-                false,
-                "HDR",
-                Some(tr!("The screen and the game must support it")),
-                false,
-                cx,
-            ));
+        if self.shows("sync") {
+            let sync = rows().field_help(
+                self.sync_select(false, cx),
+                vec![help(tr!("Less CPU overhead in busy games. Fsync is the fastest where the kernel has it."))],
+            );
+            col = col.child(self.marked_heading(tr!("Sync"), "sync", cx)).child(sync.card());
         }
-        experimental = experimental.child(self.toggle_row(
-            "wow64",
-            "enableWoW64",
-            false,
-            "WoW64",
-            Some(tr!("32-bit games on 64-bit Wine; can break older games")),
-            false,
-            cx,
-        ));
-        col = col.child(heading(tr!("Experimental"))).child(experimental.card());
+        col = col.children(self.experimental_rows(false, cx).titled(tr!("Experimental")));
+        col = col.children(self.proton_rows(false, cx).titled("Proton"));
         if self.is_game() && !self.native() {
             col = col.child(self.anticheat_section(cx));
+        }
+        if self.facts().is_some_and(|f| f.sandbox) {
+            col = col.child(self.sandbox_tab(cx));
         }
         if !self.is_game() {
             col = col.child(self.shared_folders_section(cx));
         }
         col
+    }
+
+    /// The Wayland driver and WoW64 (HDR, which needs the first, is in Graphics).
+    pub(super) fn experimental_rows(&self, off: bool, cx: &mut Context<Self>) -> Rows {
+        let steam = self.is_steam();
+        let mut r = rows();
+        if self.shows("enableWineWayland") {
+            let desc = if steam {
+                tr!("Proton 10 or newer, or GE-Proton")
+            } else {
+                tr!("Runs the game on Wayland instead of X11; needs a Wine build that has it")
+            };
+            r = r.child(self.toggle_row(
+                if steam { "p-wayland" } else { "wayland" },
+                "enableWineWayland",
+                false,
+                tr!("Wayland driver"),
+                Some(desc),
+                off,
+                cx,
+            ));
+        }
+        if self.shows("enableWoW64") {
+            r = r.child(self.toggle_row(
+                if steam { "p-wow64" } else { "wow64" },
+                "enableWoW64",
+                false,
+                "WoW64",
+                Some(tr!("32-bit games on 64-bit Wine; can break older games")),
+                off,
+                cx,
+            ));
+        }
+        r
+    }
+
+    /// Proton's own switches: controllers through SDL, and running it
+    /// without umu.
+    pub(super) fn proton_rows(&self, off: bool, cx: &mut Context<Self>) -> Rows {
+        let mut r = rows();
+        if self.has_sdl_row() {
+            r = r.child(self.sdl_row(off, cx));
+        }
+        if self.is_game() && !self.is_steam() && !self.native() && self.wine_version().kind == "proton" && self.shows("disableUMU") {
+            r = r.child(self.toggle_row(
+                "disable-umu",
+                "disableUMU",
+                false,
+                tr!("Disable umu"),
+                Some(tr!("Runs Proton directly, without umu and its game fixes")),
+                false,
+                cx,
+            ));
+        }
+        r
     }
 
     /// Esync and Fsync as one choice: Fsync (both on: Fsync wins where the

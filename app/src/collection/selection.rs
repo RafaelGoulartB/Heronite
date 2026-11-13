@@ -716,7 +716,7 @@ impl CollectionView {
                 if self.sel.active() {
                     self.open_batch_edit(window, cx);
                 } else if self.selected.is_some() {
-                    self.open_game_settings(window, cx);
+                    self.open_game_details(window, cx);
                 } else {
                     return false;
                 }

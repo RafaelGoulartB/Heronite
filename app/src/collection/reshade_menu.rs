@@ -76,12 +76,10 @@ impl CollectionView {
 
     /// Opens the game's settings on the ReShade section.
     pub(super) fn open_reshade(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let (Some(ctx), Some(g)) = (self.dialog_ctx(), self.lib.as_ref().and_then(|l| l.get(key)).cloned()) else { return };
+        let Some(g) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
         // The answer may change once the user acts there.
         FITS.with(|f| f.borrow_mut().remove(key));
         crate::dialogs::settings_panel::focus_reshade();
-        let tab = crate::dialogs::game_settings::Tab::Performance;
-        let view = cx.new(|cx| crate::dialogs::game_settings::GameSettingsDialog::new(ctx, g, tab, window, cx));
-        self.open_dialog(view, cx);
+        self.show_game_settings(key, g, crate::dialogs::game_settings::Tab::Graphics, window, cx);
     }
 }

@@ -19,97 +19,135 @@ use super::SettingsPanel;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{action_button, ButtonKind};
-use heronite_i18n::tr;
+use heronite_i18n::{n_, tr};
 
-/// One setting as the user sees it: what it is saved as, and its tab.
-pub(super) struct Group {
+/// One setting as the user sees it: what it is saved as, its group, and the
+/// label of its row.
+pub(crate) struct Group {
     /// The row, input or setting key that shows it.
     pub id: &'static str,
     pub section: Section,
     pub keys: &'static [&'static str],
+    /// Its row's label (English; `tr` when shown): the Setup card names
+    /// the changed settings with it.
+    pub label: &'static str,
     /// Its row gets the reset icon when changed. Plain settings (a switch
     /// anyone can flip back, a text box to empty) don't, so the tabs don't
     /// fill up with icons; "Reset this tab" still covers them.
     pub button: bool,
+    /// Rarely used: behind "Show N rarely used settings" while the game
+    /// leaves it as the defaults have it (a changed one always shows).
+    pub rare: bool,
 }
 
 /// A plain setting: no reset icon on its row.
-const fn g(id: &'static str, section: Section, keys: &'static [&'static str]) -> Group {
-    Group { id, section, keys, button: false }
+const fn g(id: &'static str, section: Section, keys: &'static [&'static str], label: &'static str) -> Group {
+    Group { id, section, keys, label, button: false, rare: false }
 }
 
 /// A technical setting (or several keys behind one row): reset icon.
-const fn t(id: &'static str, section: Section, keys: &'static [&'static str]) -> Group {
-    Group { id, section, keys, button: true }
+const fn t(id: &'static str, section: Section, keys: &'static [&'static str], label: &'static str) -> Group {
+    Group { id, section, keys, label, button: true, rare: false }
 }
 
-use Section::{Compatibility as C, Gpu as G, Launch as L, Performance as P, Sandbox as X, Saves as S};
+impl Group {
+    const fn rare(self) -> Group {
+        Group { rare: true, ..self }
+    }
+}
 
-/// Every setting the game tabs show. The prefix and the saves folder are not
-/// here: every game has its own.
-const GROUPS: &[Group] = &[
-    t("wine-version", C, &["wineVersion"]),
-    g("crossoverBottle", C, &["wineCrossoverBottle"]),
-    g("umuId", C, &[heronite_launch::umu_ids::KEY]),
-    t("autoInstallDxvk", C, &["autoInstallDxvk"]),
-    t("autoInstallVkd3d", C, &["autoInstallVkd3d"]),
-    t("autoInstallDxvkNvapi", C, &["autoInstallDxvkNvapi"]),
-    t("preferSystemLibs", C, &["preferSystemLibs"]),
-    t("sync", C, &["enableEsync", "enableFsync"]),
-    t("enableWineWayland", C, &["enableWineWayland"]),
-    g("enableHDR", C, &["enableHDR"]),
-    t("enableWoW64", C, &["enableWoW64"]),
-    g("battlEyeRuntime", C, &["battlEyeRuntime"]),
-    g("eacRuntime", C, &["eacRuntime"]),
-    t(heronite_steam::options::KEY_NVAPI, C, &[heronite_steam::options::KEY_NVAPI]),
-    t(heronite_steam::options::KEY_WINED3D, C, &[heronite_steam::options::KEY_WINED3D]),
-    g("showFps", P, &["showFps"]),
-    g("showMangohud", P, &["showMangohud"]),
-    t("fps", P, &[fps_limit::KEY_LIMIT, fps_limit::KEY_METHOD, fps_limit::KEY_SMOOTH, fps_limit::KEY_NO_FOCUS]),
-    t("lsfg", P, &lsfg::INHERITED_KEYS),
-    g("enableFSR", P, &["enableFSR"]),
-    t("fsr-sharpness", P, &["maxSharpness"]),
-    t("gamescope", P, &["gamescope"]),
-    g("useGameMode", P, &["useGameMode"]),
-    g(heronite_launch::keep_awake::KEY, P, &[heronite_launch::keep_awake::KEY]),
-    t(heronite_launch::env::KEY_PREFER_SDL, P, &[heronite_launch::env::KEY_PREFER_SDL]),
-    t("gpu-device", G, &[gpu::KEY_DEVICE, gpu::KEY_PRIME]),
-    t("gpu-preference", G, &[gpu::KEY_PREFERENCE]),
-    g(gpu::KEY_SMOOTH_MOTION, G, &[gpu::KEY_SMOOTH_MOTION]),
-    g(gpu::KEY_REFLEX, G, &[gpu::KEY_REFLEX]),
-    t(gpu::KEY_SHADER_CACHE, G, &[gpu::KEY_SHADER_CACHE]),
-    t(gpu::KEY_DLSS_UPGRADE, G, &[gpu::KEY_DLSS_UPGRADE]),
-    t("gpu-dlss-preset", G, &[gpu::KEY_DLSS_PRESET]),
-    g(gpu::KEY_DLSS_INDICATOR, G, &[gpu::KEY_DLSS_INDICATOR]),
-    t(gpu::KEY_FSR4_UPGRADE, G, &[gpu::KEY_FSR4_UPGRADE]),
-    g(gpu::KEY_FSR4_INDICATOR, G, &[gpu::KEY_FSR4_INDICATOR]),
-    t(gpu::KEY_XESS_UPGRADE, G, &[gpu::KEY_XESS_UPGRADE]),
-    g(gpu::KEY_ANTI_LAG, G, &[gpu::KEY_ANTI_LAG]),
-    t(gpu::KEY_GLTHREAD, G, &[gpu::KEY_GLTHREAD]),
-    t("gpu-vsync", G, &[gpu::KEY_VSYNC]),
-    t("gpu-vendor", G, &[gpu::KEY_VENDOR]),
-    t("gpu-vram", G, &[gpu::KEY_VRAM]),
-    g("launch-option", L, &[heronite_launch::launch_option::KEY]),
-    g("launcherArgs", L, &["launcherArgs"]),
-    g("offlineMode", L, &["offlineMode"]),
-    g("ignoreGameUpdates", L, &["ignoreGameUpdates"]),
-    g("language", L, &["language"]),
-    g("beforeScript", L, &["beforeLaunchScriptPath"]),
-    g("afterScript", L, &["afterLaunchScriptPath"]),
-    g("companions", L, &[heronite_launch::companions::KEY]),
-    g("targetExe", L, &["targetExe"]),
-    g("verboseLogs", L, &["verboseLogs"]),
-    t("steam-runtime", L, &["steamRuntime"]),
-    t("disableUMU", L, &["disableUMU"]),
-    g("wrapperOptions", L, &["wrapperOptions"]),
-    g("enviromentOptions", L, &["enviromentOptions"]),
-    g("sandbox", X, &[heronite_launch::sandbox::KEY]),
-    g("autoSyncSaves", S, &["autoSyncSaves"]),
-    g("enableQuickSavesMenu", S, &["enableQuickSavesMenu"]),
+use Section::{Compatibility as C, Graphics as G, Performance as P, Saves as S, Start as L};
+
+/// Every setting the game groups show, group by group. The prefix and the
+/// saves folder are not here: every game has its own.
+pub(crate) const GROUPS: &[Group] = &[
+    // Start.
+    g("launch-option", L, &[heronite_launch::launch_option::KEY], n_!("Start with")),
+    g("launcherArgs", L, &["launcherArgs"], n_!("Game arguments")),
+    g("offlineMode", L, &["offlineMode"], n_!("Play offline")),
+    g("ignoreGameUpdates", L, &["ignoreGameUpdates"], n_!("Ignore updates")),
+    g("enviromentOptions", L, &["enviromentOptions"], n_!("Environment variables")),
+    g("language", L, &["language"], n_!("Game language")).rare(),
+    g("beforeScript", L, &["beforeLaunchScriptPath"], n_!("Before the game starts")).rare(),
+    g("afterScript", L, &["afterLaunchScriptPath"], n_!("After the game exits")).rare(),
+    g("companions", L, &[heronite_launch::companions::KEY], n_!("Programs alongside the game")).rare(),
+    g("targetExe", L, &["targetExe"], n_!("Alternative executable")).rare(),
+    g("verboseLogs", L, &["verboseLogs"], n_!("Detailed logs")).rare(),
+    t("steam-runtime", L, &["steamRuntime"], n_!("Steam Runtime")).rare(),
+    // No keys: never changed, only folded.
+    g("presets", L, &[], n_!("Presets")).rare(),
+    g("wrapperOptions", L, &["wrapperOptions"], n_!("Wrappers")).rare(),
+    // Compatibility.
+    t("wine-version", C, &["wineVersion"], n_!("Wine / Proton")),
+    g("crossoverBottle", C, &["wineCrossoverBottle"], n_!("CrossOver bottle")),
+    g("umuId", C, &[heronite_launch::umu_ids::KEY], n_!("Game fixes")).rare(),
+    t("autoInstallDxvk", C, &["autoInstallDxvk"], "DXVK"),
+    t("autoInstallVkd3d", C, &["autoInstallVkd3d"], "VKD3D"),
+    t("preferSystemLibs", C, &["preferSystemLibs"], n_!("Prefer system libraries")).rare(),
+    t(heronite_steam::options::KEY_WINED3D, C, &[heronite_steam::options::KEY_WINED3D], "WineD3D").rare(),
+    t("sync", C, &["enableEsync", "enableFsync"], n_!("Sync")).rare(),
+    t("enableWineWayland", C, &["enableWineWayland"], n_!("Wayland driver")).rare(),
+    t("enableWoW64", C, &["enableWoW64"], "WoW64").rare(),
+    t(heronite_launch::env::KEY_PREFER_SDL, C, &[heronite_launch::env::KEY_PREFER_SDL], n_!("Read controllers through SDL")),
+    t("disableUMU", C, &["disableUMU"], n_!("Disable umu")).rare(),
+    g("battlEyeRuntime", C, &["battlEyeRuntime"], "BattlEye"),
+    g("eacRuntime", C, &["eacRuntime"], "Easy Anti-Cheat"),
+    g("sandbox", C, &[heronite_launch::sandbox::KEY], n_!("Sandbox")),
+    // Graphics.
+    t("gpu-device", G, &[gpu::KEY_DEVICE, gpu::KEY_PRIME], n_!("Draws the game")),
+    t("gpu-preference", G, &[gpu::KEY_PREFERENCE], n_!("Draws the game")),
+    t("gpu-vendor", G, &[gpu::KEY_VENDOR], n_!("Card maker the game sees")).rare(),
+    t("gpu-vram", G, &[gpu::KEY_VRAM], n_!("Video memory the game sees")).rare(),
+    g("enableHDR", G, &["enableHDR"], "HDR"),
+    t("gpu-vsync", G, &[gpu::KEY_VSYNC], n_!("VSync")),
+    t("autoInstallDxvkNvapi", G, &["autoInstallDxvkNvapi"], "DXVK-NVAPI"),
+    t(heronite_steam::options::KEY_NVAPI, G, &[heronite_steam::options::KEY_NVAPI], "NVAPI"),
+    t(gpu::KEY_DLSS_UPGRADE, G, &[gpu::KEY_DLSS_UPGRADE], n_!("Newest DLSS")),
+    t("gpu-dlss-preset", G, &[gpu::KEY_DLSS_PRESET], n_!("DLSS model")),
+    g(gpu::KEY_DLSS_INDICATOR, G, &[gpu::KEY_DLSS_INDICATOR], n_!("Show the DLSS indicator")),
+    t(gpu::KEY_FSR4_UPGRADE, G, &[gpu::KEY_FSR4_UPGRADE], n_!("FSR 4")),
+    g(gpu::KEY_FSR4_INDICATOR, G, &[gpu::KEY_FSR4_INDICATOR], n_!("Show the FSR indicator")),
+    t(gpu::KEY_XESS_UPGRADE, G, &[gpu::KEY_XESS_UPGRADE], n_!("Newest XeSS")),
+    g("enableFSR", G, &["enableFSR"], n_!("Wine FSR")),
+    t("fsr-sharpness", G, &["maxSharpness"], n_!("FSR sharpness")),
+    t("gamescope", G, &["gamescope"], "gamescope"),
+    // Performance.
+    g("showFps", P, &["showFps"], n_!("FPS counter")),
+    g("showMangohud", P, &["showMangohud"], "MangoHud"),
+    t("fps", P, &[fps_limit::KEY_LIMIT, fps_limit::KEY_METHOD, fps_limit::KEY_SMOOTH, fps_limit::KEY_NO_FOCUS], n_!("FPS limit")),
+    t("lsfg", P, &lsfg::INHERITED_KEYS, n_!("Lossless Scaling frame generation")),
+    g(gpu::KEY_SMOOTH_MOTION, P, &[gpu::KEY_SMOOTH_MOTION], n_!("Smooth Motion")),
+    g(gpu::KEY_REFLEX, P, &[gpu::KEY_REFLEX], n_!("Reflex in Vulkan games")),
+    g(gpu::KEY_ANTI_LAG, P, &[gpu::KEY_ANTI_LAG], n_!("Anti-Lag")),
+    g("useGameMode", P, &["useGameMode"], "GameMode"),
+    g(heronite_launch::keep_awake::KEY, P, &[heronite_launch::keep_awake::KEY], n_!("Keep the computer awake")).rare(),
+    t(gpu::KEY_SHADER_CACHE, P, &[gpu::KEY_SHADER_CACHE], n_!("Bigger shader cache")).rare(),
+    t(gpu::KEY_GLTHREAD, P, &[gpu::KEY_GLTHREAD], n_!("Threaded OpenGL")).rare(),
+    // Saves.
+    g("autoSyncSaves", S, &["autoSyncSaves"], n_!("Sync automatically")),
+    g("enableQuickSavesMenu", S, &["enableQuickSavesMenu"], n_!("Quick sync menu")),
 ];
 
-pub(super) fn group(id: &str) -> Option<&'static Group> {
+pub(crate) fn group(id: &str) -> Option<&'static Group> {
     GROUPS.iter().find(|g| g.id == id)
+}
+
+/// Whether `group` differs between a game's settings and the defaults it
+/// would otherwise get.
+pub(crate) fn differs(group: &Group, settings: &Map<String, Value>, base: &Map<String, Value>) -> bool {
+    print(group, settings) != print(group, base)
+}
+
+/// The settings of `section` that differ from the defaults, in the order of
+/// [`GROUPS`] (the most asked for first).
+pub(crate) fn changed_groups(section: Section, settings: &Map<String, Value>, base: &Map<String, Value>) -> Vec<&'static Group> {
+    GROUPS.iter().filter(|g| g.section == section && differs(g, settings, base)).collect()
+}
+
+/// Whether a row shows: `rare` ones only while "Show rarely used" is open
+/// or the game changed them.
+pub(crate) fn shown(rare: bool, changed: bool, show_rare: bool) -> bool {
+    !rare || changed || show_rare
 }
 
 /// The value a key has when nothing sets it, where that is not "off".
@@ -191,7 +229,51 @@ impl SettingsPanel {
     /// Whether `group` differs from the defaults (never for the defaults
     /// themselves).
     pub(super) fn changed(&self, group: &Group) -> bool {
-        self.inherited.as_ref().is_some_and(|base| print(group, &self.settings) != print(group, base))
+        self.inherited.as_ref().is_some_and(|base| differs(group, &self.settings, base))
+    }
+
+    /// Whether the row of `id` shows (see [`shown`]). A rarely used one the
+    /// game left alone is counted for "Show N rarely used settings".
+    pub(super) fn shows(&self, id: &str) -> bool {
+        let Some(g) = group(id) else { return true };
+        let changed = self.changed(g);
+        if g.rare && !changed {
+            let mut folded = self.folded.borrow_mut();
+            if !folded.contains(&g.id) {
+                folded.push(g.id);
+            }
+        }
+        shown(g.rare, changed, self.show_rare)
+    }
+
+    /// "Show N rarely used settings" (or "Hide rarely used settings") under
+    /// the group, when it has any.
+    pub(super) fn rare_link(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        let n = self.folded.borrow().len();
+        let text = match (self.show_rare, n) {
+            (_, 0) => return None,
+            (false, n) => heronite_i18n::trn!(n, "Show {n} rarely used setting", "Show {n} rarely used settings"),
+            (true, _) => tr!("Hide rarely used settings").to_string(),
+        };
+        Some(
+            div()
+                .id("rare-link")
+                .flex()
+                .items_center()
+                .gap(px(4.))
+                .px(px(6.))
+                .py(px(4.))
+                .text_size(px(13.))
+                .text_color(theme::accent())
+                .cursor_pointer()
+                .hover(|s| s.text_color(theme::accent_overlay()))
+                .child(text)
+                .when(!self.show_rare, |d| d.child(crate::ui::icon(Icon::ExpandMore, px(16.), theme::accent())))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.show_rare = !this.show_rare;
+                    cx.notify();
+                })),
+        )
     }
 
     /// The changed groups of a section.
@@ -346,20 +428,40 @@ impl SettingsPanel {
         self.reset(&groups, cx);
     }
 
-    /// Console: the group of a row id (`t:<key>`, `c:<id>`...) when it changed.
+    /// Console: the group of a row id when it changed.
     pub(super) fn console_changed(&self, row_id: &str) -> Option<&'static Group> {
-        let id = row_id.split_once(':').map_or(row_id, |(_, rest)| rest);
-        let id = match id {
-            "wine" => "wine-version",
-            "fps-limit" => "fps",
-            "sharp" => "fsr-sharpness",
-            "runtime" => "steam-runtime",
-            "enableUpscaling" if row_id.starts_with("g:") => "gamescope",
-            other => other,
-        };
-        // A group of several keys is shown by the row of its first one.
-        let found = group(id).or_else(|| GROUPS.iter().find(|g| g.keys.len() > 1 && g.keys[0] == id));
-        found.filter(|g| self.changed(g))
+        console_group(row_id).filter(|g| self.changed(g))
+    }
+
+    /// Console: the rows without the rarely used settings the game left
+    /// alone (unless they are shown), and the row that shows or hides them.
+    /// Headers left without rows go too.
+    pub(super) fn console_fold(&self, items: Vec<super::console::Item>) -> Vec<super::console::Item> {
+        let mut folded = 0;
+        let mut kept: Vec<super::console::Item> = Vec::new();
+        for item in items {
+            let rare = console_group(&item.row.id).filter(|g| g.rare && !self.changed(g));
+            if rare.is_some() {
+                folded += 1;
+                if !self.show_rare {
+                    continue;
+                }
+            }
+            kept.push(item);
+        }
+        let mut kept = drop_empty_headers(kept, |i| matches!(i.row.value, crate::console::list::Value::Header));
+        if folded > 0 {
+            let label = if self.show_rare {
+                tr!("Hide rarely used settings").to_string()
+            } else {
+                heronite_i18n::trn!(folded, "Show {n} rarely used setting", "Show {n} rarely used settings")
+            };
+            kept.push(Self::c_do("rare", &label, Icon::Tune, true, |this, _, cx| {
+                this.show_rare = !this.show_rare;
+                cx.notify();
+            }));
+        }
+        kept
     }
 
     /// Console: the tab's changed groups, for "Reset this tab".
@@ -368,10 +470,108 @@ impl SettingsPanel {
     }
 }
 
+/// The group of a console row id (`t:<key>`, `c:<id>`...).
+fn console_group(row_id: &str) -> Option<&'static Group> {
+    let id = row_id.split_once(':').map_or(row_id, |(_, rest)| rest);
+    let id = match id {
+        "wine" => "wine-version",
+        "fps-limit" => "fps",
+        "sharp" => "fsr-sharpness",
+        "runtime" => "steam-runtime",
+        "enableUpscaling" if row_id.starts_with("g:") => "gamescope",
+        "beforeLaunchScriptPath" => "beforeScript",
+        "afterLaunchScriptPath" => "afterScript",
+        other => other,
+    };
+    // A group of several keys is shown by the row of its first one.
+    group(id).or_else(|| GROUPS.iter().find(|g| g.keys.len() > 1 && g.keys[0] == id))
+}
+
+/// A setting the search or "Changed" found: its group of settings, the
+/// group of the game settings whose rows show it, and its value now.
+#[derive(Clone)]
+pub struct Found {
+    pub setting: &'static Group,
+    pub section: Section,
+    pub value: Option<SharedString>,
+    /// Differs from the defaults.
+    pub changed: bool,
+}
+
+/// Whether every word of `query` is in the setting's label (as shown or in
+/// English) or in the name of its group.
+pub(crate) fn matches(query: &str, setting: &Group, section: Section) -> bool {
+    let hay = format!("{} {} {}", heronite_i18n::tr(setting.label), setting.label, section.label()).to_lowercase();
+    let mut words = query.split_whitespace().map(str::to_lowercase).peekable();
+    words.peek().is_some() && words.all(|w| hay.contains(&w))
+}
+
+/// A console row's value in a few words (on / off, the choice, the text).
+fn value_text(v: &crate::console::list::Value) -> Option<SharedString> {
+    use crate::console::list::Value as V;
+    match v {
+        V::Toggle(on) => Some(if *on { tr!("On") } else { tr!("Off") }.into()),
+        V::Choice { options, index } => options.get(*index).cloned(),
+        V::Number { value, suffix, .. } => Some(format!("{value}{suffix}").into()),
+        V::Text(t) | V::Info(t) if !t.is_empty() => Some(t.clone()),
+        _ => None,
+    }
+}
+
+impl SettingsPanel {
+    /// Every setting the game's groups show for it here (once each, group
+    /// by group), read from the console rows, which follow the same rules.
+    fn settings_shown(&self, cx: &App) -> Vec<Found> {
+        let sections = self.facts().map(|f| f.sections()).unwrap_or_default();
+        let mut out: Vec<Found> = Vec::new();
+        for section in sections {
+            for item in self.console_rows_of(section, cx) {
+                if let Some(setting) = console_group(&item.row.id) {
+                    if !out.iter().any(|f| f.setting.id == setting.id) {
+                        out.push(Found { setting, section, value: value_text(&item.row.value), changed: self.changed(setting) });
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// The settings whose name matches `query`, in every group.
+    pub fn search(&self, query: &str, cx: &App) -> Vec<Found> {
+        self.settings_shown(cx).into_iter().filter(|f| matches(query, f.setting, f.section)).collect()
+    }
+
+    /// The settings this game changed from the defaults, in every group.
+    pub fn changed_settings(&self, cx: &App) -> Vec<Found> {
+        self.settings_shown(cx).into_iter().filter(|f| f.changed).collect()
+    }
+
+    /// One setting back to the defaults (`Found::setting`'s id).
+    pub fn reset_setting(&mut self, id: &str, cx: &mut Context<Self>) {
+        if let Some(g) = group(id) {
+            self.reset(&[g], cx);
+        }
+    }
+
+    /// Opens "Show N rarely used settings" (a found setting may be one).
+    pub fn show_rarely_used(&mut self, cx: &mut Context<Self>) {
+        self.show_rare = true;
+        cx.notify();
+    }
+}
+
+/// `items` without the headers that have no row before the next header (or
+/// the end).
+pub(crate) fn drop_empty_headers<T>(items: Vec<T>, is_header: impl Fn(&T) -> bool) -> Vec<T> {
+    let heads: Vec<bool> = items.iter().map(&is_header).collect();
+    items.into_iter().enumerate().filter(|(i, _)| !heads[*i] || heads.get(i + 1).is_some_and(|next| !next)).map(|(_, it)| it).collect()
+}
+
 #[cfg(test)]
 mod tests {
     // Not `super::*`: GPUI's prelude has its own `test` attribute.
-    use super::{group, norm, print, GROUPS};
+    use super::{changed_groups, console_group, differs, drop_empty_headers, group, matches, norm, print, shown, GROUPS};
+    use crate::dialogs::settings_panel::logic::Section;
     use serde_json::{json, Map, Value};
 
     fn map(v: Value) -> Map<String, Value> {
@@ -408,5 +608,95 @@ mod tests {
         for (i, a) in GROUPS.iter().enumerate() {
             assert!(GROUPS[i + 1..].iter().all(|b| b.id != a.id), "{}", a.id);
         }
+    }
+
+    /// Where the settings the old tabs split went (Discussion #290).
+    #[test]
+    fn settings_sit_in_their_task_group() {
+        let at = |id: &str| group(id).unwrap_or_else(|| panic!("{id}")).section;
+        // Frame generation together, in Performance.
+        assert_eq!(at("lsfg"), Section::Performance);
+        assert_eq!(at(heronite_launch::gpu::KEY_SMOOTH_MOTION), Section::Performance);
+        // Every upscaler in Graphics, with what DLSS needs.
+        for id in [
+            heronite_launch::gpu::KEY_DLSS_UPGRADE,
+            heronite_launch::gpu::KEY_FSR4_UPGRADE,
+            heronite_launch::gpu::KEY_XESS_UPGRADE,
+            "enableFSR",
+            "fsr-sharpness",
+            "gamescope",
+            "autoInstallDxvkNvapi",
+            heronite_steam::options::KEY_NVAPI,
+        ] {
+            assert_eq!(at(id), Section::Graphics, "{id}");
+        }
+        assert_eq!(at("enableHDR"), Section::Graphics);
+        assert_eq!(at("gpu-vsync"), Section::Graphics);
+        // Latency next to the FPS limit.
+        assert_eq!(at(heronite_launch::gpu::KEY_REFLEX), Section::Performance);
+        assert_eq!(at(heronite_launch::gpu::KEY_ANTI_LAG), Section::Performance);
+        // Proton fixes in Compatibility; the sandbox is a block of it.
+        assert_eq!(at(heronite_launch::env::KEY_PREFER_SDL), Section::Compatibility);
+        assert_eq!(at("disableUMU"), Section::Compatibility);
+        assert_eq!(at("sandbox"), Section::Compatibility);
+        assert_eq!(at("launcherArgs"), Section::Start);
+        assert!(GROUPS.iter().all(|g| g.section != Section::General));
+    }
+
+    /// The most used settings never fold; a changed one always shows.
+    #[test]
+    fn rarely_used_fold_but_never_when_changed() {
+        for id in ["wine-version", "launcherArgs", "fps", "showMangohud", "enableHDR", "gpu-device", "lsfg", "autoSyncSaves"] {
+            assert!(!group(id).unwrap().rare, "{id}");
+        }
+        assert!(group("gpu-vram").unwrap().rare);
+        assert!(!shown(true, false, false));
+        assert!(shown(true, true, false), "changed: never hidden");
+        assert!(shown(true, false, true), "shown on demand");
+        assert!(shown(false, false, false));
+    }
+
+    #[test]
+    fn changed_lists_a_groups_differences_in_order() {
+        let base = map(json!({"enableHDR": false, "showMangohud": false}));
+        let game = map(json!({"enableHDR": true, "showMangohud": true, "heroniteGpuVsync": "off", "enableFSR": true}));
+        let graphics: Vec<&str> = changed_groups(Section::Graphics, &game, &base).iter().map(|g| g.id).collect();
+        assert_eq!(graphics.first(), Some(&"enableHDR"));
+        assert!(graphics.contains(&"enableFSR"));
+        assert!(!graphics.contains(&"showMangohud"), "Performance's");
+        assert!(differs(group("showMangohud").unwrap(), &game, &base));
+        assert!(changed_groups(Section::Saves, &game, &base).is_empty());
+        // Presets have no keys: never "changed".
+        assert!(!differs(group("presets").unwrap(), &game, &base));
+    }
+
+    #[test]
+    fn console_rows_find_their_setting() {
+        assert_eq!(console_group("c:wine").map(|g| g.id), Some("wine-version"));
+        assert_eq!(console_group("t:enableHDR").map(|g| g.id), Some("enableHDR"));
+        assert_eq!(console_group("p:beforeScript").map(|g| g.id), Some("beforeScript"));
+        assert_eq!(console_group("t:enableEsync").map(|g| g.id), Some("sync"));
+        assert!(console_group("h:Sync").is_none());
+    }
+
+    #[test]
+    fn headers_without_rows_go() {
+        // `true`: a header.
+        let items = vec![(true, 'a'), (false, 'b'), (true, 'c'), (true, 'd'), (false, 'e'), (true, 'f')];
+        let kept: Vec<char> = drop_empty_headers(items, |i| i.0).into_iter().map(|i| i.1).collect();
+        assert_eq!(kept, ['a', 'b', 'd', 'e']);
+    }
+
+    #[test]
+    fn search_needs_every_word_in_the_label_or_group() {
+        let dlss = group(heronite_launch::gpu::KEY_DLSS_UPGRADE).unwrap();
+        assert!(matches("dlss", dlss, Section::Graphics));
+        assert!(matches("NEWEST dlss", dlss, Section::Graphics));
+        // The group's name counts.
+        assert!(matches("graphics dlss", dlss, Section::Graphics));
+        assert!(!matches("dlss fps", dlss, Section::Graphics));
+        assert!(!matches("   ", dlss, Section::Graphics));
+        let fps = group("fps").unwrap();
+        assert!(matches("fps limit", fps, Section::Performance));
     }
 }

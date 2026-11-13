@@ -150,13 +150,19 @@ impl CollectionView {
     pub(super) fn open_game_settings_tab(&mut self, tab: GameTab, window: &mut Window, cx: &mut Context<Self>) {
         let Some(key) = self.selected.clone() else { return };
         // The settings of the copy Play starts (the installed one of a card of copies).
-        let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.acting_copy(&key)) else { return };
-        let view = cx.new(|cx| GameSettingsDialog::new(ctx, game, tab, window, cx));
-        self.open_dialog(view, cx);
+        let Some(game) = self.acting_copy(&key) else { return };
+        self.show_game_settings(&key, game, tab, window, cx);
     }
 
     /// Focus footer: "Game settings".
+    /// The selected game's settings, on the group it starts on.
     pub(super) fn open_game_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(game) = self.selected.clone().and_then(|k| self.acting_copy(&k)) else { return };
+        self.open_game_settings_tab(GameTab::settings_start(&game), window, cx);
+    }
+
+    /// "Edit details" of the selected game: its images, details and time played.
+    pub(super) fn open_game_details(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.open_game_settings_tab(GameTab::Game, window, cx);
     }
 
@@ -234,9 +240,9 @@ impl CollectionView {
             w if w.starts_with("metadata:") => self.open_metadata_fake(&w["metadata:".len()..], window, cx),
             w if w == "review" || w.starts_with("review:") => self.open_review_debug(w, window, cx),
             w if w == "covers" || w.starts_with("covers:") => self.open_covers_debug(w.strip_prefix("covers:").unwrap_or(""), window, cx),
-            "gamesettings" => self.open_game_settings_tab(GameTab::Game, window, cx),
-            "gamesettings:details" => self.open_game_settings_tab(GameTab::Game, window, cx),
-            "gamesettings:launch" => self.open_game_settings_tab(GameTab::Actions, window, cx),
+            "gamesettings" => self.open_game_settings(window, cx),
+            "gamesettings:details" => self.open_game_details(window, cx),
+            "gamesettings:launch" => self.open_game_settings_tab(GameTab::Start, window, cx),
             "webimage" => {
                 let Some(key) = self.selected.clone() else { return };
                 let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(&key)) else { return };

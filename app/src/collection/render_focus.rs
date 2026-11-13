@@ -36,6 +36,8 @@ impl CollectionView {
         let screenshots = self.screenshots_section(cx);
         let timeline = self.timeline_section(&vm.key, lay.main_w, scale, cx);
         let focus_extras = self.focus_extras(&vm.key, scale, cx);
+        // The settings in the page take the body's place (the width beside the left column).
+        let page = self.page_settings_body(vw - list_w - lay.left_w - lay.offset - 100., cx);
         focus::focus_panel(
             focus::FocusProps {
                 vm,
@@ -51,6 +53,7 @@ impl CollectionView {
                 extras: focus_extras,
                 related_ui: self.facts.related.clone(),
                 details_ui: self.details_ui(cx),
+                page,
             },
             self.focus_actions(cx),
         )

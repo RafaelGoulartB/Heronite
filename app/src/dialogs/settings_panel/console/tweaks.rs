@@ -15,8 +15,8 @@ use crate::console::sheet::{Sheet, SheetEvent};
 use crate::icons::Icon;
 
 impl SettingsPanel {
-    /// GameMode, keeping the computer awake, controllers. `steam`: a Steam
-    /// game (Steam keeps the computer awake itself).
+    /// GameMode and keeping the computer awake. `steam`: a Steam game
+    /// (Steam keeps the computer awake itself).
     pub(super) fn c_system(&self, steam: bool) -> Vec<Item> {
         let disabled = steam && !self.steam_fields_editable();
         let mut v = vec![
@@ -32,16 +32,18 @@ impl SettingsPanel {
                 false,
             ));
         }
-        if steam || (!self.native() && self.wine_version().kind == "proton") {
-            v.push(self.c_toggle(
-                heronite_launch::env::KEY_PREFER_SDL,
-                false,
-                tr!("Read controllers through SDL"),
-                Some(tr!("Fixes a controller the game misses or buttons that repeat; PlayStation extras (gyro, touchpad) stop working")),
-                disabled,
-            ));
-        }
         v
+    }
+
+    /// `PROTON_PREFER_SDL` (Proton only).
+    pub(in crate::dialogs::settings_panel) fn c_sdl(&self, disabled: bool) -> Item {
+        self.c_toggle(
+            heronite_launch::env::KEY_PREFER_SDL,
+            false,
+            tr!("Read controllers through SDL"),
+            Some(tr!("Fixes a controller the game misses or buttons that repeat; PlayStation extras (gyro, touchpad) stop working")),
+            disabled,
+        )
     }
 
     pub(super) fn c_fixes(&self, cx: &App) -> Vec<Item> {

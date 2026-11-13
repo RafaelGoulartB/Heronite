@@ -79,8 +79,8 @@ impl SettingsPanel {
         })
     }
 
-    /// The "Image" caption and card: `rows` (Wine's FSR) then gamescope's
-    /// upscaling and window. `disabled`: a Steam game whose launch options
+    /// The "gamescope" caption and card: `rows`, then gamescope's upscaling
+    /// and window. `disabled`: a Steam game whose launch options
     /// cannot change now.
     pub(super) fn gamescope_section(&mut self, mut up: Rows, disabled: bool, cx: &mut Context<Self>) -> Div {
         if !self.gamescope_installed {
@@ -89,7 +89,7 @@ impl SettingsPanel {
                 Some(tr!("Upscaling, a fixed resolution and window modes for any game")),
                 div().text_size(px(13.)).text_color(theme::text_dim()).child(tr!("Not installed")),
             ));
-            return column().child(heading(tr!("Image"))).child(up.card());
+            return column().child(heading("gamescope")).child(up.card());
         }
         let pair = |a: Div, b: Div| div().flex().gap(px(12.)).child(a).child(b);
         up = up.child(self.gs_toggle(
@@ -122,6 +122,6 @@ impl SettingsPanel {
                 ))
                 .field(self.gs_input("gs.additionalOptions", tr!("Extra gamescope options"), tr!("Like --hdr-enabled")));
         }
-        column().child(heading(tr!("Image"))).child(up.card())
+        column().child(heading("gamescope")).child(up.card())
     }
 }

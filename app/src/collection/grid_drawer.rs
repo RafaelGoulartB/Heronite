@@ -50,6 +50,8 @@ impl CollectionView {
         let numbers = self.drawer_numbers(&vm);
         let rating = self.rating_row(&vm.key, cx);
         let facts = self.facts_card(&vm, cx);
+        // The drawer scrolls: the Setup card never folds here.
+        let setup = self.setup_card(&vm, f32::INFINITY, cx);
         let copies = self.copies_card(&vm.key, cx);
 
         let covers = self.focus_covers(&vm, scale);
@@ -115,6 +117,7 @@ impl CollectionView {
                             .child(numbers)
                             .child(rating)
                             .child(facts)
+                            .children(setup)
                             .children(copies)
                             .child(div().mt(px(14.)).child(details))
                             .child(div().mt(px(10.)).flex().justify_center().child(open_page)),

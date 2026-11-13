@@ -76,12 +76,24 @@ impl Rows {
         self.child(col)
     }
 
+    /// The rows of `other` after these.
+    pub fn append(mut self, other: Rows) -> Self {
+        self.0.extend(other.0);
+        self
+    }
+
     /// The card holding the rows (nothing when there are none).
     pub fn card(self) -> Div {
         if self.0.is_empty() {
             return div();
         }
         card(self.0)
+    }
+
+    /// `text`'s caption and the card, or nothing when there are no rows (a
+    /// group whose rows are all rarely used and folded).
+    pub fn titled(self, text: &str) -> Option<Div> {
+        (!self.0.is_empty()).then(|| column().child(heading(text)).child(card(self.0)))
     }
 }
 
