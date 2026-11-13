@@ -8,7 +8,7 @@
 //! searching), `saving` (a picture picked and being downloaded),
 //! `error` (the download failed).
 
-use heronite_metadata::{ArtImages, WebImage};
+use heronite_metadata::{ArtImages, RegionImage, WebImage};
 
 use super::slots::Slot;
 use super::{Busy, CoversDialog};
@@ -28,8 +28,9 @@ impl Fake {
         Slot::parse(&self.state)
     }
 
-    /// What the made-up sources found for `slot`: a few from SteamGridDB
-    /// and more from the web, in the slot's sizes.
+    /// What the made-up sources found for `slot`: the game's boxes of three
+    /// regions from LaunchBox, a few from SteamGridDB and more from the
+    /// web, in the slot's sizes.
     pub(super) fn results(&self, slot: Slot) -> ArtImages {
         if self.state == "none" || self.thumbs.is_empty() {
             return ArtImages::default();
@@ -45,7 +46,12 @@ impl Fake {
             let (w, h) = if big { (w, h) } else { (w / 2, h / 2) };
             WebImage { image_url: url.clone(), thumb_url: url, width: w, height: h }
         };
-        ArtImages { steamgrid: (0..4).map(|i| image(i, true)).collect(), web: (4..22).map(|i| image(i, i % 3 != 0)).collect() }
+        let launchbox = ["North America", "Europe", "Japan"]
+            .iter()
+            .enumerate()
+            .map(|(i, region)| RegionImage { region: region.to_string(), image: image(22 + i, true) })
+            .collect();
+        ArtImages { launchbox, steamgrid: (0..4).map(|i| image(i, true)).collect(), web: (4..22).map(|i| image(i, i % 3 != 0)).collect() }
     }
 }
 

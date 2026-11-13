@@ -97,15 +97,21 @@ fn live_launchbox() {
     if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
         eprintln!("{}", status.lines().filter(|l| l.starts_with("VmHWM")).collect::<String>());
     }
+    // The square and wide families kept: the box art's shape is read.
+    std::fs::create_dir_all(svc.paths.local_library()).unwrap();
+    std::fs::write(svc.paths.collection_settings(), r#"{"metadata":{"keepCoverFamilies":["square","wide"]}}"#).unwrap();
     let ctx = SourceContext::new(&svc.paths, &svc.http);
     let sources = svc.sources();
     let lb = sources.lookups().find(|s| s.descriptor().id == "launchbox").unwrap();
+    // The North American SNES box is landscape, the PlayStation's CD case
+    // square, the Genesis box tall.
+    use heronite_data::cover_family::CoverFamily::{Square, Tall, Wide};
     let cases = [
-        ("nintendo_super_nes", "Legend of Zelda, The - A Link to the Past (USA).sfc", "The Legend of Zelda: A Link to the Past"),
-        ("sony_playstation", "Castlevania - Symphony of the Night (USA) (Track 1).bin", "Castlevania: Symphony of the Night"),
-        ("sega_genesis", "Sonic The Hedgehog 2 (World) (Rev A).md", "Sonic the Hedgehog 2"),
+        ("nintendo_super_nes", "Legend of Zelda, The - A Link to the Past (USA).sfc", "The Legend of Zelda: A Link to the Past", Wide),
+        ("sony_playstation", "Castlevania - Symphony of the Night (USA) (Track 1).bin", "Castlevania: Symphony of the Night", Square),
+        ("sega_genesis", "Sonic The Hedgehog 2 (World) (Rev A).md", "Sonic the Hedgehog 2", Tall),
     ];
-    for (platform, rom, name) in cases {
+    for (platform, rom, name, family) in cases {
         let game = SourceGame {
             app_name: "a".into(),
             runner: "sideload".into(),
@@ -120,7 +126,11 @@ fn live_launchbox() {
         let c = lb.lookup(&ctx, &game).into_option().expect(rom);
         eprintln!("{rom}: {:?} by {:?} in {:?}", c.match_name, c.matched_by, t.elapsed());
         assert_eq!((c.match_name.as_deref(), c.matched_by), (Some(name), Some(MatchedBy::ExactTitle)));
-        assert!(c.metadata.cover_url.as_deref().is_some_and(|u| u.starts_with("https://images.launchbox-app.com/")));
+        let md = &c.metadata;
+        assert!(md.cover_url.as_deref().is_some_and(|u| u.starts_with("https://images.launchbox-app.com/")));
+        eprintln!("  box {:?}, square {:?}, wide {:?}", md.cover_url, md.cover_square_url, md.cover_wide_url);
+        assert_eq!(md.cover_wide_url.is_some(), family == Wide, "{rom}");
+        assert_eq!(md.cover_wide_url.as_ref().or(md.cover_square_url.as_ref()) == md.cover_url.as_ref(), family != Tall, "{rom}");
     }
 }
 
@@ -159,5 +169,27 @@ fn live_libretro() {
             heronite_metadata::libretro::png_size(&picture.body).map(|(w, h)| heronite_metadata::libretro::family_of(w, h)),
             Some(family)
         );
+    }
+}
+
+/// LaunchBox's server ignores `Range`: the size of its box art is read from
+/// the first bytes of the whole answer (a JPEG's frame header comes after
+/// its metadata; the 12 MB PNG says it at once).
+#[test]
+fn live_launchbox_picture_sizes() {
+    if !enabled() {
+        return;
+    }
+    let (_d, svc) = service();
+    let lb = heronite_metadata::launchbox::LaunchBox::new();
+    let base = &svc.http.endpoints.launchbox_images;
+    for (file, size) in [
+        ("r2_4f09af04-78b8-43e9-97a9-a8d9c4bb0b85.jpg", (4209, 2937)),
+        ("cc0a933e-52b2-498b-bc3b-3e1d520d70f9.jpg", (1280, 2302)),
+        ("00fb4aca-c22f-4ca9-84d0-90cf8c22d4af.png", (2460, 1716)),
+    ] {
+        let started = std::time::Instant::now();
+        assert_eq!(lb.picture_size(&svc.http, base, file), Some(size), "{file}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(8), "{file}: only its start is read");
     }
 }

@@ -136,6 +136,12 @@ pub fn change<H: Host>(h: &mut H, cmd: &Command, cx: &mut Context<H>) -> bool {
         }
         "startup.auto_console" => {
             crate::console::startup::set_auto_console(&app, probe.auto_console);
+            crate::console::summon::options_changed(cx);
+            themes::prefs(&app)
+        }
+        "startup.console_button" => {
+            crate::console::startup::set_console_button(&app, probe.console_button);
+            crate::console::summon::options_changed(cx);
             themes::prefs(&app)
         }
         _ => {

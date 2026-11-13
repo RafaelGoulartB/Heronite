@@ -10,6 +10,8 @@ pub enum Icon {
     DragIndicator,
     MoreHoriz,
     ArrowDownward,
+    /// → ("Back to game").
+    ArrowForward,
     ArrowUpward,
     Cancel,
     Check,
@@ -174,6 +176,7 @@ impl Icon {
             Extension => "icons/extension.svg",
             AccessTime => "icons/access-time.svg",
             ArrowDownward => "icons/arrow-downward.svg",
+            ArrowForward => "icons/arrow-forward.svg",
             ArrowUpward => "icons/arrow-upward.svg",
             Cancel => "icons/cancel.svg",
             Check => "icons/check.svg",

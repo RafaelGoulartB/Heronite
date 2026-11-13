@@ -38,6 +38,7 @@ impl MetadataDialog {
         if let Some(fake) = &self.fake {
             let preview = fake.preview(&self.game, &self.pins);
             self.previewed(Ok(preview));
+            self.read_sizes(cx);
             return;
         }
         let service = self.service.clone();
@@ -46,6 +47,7 @@ impl MetadataDialog {
             let res = cx.background_spawn(async move { service.preview_game_metadata(&args) }).await;
             this.update(cx, |this, cx| {
                 this.previewed(res);
+                this.read_sizes(cx);
                 cx.notify();
             })
             .ok();
@@ -127,7 +129,7 @@ impl MetadataDialog {
 
     /// The fields with a value now or from some source, in the usual order,
     /// with a cover row per kept family after the tall one (always shown:
-    /// "Choose covers…" sits there).
+    /// "More options…" sits there).
     pub(super) fn visible_fields(&self) -> Vec<&'static str> {
         let Some(p) = &self.preview else { return Vec::new() };
         let mut out = Vec::new();
@@ -245,7 +247,6 @@ impl MetadataDialog {
                 self.set_pick(field, source);
             }
         }
-        self.scroll_to_covers = state == "covers";
         if state == "change" {
             let first = self.preview.as_ref().and_then(|p| p.sources.first()).map(|s| s.source.clone());
             if let Some(source) = first {

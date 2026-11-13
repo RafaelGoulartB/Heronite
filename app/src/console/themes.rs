@@ -8,7 +8,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-use heronite_data::console_theme::{ConsolePrefs, ConsoleTheme};
+use heronite_data::console_theme::{ConsolePrefs, ConsoleTheme, KeptFilters};
 use heronite_data::paths::AppPaths;
 
 static PREFS: Mutex<Option<ConsolePrefs>> = Mutex::new(None);
@@ -36,6 +36,21 @@ pub fn remember_tab(app: &AppPaths, tab: usize) {
             return;
         }
         p.last_tab = tab;
+        p.clone()
+    };
+    save(app, next);
+}
+
+/// Keeps the filters console mode starts with next time (like
+/// [`remember_tab`], the theme in use is left alone).
+pub fn remember_filters(app: &AppPaths, filters: KeptFilters) {
+    let next = {
+        let mut cur = PREFS.lock().unwrap_or_else(|e| e.into_inner());
+        let p = cur.get_or_insert_with(|| ConsolePrefs::load(app));
+        if p.kept_filters == filters {
+            return;
+        }
+        p.kept_filters = filters;
         p.clone()
     };
     save(app, next);

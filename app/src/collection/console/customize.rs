@@ -96,8 +96,8 @@ impl Host for CollectionView {
         self.open_console_overlay(&sheet, sub, cx);
     }
 
-    fn start_options_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.console_start_options_changed(window, cx);
+    fn start_options_changed(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
+        self.console_start_options_changed();
     }
 }
 

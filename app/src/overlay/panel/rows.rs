@@ -9,7 +9,49 @@ use heronite_overlay::audio;
 use super::{mixer, Confirm, OverlayPanel, Tab};
 use crate::console::list::{Outcome, Row, Value};
 use crate::icons::Icon;
-use crate::overlay::OverlayService;
+use crate::overlay::{LiveChange, OverlayService};
+
+/// Home's "Show MangoHud" row and the FPS limit after it.
+const MANGOHUD: &str = "mangohud";
+const FPS: &str = "fps";
+/// Home's "Capture" row: one round button per [`Capture`], ◀ ▶ choose one
+/// and A runs it (`OverlayPanel::render_capture` draws it).
+pub(super) const CAPTURES: &str = "captures";
+
+/// What Home's "Capture" row can do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Capture {
+    Shot,
+    Replay,
+    Moment,
+}
+
+impl Capture {
+    /// The row that does the same on its own (see `OverlayPanel::activate`).
+    fn id(self) -> &'static str {
+        match self {
+            Capture::Shot => "capture",
+            Capture::Replay => "replay",
+            Capture::Moment => "moment",
+        }
+    }
+
+    pub(super) fn icon(self) -> Icon {
+        match self {
+            Capture::Shot => Icon::PhotoCamera,
+            Capture::Replay => Icon::Videocam,
+            Capture::Moment => Icon::Flag,
+        }
+    }
+
+    pub(super) fn label(self) -> String {
+        match self {
+            Capture::Shot => tr!("Take screenshot").into(),
+            Capture::Replay => tr!("Save replay").into(),
+            Capture::Moment => tr!("Mark this moment").into(),
+        }
+    }
+}
 
 impl OverlayPanel {
     pub(super) fn rows(&self) -> Vec<Row> {
@@ -41,22 +83,37 @@ impl OverlayPanel {
             rows.push(Row::action("launcher", tr!("Open Heronite")).icon(Icon::Home));
             return rows;
         };
-        rows.push(Row::action("capture", tr!("Take screenshot")).icon(Icon::PhotoCamera));
-        rows.extend(self.replay_row());
-        if self.data.journal.is_some() {
-            rows.push(
-                Row::action("moment", tr!("Mark this moment"))
-                    .icon(Icon::Flag)
-                    .desc(tr!("Saves the time and a screenshot. Write about it later.")),
-            );
+        match self.chosen_capture() {
+            // Alone, the screenshot is a row like any other.
+            (_, all) if all.len() < 2 => rows.push(Row::action("capture", tr!("Take screenshot")).icon(Icon::PhotoCamera)),
+            (at, all) => {
+                let desc = match (all[at], self.replay) {
+                    (Capture::Replay, Some(replay)) => tr!("Save replay · the last {n} s", n = replay.seconds).to_string(),
+                    (chosen, _) => chosen.label(),
+                };
+                rows.push(Row::action(CAPTURES, tr!("Capture")).icon(Icon::PhotoCamera).desc(desc));
+            }
         }
         // Only when the game's limiter can change while it runs.
-        if let Some((live, limit)) = &game.fps {
-            let steps = fps_steps(*limit);
+        if let Some(now) = &game.fps {
+            let steps = fps_steps(now.limit);
             let options = steps.iter().map(|n| if *n == 0 { tr!("Off").into() } else { SharedString::from(format!("{n} FPS")) }).collect();
-            let index = steps.iter().position(|n| n == limit).unwrap_or(0);
-            let desc = if live.is_gamescope() { tr!("Changes now (gamescope)") } else { tr!("Changes now (MangoHud)") };
-            rows.push(Row::choice("fps", tr!("FPS limit"), options, index).icon(Icon::Tune).desc(desc).compact());
+            let index = steps.iter().position(|n| *n == now.limit).unwrap_or(0);
+            let desc = match now.hud {
+                // Hidden, MangoHud still limits the game.
+                Some(true) => tr!("Changes now"),
+                Some(false) => tr!("Still applies while hidden"),
+                None => tr!("Changes now (gamescope)"),
+            };
+            if let Some(hud) = now.hud {
+                let (ic, line) = if hud {
+                    (Icon::Visibility, tr!("Shown over the game"))
+                } else {
+                    (Icon::VisibilityOff, tr!("Hidden. The FPS limit still applies."))
+                };
+                rows.push(Row::toggle(MANGOHUD, tr!("Show MangoHud"), hud).icon(ic).desc(line));
+            }
+            rows.push(Row::choice(FPS, tr!("FPS limit"), options, index).icon(Icon::Tune).desc(desc).compact());
         }
         if let Some(id) = &self.data.status_id {
             let options: Vec<SharedString> = self.data.statuses.iter().map(|s| status::status_label(&s.name).to_string().into()).collect();
@@ -64,9 +121,38 @@ impl OverlayPanel {
             rows.push(Row::choice("status", tr!("Status"), options, index).icon(Icon::Flag));
         }
         rows.extend(self.achievements_home_row());
+        // Only while another window has the focus (after "Back to Heronite", say).
+        if self.data.game_away {
+            rows.push(Row::action("game", tr!("Back to game")).icon(Icon::SportsEsports).desc(tr!("Brings its window to the front")));
+        }
         rows.push(Row::action("launcher", tr!("Back to Heronite")).icon(Icon::Home).desc(tr!("The game keeps running")));
         rows.push(Row::action("quit", tr!("Quit game")).icon(Icon::PowerSettingsNew).danger());
         rows
+    }
+
+    /// What Home's "Capture" row offers now, and the one chosen in it.
+    pub(super) fn chosen_capture(&self) -> (usize, Vec<Capture>) {
+        let mut all = vec![Capture::Shot];
+        if self.replay.is_some_and(|r| r.on) {
+            all.push(Capture::Replay);
+        }
+        if self.data.journal.is_some() {
+            all.push(Capture::Moment);
+        }
+        (self.capture.min(all.len() - 1), all)
+    }
+
+    /// A press on Home's "Capture" row: ◀ ▶ choose, A runs the chosen one.
+    pub(super) fn capture_pad(&mut self, pad: crate::console::Pad, cx: &mut Context<Self>) -> bool {
+        use crate::console::Pad;
+        let (at, all) = self.chosen_capture();
+        match pad {
+            Pad::Left => self.capture = at.saturating_sub(1),
+            Pad::Right => self.capture = (at + 1).min(all.len() - 1),
+            Pad::A => self.activate(all[at].id(), cx),
+            _ => return false,
+        }
+        true
     }
 
     /// "Save replay", while the replay records.
@@ -169,6 +255,7 @@ impl OverlayPanel {
             "capture" => self.with_service(cx, |s, cx| s.screenshot(cx)),
             "replay" => self.with_service(cx, |s, cx| s.save_replay(cx)),
             "launcher" => self.with_service(cx, |s, cx| s.show_launcher(cx)),
+            "game" => self.back_to_game(cx),
             "quit" => self.ask(Confirm::Quit),
             id if self.notes_activate(id, cx) => {}
             id if self.achievements_activate(id, cx) => {}
@@ -265,10 +352,18 @@ impl OverlayPanel {
                 self.run_audio(move || audio::set_mic_muted(!on), cx);
             }
             ("status", Value::Choice { index, .. }) => self.set_status(index, cx),
-            ("fps", Value::Choice { index, .. }) => {
-                let Some((_, limit)) = self.game.as_ref().and_then(|g| g.fps.as_ref()) else { return };
-                if let Some(next) = fps_steps(*limit).get(index).copied() {
-                    self.set_fps_limit(next, cx);
+            (FPS, Value::Choice { index, .. }) => {
+                let Some(now) = self.game.as_ref().and_then(|g| g.fps.as_ref()) else { return };
+                if let Some(limit) = fps_steps(now.limit).get(index).copied() {
+                    let hud = now.hud;
+                    self.set_live(LiveChange { limit, hud }, cx);
+                }
+            }
+            (MANGOHUD, Value::Toggle(on)) => {
+                let Some(now) = self.game.as_ref().and_then(|g| g.fps.as_ref()) else { return };
+                if now.hud.is_some() {
+                    let limit = now.limit;
+                    self.set_live(LiveChange { limit, hud: Some(on) }, cx);
                 }
             }
             _ => {}
@@ -293,22 +388,26 @@ impl OverlayPanel {
         cx.background_spawn(async move { f() }).detach();
     }
 
-    /// Applies a new FPS limit to the running game (`0` = none).
-    fn set_fps_limit(&mut self, limit: u32, cx: &mut Context<Self>) {
+    /// Applies a new FPS limit (`0` = none) or shows / hides MangoHud's HUD
+    /// in the running game.
+    fn set_live(&mut self, change: LiveChange, cx: &mut Context<Self>) {
         let Some(game) = &mut self.game else { return };
-        let Some((live, _)) = game.fps.clone() else { return };
-        game.fps = Some((live.clone(), limit));
+        let Some(now) = &mut game.fps else { return };
+        let hud_changed = change.hud != now.hud;
+        (now.limit, now.hud) = (change.limit, change.hud);
+        let live = now.live.clone();
         let (app_name, pid) = (game.game.app_name.clone(), game.game.pid);
-        self.with_service(cx, move |s, _| s.fps_limit_changed(&app_name, limit));
+        self.with_service(cx, move |s, _| s.live_changed(&app_name, change));
         if crate::env::value("HERONITE_DEBUG_OVERLAY").is_some() {
-            log::info!("overlay debug: FPS limit change skipped");
+            log::info!("overlay debug: FPS limit / HUD change skipped");
             return;
         }
+        let LiveChange { limit, hud } = change;
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
                     match &live {
-                        LiveFps::MangoHud { .. } => heronite_launch::live_fps::set_mangohud(&live, limit),
+                        LiveFps::MangoHud { .. } => heronite_launch::live_fps::set_mangohud(&live, limit, hud.unwrap_or(true)),
                         LiveFps::Gamescope { .. } => match pid {
                             Some(pid) => heronite_overlay::gamescope::set_fps_limit(pid, limit),
                             None => Err("the game's process is not known yet".into()),
@@ -317,13 +416,40 @@ impl OverlayPanel {
                 })
                 .await;
             if let Err(e) = res {
-                log::warn!("overlay: FPS limit {limit}: {e}");
+                log::warn!("overlay: FPS limit {limit}, HUD {hud:?}: {e}");
                 this.update(cx, |this, cx| {
-                    this.error = Some(tr!("Could not change the FPS limit: {err}", err = e).into());
+                    let error = if hud_changed {
+                        tr!("Could not show or hide MangoHud: {err}", err = e)
+                    } else {
+                        tr!("Could not change the FPS limit: {err}", err = e)
+                    };
+                    this.error = Some(error.into());
                     cx.notify();
                 })
                 .ok();
             }
+        })
+        .detach();
+    }
+
+    /// Gives the focus back to the game's window and closes the panel.
+    fn back_to_game(&mut self, cx: &mut Context<Self>) {
+        if crate::env::value("HERONITE_DEBUG_OVERLAY").is_some() {
+            log::info!("overlay debug: back to the game skipped");
+            return;
+        }
+        let Some(pid) = self.game.as_ref().and_then(|g| g.game.pid) else { return };
+        cx.spawn(async move |this, cx| {
+            let res = cx.background_spawn(async move { heronite_overlay::game_window::focus(pid) }).await;
+            this.update(cx, |this, cx| match res {
+                Ok(()) => this.close(cx),
+                Err(e) => {
+                    log::warn!("overlay: back to the game: {e}");
+                    this.error = Some(tr!("Could not go back to the game: {err}", err = e).into());
+                    cx.notify();
+                }
+            })
+            .ok();
         })
         .detach();
     }

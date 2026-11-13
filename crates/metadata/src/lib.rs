@@ -27,6 +27,7 @@ pub mod launchbox;
 pub mod libretro;
 pub mod lutris;
 pub mod merge;
+pub mod picture_size;
 pub mod platforms;
 pub mod protondb;
 pub mod providers;

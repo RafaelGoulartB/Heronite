@@ -42,7 +42,7 @@ use heronite_data::models::MetadataSettings;
 use heronite_data::paths::DataPaths;
 use heronite_data::settings;
 
-pub(crate) use builtin::Shared;
+pub(crate) use builtin::{box_regions, Shared};
 pub use builtin::{builtin_descriptors, offered};
 pub use descriptor::{extra_fields, AlsoFor, AppliesTo, Asked, ExtensionInfo, GameKind, Needs, SourceDescriptor, SourceGame, SourceKind};
 pub use download::{DownloadProgress, DownloadState, Phase, ProgressSnapshot, SourceDownload};

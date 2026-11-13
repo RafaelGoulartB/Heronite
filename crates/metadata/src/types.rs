@@ -609,9 +609,19 @@ pub struct WebImage {
     pub height: u32,
 }
 
-/// The art picker's search results, by where they come from.
+/// A picture a source has by region (LaunchBox's box art): the region as
+/// the source names it (`North America`; `""` for none) and the picture.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionImage {
+    pub region: String,
+    pub image: WebImage,
+}
+
+/// The art picker's search results, by where they come from. `launchbox`:
+/// only the Covers dialog asks for them (they are of one game).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ArtImages {
+    pub launchbox: Vec<RegionImage>,
     pub steamgrid: Vec<WebImage>,
     pub web: Vec<WebImage>,
 }

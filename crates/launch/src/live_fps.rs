@@ -6,7 +6,9 @@
 //!   each reload, so the launch moves the limit out of that variable into a
 //!   config file of ours: the user's `MangoHud.conf` (or their
 //!   `MANGOHUD_CONFIGFILE`) followed by the limit, in
-//!   `$XDG_RUNTIME_DIR/heronite/mangohud/<app>.conf`.
+//!   `$XDG_RUNTIME_DIR/heronite/mangohud/<app>.conf`. Whether the HUD shows
+//!   (`no_display`) moves into it too, so the overlay can hide and show it;
+//!   hidden, MangoHud still limits the game.
 //! - gamescope reads the `GAMESCOPE_FPS_LIMIT` atom of its X root whenever
 //!   it changes (the Steam Deck's quick menu sets it); `-r` sets the same
 //!   limit. Setting the atom needs X, so the overlay does it
@@ -16,15 +18,21 @@
 
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
+
 use crate::fps_limit;
 use crate::plan::Command;
 use crate::probe::Probe;
 
 const MANGOHUD_CONFIG: &str = "MANGOHUD_CONFIG";
 const MANGOHUD_CONFIGFILE: &str = "MANGOHUD_CONFIGFILE";
+/// The line our part of MangoHud's config file starts with.
+const OURS: &str = "# Heronite: the game's FPS limit, changed by the in-game overlay";
 
-/// How a running game's limit can change.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// How a running game's limit can change. Written to `running.json` with the
+/// session, so a game the app picks up again keeps it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
 pub enum LiveFps {
     MangoHud {
         /// The config file MangoHud watches.
@@ -35,6 +43,8 @@ pub enum LiveFps {
         smooth: bool,
         /// At launch; `0` = none.
         limit: u32,
+        /// The HUD shows at launch (not `no_display`).
+        hud: bool,
     },
     Gamescope {
         /// At launch (`-r`); `0` = none.
@@ -50,8 +60,34 @@ impl LiveFps {
         }
     }
 
+    /// Whether MangoHud's HUD shows at launch; `None` when it cannot be
+    /// shown or hidden from here (gamescope).
+    pub fn hud(&self) -> Option<bool> {
+        match self {
+            LiveFps::MangoHud { hud, .. } => Some(*hud),
+            LiveFps::Gamescope { .. } => None,
+        }
+    }
+
     pub fn is_gamescope(&self) -> bool {
         matches!(self, LiveFps::Gamescope { .. })
+    }
+
+    /// For a game picked up again: the limit and the HUD as the overlay left
+    /// them (MangoHud's file has them), not as they were at launch.
+    pub fn current(mut self) -> Self {
+        if let LiveFps::MangoHud { file, limit, hud, .. } = &mut self {
+            let text = std::fs::read_to_string(&*file).unwrap_or_default();
+            let ours = text.rfind(OURS).map_or("", |at| &text[at..]);
+            for line in ours.lines() {
+                match line.split_once('=') {
+                    Some(("fps_limit", v)) => *limit = v.parse().unwrap_or(*limit),
+                    Some(("no_display", v)) => *hud = v == "0",
+                    _ => {}
+                }
+            }
+        }
+        self
     }
 }
 
@@ -78,7 +114,7 @@ pub fn prepare(cmd: &mut Command, app_name: &str, probe: &dyn Probe) -> Option<L
     // Ours, or none at all (the HUD without a limit): anything else is the
     // user's own and stays as it is.
     let (limit, smooth, hud) = match cmd.env.get(MANGOHUD_CONFIG) {
-        Some(c) => fps_limit::read_mangohud_config(c)?,
+        Some(c) => fps_limit::read_mangohud_config(c).map(|(l, s, hud)| (l, s, hud == fps_limit::Hud::Shown))?,
         None if probe.env_var(MANGOHUD_CONFIG).is_some() => return None,
         None => (0, false, true),
     };
@@ -88,43 +124,62 @@ pub fn prepare(cmd: &mut Command, app_name: &str, probe: &dyn Probe) -> Option<L
             Path::new(&config).join("MangoHud/MangoHud.conf")
         });
     let base = std::fs::read_to_string(&base_file).unwrap_or_default();
+    // Ours says whether it shows from now on, so the user's choice counts first.
+    let hud = hud && !hides_hud(&base);
     let dir = probe.env_var("XDG_RUNTIME_DIR").filter(|d| !d.is_empty()).unwrap_or_else(|| "/tmp".into());
     let file = Path::new(&dir).join("heronite/mangohud").join(format!("{}.conf", file_name(app_name)));
-    let live = LiveFps::MangoHud { file: file.clone(), base, smooth, limit };
-    if let Err(e) = set_mangohud(&live, limit) {
+    let live = LiveFps::MangoHud { file: file.clone(), base, smooth, limit, hud };
+    if let Err(e) = set_mangohud(&live, limit, hud) {
         log::warn!("MangoHud config for {app_name}: {e}");
         return None;
     }
     if limit > 0 || cmd.env.contains_key(MANGOHUD_CONFIG) {
-        cmd.env.insert(MANGOHUD_CONFIG.into(), if hud { "read_cfg".into() } else { "read_cfg,no_display".into() });
+        // `no_display` stays in the file: here it would win over it on every reload.
+        cmd.env.insert(MANGOHUD_CONFIG.into(), "read_cfg".into());
     }
     cmd.env.insert(MANGOHUD_CONFIGFILE.into(), file.to_string_lossy().into_owned());
     Some(live)
 }
 
-/// Sets the limit of a game MangoHud limits (`0` = none): it rereads the file
-/// a moment later. Gamescope's is set by the overlay. Blocking file write.
-pub fn set_mangohud(live: &LiveFps, limit: u32) -> Result<(), String> {
+/// Sets the limit of a game MangoHud limits (`0` = none) and whether its HUD
+/// shows: it rereads the file a moment later. Gamescope's limit is set by the
+/// overlay. Blocking file write.
+pub fn set_mangohud(live: &LiveFps, limit: u32, hud: bool) -> Result<(), String> {
     let LiveFps::MangoHud { file, base, smooth, .. } = live else { return Err("not MangoHud".into()) };
     if let Some(dir) = file.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     // Written in place: MangoHud watches this path for changes.
-    std::fs::write(file, config_text(base, limit, *smooth)).map_err(|e| e.to_string())
+    std::fs::write(file, config_text(base, limit, *smooth, hud)).map_err(|e| e.to_string())
 }
 
-/// The user's config, then the limit (a later line wins in MangoHud).
-fn config_text(base: &str, limit: u32, smooth: bool) -> String {
+/// The user's config, then the limit and the HUD (a later line wins in MangoHud).
+fn config_text(base: &str, limit: u32, smooth: bool, hud: bool) -> String {
     let mut text = base.trim_end().to_string();
     if !text.is_empty() {
         text.push('\n');
     }
-    text.push_str("# Heronite: the game's FPS limit, changed by the in-game overlay\n");
+    text.push_str(OURS);
+    text.push('\n');
     text.push_str(&format!("fps_limit={limit}\n"));
     if smooth {
         text.push_str("fps_limit_method=early\n");
     }
+    text.push_str(&format!("no_display={}\n", u8::from(!hud)));
     text
+}
+
+/// Whether a MangoHud config hides the HUD: its last `no_display` line, bare
+/// or not `0`.
+fn hides_hud(config: &str) -> bool {
+    config
+        .lines()
+        .rev()
+        .find_map(|l| {
+            let (key, value) = l.split_once('=').map_or((l, None), |(k, v)| (k, Some(v)));
+            (key.trim() == "no_display").then(|| value.is_none_or(|v| v.trim() != "0"))
+        })
+        .unwrap_or(false)
 }
 
 fn is_program(word: &str, name: &str) -> bool {
@@ -169,17 +224,63 @@ mod tests {
         );
         let live = prepare(&mut c, "steam_400/x", &p).unwrap();
         assert_eq!(live.limit(), 60);
-        assert_eq!(c.env["MANGOHUD_CONFIG"], "read_cfg,no_display", "the limit leaves the variable");
+        assert_eq!(c.env["MANGOHUD_CONFIG"], "read_cfg", "the limit and no_display leave the variable");
+        assert_eq!(live.hud(), Some(false));
         let file = tmp.path().join("run/heronite/mangohud/steam_400_x.conf");
         assert_eq!(c.env["MANGOHUD_CONFIGFILE"], file.to_string_lossy());
         let text = std::fs::read_to_string(&file).unwrap();
         assert!(text.starts_with("fps\ncpu_temp\nfps_limit=144\n"), "the user's look stays");
-        assert!(text.ends_with("fps_limit=60\nfps_limit_method=early\n"), "ours comes last and wins");
+        assert!(text.ends_with("fps_limit=60\nfps_limit_method=early\nno_display=1\n"), "ours comes last and wins");
 
-        set_mangohud(&live, 30).unwrap();
-        assert!(std::fs::read_to_string(&file).unwrap().ends_with("fps_limit=30\nfps_limit_method=early\n"));
-        set_mangohud(&live, 0).unwrap();
+        set_mangohud(&live, 30, false).unwrap();
+        assert!(std::fs::read_to_string(&file).unwrap().ends_with("fps_limit=30\nfps_limit_method=early\nno_display=1\n"));
+        set_mangohud(&live, 0, false).unwrap();
         assert!(std::fs::read_to_string(&file).unwrap().contains("fps_limit=0\n"), "0 = no limit");
+        set_mangohud(&live, 30, true).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.ends_with("fps_limit=30\nfps_limit_method=early\nno_display=0\n"), "shown again, same limit");
+    }
+
+    #[test]
+    fn a_game_picked_up_again_has_what_the_overlay_left() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut c = cmd("/usr/bin/mangohud", &["/games/run.sh"], &[("MANGOHUD_CONFIG", "read_cfg,fps_limit=60")]);
+        let live = prepare(&mut c, "g", &probe(tmp.path())).unwrap();
+        set_mangohud(&live, 90, false).unwrap();
+        // As `running.json` keeps it.
+        let saved: LiveFps = serde_json::from_value(serde_json::to_value(&live).unwrap()).unwrap();
+        assert_eq!(saved, live);
+        let now = saved.current();
+        assert_eq!((now.limit(), now.hud()), (90, Some(false)));
+        assert_eq!(LiveFps::Gamescope { limit: 50 }.current(), LiveFps::Gamescope { limit: 50 });
+    }
+
+    #[test]
+    fn mangohud_started_hidden_can_be_shown_from_the_overlay() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut c = cmd("/usr/bin/mangohud", &["/games/run.sh"], &[("MANGOHUD_CONFIG", "read_cfg,no_display=1")]);
+        let live = prepare(&mut c, "g", &probe(tmp.path())).unwrap();
+        assert_eq!((live.limit(), live.hud()), (0, Some(false)));
+        assert_eq!(c.env["MANGOHUD_CONFIG"], "read_cfg", "no_display moves into the file");
+        let LiveFps::MangoHud { file, .. } = &live else { unreachable!() };
+        assert!(std::fs::read_to_string(file).unwrap().ends_with("fps_limit=0\nno_display=1\n"));
+    }
+
+    #[test]
+    fn the_hud_starts_as_the_user_left_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = probe(tmp.path());
+        let user = tmp.path().join("home/.config/MangoHud");
+        std::fs::create_dir_all(&user).unwrap();
+        let shown = |conf: &str| {
+            std::fs::write(user.join("MangoHud.conf"), conf).unwrap();
+            let mut c = cmd("/usr/bin/mangohud", &["/games/run.sh"], &[("MANGOHUD_CONFIG", "read_cfg,fps_limit=60")]);
+            prepare(&mut c, "g", &p).unwrap().hud().unwrap()
+        };
+        assert!(shown("fps\n"));
+        assert!(!shown("fps\nno_display\n"), "hidden in the user's config");
+        assert!(!shown("no_display = 1\n"));
+        assert!(shown("no_display\nno_display=0\n"), "the last line wins");
     }
 
     #[test]
@@ -188,6 +289,7 @@ mod tests {
         let mut c = cmd("/usr/bin/mangohud", &["--dlsym", "/games/run.sh"], &[]);
         let live = prepare(&mut c, "g", &probe(tmp.path())).unwrap();
         assert_eq!(live.limit(), 0);
+        assert_eq!(live.hud(), Some(true));
         assert!(!c.env.contains_key("MANGOHUD_CONFIG"), "MangoHud reads the file alone");
         assert!(c.env.contains_key("MANGOHUD_CONFIGFILE"));
     }

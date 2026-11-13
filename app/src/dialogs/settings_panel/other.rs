@@ -3,8 +3,11 @@
 //! Wine's FSR) and system tweaks while playing. Heroic's Other and Gamescope
 //! tabs.
 
+use crate::icons::Icon;
+use crate::ui::controls::{icon_button_sm, row, toggle, ButtonKind};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_launch::fps_limit::KEY_MANGOHUD_HIDDEN;
 use serde_json::{json, Value};
 
 use super::logic;
@@ -44,15 +47,53 @@ impl SettingsPanel {
                 cx,
             ));
         }
-        r.child(self.toggle_row(
-            "mangohud",
-            "showMangohud",
-            false,
-            "MangoHud",
-            Some(tr!("FPS, frame times, temperatures and load (needs MangoHud)")),
-            disabled,
-            cx,
-        ))
+        r.child(self.mangohud_row(disabled, cx))
+    }
+
+    /// MangoHud's switch, with an eye button before it while it is on: shown
+    /// or hidden when the game starts.
+    fn mangohud_row(&self, disabled: bool, cx: &mut Context<Self>) -> AnyElement {
+        let on = self.flag("showMangohud", false);
+        let hidden = on && self.flag(KEY_MANGOHUD_HIDDEN, false);
+        let help =
+            if hidden { self.mangohud_hidden_help() } else { tr!("FPS, frame times, temperatures and load (needs MangoHud)").to_string() };
+        let eye = on.then(|| {
+            let (ic, label, tip) = if hidden {
+                (Icon::VisibilityOff, tr!("Hidden"), tr!("Starts hidden. Click to show it when the game starts."))
+            } else {
+                (Icon::Visibility, tr!("Shown"), tr!("Shows when the game starts. Click to start it hidden."))
+            };
+            let click = cx.listener(|this, _, _, cx| {
+                // Not the row's click: MangoHud stays on.
+                cx.stop_propagation();
+                this.toggle(KEY_MANGOHUD_HIDDEN, false, cx);
+            });
+            icon_button_sm("mangohud-eye", ButtonKind::Glass, ic, label, !disabled, click).tooltip(crate::ui::tooltip(tip))
+        });
+        let control = div()
+            .flex()
+            .items_center()
+            .gap(px(10.))
+            .children(self.reset_button("showMangohud", cx))
+            .children(on.then(|| self.reset_button(KEY_MANGOHUD_HIDDEN, cx)).flatten())
+            .children(eye)
+            .child(toggle("mangohud-sw", on, false));
+        let row = row("MangoHud", Some(&help), control).id("mangohud").cursor_pointer();
+        if disabled {
+            row.opacity(0.4).cursor_not_allowed().into_any_element()
+        } else {
+            row.on_click(cx.listener(|this, _, _, cx| this.toggle("showMangohud", false, cx))).into_any_element()
+        }
+    }
+
+    /// What shows MangoHud when it starts hidden: the in-game overlay can
+    /// for the games Heronite starts, not for Steam's.
+    pub(super) fn mangohud_hidden_help(&self) -> String {
+        if self.steam.is_some() {
+            tr!("Starts hidden: its toggle key shows it (Right Shift + F12 unless changed).").into()
+        } else {
+            tr!("Starts hidden: its toggle key (Right Shift + F12 unless changed) or the in-game overlay shows it.").into()
+        }
     }
 
     /// Wine's own FSR upscaling in fullscreen, with its sharpness.

@@ -31,6 +31,9 @@ pub struct Screen {
     pub width: i32,
     pub height: i32,
     pub scale: f32,
+    /// Physical px the taskbar (or another bar) takes at the bottom: a
+    /// surface placed at the bottom sits above it.
+    pub bottom_inset: i32,
 }
 
 /// The foreground window's monitor, including negative desktop origins.
@@ -67,7 +70,14 @@ fn screen_of(monitor: HMONITOR) -> io::Result<Screen> {
             return Err(io::Error::other(format!("GetDpiForMonitor: HRESULT {hr:#x}")));
         }
         let r = info.rcMonitor;
-        Ok(Screen { left: r.left, top: r.top, width: r.right - r.left, height: r.bottom - r.top, scale: x as f32 / 96. })
+        Ok(Screen {
+            left: r.left,
+            top: r.top,
+            width: r.right - r.left,
+            height: r.bottom - r.top,
+            scale: x as f32 / 96.,
+            bottom_inset: (r.bottom - info.rcWork.bottom).max(0),
+        })
     }
 }
 
@@ -76,12 +86,12 @@ impl Screen {
         self.height as f32 / self.scale
     }
 
-    fn bounds(self, width: f32, height: f32, right: bool, margin: f32) -> RECT {
+    fn bounds(self, width: f32, height: f32, right: bool, bottom: bool, margin: f32) -> RECT {
         let margin = (margin * self.scale).round() as i32;
         let width = ((width * self.scale).round() as i32).min((self.width - 2 * margin).max(1));
         let height = ((height * self.scale).round() as i32).min((self.height - 2 * margin).max(1));
         let left = self.left + if right { self.width - margin - width } else { margin };
-        let top = self.top + margin;
+        let top = self.top + if bottom { (self.height - self.bottom_inset - margin - height).max(margin) } else { margin };
         RECT { left, top, right: left + width, bottom: top + height }
     }
 }
@@ -142,6 +152,7 @@ pub fn show(
     screen: Screen,
     size: (f32, f32),
     right: bool,
+    bottom: bool,
     margin: f32,
     notice: bool,
 ) -> io::Result<Option<FocusReturn>> {
@@ -164,7 +175,7 @@ pub fn show(
         if notice && SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA) == 0 {
             return Err(io::Error::last_os_error());
         }
-        place(hwnd, screen.bounds(size.0, size.1, right, margin))?;
+        place(hwnd, screen.bounds(size.0, size.1, right, bottom, margin))?;
         ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         if notice {
             return Ok(None);
@@ -288,16 +299,23 @@ mod tests {
 
     #[test]
     fn places_on_negative_origin_display_at_fractional_dpi() {
-        let screen = Screen { left: -2560, top: -200, width: 2560, height: 1440, scale: 1.5 };
+        let screen = Screen { left: -2560, top: -200, width: 2560, height: 1440, scale: 1.5, bottom_inset: 0 };
         assert_eq!(screen.logical_height(), 960.);
-        let r = screen.bounds(440., 912., true, 16.);
+        let r = screen.bounds(440., 912., true, false, 16.);
         assert_eq!((r.left, r.top, r.right, r.bottom), (-684, -176, -24, 1192));
     }
 
     #[test]
     fn caps_surfaces_to_the_selected_monitor() {
-        let screen = Screen { left: 1920, top: 0, width: 800, height: 600, scale: 1. };
-        let r = screen.bounds(1000., 912., false, 16.);
+        let screen = Screen { left: 1920, top: 0, width: 800, height: 600, scale: 1., bottom_inset: 0 };
+        let r = screen.bounds(1000., 912., false, false, 16.);
         assert_eq!((r.left, r.top, r.right, r.bottom), (1936, 16, 2704, 584));
+    }
+
+    #[test]
+    fn a_bottom_surface_sits_above_the_taskbar() {
+        let screen = Screen { left: 0, top: 0, width: 1920, height: 1080, scale: 1., bottom_inset: 48 };
+        let r = screen.bounds(360., 84., true, true, 24.);
+        assert_eq!((r.left, r.top, r.right, r.bottom), (1536, 924, 1896, 1008));
     }
 }

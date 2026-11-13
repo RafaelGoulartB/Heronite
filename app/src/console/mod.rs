@@ -22,6 +22,7 @@ pub mod registry;
 pub mod sheet;
 pub mod spatial;
 pub mod startup;
+pub mod summon;
 pub mod theme_rows;
 pub mod themes;
 

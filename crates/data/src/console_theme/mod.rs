@@ -218,6 +218,33 @@ str_enum! {
     pub enum AutoConsole { Off = "off", Ask = "ask", On = "on" } default Off
 }
 str_enum! {
+    /// The button held (1 s) to enter console mode from anywhere, and the one
+    /// the "Ask" notice asks for. `Auto` is the system's: Guide on Linux,
+    /// Back + Start on Windows (XInput does not report Guide).
+    pub enum ConsoleButton {
+        Auto = "auto",
+        Off = "off",
+        Guide = "guide",
+        BackStart = "backStart",
+        Bumpers = "bumpers",
+    } default Auto
+}
+
+impl ConsoleButton {
+    /// The ones Settings offers, in its order.
+    pub const CHOICES: [ConsoleButton; 4] = [ConsoleButton::Off, ConsoleButton::Guide, ConsoleButton::BackStart, ConsoleButton::Bumpers];
+
+    /// `Auto` made the system's button.
+    pub fn resolved(self) -> Self {
+        match self {
+            ConsoleButton::Auto if cfg!(windows) => ConsoleButton::BackStart,
+            ConsoleButton::Auto => ConsoleButton::Guide,
+            b => b,
+        }
+    }
+}
+
+str_enum! {
     pub enum OpenIn { Last = "last", Console = "console", Desktop = "desktop" } default Last
 }
 str_enum! {
@@ -672,6 +699,8 @@ pub struct ConsolePrefs {
     /// they differ).
     pub based_on: String,
     pub auto_console: AutoConsole,
+    /// Held to enter console mode from anywhere (see [`ConsoleButton`]).
+    pub console_button: ConsoleButton,
     pub open_in: OpenIn,
     /// Console mode fills the screen: entering it goes fullscreen and leaving
     /// it switches back (F11 still toggles).
@@ -679,6 +708,8 @@ pub struct ConsolePrefs {
     pub idle: Idle,
     /// The tab shown last (`nav.startOn: last`).
     pub last_tab: usize,
+    /// The filter choices console mode starts with next time.
+    pub kept_filters: KeptFilters,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -689,13 +720,29 @@ impl Default for ConsolePrefs {
             theme: presets::default_theme(),
             based_on: presets::DEFAULT.into(),
             auto_console: AutoConsole::Off,
+            console_button: ConsoleButton::Auto,
             open_in: OpenIn::Last,
             fullscreen: true,
             idle: Idle::Off,
             last_tab: 0,
+            kept_filters: KeptFilters::default(),
             extra: Map::new(),
         }
     }
+}
+
+/// The console filters that outlast console mode. The Grid's (and the
+/// Filters panel's) Show (index in All / Installed / Not installed), Sort
+/// (Title / Last played / Playtime) and Favourites only; Status and Category
+/// are left out, as they point into statuses and categories that change.
+/// `carousel`: the Carousel's pill (All / Installed / Favourites / Playing).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct KeptFilters {
+    pub show: usize,
+    pub sort: usize,
+    pub favourites: bool,
+    pub carousel: usize,
 }
 
 impl ConsolePrefs {

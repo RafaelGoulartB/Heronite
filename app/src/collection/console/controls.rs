@@ -1,26 +1,21 @@
-//! Console mode behaviour around the controller: navigation sounds, the idle
-//! screen, and what happens at start or when a controller connects. Nothing
-//! here runs while console mode is off, except the controller watcher of
-//! `autoConsole` (only when that option is on).
+//! Console mode behaviour around the controller: navigation sounds and the
+//! idle screen. Nothing here runs while console mode is off; what a
+//! controller connecting does, and the button held to enter console mode,
+//! belong to the app (`console::summon`), so they work with the window in
+//! the tray too.
 
 mod idle;
 mod sound;
 
 use std::time::{Duration, Instant};
 
-use futures::StreamExt;
 use gpui_kit::*;
-use heronite_data::console_theme::AutoConsole;
-use heronite_i18n::tr;
 
 use super::super::CollectionView;
-use crate::console::input::{self, PadMsg};
-use crate::console::{self, look, startup, themes, Pad};
+use crate::console::{look, startup, themes, Pad};
 
 /// How often the idle screen checks for quiet.
 const CHECK_EVERY: Duration = Duration::from_secs(20);
-/// How long a controller connecting waits for a press to enter console mode.
-const ASK_FOR: Duration = Duration::from_secs(5);
 
 pub(super) struct ControlsState {
     sounds: Option<sound::Player>,
@@ -30,64 +25,34 @@ pub(super) struct ControlsState {
     idle_after: Duration,
     idle: Option<idle::Idle>,
     idle_task: Option<Task<()>>,
-    /// Looks for a controller while console mode is off (`autoConsole`).
-    watch: Option<startup::Watcher>,
-    /// A connected controller is being asked to press a button.
-    asking: bool,
 }
 
 impl Default for ControlsState {
     fn default() -> Self {
-        Self {
-            sounds: None,
-            last_press: Instant::now(),
-            idle_after: idle::IDLE_AFTER,
-            idle: None,
-            idle_task: None,
-            watch: None,
-            asking: false,
-        }
+        Self { sounds: None, last_press: Instant::now(), idle_after: idle::IDLE_AFTER, idle: None, idle_task: None }
     }
 }
 
 impl CollectionView {
     /// At app start, before the first frame (console mode may be off): where
-    /// the app opens (`openIn`) and, when `autoConsole` is on, the watcher.
-    /// Reads only the values mirrored in ui-state.json. `reopened`: the
-    /// window was closed in console mode in this run (it opens in it again).
-    pub(super) fn console_startup(&mut self, reopened: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let opens = reopened || startup::opens_in_console(self.ui.console_open_in, self.ui.console_mode);
+    /// the app opens (`openIn`). Reads only the values mirrored in
+    /// ui-state.json. `reopened`: the window was closed in console mode in
+    /// this run (it opens in it again).
+    pub(super) fn console_startup(&mut self, reopened: bool) {
         // `console_init` enters console mode from this flag.
-        self.ui.console_mode = opens;
-        if !opens && crate::env::value("HERONITE_DEBUG_CONSOLE").is_none() {
-            self.watch_pads(self.ui.console_auto, true, window, cx);
-        }
+        self.ui.console_mode = reopened || startup::opens_in_console(self.ui.console_open_in, self.ui.console_mode);
     }
 
-    /// `openIn` / `autoConsole` changed while the app runs (Settings):
-    /// the watcher follows. The Settings page calls it after
-    /// `startup::set_auto_console`.
-    pub(in crate::collection) fn console_start_options_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// `openIn` / `autoConsole` / the console button changed while the app
+    /// runs (Settings). `console::summon` heard of it already.
+    pub(in crate::collection) fn console_start_options_changed(&mut self) {
         let prefs = themes::prefs(&self.app_paths);
         self.ui.console_open_in = prefs.open_in;
         self.ui.console_auto = prefs.auto_console;
-        self.console.controls.watch = None;
-        if !console::active() {
-            self.watch_pads(prefs.auto_console, false, window, cx);
-        }
-    }
-
-    /// Console mode just ended (after its state was reset): back to watching
-    /// for controllers when `autoConsole` asks for it. The controller that is
-    /// connected now does not count.
-    pub(super) fn console_controls_ended(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let auto = startup::auto_console(self.ui.console_auto);
-        self.watch_pads(auto, false, window, cx);
     }
 
     /// Console mode just started, its theme installed.
     pub(super) fn console_controls_started(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.ui.console_auto = themes::read(&self.app_paths, |p| p.auto_console);
         self.console.controls.last_press = Instant::now();
         // `HERONITE_DEBUG_IDLE_SECS=<n>`: the idle screen after `n` seconds of quiet (checked every second).
         let debug_secs = crate::env::parse::<u64>("HERONITE_DEBUG_IDLE_SECS");
@@ -138,68 +103,5 @@ impl CollectionView {
         st.last_press = Instant::now();
         let mode = themes::read(&self.app_paths, |p| p.idle);
         self.start_idle(mode, cx);
-    }
-
-    /// Starts the controller watcher for `auto` (nothing for `Off`).
-    fn watch_pads(&mut self, auto: AutoConsole, including_present: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if auto == AutoConsole::Off || console::active() || self.console.controls.watch.is_some() {
-            return;
-        }
-        let Some((watcher, mut rx)) = startup::watch(including_present) else { return };
-        self.console.controls.watch = Some(watcher);
-        // Ends when the watcher is dropped (its thread closes the channel).
-        cx.spawn_in(window, async move |this, cx| {
-            while rx.next().await.is_some() {
-                if this.update_in(cx, |this, window, cx| this.controller_found(auto, window, cx)).is_err() {
-                    break;
-                }
-            }
-        })
-        .detach();
-    }
-
-    fn controller_found(&mut self, auto: AutoConsole, window: &mut Window, cx: &mut Context<Self>) {
-        if console::active() {
-            return;
-        }
-        match auto {
-            AutoConsole::On => self.set_console(true, window, cx),
-            AutoConsole::Ask => self.ask_for_console(window, cx),
-            AutoConsole::Off => {}
-        }
-    }
-
-    /// Tells that a controller is there and enters console mode on the next
-    /// button it presses (console mode is off, so its thread listens only
-    /// for [`ASK_FOR`]).
-    fn ask_for_console(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.console.controls.asking {
-            return;
-        }
-        let Some((thread, mut rx)) = input::start() else { return };
-        self.console.controls.asking = true;
-        self.show_toast(tr!("Controller connected — press any button to enter console mode"), false, cx);
-        cx.spawn_in(window, async move |this, cx| {
-            let _thread = thread;
-            let mut limit = cx.background_executor().timer(ASK_FOR);
-            loop {
-                match futures::future::select(rx.next(), &mut limit).await {
-                    futures::future::Either::Left((Some(PadMsg::Press(pad)), _)) if !matches!(pad, Pad::ScrollUp | Pad::ScrollDown) => {
-                        this.update_in(cx, |this, window, cx| {
-                            if window.is_window_active() {
-                                this.toast = None;
-                                this.set_console(true, window, cx);
-                            }
-                        })
-                        .ok();
-                        break;
-                    }
-                    futures::future::Either::Left((Some(_), _)) => {}
-                    _ => break,
-                }
-            }
-            this.update(cx, |this, _| this.console.controls.asking = false).ok();
-        })
-        .detach();
     }
 }

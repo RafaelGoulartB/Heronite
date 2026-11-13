@@ -1,10 +1,12 @@
 //! Heroic Games Launcher keeps its files where this app keeps its own, in
 //! the same formats: the games added by hand there
-//! (`sideload_apps/library.json`) are copied with their game settings
-//! (`GamesConfig/<app>.json`) and start here, and its records of the Epic,
-//! GOG and Amazon games it installed are added to this app's, so those
-//! games show as installed (in the same folders) once the store is logged
-//! in here. Nothing in Heroic's folder is written.
+//! (`sideload_apps/library.json`) are copied and start here, and its records
+//! of the Epic, GOG and Amazon games it installed are added to this app's,
+//! so those games show as installed (in the same folders) once the store is
+//! logged in here. Each of those games also gets its game settings
+//! (`GamesConfig/<app>.json`: its Wine prefix and Wine above all) while it
+//! has none here, so it starts in the prefix it had in Heroic. Nothing in
+//! Heroic's folder is written.
 //!
 //! Nothing comes in on its own: only once the user turns Heroic's import on
 //! in Settings → Other launchers (never from the Collection's welcome or
@@ -71,16 +73,9 @@ impl Store {
 
     /// `(id, entry)` of each record whose install folder exists.
     fn read(self, file: &Path) -> Vec<(String, Value)> {
-        let Ok(doc) = json_store::read_value(file) else { return Vec::new() };
-        let folder_exists =
-            |e: &Value, key: &str| e.get(key).and_then(Value::as_str).is_some_and(|p| !p.is_empty() && Path::new(p).is_dir());
-        let list: Vec<(String, Value)> = match self {
-            Store::Epic => doc.as_object().map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default(),
-            Store::Gog => list_by(doc.get("installed"), "appName"),
-            Store::Amazon => list_by(Some(&doc), "id"),
-        };
-        let key = if self == Store::Amazon { "path" } else { "install_path" };
-        list.into_iter().filter(|(_, e)| folder_exists(e, key)).collect()
+        let key = self.path_key();
+        let folder_exists = |e: &Value| e.get(key).and_then(Value::as_str).is_some_and(|p| !p.is_empty() && Path::new(p).is_dir());
+        self.records(file).into_iter().filter(|(_, e)| folder_exists(e)).collect()
     }
 }
 
@@ -211,18 +206,14 @@ pub fn sync(paths: &DataPaths, lib: &Library, removed: &BTreeSet<String>) -> Res
             games.as_array_mut().expect("array").extend(new.iter().map(|g| (*g).clone()));
             Ok(())
         })?;
-        for g in &new {
-            let app = g["app_name"].as_str().unwrap_or_default();
-            let (from, to) = (lib.root.join("GamesConfig").join(format!("{app}.json")), paths.game_config(app));
-            if from.is_file() && !to.exists() {
-                std::fs::create_dir_all(paths.games_config_dir())?;
-                std::fs::copy(&from, &to)?;
-            }
-        }
         report.added += new.len();
     }
     for installs in &lib.installs {
         report.added += merge_installs(paths, installs)?;
+    }
+    let settings = copy_settings(paths, lib, removed)?;
+    if settings > 0 {
+        log::info!("Brought the game settings (Wine prefix) of {settings} game(s) from Heroic");
     }
     let played: TimestampFile = json_store::read(&lib.root.join("store/timestamp.json")).unwrap_or_default();
     let entries: Vec<_> = lib
@@ -286,15 +277,72 @@ fn merge_installs(paths: &DataPaths, installs: &Installs) -> Result<usize> {
     Ok(missing.len())
 }
 
+/// Copies Heroic's `GamesConfig/<app>.json` of each of its games that has
+/// no game settings here: the games added by hand that came in, and the
+/// store games whose install record here is Heroic's (same folder; one
+/// installed again here keeps its own settings). Settings the game already
+/// has here (picked by the user, or written by an install here) stay. How
+/// many were copied.
+fn copy_settings(paths: &DataPaths, lib: &Library, removed: &BTreeSet<String>) -> Result<usize> {
+    let mut apps: Vec<&str> = lib.sideload.iter().filter_map(|g| g.get("app_name").and_then(Value::as_str)).collect();
+    for installs in &lib.installs {
+        let key = installs.kind.path_key();
+        let here = installs.kind.records(&installs.kind.target(paths));
+        let folder = |e: &Value| e.get(key).and_then(Value::as_str).map(str::to_owned);
+        apps.extend(
+            installs
+                .entries
+                .iter()
+                .filter(|(id, theirs)| here.iter().any(|(i, mine)| i == id && folder(mine).is_some() && folder(mine) == folder(theirs)))
+                .map(|(id, _)| id.as_str()),
+        );
+    }
+    let mut copied = 0;
+    for app in apps.into_iter().filter(|a| !removed.contains(*a)) {
+        let (from, to) = (lib.root.join("GamesConfig").join(format!("{app}.json")), paths.game_config(app));
+        if !from.is_file() || to.exists() {
+            continue;
+        }
+        std::fs::create_dir_all(paths.games_config_dir())?;
+        // `create_new`: settings this app writes meanwhile are never replaced.
+        let mut out = match std::fs::OpenOptions::new().write(true).create_new(true).open(&to) {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e.into()),
+        };
+        if let Err(e) = std::io::copy(&mut std::fs::File::open(&from)?, &mut out) {
+            drop(out);
+            let _ = std::fs::remove_file(&to);
+            return Err(e.into());
+        }
+        copied += 1;
+    }
+    Ok(copied)
+}
+
 impl Store {
+    /// The key of a record's install folder.
+    fn path_key(self) -> &'static str {
+        if self == Store::Amazon {
+            "path"
+        } else {
+            "install_path"
+        }
+    }
+
+    /// `(id, entry)` of each record in `file` (folders gone or not).
+    fn records(self, file: &Path) -> Vec<(String, Value)> {
+        let Ok(doc) = json_store::read_value(file) else { return Vec::new() };
+        match self {
+            Store::Epic => doc.as_object().map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default(),
+            Store::Gog => list_by(doc.get("installed"), "appName"),
+            Store::Amazon => list_by(Some(&doc), "id"),
+        }
+    }
+
     /// The ids this app's file has (folders gone or not).
     fn read_ids(self, file: &Path) -> HashSet<String> {
-        let Ok(doc) = json_store::read_value(file) else { return HashSet::new() };
-        match self {
-            Store::Epic => doc.as_object().map(|o| o.keys().cloned().collect()).unwrap_or_default(),
-            Store::Gog => list_by(doc.get("installed"), "appName").into_iter().map(|(id, _)| id).collect(),
-            Store::Amazon => list_by(Some(&doc), "id").into_iter().map(|(id, _)| id).collect(),
-        }
+        self.records(file).into_iter().map(|(id, _)| id).collect()
     }
 }
 
@@ -353,6 +401,96 @@ mod tests {
 
         // Again: nothing new.
         assert_eq!(sync(&paths, lib, &BTreeSet::new()).unwrap(), Report::default());
+    }
+
+    /// The store games' Wine prefix comes with them: Heroic's game settings
+    /// are copied for each of its installs that has none here, the ones an
+    /// earlier import brought too; settings the game has here stay, and a
+    /// game installed again here (another folder) keeps its own.
+    #[cfg(unix)]
+    #[test]
+    fn store_games_get_their_heroic_settings_unless_they_have_some_here() {
+        let h = tempfile::tempdir().unwrap();
+        let home = h.path().join("home");
+        let heroic = home.join(".config/heroic");
+        let games = h.path().join("games");
+        let at = |g: &str| {
+            std::fs::create_dir_all(games.join(g)).unwrap();
+            games.join(g).to_string_lossy().into_owned()
+        };
+        let (control, alan, witcher, fallout, hades) = (at("Control"), at("Alan"), at("Witcher"), at("Fallout"), at("Hades"));
+        w(&heroic.join("config.json"), "{}");
+        let config = |app: &str| json!({ app: {"winePrefix": format!("/pfx/{app}"), "wineVersion": {"name": "GE"}}, "version": "v0", "explicit": true });
+        for app in ["ctl", "alan", "hades", "w3", "amzn1.fo3"] {
+            w(&heroic.join("GamesConfig").join(format!("{app}.json")), &config(app).to_string());
+        }
+        let epic = json!({
+            "ctl": {"app_name": "ctl", "install_path": control},
+            "alan": {"app_name": "alan", "install_path": alan},
+            "hades": {"app_name": "hades", "install_path": hades}});
+        w(&heroic.join("legendaryConfig/legendary/installed.json"), &epic.to_string());
+        w(&heroic.join("gog_store/installed.json"), &json!({"installed": [{"appName": "w3", "install_path": witcher}]}).to_string());
+        w(&heroic.join("nile_config/nile/installed.json"), &json!([{"id": "amzn1.fo3", "path": fallout}]).to_string());
+
+        let paths = DataPaths::at(h.path().join("data"));
+        // Brought by an earlier import, without settings: "ctl". Installed
+        // again here, in another folder: "hades". "alan" has settings here.
+        let here = json!({
+            "ctl": {"app_name": "ctl", "install_path": control},
+            "hades": {"app_name": "hades", "install_path": "/elsewhere/Hades"}});
+        w(&paths.legendary_config_dir().join("installed.json"), &here.to_string());
+        let mine = json!({"alan": {"winePrefix": "/mine"}, "version": "v0", "explicit": true}).to_string();
+        w(&paths.game_config("alan"), &mine);
+
+        let lib = detect(&home, &paths).unwrap().unwrap().heroic.unwrap();
+        sync(&paths, &lib, &BTreeSet::new()).unwrap();
+
+        let prefix = |app: &str| {
+            let doc = json_store::read_value(&paths.game_config(app)).ok()?;
+            doc.get(app)?.get("winePrefix")?.as_str().map(str::to_owned)
+        };
+        assert_eq!(prefix("ctl").as_deref(), Some("/pfx/ctl"), "imported before, settings now");
+        assert_eq!(prefix("w3").as_deref(), Some("/pfx/w3"));
+        assert_eq!(prefix("amzn1.fo3").as_deref(), Some("/pfx/amzn1.fo3"));
+        assert_eq!(std::fs::read_to_string(paths.game_config("alan")).unwrap(), mine, "settings here stay");
+        assert!(!paths.game_config("hades").exists(), "installed here: not Heroic's prefix");
+        let settings = heronite_data::game_config::load_game(&paths, "ctl", home.to_str().unwrap());
+        assert_eq!(settings["winePrefix"], "/pfx/ctl");
+        assert_eq!(settings["wineVersion"]["name"], "GE");
+
+        // Again: what is here stays as it is.
+        let before = std::fs::read_to_string(paths.game_config("ctl")).unwrap();
+        assert_eq!(copy_settings(&paths, &lib, &BTreeSet::new()).unwrap(), 0);
+        assert_eq!(std::fs::read_to_string(paths.game_config("ctl")).unwrap(), before);
+    }
+
+    /// The games added by hand get their settings once in the Collection,
+    /// the ones an earlier import brought too, but not the ones the user
+    /// took out (the only games `removed` holds for Heroic).
+    #[cfg(unix)]
+    #[test]
+    fn hand_added_games_get_their_heroic_settings_unless_taken_out() {
+        let h = tempfile::tempdir().unwrap();
+        let home = h.path().join("home");
+        let heroic = home.join(".config/heroic");
+        w(&heroic.join("config.json"), "{}");
+        let game = |app: &str| json!({"runner": "sideload", "app_name": app, "title": app, "install": {"executable": "/g/x.exe"}});
+        w(&heroic.join("sideload_apps/library.json"), &json!({"games": [game("kept"), game("gone")]}).to_string());
+        for app in ["kept", "gone"] {
+            let config = json!({ app: {"winePrefix": format!("/pfx/{app}")}, "version": "v0" });
+            w(&heroic.join("GamesConfig").join(format!("{app}.json")), &config.to_string());
+        }
+        let paths = DataPaths::at(h.path().join("data"));
+        let lib = detect(&home, &paths).unwrap().unwrap().heroic.unwrap();
+        let removed = BTreeSet::from(["gone".to_string()]);
+        sync(&paths, &lib, &removed).unwrap();
+        assert!(paths.game_config("kept").is_file());
+        assert!(!paths.game_config("gone").exists());
+
+        // Brought by an earlier import, which left its settings behind.
+        std::fs::remove_file(paths.game_config("kept")).unwrap();
+        sync(&paths, &lib, &removed).unwrap();
+        assert!(paths.game_config("kept").is_file());
     }
 
     #[cfg(unix)]

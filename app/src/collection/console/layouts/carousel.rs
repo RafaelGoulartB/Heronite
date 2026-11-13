@@ -4,9 +4,11 @@
 //! it. ◀ ▶ turn it and LT / RT jump to the previous / next letter (the
 //! letter shows over the covers for a moment); ↑ moves to a row of filter
 //! pills (All, Installed, Favourites, Playing) and ↓ comes back, and with a
-//! single tab LB / RB change the filter from anywhere. The covers fan out
-//! from the middle when the carousel first shows and when the filter
-//! changes. GPUI has no 3D transforms, so a cover's pose is its size,
+//! single tab LB / RB change the filter from anywhere (kept for the next
+//! time console mode starts; in a theme without a Grid, like Minimal, the
+//! pill and the Filters panel's Show follow each other, see [`pill_for`]).
+//! The covers fan out from the middle when the carousel first shows and
+//! when the filter changes. GPUI has no 3D transforms, so a cover's pose is its size,
 //! offset, opacity and shade, each cover on a spring of its own distance
 //! from the middle.
 
@@ -14,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{HeroTitle, TabSpec, TileShape, TileSize};
+use heronite_data::console_theme::{HeroTitle, KeptFilters, Layout, TabSpec, TileShape, TileSize};
 use heronite_data::CollectionGame;
 use heronite_i18n::{n_, tr};
 use heronite_images::{Variant, REFLECTION_PART};
@@ -33,6 +35,30 @@ use crate::icons::Icon;
 use crate::theme;
 
 const FILTERS: [&str; 4] = [n_!("All"), n_!("Installed"), n_!("Favourites"), n_!("Playing")];
+
+/// The pill that shows the games of the Grid's Show (index in its `SHOW`)
+/// and Favourites only, if one does: All, Installed, Favourites. Not
+/// installed, and installed favourites, have none.
+pub(crate) fn pill_for(show: usize, favourites: bool) -> Option<usize> {
+    match (show, favourites) {
+        (0, false) => Some(0),
+        (1, false) => Some(1),
+        (0, true) => Some(2),
+        _ => None,
+    }
+}
+
+/// The Grid's Show and Favourites only that show the games of `pill`, if
+/// they can (Playing has no match): the other way round of [`pill_for`].
+pub(crate) fn show_for(pill: usize) -> Option<(usize, bool)> {
+    match pill {
+        0 => Some((0, false)),
+        1 => Some((1, false)),
+        2 => Some((0, true)),
+        _ => None,
+    }
+}
+
 /// Covers drawn on each side of the middle one.
 const REACH: usize = 5;
 /// How the covers move when the focus does: a touch under critical damping.
@@ -99,6 +125,17 @@ pub(crate) struct Nav {
 }
 
 impl Nav {
+    /// A carousel on the kept pill (one out of range, from an edited file,
+    /// reads as All).
+    pub(crate) fn from_kept(k: KeptFilters) -> Self {
+        Self { filter: if k.carousel < FILTERS.len() { k.carousel } else { 0 }, ..Self::default() }
+    }
+
+    /// The pill (index in `FILTERS`).
+    pub(crate) fn filter(&self) -> usize {
+        self.filter
+    }
+
     /// A new filter, the focus on `index`; the covers fan out again.
     fn set_filter(&mut self, filter: usize, index: usize) {
         self.filter = filter;
@@ -234,6 +271,43 @@ fn letter_flash(id: SharedString, letter: char) -> AnyElement {
 }
 
 impl CollectionView {
+    /// A theme without a Grid (Minimal): the Filters panel drives a grid of
+    /// results over the tab, and its Show follows the pill, so the panel
+    /// never shows a filter the screen does not (Playing leaves it alone).
+    fn pill_to_results(&mut self, pill: usize) {
+        let theme = look::theme();
+        if theme.tabs.iter().any(|t| t.layout == Layout::Grid) {
+            return;
+        }
+        let Some((show, favourites)) = show_for(pill) else { return };
+        let results = theme.tabs.len();
+        let nav = &mut self.tab_nav(results).grid;
+        let before = (nav.filters.show, nav.filters.favourites);
+        if before == (show, favourites) {
+            return;
+        }
+        (nav.filters.show, nav.filters.favourites) = (show, favourites);
+        nav.index = 0;
+        nav.restart = true;
+        self.keep_grid_filters(results, before);
+    }
+
+    /// Moves tab `tab`'s carousel to pill `pill`; the focused game stays
+    /// when it passes it.
+    pub(super) fn move_carousel_pill(&mut self, tab: usize, spec: &TabSpec, pill: usize) {
+        let (filter, index) = {
+            let nav = &self.tab_nav(tab).carousel;
+            (nav.filter.min(FILTERS.len() - 1), nav.index)
+        };
+        if filter == pill {
+            return;
+        }
+        let all = self.carousel_keys(spec, filter);
+        let keep = all.get(index.min(all.len().saturating_sub(1))).cloned();
+        let at = keep.and_then(|k| self.carousel_keys(spec, pill).iter().position(|x| *x == k)).unwrap_or(0);
+        self.tab_nav(tab).carousel.set_filter(pill, at);
+    }
+
     /// The games of the tab that pass pill `filter`, sorted A–Z.
     fn carousel_keys(&self, spec: &TabSpec, filter: usize) -> Vec<SharedString> {
         let Some(lib) = self.lib.as_ref() else { return Vec::new() };
@@ -478,9 +552,9 @@ impl CollectionView {
         };
         if let Some(next) = next_filter {
             if next != filter {
-                let keep = all.get(i).cloned();
-                let at = keep.and_then(|k| self.carousel_keys(spec, next).iter().position(|x| *x == k)).unwrap_or(0);
-                self.tab_nav(tab).carousel.set_filter(next, at);
+                self.move_carousel_pill(tab, spec, next);
+                self.keep_console_filters(|k| k.carousel = next);
+                self.pill_to_results(next);
             }
             return true;
         }
@@ -549,6 +623,32 @@ mod tests {
     use super::*;
     // `gpui_kit::*` above brings gpui's own `test` macro.
     use core::prelude::v1::test;
+
+    /// A carousel starts on the kept pill; one out of range reads as All.
+    #[test]
+    fn starts_on_the_kept_pill() {
+        assert_eq!(Nav::from_kept(KeptFilters { carousel: 1, ..KeptFilters::default() }).filter, 1);
+        assert_eq!(Nav::from_kept(KeptFilters::default()).filter, 0);
+        assert_eq!(Nav::from_kept(KeptFilters { carousel: FILTERS.len(), ..KeptFilters::default() }).filter, 0);
+    }
+
+    /// The pill and the Grid's Show + Favourites only translate both ways
+    /// where they match; Not installed, installed favourites and Playing
+    /// have no match.
+    #[test]
+    fn pills_match_the_grid_show() {
+        for pill in 0..FILTERS.len() {
+            if let Some((show, favourites)) = show_for(pill) {
+                assert_eq!(pill_for(show, favourites), Some(pill));
+            }
+        }
+        assert_eq!(show_for(1), Some((1, false)));
+        assert_eq!(show_for(3), None);
+        assert_eq!(pill_for(0, true), Some(2));
+        assert_eq!(pill_for(1, true), None);
+        assert_eq!(pill_for(2, false), None);
+        assert_eq!(pill_for(2, true), None);
+    }
 
     #[test]
     fn poses_shrink_fade_and_mirror() {

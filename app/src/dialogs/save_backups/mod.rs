@@ -728,7 +728,7 @@ fn resolve_target(
             let prefix =
                 heronite_steam::files::prefix(&locator, id).map(|p| p.compatdata.join("pfx")).filter(|p| p.join("drive_c").is_dir());
             let user = prefix.as_deref().and_then(|p| wine_user(p, login.as_deref())).or_else(|| Some("steamuser".into()));
-            let userdata = locator.steam_path.join("userdata");
+            let userdata = locator.userdata_dir(id);
             RestoreTarget {
                 // An installed Steam game without a compatdata prefix is
                 // native (or has never run): its Linux paths stay where they
@@ -737,7 +737,7 @@ fn resolve_target(
                 user: prefix.as_ref().and(user),
                 prefix,
                 install_dir: locator.install_dir(id).or(install),
-                steam_userdata: userdata.is_dir().then_some(userdata),
+                steam_userdata: userdata,
                 user_home: None,
             }
         }
@@ -757,8 +757,7 @@ fn windows_target(env: &LudusaviEnv, steam: Option<&str>, install: Option<PathBu
     let (install_dir, steam_userdata) = match steam {
         Some(id) => {
             let locator = SteamLocator::detect(&GlobalSettings::load(env.paths), &SystemProbe);
-            let userdata = locator.steam_path.join("userdata");
-            (locator.install_dir(id).or(install), userdata.is_dir().then_some(userdata))
+            (locator.install_dir(id).or(install), locator.userdata_dir(id))
         }
         None => (install, None),
     };

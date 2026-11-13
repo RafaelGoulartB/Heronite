@@ -22,6 +22,7 @@ use heronite_overlay::audio::AudioState;
 use heronite_overlay::input::{Button, Controller};
 
 use self::data::Data;
+use self::rows::CAPTURES;
 use super::{GameNow, OverlayService};
 use crate::console::kit::{self, u};
 use crate::console::list::{self, ListNav, Row};
@@ -97,6 +98,11 @@ pub struct OverlayPanel {
     /// Focused capture in the Screenshots grid (`None` = the rows have it).
     grid: Option<usize>,
     grid_scroll: ScrollHandle,
+    /// The button chosen in Home's "Capture" row.
+    capture: usize,
+    /// The rows drawn with the mixer or the "Capture" row (they scroll when
+    /// the panel is short for them).
+    rows_scroll: ScrollHandle,
     /// Capture shown full size.
     viewer: Option<usize>,
     /// Shown under the rows after a failed action.
@@ -175,6 +181,8 @@ impl OverlayPanel {
             confirm_nav: ListNav::default(),
             grid: None,
             grid_scroll: ScrollHandle::new(),
+            capture: 0,
+            rows_scroll: ScrollHandle::new(),
             viewer: None,
             error: None,
             keyboard,
@@ -317,6 +325,9 @@ impl OverlayPanel {
             if mixer::is_mixer(&id) && self.mixer_pad(&id, pad, cx) {
                 return true;
             }
+            if id.as_ref() == CAPTURES && self.capture_pad(pad, cx) {
+                return true;
+            }
         }
         if pad == Pad::Y && self.tab() == Tab::Notes && self.data.journal.is_some() {
             self.with_service(cx, |s, cx| s.mark_moment(cx));
@@ -381,6 +392,15 @@ impl OverlayPanel {
             }
             h.push(hint(Btn::B, tr!("Close")));
             return h;
+        }
+        if self.grid.is_none() && self.nav.focused(&rows).is_some_and(|r| r.id.as_ref() == CAPTURES) {
+            let (at, all) = self.chosen_capture();
+            return vec![
+                hint(Btn::LeftRight, tr!("Choose")),
+                hint(Btn::A, all[at].label()),
+                hint(Btn::B, tr!("Close")),
+                hint(Btn::Bumpers, tr!("Tabs")),
+            ];
         }
         if self.grid.is_some() && notes {
             return vec![hint(Btn::A, tr!("View")), hint(Btn::Y, tr!("Note")), hint(Btn::B, tr!("Close")), hint(Btn::Bumpers, tr!("Tabs"))];
@@ -472,6 +492,60 @@ impl OverlayPanel {
             .child(self.glyph(Btn::RB).on_pads([Pad::RB]))
     }
 
+    /// Home's "Capture" row: its label, then a round button per capture.
+    /// `route` brings the focus to the row (`None`: the rows take no clicks).
+    fn render_capture(&self, r: &Row, focused: bool, route: Option<&[Pad]>) -> Div {
+        let (at, all) = self.chosen_capture();
+        let fg: Hsla = if focused { theme::console_on_focus().into() } else { theme::text_primary().into() };
+        let buttons = all.iter().enumerate().map(|(i, c)| {
+            // The mouse over a button chooses it, a click runs it.
+            let to: Vec<Pad> = route
+                .map(|route| {
+                    let step = if i > at { Pad::Right } else { Pad::Left };
+                    route.iter().copied().chain(pointer::repeat(step, i.abs_diff(at))).collect()
+                })
+                .unwrap_or_default();
+            let click: Vec<Pad> = route.map(|_| to.iter().copied().chain([Pad::A]).collect()).unwrap_or_default();
+            let (bg, ink): (Hsla, Hsla) = match (focused, i == at) {
+                (true, true) => (fg, theme::console_focus().into()),
+                (true, false) => (theme::black_a(0.08), fg),
+                (false, _) => (theme::white_a(0.1), fg),
+            };
+            div()
+                .flex_none()
+                .size(u(40.))
+                .rounded_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(bg)
+                .on_hover_pads(to)
+                .on_pads(click)
+                .child(icon(c.icon(), u(20.), ink))
+        });
+        let row = kit::row_base(focused)
+            .children(r.icon.map(|ic| icon(ic, u(22.), fg)))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_w_0()
+                    .py(u(10.))
+                    .child(div().text_size(u(18.)).text_color(fg).truncate().child(r.label.clone()))
+                    .children(
+                        r.desc
+                            .clone()
+                            .filter(|_| focused)
+                            .map(|d| div().text_size(u(13.)).line_height(u(18.)).truncate().text_color(Hsla { a: 0.7, ..fg }).child(d)),
+                    ),
+            )
+            .child(div().flex().flex_none().gap(u(8.)).children(buttons));
+        // A click on the row itself runs the chosen one.
+        let click: Vec<Pad> = route.map(|route| route.iter().copied().chain([Pad::A]).collect()).unwrap_or_default();
+        div().on_hover_pads(route.map(<[Pad]>::to_vec).unwrap_or_default()).on_pads(click).child(row)
+    }
+
     fn apps_playing(&self) -> bool {
         self.data.audio.as_ref().and_then(|a| a.as_ref()).is_some_and(|a| !a.apps.is_empty())
     }
@@ -529,9 +603,10 @@ impl OverlayPanel {
             None => Some((&placeholder, true)),
             Some(None) => None,
         };
+        let has_capture = rows.iter().any(|r| r.id.as_ref() == CAPTURES);
         let list = match audio.filter(|_| has_mixer) {
-            // With the mixer: the rows are drawn here (short lists, no scrolling).
-            Some((audio, loading)) => {
+            // With the mixer or the "Capture" row: the rows are drawn here.
+            audio if has_mixer || has_capture => {
                 self.nav.clamp(&rows);
                 let focus = list_active.then(|| rows.get(self.nav.focus).map(|r| r.id.clone())).flatten();
                 let mixer_focus = focus.as_ref().filter(|id| mixer::is_mixer(id)).map(|id| id.to_string());
@@ -541,39 +616,62 @@ impl OverlayPanel {
                 } else {
                     Default::default()
                 };
-                let mut list = div().flex().flex_col().gap(u(4.));
+                let plain = |i: usize, r: &Row| {
+                    let row = list::render_row_at(r, list_active && i == self.nav.focus, routes.get(r.id.as_ref()).map(Vec::as_slice));
+                    let pads = if list_active { self.nav.click(&rows, i) } else { Vec::new() };
+                    let hover = routes.get(r.id.as_ref()).cloned().unwrap_or_default();
+                    div().on_hover_pads(hover).on_pads(pads).child(row)
+                };
+                let mut list = div()
+                    .id("overlay-rows-drawn")
+                    .flex()
+                    .flex_col()
+                    .gap(u(4.))
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.rows_scroll);
+                // Which child of the list holds each row (the mixer holds several).
+                let (mut child, mut focus_child) = (0usize, None);
                 for (i, r) in rows.iter().enumerate() {
+                    if list_active && i == self.nav.focus {
+                        let in_mixer = mixer::is_mixer(&r.id) && r.id.as_ref() != mixer::SYSTEM;
+                        focus_child = Some(if in_mixer { child.saturating_sub(1) } else { child });
+                    }
                     match r.id.as_ref() {
                         mixer::SYSTEM => {
+                            let Some((audio, loading)) = audio else { continue };
                             let apps = if self.tab() == Tab::Home { mixer::HOME_APPS } else { mixer::AUDIO_APPS };
                             let mixer = self.render_mixer(audio, mixer_focus.as_deref(), loading, apps, &routes);
-                            list = list.child(div().py(u(4.)).child(mixer))
+                            list = list.child(div().py(u(4.)).child(mixer));
+                            child += 1;
                         }
                         id if mixer::is_mixer(id) => {}
+                        CAPTURES => {
+                            let route = routes.get(CAPTURES).map(Vec::as_slice);
+                            list = list.child(self.render_capture(r, list_active && i == self.nav.focus, route));
+                            child += 1;
+                        }
                         _ => {
-                            let row =
-                                list::render_row_at(r, list_active && i == self.nav.focus, routes.get(r.id.as_ref()).map(Vec::as_slice));
-                            let pads = if list_active { self.nav.click(&rows, i) } else { Vec::new() };
-                            let hover = routes.get(r.id.as_ref()).cloned().unwrap_or_default();
-                            list = list.child(div().on_hover_pads(hover).on_pads(pads).child(row))
+                            list = list.child(plain(i, r));
+                            child += 1;
                         }
                     }
+                }
+                // The focus stays in sight when the rows do not fit.
+                if let Some(c) = focus_child {
+                    self.rows_scroll.scroll_to_item(c);
                 }
                 list.into_any_element()
             }
             // Long lists (several controllers) scroll inside the panel.
-            None if self.tab() == Tab::Controller => self
+            _ if self.tab() == Tab::Controller => self
                 .nav
                 .render_entered(("overlay-rows", self.tab), &rows, list_active, to_rows.as_deref())
                 .flex_1()
                 .min_h_0()
                 .into_any_element(),
-            None if self.tab() == Tab::Achievements => {
-                self.render_achievements(list_active, window, cx).flex_1().min_h_0().into_any_element()
-            }
-            None => {
-                self.nav.render_entered(("overlay-rows", self.tab), &rows, list_active, to_rows.as_deref()).flex_none().into_any_element()
-            }
+            _ if self.tab() == Tab::Achievements => self.render_achievements(list_active, window, cx).flex_1().min_h_0().into_any_element(),
+            _ => self.nav.render_entered(("overlay-rows", self.tab), &rows, list_active, to_rows.as_deref()).flex_none().into_any_element(),
         };
         let mut body = div().flex().flex_col().flex_1().min_h_0().overflow_hidden().px(u(12.)).pt(u(10.)).pb(u(6.)).gap(u(8.)).child(list);
         if let Some(e) = &self.error {

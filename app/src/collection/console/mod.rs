@@ -28,7 +28,7 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{AButton, BackgroundSource, Clock, Hints, Layout, StartOn, TabBar, TabSpec};
+use heronite_data::console_theme::{AButton, BackgroundSource, Clock, Hints, KeptFilters, Layout, StartOn, TabBar, TabSpec};
 use heronite_images::Variant;
 
 use super::CollectionView;
@@ -77,6 +77,9 @@ pub(super) struct ConsoleUi {
     game: game::GameNav,
     /// Search typed on the on-screen keyboard (the Grid filters by it).
     pub search: String,
+    /// The filters a Grid or Carousel starts with (`console.json`'s
+    /// `keptFilters`, kept when the user changes them).
+    pub kept_filters: KeptFilters,
     /// The Filters panel (Y), with its focus.
     filters: Option<filters::FiltersNav>,
     /// The tab shows the filters' results instead (a theme without a Grid
@@ -158,7 +161,7 @@ impl CollectionView {
             console::set_active(false);
             look::clear();
         }
-        self.console_startup(reopened, window, cx);
+        self.console_startup(reopened);
         if (self.ui.console_mode || debug.is_some()) && !console::active() {
             // The window opens fullscreen for it (`hub::show_window`).
             self.enter_console(false, window, cx);
@@ -212,7 +215,6 @@ impl CollectionView {
             self.images.forget_prefix("cw:");
             self.images.forget_prefix("cr:");
             self.images.forget_matching(|id| backdrop::is_backdrop_id(id) || id.starts_with("a:"));
-            self.console_controls_ended(window, cx);
             self.close_console_dialog();
             self.page = Page::Collection;
             cx.notify();
@@ -247,7 +249,7 @@ impl CollectionView {
         self.close_console_dialog();
         self.close_palette(window, cx);
         self.page = Page::Collection;
-        self.console = ConsoleUi::default();
+        self.console = ConsoleUi { kept_filters: prefs.kept_filters, ..ConsoleUi::default() };
         if prefs.theme.nav.start_on == StartOn::Last {
             self.console.tab = prefs.last_tab.min(prefs.theme.tabs.len().saturating_sub(1));
         }
@@ -326,7 +328,7 @@ impl CollectionView {
                                 pointer::hide_cursor();
                                 this.console_pad(pad, window, cx)
                             }
-                            PadMsg::Press(_) => {}
+                            PadMsg::Press(_) | PadMsg::Button(..) => {}
                             PadMsg::Connected(name, plugged) => {
                                 if plugged {
                                     this.show_toast(tr!("Controller connected: {name}", name), false, cx);
