@@ -1220,7 +1220,8 @@ description and the A hint name it; a click on a button runs that one. With only
 screenshot" row. The Screenshots and Notes tabs keep their own rows. "Back to game" comes before "Back to Heronite" only
 while the game has a window and another one has the focus (`heronite_overlay::game_window`, read when the panel opens):
 it gives that window the focus and closes the panel. Only Hyprland can be asked (`hyprctl clients -j` has each window's
-pid); elsewhere the row never shows. `HERONITE_DEBUG_OVERLAY_AWAY=1` shows it for the debug game (nothing focused). Steam games are
+pid); elsewhere the row never shows. The game's panel has the same, as a round → button beside Stop (where Play has its
+launch options arrow), on Hyprland only. `HERONITE_DEBUG_OVERLAY_AWAY=1` shows it for the debug game (nothing focused). Steam games are
 started by Steam, so the launch cannot move MangoHud's limit into a file of ours: they have no live limit (editing the
 user's `MangoHud.conf` or their Steam launch options was ruled out). An Achievements tab (last, so the other tabs keep
 their place when it appears; `panel/achievements.rs`) shows when the game has a set in the achievements service,

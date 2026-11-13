@@ -53,6 +53,11 @@ pub fn focus(game_pid: u32) -> Result<(), String> {
     Err(answer.lines().next().unwrap_or("hyprctl gave no answer").trim().to_string())
 }
 
+/// Whether the game's window can be found and focused here (Hyprland).
+pub fn supported() -> bool {
+    on_hyprland()
+}
+
 fn on_hyprland() -> bool {
     std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some()
 }

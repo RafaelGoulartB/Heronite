@@ -92,6 +92,11 @@ impl GameRuntime {
         (Self { launcher, paths, sessions: Mutex::new(HashMap::new()) }, frx)
     }
 
+    /// Pid of a running game's process, once known.
+    pub fn pid_of(&self, app_name: &str) -> Option<u32> {
+        self.launcher.pid_of(app_name)
+    }
+
     /// Names of the games with a running session.
     pub fn running_apps(&self) -> Vec<String> {
         self.launcher.running_apps()
