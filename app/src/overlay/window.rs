@@ -132,9 +132,10 @@ fn side_anchor(side: Side) -> Anchor {
 }
 
 /// The window of a surface. `layer`: on Linux a layer-shell surface at the
-/// top, along `side`; on Windows a hidden topmost pop-up that `windows::open`
-/// places and shows. Otherwise a normal window (debug captures).
-fn options(namespace: &str, size: Size<Pixels>, side: Side, margin: Pixels, layer: bool, keyboard: bool) -> WindowOptions {
+/// top (`bottom`: at the bottom), along `side`; on Windows a hidden topmost
+/// pop-up that `windows::open` places and shows. Otherwise a normal window
+/// (debug captures).
+fn options(namespace: &str, size: Size<Pixels>, side: Side, bottom: bool, margin: Pixels, layer: bool, keyboard: bool) -> WindowOptions {
     #[cfg(windows)]
     if layer {
         return WindowOptions {
@@ -149,7 +150,7 @@ fn options(namespace: &str, size: Size<Pixels>, side: Side, margin: Pixels, laye
             ..Default::default()
         };
     }
-    let kind = if layer { layer_shell(namespace, side, margin, keyboard) } else { WindowKind::Normal };
+    let kind = if layer { layer_shell(namespace, side, bottom, margin, keyboard) } else { WindowKind::Normal };
     WindowOptions {
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds { origin: point(px(0.), px(0.)), size })),
@@ -162,11 +163,11 @@ fn options(namespace: &str, size: Size<Pixels>, side: Side, margin: Pixels, laye
 }
 
 #[cfg(target_os = "linux")]
-fn layer_shell(namespace: &str, side: Side, margin: Pixels, keyboard: bool) -> WindowKind {
+fn layer_shell(namespace: &str, side: Side, bottom: bool, margin: Pixels, keyboard: bool) -> WindowKind {
     WindowKind::LayerShell(LayerShellOptions {
         namespace: namespace.to_string(),
         layer: Layer::Overlay,
-        anchor: side_anchor(side) | Anchor::TOP,
+        anchor: side_anchor(side) | if bottom { Anchor::BOTTOM } else { Anchor::TOP },
         margin: Some((margin, margin, margin, margin)),
         keyboard_interactivity: if keyboard { KeyboardInteractivity::Exclusive } else { KeyboardInteractivity::None },
         ..Default::default()
@@ -177,7 +178,7 @@ fn layer_shell(namespace: &str, side: Side, margin: Pixels, keyboard: bool) -> W
 /// returns its own pop-up from [`options`] first, and other systems have no
 /// overlay ([`supported`]).
 #[cfg(not(target_os = "linux"))]
-fn layer_shell(_namespace: &str, _side: Side, _margin: Pixels, _keyboard: bool) -> WindowKind {
+fn layer_shell(_namespace: &str, _side: Side, _bottom: bool, _margin: Pixels, _keyboard: bool) -> WindowKind {
     WindowKind::Normal
 }
 
@@ -206,10 +207,10 @@ pub fn open_panel<V: Render>(
     let size = size(px(PANEL_W * s), px(height));
     #[cfg(windows)]
     if layer {
-        let (handle, shown) = windows::open(cx, display.screen, "overlay", size, side, EDGE * s, build)?;
+        let (handle, shown) = windows::open(cx, display.screen, "overlay", size, side, false, EDGE * s, build)?;
         return Ok(OpenedPanel { handle, shown: Some(shown) });
     }
-    let handle = cx.open_window(options("overlay", size, side, px(EDGE * s), layer, keyboard), build)?;
+    let handle = cx.open_window(options("overlay", size, side, false, px(EDGE * s), layer, keyboard), build)?;
     Ok(OpenedPanel {
         handle,
         #[cfg(windows)]
@@ -235,17 +236,52 @@ pub fn open_notice<V: Render>(
     };
     #[cfg(windows)]
     if layer {
-        let (handle, shown) = windows::open(cx, display.screen, "overlay-notice", size, corner, 24. * s, build)?;
-        cx.spawn(async move |cx| {
-            if let Err(error) = shown.await {
-                log::warn!("overlay: cannot show the native notice: {error:#}");
-                let _ = handle.update(cx, |_, window, _| window.remove_window());
-            }
-        })
-        .detach();
-        return Ok(handle);
+        return open_native_notice(cx, display, "overlay-notice", size, corner, false, 24. * s, build);
     }
-    cx.open_window(options("overlay-notice", size, corner, px(24. * s), layer, false), build)
+    cx.open_window(options("overlay-notice", size, corner, false, px(24. * s), layer, false), build)
+}
+
+/// Opens a notice `size` design px in the bottom right corner (the one
+/// asking to enter console mode: `console::summon`).
+pub fn open_corner_notice<V: Render>(
+    cx: &mut App,
+    display: Display,
+    layer: bool,
+    size: (f32, f32),
+    build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
+) -> anyhow::Result<WindowHandle<V>> {
+    let s = display.scale();
+    let px_size = gpui_kit::size(px(size.0 * s), px(size.1 * s));
+    #[cfg(windows)]
+    if layer {
+        return open_native_notice(cx, display, "console-notice", px_size, Side::Right, true, 24. * s, build);
+    }
+    cx.open_window(options("console-notice", px_size, Side::Right, true, px(24. * s), layer, false), build)
+}
+
+/// A notice in a Windows topmost window, placed once it shows (closed if it
+/// cannot be).
+#[cfg(windows)]
+#[allow(clippy::too_many_arguments)]
+fn open_native_notice<V: Render>(
+    cx: &mut App,
+    display: Display,
+    namespace: &str,
+    size: Size<Pixels>,
+    side: Side,
+    bottom: bool,
+    margin: f32,
+    build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
+) -> anyhow::Result<WindowHandle<V>> {
+    let (handle, shown) = windows::open(cx, display.screen, namespace, size, side, bottom, margin, build)?;
+    cx.spawn(async move |cx| {
+        if let Err(error) = shown.await {
+            log::warn!("overlay: cannot show the native notice: {error:#}");
+            let _ = handle.update(cx, |_, window, _| window.remove_window());
+        }
+    })
+    .detach();
+    Ok(handle)
 }
 
 /// The compositor refused a layer-shell surface (GNOME's has none).

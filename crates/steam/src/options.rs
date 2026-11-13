@@ -23,7 +23,7 @@
 //! graphics card settings of [`gpu`] (their variables).
 
 use heronite_launch::env::{gamescope_args, DXVK_FRAME_RATE};
-use heronite_launch::fps_limit::{self, FpsLimit, Method, Tools};
+use heronite_launch::fps_limit::{self, FpsLimit, Hud, Method, Tools};
 use heronite_launch::gpu;
 use heronite_launch::lsfg::{self, Layer};
 use heronite_launch::settings::GameSettings;
@@ -76,7 +76,7 @@ pub fn defaults() -> Settings {
     for (key, _) in INVERTED {
         s.insert(key.into(), Value::Bool(true));
     }
-    for key in ["showFps", "nvidiaPrime", "showMangohud", "useGameMode", fps_limit::KEY_SMOOTH] {
+    for key in ["showFps", "nvidiaPrime", "showMangohud", fps_limit::KEY_MANGOHUD_HIDDEN, "useGameMode", fps_limit::KEY_SMOOTH] {
         s.insert(key.into(), Value::Bool(false));
     }
     for key in [fps_limit::KEY_LIMIT, fps_limit::KEY_NO_FOCUS, "launcherArgs", "beforeLaunchScriptPath", "afterLaunchScriptPath"] {
@@ -225,11 +225,16 @@ fn read_env(mut env: Vec<(String, String)>, gamescope_on: bool, s: &mut Settings
         } else if DXVK_FRAME_RATE.contains(&key.as_str()) && is_number(&value) && (dxvk.as_ref() == Some(&value) || !limited(s)) {
             set_limit(s, Method::Dxvk, value.clone(), false);
             dxvk = Some(value);
-        } else if let Some((limit, smooth, hud)) =
-            (key == MANGOHUD_CONFIG && mangohud_on && !limited(s)).then(|| fps_limit::read_mangohud_config(&value)).flatten()
+        } else if let Some((limit, smooth, hud)) = (key == MANGOHUD_CONFIG && mangohud_on)
+            .then(|| fps_limit::read_mangohud_config(&value))
+            .flatten()
+            .filter(|(limit, ..)| *limit == 0 || !limited(s))
         {
-            set_limit(s, Method::MangoHud, limit.to_string(), smooth);
-            s.insert("showMangohud".into(), Value::Bool(hud));
+            if limit > 0 {
+                set_limit(s, Method::MangoHud, limit.to_string(), smooth);
+            }
+            s.insert("showMangohud".into(), Value::Bool(hud != Hud::Off));
+            s.insert(fps_limit::KEY_MANGOHUD_HIDDEN.into(), Value::Bool(hud == Hud::Hidden));
         } else if prime && PRIME.iter().any(|(k, v)| *k == key && *v == value) {
             s.insert("nvidiaPrime".into(), Value::Bool(true));
         } else {
@@ -451,8 +456,12 @@ pub fn build_with(settings: &Settings, wrap: &str, probe: &dyn heronite_launch::
     }
     let user_mangohud_config = g.env_options.iter().any(|(k, _)| k == MANGOHUD_CONFIG);
     let mangohud_limit = limit_by(Method::MangoHud);
-    if let Some(a) = mangohud_limit.filter(|_| !user_mangohud_config) {
-        set(MANGOHUD_CONFIG, &fps_limit::mangohud_config(&a, g.show_mangohud, None));
+    let hud = Hud::of(g.show_mangohud, g.mangohud_hidden);
+    if let Some(config) = fps_limit::mangohud_config(mangohud_limit.as_ref(), hud, None).filter(|_| !user_mangohud_config) {
+        // Off with no limit: no MangoHud at all, nothing to say.
+        if mangohud_limit.is_some() || hud == Hud::Hidden {
+            set(MANGOHUD_CONFIG, &config);
+        }
     }
     if g.lsfg.enabled {
         let dll = settings.get(lsfg::KEY_DLL).and_then(Value::as_str).filter(|d| !d.is_empty());
@@ -684,6 +693,8 @@ mod tests {
             "DXVK_FRAME_RATE=60 VKD3D_FRAME_RATE=60 %command%",
             "MANGOHUD_CONFIG=read_cfg,no_display,fps_limit=60,fps_limit_method=early mangohud %command%",
             "MANGOHUD_CONFIG=read_cfg,fps_limit=60 mangohud %command%",
+            "MANGOHUD_CONFIG=read_cfg,no_display=1,fps_limit=60 mangohud %command%",
+            "MANGOHUD_CONFIG=read_cfg,no_display=1 mangohud %command%",
             "gamescope -r 60 -o 15 -- %command%",
             "gamescope -W 2560 -H 1440 -F fsr -f -r 60 -- %command%",
         ] {
@@ -694,6 +705,16 @@ mod tests {
             (&hidden[fps_limit::KEY_METHOD], &hidden["showMangohud"], &hidden[fps_limit::KEY_SMOOTH]),
             (&json!("mangohud"), &json!(false), &json!(true))
         );
+        // Shown, but starting hidden, with or without a limit.
+        for (line, limit) in [
+            ("MANGOHUD_CONFIG=read_cfg,no_display=1,fps_limit=60 mangohud %command%", "60"),
+            ("MANGOHUD_CONFIG=read_cfg,no_display=1 mangohud %command%", ""),
+        ] {
+            let s = parse(line).settings;
+            assert_eq!((&s["showMangohud"], &s[fps_limit::KEY_MANGOHUD_HIDDEN]), (&json!(true), &json!(true)), "{line}");
+            assert_eq!(s[fps_limit::KEY_LIMIT], limit);
+        }
+        assert_eq!(parse("mangohud %command%").settings[fps_limit::KEY_MANGOHUD_HIDDEN], false);
         let gs = parse("gamescope -r 60 -o 15 -- %command%").settings;
         assert_eq!((&gs[fps_limit::KEY_METHOD], &gs[fps_limit::KEY_NO_FOCUS]), (&json!("gamescope"), &json!("15")));
         assert_eq!(gs["gamescope"]["enableUpscaling"], false);

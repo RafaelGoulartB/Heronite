@@ -50,6 +50,7 @@ pub fn init(
     let (runtime, events) = GameRuntime::new(data_paths.clone());
     let runtime = Arc::new(runtime);
     let adopting = runtime.clone();
+    let summoning = runtime.clone();
     // Post-game work (backup, capture session) runs here, with or without a window.
     crate::services::session::init(cx, data_paths.clone(), runtime.clone());
     crate::overlay::init(cx, data_paths.clone(), runtime.clone());
@@ -172,6 +173,11 @@ pub fn init(
     if !hide {
         apply_window_flags(cx, cli.console, false, opened);
     }
+    // A controller connecting, or the button held, enters console mode (from
+    // the tray too). The ones connected now count when the window opened in
+    // desktop mode.
+    let include_present = opened && !cli.console && !crate::console::active();
+    crate::console::summon::init(cx, &data_paths, summoning, include_present);
     if let Some(req) = cli.launch {
         launch(cx, req, hide, false);
     }

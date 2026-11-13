@@ -1175,6 +1175,23 @@ the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
 `HERONITE_DEBUG_DIALOG=...`, `HERONITE_DEBUG_PAGE=...`. Copy
 `~/.local/share/heronite/images-cache` into the fixture or no art appears at all.
 
+**Entering console mode from anywhere** (`app/src/console/summon.rs`, by user decision: the corner notice with a ring,
+issue #253): the app's, not the window's, so it works with the window closed to the tray or behind another app. "When a
+controller connects" (Settings → Console mode → Startup) does nothing, enters console mode, or asks: a notice in the
+bottom right corner of the screen (a layer-shell surface over every window, like the overlay's notices; a desktop
+notification without layer-shell) for 8 s, "Controller connected", the controller's name and "Hold Guide to enter
+console mode", a line at the bottom running out. "Button to enter console mode" (Off / Hold Guide / Hold Back + Start /
+Hold LB + RB; Guide on Linux and Back + Start on Windows unless changed, as XInput does not report Guide) held for a second
+enters it from anywhere, asked or not; while it is held the notice shows a ring filling around the controller, then
+"Opening console mode…" as the window comes out of the tray (or to the front: on Hyprland through `hyprctl`) in console
+mode. With that button off, Ask still asks for the system's button. Nothing happens while a game runs or while console
+mode is in front. The controllers are read without focus (`console::input::start_buttons`: gilrs, SDL on Windows),
+which also tells when one connects (so Ask now works on Windows too). While the overlay listens without a game (its
+"without a game" option) it owns Guide: a tap opens the overlay, and held for a second its core reports console mode
+instead (`Options::console_hold`, `Event::ConsoleHolding` / `ConsoleCancelled` / `ConsoleMode`); the ring then shows
+after 250 ms, so a tap does not flash it. `HERONITE_DEBUG_SUMMON=ask|hold|hold-anytime|opening[:window]` shows the
+notice in that state, frozen, for a made-up controller (`:window` in a normal window, for captures).
+
 **In-game overlay** (`app/src/overlay/`, Settings → Overlay; off by default, options in `overlay.json` of the app
 state): during a game launched by the app, the controller's Guide button opens a panel over the game (by user decision:
 proposal 1 "Guide lateral, estilo Xbox"). It is a Wayland layer-shell surface on the overlay layer (no keyboard focus, so
@@ -1190,7 +1207,21 @@ event sounds, one bar per app name; 2 on Home, which then drops its recent captu
 list (↑ ↓), ◀ ▶ change the focused one, A mutes it, Y switches the output shown under them. Audio adds the output, the
 microphone (the default source; the outputs' monitors are left out) and its mute. Home's "FPS limit" row only shows when the game's limiter can change while it runs
 (`heronite_launch::live_fps`: MangoHud through a config file of ours it watches, gamescope through its
-`GAMESCOPE_FPS_LIMIT` atom set with `xprop`; DXVK / VKD3D cannot); the value lasts for the session. Steam games are
+`GAMESCOPE_FPS_LIMIT` atom set with `xprop`; DXVK / VKD3D cannot); the value lasts for the session. With MangoHud a
+"Show MangoHud" switch row comes before it (the same file's `no_display`; plain rows, by user decision: no card around
+them): hiding the HUD keeps the limit, so the limit stays editable and says so. A game whose
+MangoHud starts hidden (Performance: the eye button beside MangoHud's switch, "Shown" / "Hidden", while it is on;
+console mode: the MangoHud row's third value, "On, starts hidden"; `heroniteMangohudHidden`, written as `no_display=1` in
+`MANGOHUD_CONFIG`, which a Steam game's launch options read back; `no_display` alone stays "MangoHud off, only
+limiting") starts with that switch off. Home's rows scroll to keep the focus in
+sight when the panel is short for them. Home's captures share one "Capture" row (by user decision: option B2): a round button each
+for the screenshot, the replay (while it records) and the moment (with a journal), ◀ ▶ choose one, A runs it and the
+description and the A hint name it; a click on a button runs that one. With only the screenshot it is a plain "Take
+screenshot" row. The Screenshots and Notes tabs keep their own rows. "Back to game" comes before "Back to Heronite" only
+while the game has a window and another one has the focus (`heronite_overlay::game_window`, read when the panel opens):
+it gives that window the focus and closes the panel. Only Hyprland can be asked (`hyprctl clients -j` has each window's
+pid); elsewhere the row never shows. The game's panel has the same, as a round → button beside Stop (where Play has its
+launch options arrow), on Hyprland only. `HERONITE_DEBUG_OVERLAY_AWAY=1` shows it for the debug game (nothing focused). Steam games are
 started by Steam, so the launch cannot move MangoHud's limit into a file of ours: they have no live limit (editing the
 user's `MangoHud.conf` or their Steam launch options was ruled out). An Achievements tab (last, so the other tabs keep
 their place when it appears; `panel/achievements.rs`) shows when the game has a set in the achievements service,
@@ -1224,7 +1255,7 @@ it (no layer-shell): Settings says so. Debug: `HERONITE_DEBUG_OVERLAY=window[:<a
 window (`app.heronite.overlay`) as if the game ran (Hyprland ignores its size requests there; audio changes are skipped
 under any `HERONITE_DEBUG_OVERLAY`), `=layer` the real surface; `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a`
 plays presses, then `HERONITE_DEBUG_OVERLAY_MOUSE` mouse events (as `HERONITE_DEBUG_MOUSE`); `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` adds a notice (`app.heronite.overlay-notice`), `=achievement|achievement-queue` one or six made-up achievement notices (icon from `HERONITE_DEBUG_OVERLAY_NOTICE_ICON`);
-`HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row (nothing applied); `HERONITE_DEBUG_OVERLAY=window:none` opens it with no game;
+`HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row as gamescope's, `=mangohud:<limit>` (or `mangohud-hidden:<limit>`) MangoHud's two rows (nothing applied); `HERONITE_DEBUG_OVERLAY=window:none` opens it with no game;
 `HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens
 it as the keyboard shortcut does, `=shortcut` registers the real shortcut instead; `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and
 the panel's size follows it. On Windows, `HERONITE_DEBUG_OVERLAY_MONITOR=<x>,<y>` puts the surfaces on the monitor holding

@@ -5,6 +5,7 @@
 
 pub mod audio;
 pub mod controller;
+pub mod game_window;
 pub mod gamescope;
 pub mod input;
 mod procs;

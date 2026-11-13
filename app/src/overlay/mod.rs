@@ -36,7 +36,7 @@ mod moment;
 pub mod panel;
 mod replay;
 mod toast;
-mod window;
+pub(crate) mod window;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -96,8 +96,26 @@ pub enum HotkeyState {
 pub struct GameNow {
     pub game: RunningGame,
     pub info: Option<SessionInfo>,
-    /// How its FPS limit can change now, and the limit it has (`0` = none).
-    pub fps: Option<(LiveFps, u32)>,
+    /// How its FPS limit can change now, and what it is now.
+    pub fps: Option<LiveNow>,
+}
+
+/// A running game's limiter that changes while it runs, as it is now.
+#[derive(Clone, Debug)]
+pub struct LiveNow {
+    pub live: LiveFps,
+    /// `0` = none.
+    pub limit: u32,
+    /// MangoHud's HUD shows; `None` when it cannot be shown or hidden from
+    /// here (gamescope).
+    pub hud: Option<bool>,
+}
+
+/// What the panel changed in a running game's limiter (kept for its session).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LiveChange {
+    pub limit: u32,
+    pub hud: Option<bool>,
 }
 
 impl GameNow {
@@ -128,8 +146,8 @@ pub struct OverlayService {
     debug_window: bool,
     /// `HERONITE_DEBUG_OVERLAY_FPS`: a limiter the debug game pretends to have.
     debug_live_fps: Option<LiveFps>,
-    /// FPS limits set from the panel, by game, while it runs.
-    fps_limits: HashMap<String, u32>,
+    /// FPS limits (and MangoHud's HUD) set from the panel, by game, while it runs.
+    live_changes: HashMap<String, LiveChange>,
     /// The keyboard shortcut registered (and its accelerator) while a game runs.
     hotkey: Option<(String, GlobalHotkey)>,
     hotkey_state: HotkeyState,
@@ -163,7 +181,7 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
         layer_shell: window::supported(),
         debug_window: false,
         debug_live_fps: None,
-        fps_limits: HashMap::new(),
+        live_changes: HashMap::new(),
         hotkey: None,
         hotkey_state: HotkeyState::Idle,
         hotkey_epoch: 0,
@@ -210,7 +228,7 @@ impl OverlayService {
     /// Settings changed them (already saved).
     pub fn set_prefs(&mut self, prefs: OverlayPrefs, cx: &mut Context<Self>) {
         if let Some(w) = &self.watcher {
-            w.set_options(options(&prefs));
+            w.set_options(options(&prefs, self.games.is_empty()));
         }
         let enabled = prefs.enabled;
         self.prefs = prefs;
@@ -235,14 +253,16 @@ impl OverlayService {
                     None => self.games.push(RunningGame { app_name: app_name.clone(), pid: Some(*pid), started: Instant::now() }),
                 }
                 self.sync_watcher(cx);
+                self.send_options();
             }
             LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => {
                 self.games.retain(|g| &g.app_name != app_name);
-                self.fps_limits.remove(app_name);
+                self.live_changes.remove(app_name);
                 if self.games.is_empty() {
                     self.close_panel(cx);
                 }
                 self.sync_watcher(cx);
+                self.send_options();
             }
             LaunchEvent::Launching { .. } | LaunchEvent::Preparing { .. } | LaunchEvent::Status { .. } => {}
         }
@@ -255,16 +275,39 @@ impl OverlayService {
         let live = self.debug_live_fps.clone().or_else(|| self.runtime.live_fps(&game.app_name));
         // gamescope's limit is set with xprop.
         let live = live.filter(|l| !l.is_gamescope() || heronite_overlay::gamescope::available());
-        let fps = live.map(|l| {
-            let limit = self.fps_limits.get(&game.app_name).copied().unwrap_or_else(|| l.limit());
-            (l, limit)
+        let fps = live.map(|l| match self.live_changes.get(&game.app_name) {
+            Some(c) => LiveNow { limit: c.limit, hud: c.hud, live: l },
+            None => LiveNow { limit: l.limit(), hud: l.hud(), live: l },
         });
         Some(GameNow { game, info, fps })
     }
 
-    /// The panel changed the running game's FPS limit (kept for this session).
-    pub fn fps_limit_changed(&mut self, app_name: &str, limit: u32) {
-        self.fps_limits.insert(app_name.to_string(), limit);
+    /// The panel changed the running game's FPS limit or MangoHud's HUD
+    /// (kept for this session).
+    pub fn live_changed(&mut self, app_name: &str, change: LiveChange) {
+        self.live_changes.insert(app_name.to_string(), change);
+    }
+
+    /// What the watcher does with Guide follows the games and
+    /// `console::summon`'s options.
+    fn send_options(&self) {
+        if let Some(w) = &self.watcher {
+            w.set_options(options(&self.prefs, self.games.is_empty()));
+        }
+    }
+
+    /// `console::summon`'s options changed.
+    pub fn summon_changed(cx: &mut App) {
+        if let Some(g) = cx.try_global::<OverlayGlobal>() {
+            g.0.read(cx).send_options();
+        }
+    }
+
+    /// Whether the Guide button is the overlay's now (its input thread runs:
+    /// a game runs, or it may open without one). The button held to enter
+    /// console mode keeps off it then (`console::summon`).
+    pub fn listening(cx: &App) -> bool {
+        cx.try_global::<OverlayGlobal>().is_some_and(|g| g.0.read(cx).watcher.is_some())
     }
 
     /// Whether it can open now: on, and a game runs (or it may open without).
@@ -287,7 +330,7 @@ impl OverlayService {
             return;
         }
         let (tx, mut rx) = unbounded();
-        match Watcher::start(options(&self.prefs), move |ev| {
+        match Watcher::start(options(&self.prefs, self.games.is_empty()), move |ev| {
             let _ = tx.unbounded_send(ev);
         }) {
             Ok(w) => self.watcher = Some(w),
@@ -419,6 +462,10 @@ impl OverlayService {
                     }
                 }
             }
+            // Not during this update: `console::summon` asks about the overlay.
+            Event::ConsoleHolding(since) => cx.defer(move |cx| crate::console::summon::overlay_hold(Some(since), cx)),
+            Event::ConsoleCancelled => cx.defer(|cx| crate::console::summon::overlay_hold(None, cx)),
+            Event::ConsoleMode => cx.defer(crate::console::summon::overlay_held),
             Event::Controllers(list) => {
                 self.controllers = list;
                 if let Some(panel) = self.panel {
@@ -682,12 +729,14 @@ impl OverlayService {
     }
 }
 
-fn options(prefs: &OverlayPrefs) -> Options {
+/// `idle`: no game runs (Guide held may enter console mode then).
+fn options(prefs: &OverlayPrefs, idle: bool) -> Options {
     Options {
         screenshot: prefs.screenshot_shortcut,
         screenshot_button: prefs.screenshot_button.into(),
         volume: prefs.volume_shortcut,
         moment: prefs.moment_shortcut,
         replay: prefs.replay_shortcut && heronite_platform::supported(heronite_platform::Feature::Replay),
+        console_hold: idle && crate::console::summon::guide_held_wanted(),
     }
 }

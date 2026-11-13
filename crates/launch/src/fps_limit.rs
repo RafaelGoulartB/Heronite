@@ -19,6 +19,8 @@ use crate::settings::GameSettings;
 
 /// Frames per second, digits; empty or `0` = no limit.
 pub const KEY_LIMIT: &str = "heroniteFpsLimit";
+/// MangoHud starts hidden (see [`Hud::Hidden`]).
+pub const KEY_MANGOHUD_HIDDEN: &str = "heroniteMangohudHidden";
 /// [`Method::id`].
 pub const KEY_METHOD: &str = "heroniteFpsLimitMethod";
 /// MangoHud waits before presenting a frame (`fps_limit_method=early`):
@@ -231,44 +233,90 @@ pub fn uses_dxvk(kind: &str, name: &str, bin: &str, auto_install_dxvk: bool, win
     }
 }
 
-/// `MANGOHUD_CONFIG` for a MangoHud limit. `existing`: the config the user
-/// set, extended (it already says whether the config file is read); without
-/// one `read_cfg` keeps the user's config file. `hud`: the overlay is shown;
-/// off, MangoHud only limits (`no_display`, its toggle key still shows it).
-pub fn mangohud_config(a: &Applied, hud: bool, existing: Option<&str>) -> String {
-    let mut opts: Vec<String> = Vec::new();
-    if !hud {
-        opts.push("no_display".into());
+/// What MangoHud draws when the game starts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Hud {
+    Shown,
+    /// "Start hidden": its toggle key or the in-game overlay shows it
+    /// (`no_display=1`).
+    Hidden,
+    /// MangoHud is off and only limits the game (`no_display`; its toggle key
+    /// still shows it).
+    Off,
+}
+
+impl Hud {
+    /// From `showMangohud` and [`KEY_MANGOHUD_HIDDEN`].
+    pub fn of(show_mangohud: bool, hidden: bool) -> Self {
+        match (show_mangohud, hidden) {
+            (false, _) => Hud::Off,
+            (true, true) => Hud::Hidden,
+            (true, false) => Hud::Shown,
+        }
     }
-    opts.push(format!("fps_limit={}", a.limit));
-    if a.smooth {
-        opts.push("fps_limit_method=early".into());
-    }
-    let opts = opts.join(",");
-    match existing.map(str::trim).filter(|c| !c.is_empty()) {
-        Some(c) => format!("{},{opts}", c.trim_end_matches(',')),
-        None => format!("read_cfg,{opts}"),
+
+    /// Two spellings MangoHud reads the same, so a Steam game's launch
+    /// options say which it was.
+    fn option(self) -> Option<&'static str> {
+        match self {
+            Hud::Shown => None,
+            Hud::Hidden => Some("no_display=1"),
+            Hud::Off => Some("no_display"),
+        }
     }
 }
 
-/// The limit in a `MANGOHUD_CONFIG` written by [`mangohud_config`] without
-/// an `existing` config: `(limit, smooth, hud)`.
-pub fn read_mangohud_config(config: &str) -> Option<(u32, bool, bool)> {
+/// `MANGOHUD_CONFIG` for a MangoHud limit (`None`: no limit) and what it
+/// shows at start; `None` when there is nothing to say. `existing`: the
+/// config the user set, extended (it already says whether the config file is
+/// read); without one `read_cfg` keeps the user's config file.
+pub fn mangohud_config(a: Option<&Applied>, hud: Hud, existing: Option<&str>) -> Option<String> {
+    let mut opts: Vec<String> = hud.option().map(String::from).into_iter().collect();
+    if let Some(a) = a {
+        opts.push(format!("fps_limit={}", a.limit));
+        if a.smooth {
+            opts.push("fps_limit_method=early".into());
+        }
+    }
+    if opts.is_empty() {
+        return None;
+    }
+    let opts = opts.join(",");
+    Some(match existing.map(str::trim).filter(|c| !c.is_empty()) {
+        Some(c) => format!("{},{opts}", c.trim_end_matches(',')),
+        None => format!("read_cfg,{opts}"),
+    })
+}
+
+/// A `MANGOHUD_CONFIG` written by [`mangohud_config`] without an `existing`
+/// config: `(limit, smooth, hud)`, `0` for no limit.
+pub fn read_mangohud_config(config: &str) -> Option<(u32, bool, Hud)> {
     let mut parts = config.split(',');
     if parts.next()? != "read_cfg" {
         return None;
     }
     let mut parts = parts.peekable();
-    let hud = parts.next_if_eq(&"no_display").is_none();
-    let limit = parts.next()?.strip_prefix("fps_limit=")?;
-    if limit.is_empty() || !limit.bytes().all(|b| b.is_ascii_digit()) {
+    let hud = match parts.peek().copied() {
+        Some("no_display") => Hud::Off,
+        Some("no_display=1") => Hud::Hidden,
+        _ => Hud::Shown,
+    };
+    if hud != Hud::Shown {
+        parts.next();
+    }
+    let (mut limit, mut smooth) = (0, false);
+    if let Some(n) = parts.peek().and_then(|p| p.strip_prefix("fps_limit=")) {
+        if n.is_empty() || !n.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        limit = n.parse().ok().filter(|n| *n > 0)?;
+        parts.next();
+        smooth = parts.next_if_eq(&"fps_limit_method=early").is_some();
+    }
+    if parts.next().is_some() || (limit == 0 && hud == Hud::Shown) {
         return None;
     }
-    let smooth = parts.next_if_eq(&"fps_limit_method=early").is_some();
-    if parts.next().is_some() {
-        return None;
-    }
-    Some((limit.parse().ok().filter(|n| *n > 0)?, smooth, hud))
+    Some((limit, smooth, hud))
 }
 
 #[cfg(test)]
@@ -330,13 +378,22 @@ mod tests {
     #[test]
     fn mangohud_config_round_trips() {
         let a = Applied { method: Method::MangoHud, limit: 60, smooth: false, no_focus: 0 };
-        assert_eq!(mangohud_config(&a, true, None), "read_cfg,fps_limit=60");
+        let config = |a: Option<&Applied>, hud| mangohud_config(a, hud, None).unwrap();
+        assert_eq!(config(Some(&a), Hud::Shown), "read_cfg,fps_limit=60");
         let smooth = Applied { smooth: true, ..a };
-        assert_eq!(mangohud_config(&smooth, false, None), "read_cfg,no_display,fps_limit=60,fps_limit_method=early");
-        assert_eq!(mangohud_config(&a, true, Some("cpu_temp,")), "cpu_temp,fps_limit=60");
-        assert_eq!(read_mangohud_config("read_cfg,fps_limit=60"), Some((60, false, true)));
-        assert_eq!(read_mangohud_config("read_cfg,no_display,fps_limit=60,fps_limit_method=early"), Some((60, true, false)));
+        assert_eq!(config(Some(&smooth), Hud::Off), "read_cfg,no_display,fps_limit=60,fps_limit_method=early");
+        assert_eq!(config(Some(&a), Hud::Hidden), "read_cfg,no_display=1,fps_limit=60");
+        assert_eq!(config(None, Hud::Hidden), "read_cfg,no_display=1");
+        assert_eq!(mangohud_config(None, Hud::Shown, None), None, "nothing to say");
+        assert_eq!(mangohud_config(Some(&a), Hud::Shown, Some("cpu_temp,")).as_deref(), Some("cpu_temp,fps_limit=60"));
+        assert_eq!(mangohud_config(None, Hud::Hidden, Some("cpu_temp")).as_deref(), Some("cpu_temp,no_display=1"));
+        assert_eq!(read_mangohud_config("read_cfg,fps_limit=60"), Some((60, false, Hud::Shown)));
+        assert_eq!(read_mangohud_config("read_cfg,no_display,fps_limit=60,fps_limit_method=early"), Some((60, true, Hud::Off)));
+        assert_eq!(read_mangohud_config("read_cfg,no_display=1,fps_limit=60"), Some((60, false, Hud::Hidden)));
+        assert_eq!(read_mangohud_config("read_cfg,no_display=1"), Some((0, false, Hud::Hidden)));
+        assert_eq!(read_mangohud_config("read_cfg"), None, "says nothing");
         assert_eq!(read_mangohud_config("read_cfg,fps_limit=60,cpu_temp"), None);
+        assert_eq!(read_mangohud_config("read_cfg,fps_limit=0"), None);
         assert_eq!(read_mangohud_config("fps_limit=60"), None);
     }
 }
