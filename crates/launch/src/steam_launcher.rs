@@ -180,7 +180,8 @@ pub fn steam_processes() -> Vec<ProcessInfo> {
     Vec::new()
 }
 
-#[cfg(test)]
+// Detection is for Linux; Windows finds Steam by its folders, not `$PATH`.
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use crate::probe::FakeProbe;

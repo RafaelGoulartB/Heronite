@@ -455,6 +455,8 @@ fn play_steam_game(close_after: bool, steam_open_before: bool) -> Vec<String> {
 /// The desktop can fail to hand `steam://` to Steam (a broken handler) while
 /// xdg-open looks fine: a running Steam that logged nothing of the URI gets
 /// it again, straight from its client.
+// Windows has no other way to ask Steam, so it does not ask again.
+#[cfg(unix)]
 #[test]
 fn steam_that_did_not_get_the_uri_is_asked_directly() {
     let r = rig();
