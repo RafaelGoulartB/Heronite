@@ -56,6 +56,7 @@ pub mod settings;
 pub mod shared_folders;
 pub mod steam;
 pub mod steam_extras;
+pub mod steam_launcher;
 pub mod store_tools;
 pub mod tools;
 pub mod umu_ids;

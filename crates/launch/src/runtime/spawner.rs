@@ -284,11 +284,14 @@ fn is_steam_uri(uri: &str) -> bool {
     uri.get(..8).is_some_and(|s| s.eq_ignore_ascii_case("steam://"))
 }
 
-/// Runs `program uri` on its own, with the desktop's environment (none of
-/// this app's runtime variables). Its stderr is piped when asked.
-fn spawn_detached(program: &str, uri: &str, stderr: bool) -> io::Result<std::process::Child> {
+/// Runs `command` (a program and its arguments) with `uri` last, on its own,
+/// with the desktop's environment (none of this app's runtime variables).
+/// Its stderr is piped when asked.
+fn spawn_detached(command: &[String], uri: &str, stderr: bool) -> io::Result<std::process::Child> {
+    let (program, args) = command.split_first().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no program"))?;
     let mut c = std::process::Command::new(program);
-    c.arg(uri)
+    c.args(args)
+        .arg(uri)
         .env_clear()
         .envs(desktop_protocol_env(std::env::vars()))
         .stdin(std::process::Stdio::null())
@@ -342,14 +345,26 @@ fn open_with_steam_client(uri: &str, asked_at: std::time::Instant) -> io::Result
             handed.push((uri.to_string(), std::time::Instant::now()));
         }
     }
-    let steam = crate::steam::find_steam_binary(&crate::probe::SystemProbe)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Steam client not found"))?;
-    log::info!("handing {uri} to the Steam client ({steam})");
-    let mut child = spawn_detached(&steam, uri, false)?;
-    std::thread::spawn(move || {
-        let _ = child.wait();
-    });
-    Ok(())
+    // The running client's own launcher (a Flatpak or Snap Steam beside a
+    // native `steam` on PATH) first, then the usual `steam`.
+    let commands = crate::steam_launcher::client_commands(&crate::probe::SystemProbe, &crate::steam_launcher::steam_processes());
+    let mut error = io::Error::new(io::ErrorKind::NotFound, "Steam client not found");
+    for steam in commands {
+        log::info!("handing {uri} to the Steam client ({})", steam.join(" "));
+        match spawn_detached(&steam, uri, false) {
+            Ok(mut child) => {
+                std::thread::spawn(move || {
+                    let _ = child.wait();
+                });
+                return Ok(());
+            }
+            Err(e) => {
+                log::warn!("could not run {}: {e}", steam.join(" "));
+                error = e;
+            }
+        }
+    }
+    Err(error)
 }
 
 fn extension(path: &str) -> String {
@@ -374,7 +389,7 @@ impl Spawner for SystemSpawner {
             return heronite_platform::shell::open(uri);
         }
         let steam = is_steam_uri(uri);
-        let mut child = match spawn_detached("xdg-open", uri, steam) {
+        let mut child = match spawn_detached(&["xdg-open".to_string()], uri, steam) {
             Ok(child) => child,
             Err(e) if steam => {
                 log::warn!("could not run xdg-open for {uri} ({e}); asking the Steam client directly");
