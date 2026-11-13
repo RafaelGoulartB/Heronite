@@ -161,7 +161,7 @@ impl CollectionView {
             console::set_active(false);
             look::clear();
         }
-        self.console_startup(reopened, window, cx);
+        self.console_startup(reopened);
         if (self.ui.console_mode || debug.is_some()) && !console::active() {
             // The window opens fullscreen for it (`hub::show_window`).
             self.enter_console(false, window, cx);
@@ -215,7 +215,6 @@ impl CollectionView {
             self.images.forget_prefix("cw:");
             self.images.forget_prefix("cr:");
             self.images.forget_matching(|id| backdrop::is_backdrop_id(id) || id.starts_with("a:"));
-            self.console_controls_ended(window, cx);
             self.close_console_dialog();
             self.page = Page::Collection;
             cx.notify();
@@ -329,7 +328,7 @@ impl CollectionView {
                                 pointer::hide_cursor();
                                 this.console_pad(pad, window, cx)
                             }
-                            PadMsg::Press(_) => {}
+                            PadMsg::Press(_) | PadMsg::Button(..) => {}
                             PadMsg::Connected(name, plugged) => {
                                 if plugged {
                                     this.show_toast(tr!("Controller connected: {name}", name), false, cx);

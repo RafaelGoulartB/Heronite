@@ -11,6 +11,9 @@
 //!
 //! The keyboard drives console mode too ([`pad_from_key`]), so it works
 //! without a controller.
+//!
+//! [`start_buttons`] reads the buttons as they go down and up instead (a
+//! button held, for the shortcut to console mode: `console::summon`).
 
 use std::time::{Duration, Instant};
 
@@ -30,6 +33,8 @@ mod backend;
 #[derive(Clone, Debug, PartialEq)]
 pub enum PadMsg {
     Press(Pad),
+    /// A button went down (`true`) or up, from [`start_buttons`] only.
+    Button(PadButton, bool),
     /// A controller is present: its name, and whether it was just plugged in
     /// (`false` for the ones found at start).
     Connected(String, bool),
@@ -54,8 +59,8 @@ const TRIGGER_ON: f32 = 0.75;
 const TRIGGER_OFF: f32 = 0.65;
 
 /// A controller button by its position, whatever reads it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum PadButton {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PadButton {
     South,
     East,
     West,
@@ -243,6 +248,8 @@ fn is_direction(p: Pad) -> bool {
 /// controller.
 #[derive(Default)]
 pub(super) struct Translator {
+    /// Sends the buttons as they are ([`PadMsg::Button`]), nothing else.
+    buttons: bool,
     rep: Repeater,
     /// Sticks report X and Y separately; keep both.
     lx: f32,
@@ -254,7 +261,26 @@ pub(super) struct Translator {
 }
 
 impl Translator {
+    /// For [`start_buttons`].
+    pub fn buttons() -> Self {
+        Self { buttons: true, ..Self::default() }
+    }
+
+    /// Made by [`Translator::buttons`]: nothing repeats, a slower read does.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub fn buttons_only(&self) -> bool {
+        self.buttons
+    }
+
     pub fn event(&mut self, ev: RawEvent, now: Instant, swap_ab: bool) -> Option<PadMsg> {
+        if self.buttons {
+            return match ev {
+                RawEvent::Button(b, down) => Some(PadMsg::Button(b, down)),
+                RawEvent::Connected { name, plugged } => Some(PadMsg::Connected(name, plugged)),
+                RawEvent::Disconnected { remaining } => Some(PadMsg::Disconnected { remaining }),
+                RawEvent::Axis(..) | RawEvent::Trigger { .. } => None,
+            };
+        }
         match ev {
             RawEvent::Button(b, true) => {
                 button_pad(b, swap_ab).map(|p| PadMsg::Press(if is_direction(p) { self.rep.press(p, now) } else { p }))
@@ -324,7 +350,18 @@ pub fn start() -> Option<(PadThread, UnboundedReceiver<PadMsg>)> {
     if crate::env::flag("HERONITE_NO_GAMEPAD") {
         return None;
     }
-    let (source, rx) = backend::start()?;
+    let (source, rx) = backend::start(Translator::default())?;
+    Some((PadThread { _source: source }, rx))
+}
+
+/// [`start`] for the buttons as they go down and up ([`PadMsg::Button`]),
+/// without repeats, sticks or triggers. Reads with the app in the
+/// background too.
+pub fn start_buttons() -> Option<(PadThread, UnboundedReceiver<PadMsg>)> {
+    if crate::env::flag("HERONITE_NO_GAMEPAD") {
+        return None;
+    }
+    let (source, rx) = backend::start(Translator::buttons())?;
     Some((PadThread { _source: source }, rx))
 }
 
@@ -467,6 +504,21 @@ mod tests {
 
     fn press(p: Pad) -> Option<PadMsg> {
         Some(PadMsg::Press(p))
+    }
+
+    #[test]
+    fn the_buttons_translator_sends_each_button_down_and_up_only() {
+        let t0 = Instant::now();
+        let mut t = Translator::buttons();
+        assert_eq!(t.event(RawEvent::Button(Button::Guide, true), t0, true), Some(PadMsg::Button(Button::Guide, true)));
+        assert_eq!(t.event(RawEvent::Button(Button::Down, true), t0, false), Some(PadMsg::Button(Button::Down, true)));
+        assert_eq!(t.wait(t0), None, "no repeats");
+        assert_eq!(t.event(RawEvent::Button(Button::Guide, false), t0, false), Some(PadMsg::Button(Button::Guide, false)));
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::LeftY, 0.9), t0, false), None, "no sticks");
+        assert_eq!(t.event(RawEvent::Trigger { right: true, value: 1.0 }, t0, false), None);
+        let plugged = RawEvent::Connected { name: "Pad".into(), plugged: true };
+        assert_eq!(t.event(plugged, t0, false), Some(PadMsg::Connected("Pad".into(), true)));
+        assert!(t.buttons_only() && !Translator::default().buttons_only());
     }
 
     #[test]

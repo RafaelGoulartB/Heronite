@@ -17,6 +17,9 @@ use super::{PadButton, PadMsg, RawEvent, StickAxis, Translator};
 /// How often open controllers are read: Windows' timer ticks every ~15.6 ms,
 /// so this wakes on every tick (what the overlay's XInput polling does).
 const POLL: Duration = Duration::from_millis(8);
+/// How often open controllers are read when only [`super::start_buttons`]
+/// listens (a button held for a second needs no 8 ms reads).
+const BUTTONS_POLL: Duration = Duration::from_millis(30);
 /// How often SDL looks for new controllers while none is open.
 const IDLE_POLL: Duration = Duration::from_millis(250);
 /// Controllers SDL reports this soon after it starts count as found at start.
@@ -72,11 +75,11 @@ fn hub() -> Option<Arc<Hub>> {
     Some(hub)
 }
 
-pub(super) fn start() -> Option<(Source, UnboundedReceiver<PadMsg>)> {
+pub(super) fn start(tr: Translator) -> Option<(Source, UnboundedReceiver<PadMsg>)> {
     let hub = hub()?;
     let (tx, rx) = unbounded();
     let id = hub.next_id.fetch_add(1, Ordering::Relaxed);
-    hub.lock().push(Listener { id, tx, tr: Translator::default(), greeted: false });
+    hub.lock().push(Listener { id, tx, tr, greeted: false });
     hub.changed.notify_all();
     Some((Source { hub, id }, rx))
 }
@@ -149,7 +152,11 @@ fn run(hub: &Hub) {
             }
             alive
         });
-        let every = if pads.any_open() { POLL } else { IDLE_POLL };
+        let every = match pads.any_open() {
+            false => IDLE_POLL,
+            true if listeners.iter().all(|l| l.tr.buttons_only()) => BUTTONS_POLL,
+            true => POLL,
+        };
         let wait = listeners.iter().filter_map(|l| l.tr.wait(now)).fold(every, Duration::min);
         // Woken early when a listener comes or goes.
         drop(hub.changed.wait_timeout(listeners, wait));
@@ -204,8 +211,9 @@ mod tests {
 
     #[test]
     fn a_listener_that_leaves_has_its_channel_closed() {
-        let (a, rx_a) = start().expect("the controller thread starts");
-        let (b, rx_b) = start().expect("a second listener shares it");
+        let (a, rx_a) = start(Translator::default()).expect("the controller thread starts");
+        // One reading the buttons as they are (`start_buttons`) shares it too.
+        let (b, rx_b) = start(Translator::buttons()).expect("a second listener shares it");
         drop(a);
         // Ends once the hub let go of the sender; only connection news can
         // come before (from controllers on this machine).

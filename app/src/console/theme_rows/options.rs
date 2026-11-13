@@ -360,7 +360,29 @@ pub(super) static OPTS: &[Opt] = &[
         &[],
         fullscreen
     ),
-    sel!("startup.auto_console", Startup, n_!("When a controller connects"), "", &[], AutoConsole, auto_console_name, auto_console),
+    sel!(
+        "startup.auto_console",
+        Startup,
+        n_!("When a controller connects"),
+        n_!("Ask shows a notice in the corner of the screen, even with Heronite in the tray."),
+        &[],
+        AutoConsole,
+        auto_console_name,
+        auto_console
+    ),
+    // `Auto` is not offered: it shows as the system's button.
+    Opt {
+        id: "startup.console_button",
+        card: Card::Startup,
+        label: n_!("Button to enter console mode"),
+        desc: n_!("Hold it for a second, from any app. Not while a game runs."),
+        on: &[],
+        kind: Kind::Choice {
+            names: || names(&ConsoleButton::CHOICES, console_button_name),
+            get: |p| index(&ConsoleButton::CHOICES, p.console_button.resolved()),
+            set: |p, i| p.console_button = ConsoleButton::CHOICES[i],
+        },
+    },
     sel!("startup.idle", Startup, n_!("After 5 minutes without input"), "", &[], Idle, idle_name, idle),
 ];
 

@@ -126,6 +126,48 @@ impl CollectionView {
         )
     }
 
+    /// Next to Stop: back to the game's window (the in-game overlay's "Back
+    /// to game"). Only where that window can be found (Hyprland).
+    pub(super) fn back_to_game_button(&self, key: &str, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        if !heronite_overlay::game_window::supported() {
+            return None;
+        }
+        let app_name = self.lib.as_ref()?.get(key)?.app_name.clone();
+        Some(
+            div()
+                .id("focus-back-to-game")
+                .tooltip(crate::ui::tooltip(tr!("Back to game")))
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .w(px(46.))
+                .h(px(46.))
+                .rounded_full()
+                .bg(theme::play_fill())
+                .hover(|s| s.bg(theme::play_fill_hover()))
+                .cursor_pointer()
+                .child(icon(Icon::ArrowForward, px(22.), theme::play_text()))
+                .on_click(cx.listener(move |this, _, _, cx| this.back_to_game(&app_name, cx))),
+        )
+    }
+
+    /// Gives the focus to the running game's window.
+    pub(super) fn back_to_game(&mut self, app_name: &str, cx: &mut Context<Self>) {
+        let Some(pid) = self.runtime.pid_of(app_name) else {
+            self.show_toast(tr!("Could not go back to the game: {err}", err = tr!("the game has not started yet")), true, cx);
+            return;
+        };
+        cx.spawn(async move |this, cx| {
+            let res = cx.background_spawn(async move { heronite_overlay::game_window::focus(pid) }).await;
+            if let Err(e) = res {
+                log::warn!("back to the game: {e}");
+                this.update(cx, |this, cx| this.show_toast(tr!("Could not go back to the game: {err}", err = e), true, cx)).ok();
+            }
+        })
+        .detach();
+    }
+
     /// The menu under the arrow: Play (an Epic game's ways to start, the one
     /// Play uses checked), the game's own actions, and where to edit them.
     pub(super) fn launch_menu(&mut self, key: &SharedString, cx: &mut Context<Self>) -> Option<AnyElement> {
