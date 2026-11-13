@@ -35,6 +35,8 @@ fn fast_cfg() -> LauncherConfig {
             start_timeout: Duration::from_millis(600),
             poll_interval: Duration::from_millis(10),
             resolve_interval: Duration::from_millis(20),
+            delivery_check: Duration::from_millis(50),
+            cold_start_grace: Duration::ZERO,
         },
         record: true,
         handoff: HandoffConfig {
@@ -448,6 +450,31 @@ fn play_steam_game(close_after: bool, steam_open_before: bool) -> Vec<String> {
         std::thread::sleep(Duration::from_millis(100));
     }
     r.spawner.uris()
+}
+
+/// The desktop can fail to hand `steam://` to Steam (a broken handler) while
+/// xdg-open looks fine: a running Steam that logged nothing of the URI gets
+/// it again, straight from its client.
+// Windows has no other way to ask Steam, so it does not ask again.
+#[cfg(unix)]
+#[test]
+fn steam_that_did_not_get_the_uri_is_asked_directly() {
+    let r = rig();
+    let log = write_steam_log(&r, "");
+    fs::write(r._dir.path().join("home/.steam/steam.pid"), "5000\n").unwrap();
+    r.procs.start(5000, if cfg!(windows) { "steam.exe" } else { "steam" }, None);
+    let uri = "steam://rungameid/400";
+    let plan = LaunchPlan::SteamUri { app_id: "400".into(), uri: uri.into(), extras: Default::default() };
+    r.launcher.launch(request("steam_400", plan)).unwrap();
+    next(&r.rx);
+    wait_until("asked through the desktop", || r.spawner.uris() == [uri]);
+    wait_until("asked through the Steam client", || r.spawner.steam_uris() == [uri]);
+    r.procs.start(7777, "reaper", None);
+    fs::OpenOptions::new().append(true).open(&log).unwrap().write_all(b"Game process added : AppID 400 x ProcID 7777\n").unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    assert_eq!(r.spawner.steam_uris(), [uri], "asked again once");
+    r.procs.exit(7777);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
 }
 
 #[test]

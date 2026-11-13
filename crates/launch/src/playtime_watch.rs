@@ -151,6 +151,33 @@ fn read_range(path: &Path, start: u64, len: u64) -> Option<String> {
     Some(String::from_utf8_lossy(&buf).into_owned())
 }
 
+/// Where Steam's logs end at one moment: what they gain afterwards is new.
+#[derive(Debug, Default)]
+pub struct LogMarks(HashMap<PathBuf, u64>);
+
+/// At most this much of a log is read after its mark.
+const MARK_SCAN_BYTES: u64 = 1024 * 1024;
+
+impl LogMarks {
+    pub fn capture(files: &[PathBuf]) -> Self {
+        Self(files.iter().map(|f| (f.clone(), fs::metadata(f).map(|m| m.len()).unwrap_or(0))).collect())
+    }
+
+    /// Whether Steam logged getting `uri` (`ExecuteSteamURL: "<uri>"`) in
+    /// `files` since the capture. A log that appeared later, or was rotated,
+    /// counts from its start.
+    pub fn steam_received(&self, files: &[PathBuf], uri: &str) -> bool {
+        let quoted = format!("\"{uri}\"");
+        files.iter().any(|f| {
+            let size = fs::metadata(f).map(|m| m.len()).unwrap_or(0);
+            let mark = self.0.get(f).copied().filter(|m| *m <= size).unwrap_or(0);
+            let from = mark.max(size.saturating_sub(MARK_SCAN_BYTES));
+            size > from
+                && read_range(f, from, size - from).is_some_and(|t| t.lines().any(|l| l.contains("ExecuteSteamURL") && l.contains(&quoted)))
+        })
+    }
+}
+
 impl LogTail {
     /// Starts following `path`; also returns its last 64 KiB (what happened
     /// just before we started looking), like `readFileTail`.
@@ -183,11 +210,23 @@ pub struct SteamWaitConfig {
     pub poll_interval: Duration,
     /// How often to look for log files that appeared later.
     pub resolve_interval: Duration,
+    /// How long after asking Steam to look whether it got the URI (else it
+    /// is asked again, directly).
+    pub delivery_check: Duration,
+    /// Added to `start_timeout` when the launch opens Steam: it may update
+    /// and sign in before it starts the game.
+    pub cold_start_grace: Duration,
 }
 
 impl Default for SteamWaitConfig {
     fn default() -> Self {
-        Self { start_timeout: Duration::from_secs(90), poll_interval: Duration::from_millis(500), resolve_interval: Duration::from_secs(2) }
+        Self {
+            start_timeout: Duration::from_secs(90),
+            poll_interval: Duration::from_millis(500),
+            resolve_interval: Duration::from_secs(2),
+            delivery_check: Duration::from_secs(10),
+            cold_start_grace: Duration::from_secs(120),
+        }
     }
 }
 
@@ -206,8 +245,8 @@ pub enum SteamWaitOutcome {
 ///
 /// `log_files` is called now and then to discover Steam's logs; `shared`
 /// mirrors the tracked pids (so a caller can kill them); `on_first_pid` fires
-/// once, when the game process is first seen; `on_tick` on every poll while
-/// the game runs.
+/// once, when the game process is first seen; `on_waiting` on every poll
+/// until then; `on_tick` on every poll while the game runs.
 #[allow(clippy::too_many_arguments)]
 pub fn wait_for_steam_session(
     app_id: &str,
@@ -218,6 +257,7 @@ pub fn wait_for_steam_session(
     wake: &Wake,
     shared: &Mutex<BTreeSet<u32>>,
     on_first_pid: &mut dyn FnMut(u32),
+    on_waiting: &mut dyn FnMut(),
     on_tick: &mut dyn FnMut(),
 ) -> SteamWaitOutcome {
     let mut watch = SteamWatch::new(app_id);
@@ -270,6 +310,9 @@ pub fn wait_for_steam_session(
             new.extend(attach(&mut watch, &mut tails, log_files()));
         }
         sync(&watch, &new, &mut announced, on_first_pid);
+        if !watch.started() {
+            on_waiting();
+        }
     }
 
     follow(&mut watch, &mut tails, procs, cfg, abort, wake, shared, on_tick)
@@ -383,11 +426,38 @@ mod tests {
         assert!(none.is_empty());
     }
 
+    #[test]
+    fn log_marks_see_only_what_steam_got_after_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("console_log.txt");
+        let uri = "steam://rungameid/945360";
+        // A URL Steam got before the mark does not count.
+        fs::write(&log, format!("[t] ExecuteSteamURL: \"{uri}\"\n")).unwrap();
+        let later = dir.path().join("console-linux.txt");
+        let marks = LogMarks::capture(std::slice::from_ref(&log));
+        let files = vec![log.clone(), later.clone()];
+        assert!(!marks.steam_received(&files, uri));
+        // Another game whose id starts with this one's is not it.
+        let append =
+            |f: &Path, text: &str| fs::OpenOptions::new().create(true).append(true).open(f).unwrap().write_all(text.as_bytes()).unwrap();
+        append(&log, "[t] ExecuteSteamURL: \"steam://rungameid/9453601\"\n");
+        assert!(!marks.steam_received(&files, uri));
+        append(&log, &format!("[t] ExecCommandLine: \"'steam' '{uri}'\"\n[t] ExecuteSteamURL: \"{uri}\"\n"));
+        assert!(marks.steam_received(&files, uri));
+        // A log that appeared after the mark counts from its start.
+        let marks = LogMarks::capture(std::slice::from_ref(&log));
+        assert!(!marks.steam_received(&files, uri));
+        append(&later, &format!("ExecuteSteamURL: \"{uri}\"\n"));
+        assert!(marks.steam_received(&files, uri));
+    }
+
     fn fast_cfg() -> SteamWaitConfig {
         SteamWaitConfig {
             start_timeout: Duration::from_secs(3),
             poll_interval: Duration::from_millis(10),
             resolve_interval: Duration::from_millis(20),
+            delivery_check: Duration::from_millis(50),
+            cold_start_grace: Duration::ZERO,
         }
     }
 
@@ -412,6 +482,7 @@ mod tests {
                 &Wake::default(),
                 &s2,
                 &mut |pid| first = Some(pid),
+                &mut || {},
                 &mut || ticks += 1,
             );
             assert!(ticks > 0, "polled while the game ran");
@@ -449,6 +520,7 @@ mod tests {
             &shared,
             &mut |_| {},
             &mut || {},
+            &mut || {},
         );
         assert_eq!(out, SteamWaitOutcome::NotStarted);
 
@@ -463,6 +535,7 @@ mod tests {
             &Wake::default(),
             &shared,
             &mut |_| {},
+            &mut || {},
             &mut || {},
         );
         assert_eq!(out, SteamWaitOutcome::Aborted);

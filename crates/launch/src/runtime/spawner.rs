@@ -52,8 +52,16 @@ pub trait Spawner: Send + Sync {
         self.spawn(cmd, None)
     }
     /// Opens a URI with the desktop handler (`xdg-open`, the shell on
-    /// Windows), without waiting.
+    /// Windows), without waiting. A `steam://` URI the desktop fails to open
+    /// goes to the Steam client directly.
     fn open_uri(&self, uri: &str) -> io::Result<()>;
+    /// Hands a `steam://` URI to the Steam client itself, not through the
+    /// desktop (whose handler can be broken or another program), unless it
+    /// already was since `asked_at` (when it was asked for through
+    /// [`Spawner::open_uri`], which falls back to the client by itself).
+    fn open_with_steam(&self, uri: &str, _asked_at: std::time::Instant) -> io::Result<()> {
+        self.open_uri(uri)
+    }
     /// Terminates the processes started at or after `since` (ticks since
     /// boot, [`crate::procs::boot_ticks_now`]) whose program is `pattern`
     /// ([`crate::procs::program_matches`]).
@@ -268,6 +276,97 @@ fn is_batch(path: &str) -> bool {
     matches!(extension(path).as_str(), "bat" | "cmd")
 }
 
+/// How soon xdg-open must fail for its failure to mean the desktop could not
+/// open the URI (later, it ran the handler itself and that one ended).
+const XDG_OPEN_QUICK_FAILURE: std::time::Duration = std::time::Duration::from_secs(15);
+
+fn is_steam_uri(uri: &str) -> bool {
+    uri.get(..8).is_some_and(|s| s.eq_ignore_ascii_case("steam://"))
+}
+
+/// Runs `command` (a program and its arguments) with `uri` last, on its own,
+/// with the desktop's environment (none of this app's runtime variables).
+/// Its stderr is piped when asked.
+fn spawn_detached(command: &[String], uri: &str, stderr: bool) -> io::Result<std::process::Child> {
+    let (program, args) = command.split_first().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no program"))?;
+    let mut c = std::process::Command::new(program);
+    c.args(args)
+        .arg(uri)
+        .env_clear()
+        .envs(desktop_protocol_env(std::env::vars()))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(if stderr { std::process::Stdio::piped() } else { std::process::Stdio::null() });
+    os::new_group(&mut c);
+    c.spawn()
+}
+
+/// What a program writes to `pipe`, its first few KiB kept (the rest read
+/// and dropped: a handler xdg-open runs in the foreground inherits the pipe
+/// and must never block on it).
+fn drain(pipe: Option<std::process::ChildStderr>) -> (Arc<std::sync::Mutex<Vec<u8>>>, Option<std::thread::JoinHandle<()>>) {
+    use std::io::Read;
+    let kept = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let thread = pipe.map(|mut pipe| {
+        let kept = kept.clone();
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            while let Ok(n) = pipe.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                let mut k = kept.lock().unwrap();
+                let room = 4096usize.saturating_sub(k.len());
+                k.extend_from_slice(&buf[..n.min(room)]);
+            }
+        })
+    });
+    (kept, thread)
+}
+
+/// When each `steam://` URI was last handed to the Steam client directly.
+static HANDED_TO_STEAM: std::sync::Mutex<Vec<(String, std::time::Instant)>> = std::sync::Mutex::new(Vec::new());
+
+/// Hands `uri` to the Steam client itself (`steam <uri>`), which passes it to
+/// the running client or starts Steam with it: what Steam's own desktop entry
+/// does, without the desktop's URI handling. Not when it was already handed
+/// to it since `asked_at` (when this request was made): the fallback after
+/// xdg-open and the launch's own check could otherwise both send it.
+fn open_with_steam_client(uri: &str, asked_at: std::time::Instant) -> io::Result<()> {
+    {
+        let mut handed = HANDED_TO_STEAM.lock().unwrap();
+        if let Some(at) = handed.iter_mut().find(|(u, _)| u == uri).map(|(_, at)| at) {
+            if *at >= asked_at {
+                log::info!("{uri} was already handed to the Steam client");
+                return Ok(());
+            }
+            *at = std::time::Instant::now();
+        } else {
+            handed.push((uri.to_string(), std::time::Instant::now()));
+        }
+    }
+    // The running client's own launcher (a Flatpak or Snap Steam beside a
+    // native `steam` on PATH) first, then the usual `steam`.
+    let commands = crate::steam_launcher::client_commands(&crate::probe::SystemProbe, &crate::steam_launcher::steam_processes());
+    let mut error = io::Error::new(io::ErrorKind::NotFound, "Steam client not found");
+    for steam in commands {
+        log::info!("handing {uri} to the Steam client ({})", steam.join(" "));
+        match spawn_detached(&steam, uri, false) {
+            Ok(mut child) => {
+                std::thread::spawn(move || {
+                    let _ = child.wait();
+                });
+                return Ok(());
+            }
+            Err(e) => {
+                log::warn!("could not run {}: {e}", steam.join(" "));
+                error = e;
+            }
+        }
+    }
+    Err(error)
+}
+
 fn extension(path: &str) -> String {
     Path::new(path).extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default()
 }
@@ -289,19 +388,48 @@ impl Spawner for SystemSpawner {
         if cfg!(windows) {
             return heronite_platform::shell::open(uri);
         }
-        let mut c = std::process::Command::new("xdg-open");
-        c.arg(uri)
-            .env_clear()
-            .envs(desktop_protocol_env(std::env::vars()))
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-        os::new_group(&mut c);
-        let mut child = c.spawn()?;
+        let steam = is_steam_uri(uri);
+        let mut child = match spawn_detached(&["xdg-open".to_string()], uri, steam) {
+            Ok(child) => child,
+            Err(e) if steam => {
+                log::warn!("could not run xdg-open for {uri} ({e}); asking the Steam client directly");
+                return open_with_steam_client(uri, std::time::Instant::now())
+                    .map_err(|e2| io::Error::new(e2.kind(), format!("xdg-open: {e}; Steam client: {e2}")));
+            }
+            Err(e) => return Err(e),
+        };
+        // The desktop can fail to hand `steam://` to Steam even with Steam as
+        // its handler (`gio: … not supported`, a stale `steam.desktop`): the
+        // Steam client is asked directly then. Only a quick failure counts:
+        // xdg-open can run the handler in the foreground, and Steam started
+        // that way ends with the whole Steam session.
+        let (stderr, drained) = drain(child.stderr.take());
+        let uri = uri.to_string();
+        let started = std::time::Instant::now();
         std::thread::spawn(move || {
-            let _ = child.wait();
+            let status = child.wait();
+            let failed = !status.as_ref().is_ok_and(|s| s.success());
+            if steam && failed && started.elapsed() < XDG_OPEN_QUICK_FAILURE {
+                // What xdg-open said (`gio: …: Operation not supported`).
+                let until = std::time::Instant::now() + std::time::Duration::from_millis(500);
+                while drained.as_ref().is_some_and(|t| !t.is_finished()) && std::time::Instant::now() < until {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                let said = String::from_utf8_lossy(&stderr.lock().unwrap()).trim().to_string();
+                log::warn!("xdg-open could not open {uri} ({status:?}: {said}); asking the Steam client directly");
+                if let Err(e) = open_with_steam_client(&uri, started) {
+                    log::warn!("could not ask the Steam client to open {uri}: {e}");
+                }
+            }
         });
         Ok(())
+    }
+
+    fn open_with_steam(&self, uri: &str, asked_at: std::time::Instant) -> io::Result<()> {
+        if cfg!(windows) {
+            return self.open_uri(uri);
+        }
+        open_with_steam_client(uri, asked_at)
     }
 
     fn kill_pattern(&self, pattern: &str, since: u64) {
