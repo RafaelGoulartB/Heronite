@@ -1190,7 +1190,10 @@ event sounds, one bar per app name; 2 on Home, which then drops its recent captu
 list (↑ ↓), ◀ ▶ change the focused one, A mutes it, Y switches the output shown under them. Audio adds the output, the
 microphone (the default source; the outputs' monitors are left out) and its mute. Home's "FPS limit" row only shows when the game's limiter can change while it runs
 (`heronite_launch::live_fps`: MangoHud through a config file of ours it watches, gamescope through its
-`GAMESCOPE_FPS_LIMIT` atom set with `xprop`; DXVK / VKD3D cannot); the value lasts for the session. Steam games are
+`GAMESCOPE_FPS_LIMIT` atom set with `xprop`; DXVK / VKD3D cannot); the value lasts for the session. With MangoHud it
+sits in a card under a "Show MangoHud" switch (the same file's `no_display`): hiding the HUD keeps the limit, so the
+limit stays editable and says so. Rows drawn with the mixer or that card scroll to keep the focus in sight when the
+panel is short for them. Steam games are
 started by Steam, so the launch cannot move MangoHud's limit into a file of ours: they have no live limit (editing the
 user's `MangoHud.conf` or their Steam launch options was ruled out). An Achievements tab (last, so the other tabs keep
 their place when it appears; `panel/achievements.rs`) shows when the game has a set in the achievements service,
@@ -1224,7 +1227,7 @@ it (no layer-shell): Settings says so. Debug: `HERONITE_DEBUG_OVERLAY=window[:<a
 window (`app.heronite.overlay`) as if the game ran (Hyprland ignores its size requests there; audio changes are skipped
 under any `HERONITE_DEBUG_OVERLAY`), `=layer` the real surface; `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a`
 plays presses, then `HERONITE_DEBUG_OVERLAY_MOUSE` mouse events (as `HERONITE_DEBUG_MOUSE`); `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` adds a notice (`app.heronite.overlay-notice`), `=achievement|achievement-queue` one or six made-up achievement notices (icon from `HERONITE_DEBUG_OVERLAY_NOTICE_ICON`);
-`HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row (nothing applied); `HERONITE_DEBUG_OVERLAY=window:none` opens it with no game;
+`HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row as gamescope's, `=mangohud:<limit>` (or `mangohud-hidden:<limit>`) MangoHud's card (nothing applied); `HERONITE_DEBUG_OVERLAY=window:none` opens it with no game;
 `HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens
 it as the keyboard shortcut does, `=shortcut` registers the real shortcut instead; `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and
 the panel's size follows it. On Windows, `HERONITE_DEBUG_OVERLAY_MONITOR=<x>,<y>` puts the surfaces on the monitor holding

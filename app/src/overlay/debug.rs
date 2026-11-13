@@ -56,8 +56,7 @@ pub(super) fn start(entity: &Entity<OverlayService>, cx: &mut App) {
     }
     entity.update(cx, |s, _| {
         s.debug_window = mode != "layer";
-        s.debug_live_fps =
-            crate::env::parse::<u32>("HERONITE_DEBUG_OVERLAY_FPS").map(|limit| heronite_launch::live_fps::LiveFps::Gamescope { limit });
+        s.debug_live_fps = crate::env::value("HERONITE_DEBUG_OVERLAY_FPS").and_then(|v| debug_live_fps(&v));
     });
     cx.spawn(async move |cx| {
         let game = cx
@@ -136,5 +135,25 @@ async fn play_script(panel: WindowHandle<super::panel::OverlayPanel>, cx: &mut A
         if cx.update_window(panel.into(), |_, window, cx| crate::console::pointer::play(step, window, cx)).is_err() {
             return;
         }
+    }
+}
+
+/// `HERONITE_DEBUG_OVERLAY_FPS`: `<limit>` for gamescope, `mangohud:<limit>`
+/// (or `mangohud-hidden:<limit>`) for MangoHud. Nothing is written: the panel
+/// skips its changes under the debug hooks.
+fn debug_live_fps(v: &str) -> Option<heronite_launch::live_fps::LiveFps> {
+    use heronite_launch::live_fps::LiveFps;
+    let (kind, limit) = v.split_once(':').unwrap_or(("gamescope", v));
+    let limit = limit.parse().ok()?;
+    match kind {
+        "gamescope" => Some(LiveFps::Gamescope { limit }),
+        "mangohud" | "mangohud-hidden" => Some(LiveFps::MangoHud {
+            file: std::env::temp_dir().join("heronite-debug-mangohud.conf"),
+            base: String::new(),
+            smooth: false,
+            limit,
+            hud: kind == "mangohud",
+        }),
+        _ => None,
     }
 }

@@ -96,8 +96,26 @@ pub enum HotkeyState {
 pub struct GameNow {
     pub game: RunningGame,
     pub info: Option<SessionInfo>,
-    /// How its FPS limit can change now, and the limit it has (`0` = none).
-    pub fps: Option<(LiveFps, u32)>,
+    /// How its FPS limit can change now, and what it is now.
+    pub fps: Option<LiveNow>,
+}
+
+/// A running game's limiter that changes while it runs, as it is now.
+#[derive(Clone, Debug)]
+pub struct LiveNow {
+    pub live: LiveFps,
+    /// `0` = none.
+    pub limit: u32,
+    /// MangoHud's HUD shows; `None` when it cannot be shown or hidden from
+    /// here (gamescope).
+    pub hud: Option<bool>,
+}
+
+/// What the panel changed in a running game's limiter (kept for its session).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LiveChange {
+    pub limit: u32,
+    pub hud: Option<bool>,
 }
 
 impl GameNow {
@@ -128,8 +146,8 @@ pub struct OverlayService {
     debug_window: bool,
     /// `HERONITE_DEBUG_OVERLAY_FPS`: a limiter the debug game pretends to have.
     debug_live_fps: Option<LiveFps>,
-    /// FPS limits set from the panel, by game, while it runs.
-    fps_limits: HashMap<String, u32>,
+    /// FPS limits (and MangoHud's HUD) set from the panel, by game, while it runs.
+    live_changes: HashMap<String, LiveChange>,
     /// The keyboard shortcut registered (and its accelerator) while a game runs.
     hotkey: Option<(String, GlobalHotkey)>,
     hotkey_state: HotkeyState,
@@ -163,7 +181,7 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
         layer_shell: window::supported(),
         debug_window: false,
         debug_live_fps: None,
-        fps_limits: HashMap::new(),
+        live_changes: HashMap::new(),
         hotkey: None,
         hotkey_state: HotkeyState::Idle,
         hotkey_epoch: 0,
@@ -238,7 +256,7 @@ impl OverlayService {
             }
             LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => {
                 self.games.retain(|g| &g.app_name != app_name);
-                self.fps_limits.remove(app_name);
+                self.live_changes.remove(app_name);
                 if self.games.is_empty() {
                     self.close_panel(cx);
                 }
@@ -255,16 +273,17 @@ impl OverlayService {
         let live = self.debug_live_fps.clone().or_else(|| self.runtime.live_fps(&game.app_name));
         // gamescope's limit is set with xprop.
         let live = live.filter(|l| !l.is_gamescope() || heronite_overlay::gamescope::available());
-        let fps = live.map(|l| {
-            let limit = self.fps_limits.get(&game.app_name).copied().unwrap_or_else(|| l.limit());
-            (l, limit)
+        let fps = live.map(|l| match self.live_changes.get(&game.app_name) {
+            Some(c) => LiveNow { limit: c.limit, hud: c.hud, live: l },
+            None => LiveNow { limit: l.limit(), hud: l.hud(), live: l },
         });
         Some(GameNow { game, info, fps })
     }
 
-    /// The panel changed the running game's FPS limit (kept for this session).
-    pub fn fps_limit_changed(&mut self, app_name: &str, limit: u32) {
-        self.fps_limits.insert(app_name.to_string(), limit);
+    /// The panel changed the running game's FPS limit or MangoHud's HUD
+    /// (kept for this session).
+    pub fn live_changed(&mut self, app_name: &str, change: LiveChange) {
+        self.live_changes.insert(app_name.to_string(), change);
     }
 
     /// Whether it can open now: on, and a game runs (or it may open without).

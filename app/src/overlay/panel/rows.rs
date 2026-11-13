@@ -9,7 +9,12 @@ use heronite_overlay::audio;
 use super::{mixer, Confirm, OverlayPanel, Tab};
 use crate::console::list::{Outcome, Row, Value};
 use crate::icons::Icon;
-use crate::overlay::OverlayService;
+use crate::overlay::{LiveChange, OverlayService};
+
+/// The MangoHud card of Home: "Show MangoHud", then the FPS limit under it
+/// (`OverlayPanel::render_body` draws them in one card).
+pub(super) const MANGOHUD: &str = "mangohud";
+pub(super) const FPS: &str = "fps";
 
 impl OverlayPanel {
     pub(super) fn rows(&self) -> Vec<Row> {
@@ -51,12 +56,25 @@ impl OverlayPanel {
             );
         }
         // Only when the game's limiter can change while it runs.
-        if let Some((live, limit)) = &game.fps {
-            let steps = fps_steps(*limit);
+        if let Some(now) = &game.fps {
+            let steps = fps_steps(now.limit);
             let options = steps.iter().map(|n| if *n == 0 { tr!("Off").into() } else { SharedString::from(format!("{n} FPS")) }).collect();
-            let index = steps.iter().position(|n| n == limit).unwrap_or(0);
-            let desc = if live.is_gamescope() { tr!("Changes now (gamescope)") } else { tr!("Changes now (MangoHud)") };
-            rows.push(Row::choice("fps", tr!("FPS limit"), options, index).icon(Icon::Tune).desc(desc).compact());
+            let index = steps.iter().position(|n| *n == now.limit).unwrap_or(0);
+            let desc = match now.hud {
+                // Hidden, MangoHud still limits the game.
+                Some(true) => tr!("Changes now"),
+                Some(false) => tr!("Still applies while hidden"),
+                None => tr!("Changes now (gamescope)"),
+            };
+            if let Some(hud) = now.hud {
+                let (ic, line) = if hud {
+                    (Icon::Visibility, tr!("Shown over the game"))
+                } else {
+                    (Icon::VisibilityOff, tr!("Hidden. The FPS limit still applies."))
+                };
+                rows.push(Row::toggle(MANGOHUD, tr!("Show MangoHud"), hud).icon(ic).desc(line));
+            }
+            rows.push(Row::choice(FPS, tr!("FPS limit"), options, index).icon(Icon::Tune).desc(desc).compact());
         }
         if let Some(id) = &self.data.status_id {
             let options: Vec<SharedString> = self.data.statuses.iter().map(|s| status::status_label(&s.name).to_string().into()).collect();
@@ -265,10 +283,18 @@ impl OverlayPanel {
                 self.run_audio(move || audio::set_mic_muted(!on), cx);
             }
             ("status", Value::Choice { index, .. }) => self.set_status(index, cx),
-            ("fps", Value::Choice { index, .. }) => {
-                let Some((_, limit)) = self.game.as_ref().and_then(|g| g.fps.as_ref()) else { return };
-                if let Some(next) = fps_steps(*limit).get(index).copied() {
-                    self.set_fps_limit(next, cx);
+            (FPS, Value::Choice { index, .. }) => {
+                let Some(now) = self.game.as_ref().and_then(|g| g.fps.as_ref()) else { return };
+                if let Some(limit) = fps_steps(now.limit).get(index).copied() {
+                    let hud = now.hud;
+                    self.set_live(LiveChange { limit, hud }, cx);
+                }
+            }
+            (MANGOHUD, Value::Toggle(on)) => {
+                let Some(now) = self.game.as_ref().and_then(|g| g.fps.as_ref()) else { return };
+                if now.hud.is_some() {
+                    let limit = now.limit;
+                    self.set_live(LiveChange { limit, hud: Some(on) }, cx);
                 }
             }
             _ => {}
@@ -293,22 +319,26 @@ impl OverlayPanel {
         cx.background_spawn(async move { f() }).detach();
     }
 
-    /// Applies a new FPS limit to the running game (`0` = none).
-    fn set_fps_limit(&mut self, limit: u32, cx: &mut Context<Self>) {
+    /// Applies a new FPS limit (`0` = none) or shows / hides MangoHud's HUD
+    /// in the running game.
+    fn set_live(&mut self, change: LiveChange, cx: &mut Context<Self>) {
         let Some(game) = &mut self.game else { return };
-        let Some((live, _)) = game.fps.clone() else { return };
-        game.fps = Some((live.clone(), limit));
+        let Some(now) = &mut game.fps else { return };
+        let hud_changed = change.hud != now.hud;
+        (now.limit, now.hud) = (change.limit, change.hud);
+        let live = now.live.clone();
         let (app_name, pid) = (game.game.app_name.clone(), game.game.pid);
-        self.with_service(cx, move |s, _| s.fps_limit_changed(&app_name, limit));
+        self.with_service(cx, move |s, _| s.live_changed(&app_name, change));
         if crate::env::value("HERONITE_DEBUG_OVERLAY").is_some() {
-            log::info!("overlay debug: FPS limit change skipped");
+            log::info!("overlay debug: FPS limit / HUD change skipped");
             return;
         }
+        let LiveChange { limit, hud } = change;
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
                     match &live {
-                        LiveFps::MangoHud { .. } => heronite_launch::live_fps::set_mangohud(&live, limit),
+                        LiveFps::MangoHud { .. } => heronite_launch::live_fps::set_mangohud(&live, limit, hud.unwrap_or(true)),
                         LiveFps::Gamescope { .. } => match pid {
                             Some(pid) => heronite_overlay::gamescope::set_fps_limit(pid, limit),
                             None => Err("the game's process is not known yet".into()),
@@ -317,9 +347,14 @@ impl OverlayPanel {
                 })
                 .await;
             if let Err(e) = res {
-                log::warn!("overlay: FPS limit {limit}: {e}");
+                log::warn!("overlay: FPS limit {limit}, HUD {hud:?}: {e}");
                 this.update(cx, |this, cx| {
-                    this.error = Some(tr!("Could not change the FPS limit: {err}", err = e).into());
+                    let error = if hud_changed {
+                        tr!("Could not show or hide MangoHud: {err}", err = e)
+                    } else {
+                        tr!("Could not change the FPS limit: {err}", err = e)
+                    };
+                    this.error = Some(error.into());
                     cx.notify();
                 })
                 .ok();

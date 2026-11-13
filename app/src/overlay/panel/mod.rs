@@ -22,6 +22,7 @@ use heronite_overlay::audio::AudioState;
 use heronite_overlay::input::{Button, Controller};
 
 use self::data::Data;
+use self::rows::{FPS, MANGOHUD};
 use super::{GameNow, OverlayService};
 use crate::console::kit::{self, u};
 use crate::console::list::{self, ListNav, Row};
@@ -97,6 +98,9 @@ pub struct OverlayPanel {
     /// Focused capture in the Screenshots grid (`None` = the rows have it).
     grid: Option<usize>,
     grid_scroll: ScrollHandle,
+    /// The rows drawn with the mixer or MangoHud's card (they scroll when the
+    /// panel is short for them).
+    rows_scroll: ScrollHandle,
     /// Capture shown full size.
     viewer: Option<usize>,
     /// Shown under the rows after a failed action.
@@ -175,6 +179,7 @@ impl OverlayPanel {
             confirm_nav: ListNav::default(),
             grid: None,
             grid_scroll: ScrollHandle::new(),
+            rows_scroll: ScrollHandle::new(),
             viewer: None,
             error: None,
             keyboard,
@@ -529,9 +534,11 @@ impl OverlayPanel {
             None => Some((&placeholder, true)),
             Some(None) => None,
         };
+        let has_card = rows.iter().any(|r| r.id.as_ref() == MANGOHUD);
         let list = match audio.filter(|_| has_mixer) {
-            // With the mixer: the rows are drawn here (short lists, no scrolling).
-            Some((audio, loading)) => {
+            // With the mixer or MangoHud's card: the rows are drawn here
+            // (short lists, no scrolling).
+            audio if has_mixer || has_card => {
                 self.nav.clamp(&rows);
                 let focus = list_active.then(|| rows.get(self.nav.focus).map(|r| r.id.clone())).flatten();
                 let mixer_focus = focus.as_ref().filter(|id| mixer::is_mixer(id)).map(|id| id.to_string());
@@ -541,39 +548,83 @@ impl OverlayPanel {
                 } else {
                     Default::default()
                 };
-                let mut list = div().flex().flex_col().gap(u(4.));
+                let plain = |i: usize, r: &Row| {
+                    let row = list::render_row_at(r, list_active && i == self.nav.focus, routes.get(r.id.as_ref()).map(Vec::as_slice));
+                    let pads = if list_active { self.nav.click(&rows, i) } else { Vec::new() };
+                    let hover = routes.get(r.id.as_ref()).cloned().unwrap_or_default();
+                    div().on_hover_pads(hover).on_pads(pads).child(row)
+                };
+                let mut list = div()
+                    .id("overlay-rows-drawn")
+                    .flex()
+                    .flex_col()
+                    .gap(u(4.))
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.rows_scroll);
+                let mut in_card = false;
+                // Which child of the list holds each row (the mixer and the card hold several).
+                let (mut child, mut focus_child) = (0usize, None);
                 for (i, r) in rows.iter().enumerate() {
+                    if list_active && i == self.nav.focus {
+                        focus_child = Some(if in_card || (mixer::is_mixer(&r.id) && r.id.as_ref() != mixer::SYSTEM) {
+                            child.saturating_sub(1)
+                        } else {
+                            child
+                        });
+                    }
+                    if std::mem::take(&mut in_card) {
+                        continue;
+                    }
                     match r.id.as_ref() {
                         mixer::SYSTEM => {
+                            let Some((audio, loading)) = audio else { continue };
                             let apps = if self.tab() == Tab::Home { mixer::HOME_APPS } else { mixer::AUDIO_APPS };
                             let mixer = self.render_mixer(audio, mixer_focus.as_deref(), loading, apps, &routes);
-                            list = list.child(div().py(u(4.)).child(mixer))
+                            list = list.child(div().py(u(4.)).child(mixer));
+                            child += 1;
                         }
                         id if mixer::is_mixer(id) => {}
+                        // "Show MangoHud" and the FPS limit it holds, in one card.
+                        MANGOHUD => {
+                            let mut card = div()
+                                .flex()
+                                .flex_col()
+                                .gap(u(2.))
+                                .p(u(4.))
+                                .rounded(u(16.))
+                                .border_2()
+                                .border_color(theme::white_a(0.06))
+                                .bg(theme::white_a(0.05))
+                                .child(plain(i, r));
+                            if let Some(fps) = rows.get(i + 1).filter(|n| n.id.as_ref() == FPS) {
+                                in_card = true;
+                                card = card.child(div().h(u(1.)).mx(u(14.)).bg(theme::white_a(0.08))).child(plain(i + 1, fps));
+                            }
+                            list = list.child(div().py(u(2.)).child(card));
+                            child += 1;
+                        }
                         _ => {
-                            let row =
-                                list::render_row_at(r, list_active && i == self.nav.focus, routes.get(r.id.as_ref()).map(Vec::as_slice));
-                            let pads = if list_active { self.nav.click(&rows, i) } else { Vec::new() };
-                            let hover = routes.get(r.id.as_ref()).cloned().unwrap_or_default();
-                            list = list.child(div().on_hover_pads(hover).on_pads(pads).child(row))
+                            list = list.child(plain(i, r));
+                            child += 1;
                         }
                     }
+                }
+                // The focus stays in sight when the rows do not fit.
+                if let Some(c) = focus_child {
+                    self.rows_scroll.scroll_to_item(c);
                 }
                 list.into_any_element()
             }
             // Long lists (several controllers) scroll inside the panel.
-            None if self.tab() == Tab::Controller => self
+            _ if self.tab() == Tab::Controller => self
                 .nav
                 .render_entered(("overlay-rows", self.tab), &rows, list_active, to_rows.as_deref())
                 .flex_1()
                 .min_h_0()
                 .into_any_element(),
-            None if self.tab() == Tab::Achievements => {
-                self.render_achievements(list_active, window, cx).flex_1().min_h_0().into_any_element()
-            }
-            None => {
-                self.nav.render_entered(("overlay-rows", self.tab), &rows, list_active, to_rows.as_deref()).flex_none().into_any_element()
-            }
+            _ if self.tab() == Tab::Achievements => self.render_achievements(list_active, window, cx).flex_1().min_h_0().into_any_element(),
+            _ => self.nav.render_entered(("overlay-rows", self.tab), &rows, list_active, to_rows.as_deref()).flex_none().into_any_element(),
         };
         let mut body = div().flex().flex_col().flex_1().min_h_0().overflow_hidden().px(u(12.)).pt(u(10.)).pb(u(6.)).gap(u(8.)).child(list);
         if let Some(e) = &self.error {
