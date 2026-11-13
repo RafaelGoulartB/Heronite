@@ -81,5 +81,8 @@
   "Could not change the game's executable: {error}": "Não foi possível mudar o executável do jogo: {error}",
   "Heronite can't find {game}'s folder, so it can't tell where the mod's files go. Install or locate the game first.": "O Heronite não encontra a pasta de {game}, então não sabe onde ficam os arquivos do mod. Instale ou localize o jogo primeiro.",
   "What the game wrote while modded (settings, saves) stays in Overwrite. The game will not see it until mods are on again, unless you turn it into a mod.": "O que o jogo gravou com mods (configurações, saves) fica em Overwrite. O jogo só volta a ver isso quando os mods estiverem ligados, a menos que você transforme em mod.",
-  "{name} was installed, but its files don't match the game's folders. Check the mod's instructions; you can open its folder from the list.": "{name} foi instalado, mas os arquivos não combinam com as pastas do jogo. Veja as instruções do mod; dá para abrir a pasta dele pela lista."
+  "{name} was installed, but its files don't match the game's folders. Check the mod's instructions; you can open its folder from the list.": "{name} foi instalado, mas os arquivos não combinam com as pastas do jogo. Veja as instruções do mod; dá para abrir a pasta dele pela lista.",
+  "Install 7-Zip to install mods": "Instale o 7-Zip para instalar mods",
+  "Install the 7zip package (p7zip on some distributions) with your package manager.": "Instale o pacote 7zip (p7zip em algumas distribuições) pelo seu gerenciador de pacotes.",
+  "Most Nexus Mods files are .7z or .rar archives, and this computer has no program that opens {kinds} files: mods would download and then fail to install. Install 7-Zip, then press Look again.": "A maioria dos arquivos da Nexus Mods vem em .7z ou .rar, e este computador não tem nenhum programa que abra arquivos {kinds}: os mods seriam baixados e depois falhariam ao instalar. Instale o 7-Zip e depois clique em Procurar de novo."
 }

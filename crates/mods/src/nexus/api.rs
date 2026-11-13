@@ -46,17 +46,22 @@ pub(super) fn rest<T: DeserializeOwned>(api_key: &str, path: &str) -> Result<T, 
     Ok(reply.value)
 }
 
-/// `users/validate.json`; the `?` spellings are the older field names.
+/// `users/validate.json`. The `?` spellings are the older field names, and
+/// Nexus still sends them beside the new ones, so each is its own field.
 #[derive(Debug, Deserialize)]
 pub(super) struct RawUser {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     user_id: u64,
     #[serde(default, deserialize_with = "null_default")]
     name: String,
-    #[serde(default, alias = "is_premium?")]
-    is_premium: bool,
-    #[serde(default, alias = "is_supporter?")]
-    is_supporter: bool,
+    #[serde(default, deserialize_with = "null_default")]
+    is_premium: Option<bool>,
+    #[serde(default, rename = "is_premium?", deserialize_with = "null_default")]
+    is_premium_old: Option<bool>,
+    #[serde(default, deserialize_with = "null_default")]
+    is_supporter: Option<bool>,
+    #[serde(default, rename = "is_supporter?", deserialize_with = "null_default")]
+    is_supporter_old: Option<bool>,
     #[serde(default)]
     profile_url: Option<String>,
 }
@@ -66,8 +71,8 @@ impl From<RawUser> for Account {
         Account {
             name: r.name,
             user_id: r.user_id,
-            is_premium: r.is_premium,
-            is_supporter: r.is_supporter,
+            is_premium: r.is_premium.or(r.is_premium_old).unwrap_or_default(),
+            is_supporter: r.is_supporter.or(r.is_supporter_old).unwrap_or_default(),
             avatar: r.profile_url.filter(|u| !u.trim().is_empty()),
         }
     }
