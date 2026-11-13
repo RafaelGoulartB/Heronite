@@ -1,5 +1,6 @@
-//! `GameSettingsDialog` ("Game settings"): Images, Details and Launch tabs for
-//! one game, plus Heroic's own settings tabs.
+//! `GameSettingsDialog`: one game's settings in five groups by task (Start,
+//! Compatibility, Graphics, Performance, Saves), or, opened on `Tab::Game`,
+//! "Edit details" (its images, details and play sessions) alone.
 
 mod actions;
 mod console;
@@ -26,7 +27,7 @@ use super::metadata::MetadataDialog;
 use super::metadata_wizard::hub;
 use super::save_backups::{self, SaveBackupsView};
 use super::screenshot_art::ScreenshotArtDialog;
-use super::settings_panel::{GameFacts, Section, SettingsPanel, Target};
+use super::settings_panel::{heading, GameFacts, Section, SettingsPanel, Target};
 use super::web_image::WebImageDialog;
 use super::{DialogCtx, DialogEvent};
 use crate::theme;
@@ -39,67 +40,54 @@ use sessions::SessionsState;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tab {
-    /// Images and details.
+    /// "Edit details": images, details and play sessions. Opening the
+    /// dialog on it shows it alone.
     Game,
-    /// Play (and, for local games, what it starts) and the user's actions.
-    Actions,
-    /// The panel's launch settings.
-    Launch,
+    /// Play (and, for local games, what it starts), the user's actions,
+    /// then the panel's launch settings.
+    Start,
     Compatibility,
+    Graphics,
     Performance,
-    Gpu,
-    /// The Ludusavi backups.
+    /// The Ludusavi backups, then the store's cloud saves.
     Saves,
-    /// The store's cloud saves.
-    CloudSaves,
-    /// What the game can reach.
-    Sandbox,
 }
 
 impl Tab {
     /// The panel section this tab shows.
     fn section(self) -> Option<Section> {
         match self {
-            Tab::Launch => Some(Section::Launch),
+            Tab::Game => None,
+            Tab::Start => Some(Section::Start),
             Tab::Compatibility => Some(Section::Compatibility),
+            Tab::Graphics => Some(Section::Graphics),
             Tab::Performance => Some(Section::Performance),
-            Tab::Gpu => Some(Section::Gpu),
-            Tab::CloudSaves => Some(Section::Saves),
-            Tab::Sandbox => Some(Section::Sandbox),
-            _ => None,
+            Tab::Saves => Some(Section::Saves),
         }
     }
 
-    fn of_section(s: Section) -> Tab {
+    /// The tab showing a panel group.
+    pub fn of_section(s: Section) -> Tab {
         match s {
-            Section::Launch => Tab::Launch,
+            Section::Start | Section::General => Tab::Start,
             Section::Compatibility => Tab::Compatibility,
+            Section::Graphics => Tab::Graphics,
             Section::Performance => Tab::Performance,
-            Section::Gpu => Tab::Gpu,
-            Section::Saves => Tab::CloudSaves,
-            Section::Sandbox => Tab::Sandbox,
-            Section::General => Tab::Game,
+            Section::Saves => Tab::Saves,
         }
     }
 
     fn label(self) -> &'static str {
-        match self {
-            Tab::Game => tr!("Details"),
-            Tab::Actions => tr!("Actions"),
-            Tab::Launch => tr!("Launch"),
-            Tab::Compatibility => tr!("Compatibility"),
-            Tab::Performance => tr!("Performance"),
-            Tab::Gpu => tr!("GPU"),
-            Tab::Saves => tr!("Saves"),
-            Tab::CloudSaves => tr!("Cloud saves"),
-            Tab::Sandbox => tr!("Sandbox"),
+        match self.section() {
+            Some(s) => s.label(),
+            None => tr!("Details"),
         }
     }
 
     /// The tab the settings open on: Compatibility for games run through
-    /// Wine or Proton, Performance for Linux games, Game otherwise.
+    /// Wine or Proton, Performance for Linux games, Start otherwise.
     pub fn settings_start(game: &Game) -> Tab {
-        GameFacts::of(game).start_section().map(Tab::of_section).unwrap_or(Tab::Game)
+        GameFacts::of(game).start_section().map(Tab::of_section).unwrap_or(Tab::Start)
     }
 }
 
@@ -157,6 +145,11 @@ pub struct GameSettingsDialog {
     panel: Option<(Entity<SettingsPanel>, Vec<Section>)>,
     /// The Saves tab, for games that run here or through Steam.
     backups: Option<Entity<SaveBackupsView>>,
+    /// "Edit details" alone (opened on `Tab::Game`), not the settings.
+    details_only: bool,
+    /// Console mode: the focus is in the lower of a tab's two blocks (the
+    /// panel under Play and the actions, or under the backups).
+    lower: bool,
     /// Console mode: focused row and the open keyboard / picker.
     console_list: crate::console::list::ListNav,
     layer: crate::console::Layer,
@@ -199,30 +192,26 @@ impl GameSettingsDialog {
         let details = Self::build_details(&ctx, &initial, game.playtime_minutes, window, cx);
         let launch = Self::build_launch(&game, window, cx);
         let actions = Self::build_actions(&game, &ctx.data_paths);
+        let details_only = tab == Tab::Game;
         let facts = GameFacts::of(&game);
-        let mut sections = facts.sections();
-        // The Sandbox tab only for a game put in the sandbox (when it was
-        // added or installed), where there is one (not in the Flatpak).
-        // Decided once: turning it off here keeps the tab.
-        if !heronite_platform::supported(heronite_platform::Feature::Sandbox) || !sandboxed(&ctx, &game.app_name) {
-            sections.retain(|s| *s != Section::Sandbox);
-        }
+        let sections = if details_only { Vec::new() } else { facts.sections() };
         let panel = (!sections.is_empty()).then(|| {
             let start = tab.section().filter(|s| sections.contains(s)).unwrap_or(sections[0]);
             let panel = cx.new(|cx| SettingsPanel::new(ctx.data_paths.clone(), Target::Game(facts), start, window, cx));
             cx.observe(&panel, |_, _, cx| cx.notify()).detach();
             (panel, sections)
         });
-        let backups = save_backups::has_tab(&game).then(|| {
+        let backups = (!details_only && save_backups::has_tab(&game)).then(|| {
             let view = cx.new(|_| SaveBackupsView::new(ctx.data_paths.clone(), &game));
             cx.observe(&view, |_, _, cx| cx.notify()).detach();
             view
         });
         let has = |s: Section| panel.as_ref().is_some_and(|(_, secs)| secs.contains(&s));
         let tab = match tab {
-            Tab::Saves if backups.is_none() => Tab::Game,
-            t if t.section().is_some_and(|s| !has(s)) => Tab::Game,
-            t => t,
+            Tab::Game | Tab::Start => tab,
+            Tab::Saves if backups.is_some() || has(Section::Saves) => tab,
+            t if t.section().is_some_and(has) => t,
+            _ => Tab::Start,
         };
 
         let mut this = Self {
@@ -251,6 +240,8 @@ impl GameSettingsDialog {
             actions,
             panel,
             backups,
+            details_only,
+            lower: false,
             game,
             ctx,
             console_list: Default::default(),
@@ -262,6 +253,7 @@ impl GameSettingsDialog {
         if this.tab == Tab::Saves {
             this.show_backups(cx);
         }
+        this.console_focus(!this.has_upper(), cx);
         this.debug_set_art(cx);
         this.read_families(cx);
         // `HERONITE_DEBUG_ACTION_EDIT=new|<id>`: the Actions tab's action editor starts open.
@@ -291,22 +283,50 @@ impl GameSettingsDialog {
         this
     }
 
-    /// The tabs: Game and Actions always, then what the game has.
+    /// The tabs: "Edit details" alone, or Start, then the groups the game
+    /// has.
     fn tab_list(&self) -> Vec<Tab> {
-        let has = |s: Section| self.panel.as_ref().is_some_and(|(_, secs)| secs.contains(&s));
-        let mut t = vec![Tab::Game, Tab::Actions];
-        t.extend(
-            [Tab::Launch, Tab::Compatibility, Tab::Performance, Tab::Gpu, Tab::Sandbox]
-                .into_iter()
-                .filter(|t| t.section().is_some_and(has)),
-        );
-        if self.backups.is_some() {
+        if self.details_only {
+            return vec![Tab::Game];
+        }
+        let mut t = vec![Tab::Start];
+        t.extend([Tab::Compatibility, Tab::Graphics, Tab::Performance].into_iter().filter(|t| self.has_panel(*t)));
+        if self.backups.is_some() || self.has_panel(Tab::Saves) {
             t.push(Tab::Saves);
         }
-        if has(Section::Saves) {
-            t.push(Tab::CloudSaves);
-        }
         t
+    }
+
+    /// The panel has `tab`'s group for this game.
+    fn has_panel(&self, tab: Tab) -> bool {
+        tab.section().is_some_and(|s| self.panel.as_ref().is_some_and(|(_, secs)| secs.contains(&s)))
+    }
+
+    /// The tab has its own block above the panel: Play and the actions
+    /// (Start), the backups (Saves). The details are that block alone.
+    fn has_upper(&self) -> bool {
+        match self.tab {
+            Tab::Game | Tab::Start => true,
+            Tab::Saves => self.backups.is_some(),
+            _ => false,
+        }
+    }
+
+    /// The panel shows under the tab's own block (not while an action is
+    /// being edited, which takes the whole tab).
+    fn has_lower(&self) -> bool {
+        self.has_panel(self.tab) && !(self.tab == Tab::Start && self.actions.editor.is_some())
+    }
+
+    /// Console mode: moves the focus to the lower block (`true`) or the upper.
+    fn console_focus(&mut self, lower: bool, cx: &mut Context<Self>) {
+        self.lower = lower;
+        if let Some((panel, _)) = &self.panel {
+            panel.update(cx, |p, _| p.set_console_active(lower));
+        }
+        if let Some(view) = &self.backups {
+            view.update(cx, |v, _| v.set_console_active(!lower));
+        }
     }
 
     /// Reads the backups the first time the Saves tab shows.
@@ -350,7 +370,7 @@ impl GameSettingsDialog {
                     .flex_1()
                     .min_w_0()
                     .gap(px(1.))
-                    .child(kicker(tr!("Game settings")))
+                    .child(kicker(if self.details_only { tr!("Edit details") } else { tr!("Game settings") }))
                     .child(dialog_title(self.title.clone()).truncate())
                     .child(div().text_size(px(13.)).text_color(theme::text_muted()).truncate().child(meta.join(" \u{b7} "))),
             )
@@ -418,11 +438,14 @@ impl Render for GameSettingsDialog {
                 })
                 .ok();
         });
-        let panel_view = self.panel.as_ref().map(|(p, _)| p.clone());
+        let panel_view = self.has_lower().then(|| self.panel.as_ref().map(|(p, _)| p.clone())).flatten();
         let content = match self.tab {
             Tab::Game => div().flex().flex_col().gap(px(6.)).child(self.images_tab(cx)).child(self.details_tab(cx)),
-            Tab::Actions => self.actions_tab(cx),
-            Tab::Saves => div().children(self.backups.clone()),
+            Tab::Start => div().flex().flex_col().gap(px(16.)).child(self.actions_tab(cx)).children(panel_view),
+            Tab::Saves => {
+                let cloud = (self.backups.is_some() && panel_view.is_some()).then(|| div().pt(px(6.)).child(heading(tr!("Cloud saves"))));
+                div().flex().flex_col().gap(px(10.)).children(self.backups.clone()).children(cloud).children(panel_view)
+            }
             _ => div().children(panel_view),
         };
         let mut body = div().flex().flex_col().gap(px(10.)).child(content);
@@ -458,8 +481,7 @@ impl Render for GameSettingsDialog {
             right = right.children(self.save_status(cx));
         }
         // The panel's tab: its changed settings back to the game defaults.
-        let changed_panel =
-            self.panel.as_ref().map(|(p, _)| p.clone()).filter(|p| self.tab.section().is_some() && p.read(cx).tab_changed());
+        let changed_panel = self.panel.as_ref().map(|(p, _)| p.clone()).filter(|p| self.has_lower() && p.read(cx).tab_changed());
         // While "Reset this tab" is asked, its question takes the buttons' place.
         let asking = changed_panel.as_ref().is_some_and(|p| p.read(cx).asking_reset());
         if let (Some(panel), true) = (changed_panel.clone(), asking) {
@@ -486,13 +508,14 @@ impl Render for GameSettingsDialog {
                 entity.update(cx, |this, cx| this.close(cx)).ok();
             }
         };
+        let details_only = self.details_only;
         let header = div()
             .flex()
             .flex_col()
             .gap(px(14.))
             .pb(px(10.))
             .child(self.drawer_header(header_close, cx))
-            .child(div().px(px(20.)).child(tab_bar));
+            .when(!details_only, |h| h.child(div().px(px(20.)).child(tab_bar)));
         let vw = f32::from(crate::ui::content_size(window).width);
         let main = drawer(
             DrawerProps { id: "collection-game-settings".into(), width: DRAWER_W.min(vw * 0.96) },
@@ -516,10 +539,3 @@ impl Render for GameSettingsDialog {
 
 /// Drawer width (px).
 const DRAWER_W: f32 = 580.;
-
-/// The game's settings have the sandbox on (a tiny read of its config).
-fn sandboxed(ctx: &DialogCtx, app_name: &str) -> bool {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
-    let settings = heronite_data::game_config::load_game(&ctx.data_paths, app_name, &home);
-    heronite_launch::sandbox::Sandbox::from_map(&settings).enabled
-}

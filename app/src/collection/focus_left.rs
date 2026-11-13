@@ -1,6 +1,6 @@
 //! Left column of the focus panel: the cover, Play (or the Epic progress),
-//! the status selector with favourite / settings, the user's star
-//! rating and a facts card (score, library, save backup, Linux). When the
+//! the status selector with favourite, the user's star rating, a facts card
+//! (score, library, Linux) and the Setup card (`setup_card.rs`). When the
 //! panel is narrow the same pieces sit in a row under the title.
 
 use std::time::SystemTime;
@@ -61,6 +61,7 @@ impl CollectionView {
             .children(self.left_off_card(&vm.key, cx))
             .child(self.rating_row(&vm.key, cx))
             .child(self.facts_card(vm, cx))
+            .children(self.setup_card(vm, vh, cx))
             .children(self.copies_card(&vm.key, cx));
 
         if lay.narrow {
@@ -193,21 +194,11 @@ impl CollectionView {
         if open {
             wrap = wrap.child(self.focus_status_menu(vm, vh, cx));
         }
-        div()
-            .flex()
-            .items_center()
-            .gap(px(6.))
-            .child(wrap)
-            .child(
-                round_button("focus-fav", if vm.favourite { Icon::Star } else { Icon::StarBorder }, 36., 0.72)
-                    .tooltip(tooltip(if vm.favourite { tr!("Remove from favourites") } else { tr!("Add to favourites") }))
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_favourite(cx))),
-            )
-            .child(
-                round_button("focus-settings", Icon::Settings, 36., 0.72)
-                    .tooltip(tooltip(tr!("Game settings")))
-                    .on_click(cx.listener(|this, _, window, cx| this.open_game_settings(window, cx))),
-            )
+        div().flex().items_center().gap(px(6.)).child(wrap).child(
+            round_button("focus-fav", if vm.favourite { Icon::Star } else { Icon::StarBorder }, 36., 0.72)
+                .tooltip(tooltip(if vm.favourite { tr!("Remove from favourites") } else { tr!("Add to favourites") }))
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_favourite(cx))),
+        )
     }
 
     /// The statuses under the pill, over a window-wide catcher that closes it.
@@ -381,24 +372,6 @@ impl CollectionView {
                 .on_click(cx.listener(move |this, _, _, cx| this.filter_by_store_of(&key, cx)))
                 .into_any_element(),
         );
-        if let Some(text) = self.mods_counts_text(&vm.key, cx).filter(|_| !crate::console::active()) {
-            let key = vm.key.clone();
-            rows.push(
-                clickable(fact_row(tr!("Mods"), div().child(text)), "focus-mods")
-                    .on_click(cx.listener(move |this, _, window, cx| this.open_mods(&key, window, cx)))
-                    .into_any_element(),
-            );
-        }
-        match &self.facts.backup {
-            Some(Backup::At(at)) => {
-                let (text, color) = backup_age(*at);
-                rows.push(self.backup_row(&vm.key, div().text_color(theme::readable(color)).child(text), cx));
-            }
-            Some(Backup::Never) => {
-                rows.push(self.backup_row(&vm.key, div().text_color(theme::ink_a(0.66)).child(tr!("Never")), cx));
-            }
-            Some(Backup::Off) | None => {}
-        }
         if let Some(linux) = self.facts.linux.as_ref().filter(|l| !l.is_empty()) {
             let mut value = linux_value(linux);
             if linux.steam_app_id.is_some() {
@@ -419,6 +392,30 @@ impl CollectionView {
             card = card.child(div().when(i + 1 < n, |d| d.border_b_1().border_color(theme::ink_a(0.08))).child(r));
         }
         card
+    }
+
+    /// The Setup card's last rows: the Mods manager and the last save backup.
+    pub(super) fn mods_and_backup_rows(&self, vm: &FocusVm, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let mut rows = Vec::new();
+        if let Some(text) = self.mods_counts_text(&vm.key, cx).filter(|_| !crate::console::active()) {
+            let key = vm.key.clone();
+            rows.push(
+                clickable(fact_row(tr!("Mods"), div().child(text)), "focus-mods")
+                    .on_click(cx.listener(move |this, _, window, cx| this.open_mods(&key, window, cx)))
+                    .into_any_element(),
+            );
+        }
+        match &self.facts.backup {
+            Some(Backup::At(at)) => {
+                let (text, color) = backup_age(*at);
+                rows.push(self.backup_row(&vm.key, div().text_color(theme::readable(color)).child(text), cx));
+            }
+            Some(Backup::Never) => {
+                rows.push(self.backup_row(&vm.key, div().text_color(theme::ink_a(0.66)).child(tr!("Never")), cx));
+            }
+            Some(Backup::Off) | None => {}
+        }
+        rows
     }
 
     /// "Save backup": clicking it backs the saves up now.
@@ -444,7 +441,7 @@ pub(super) fn fact_row(label: &'static str, value: Div) -> Div {
 
 /// A facts row that does something on click: pointer and a faint highlight
 /// that reaches a little past the text.
-fn clickable(row: Div, id: &'static str) -> Stateful<Div> {
+pub(super) fn clickable(row: Div, id: &'static str) -> Stateful<Div> {
     row.id(id).mx(px(-8.)).px(px(8.)).rounded(px(7.)).cursor_pointer().hover(|s| s.bg(theme::ink_a(0.06)))
 }
 

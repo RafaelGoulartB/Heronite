@@ -1,28 +1,29 @@
-//! "GPU" tab: which card draws the game, then what the cards of this
-//! computer offer (`heronite_launch::gpu`): the NVIDIA driver's features,
-//! the upscaler upgrades of GE-Proton and Proton-CachyOS, Mesa's switches,
-//! and what DirectX games are told about the card. Only the options of the
-//! card that draws the game show (a launch leaves the others out too, see
-//! `Gpu::for_card`).
+//! The graphics card's rows (`heronite_launch::gpu`): which card draws the
+//! game, then what the cards of this computer offer: the NVIDIA driver's
+//! features, the upscaler upgrades of GE-Proton and Proton-CachyOS, Mesa's
+//! switches, and what DirectX games are told about the card. Only the
+//! options of the card that draws the game show (a launch leaves the others
+//! out too, see `Gpu::for_card`).
 //!
-//! On Windows the tab has one row: the card Windows gives the game's program
-//! (`heronite_launch::gpu::preference`), written right before the game starts
-//! and put back after it.
+//! They are split by task ([`GpuPart`]): the card, the picture and the
+//! upscalers go to Graphics; frame generation, latency and the driver's
+//! tweaks to Performance. On Windows there is one row: the card Windows gives
+//! the game's program (`heronite_launch::gpu::preference`), written right
+//! before the game starts and put back after it.
 //!
 //! The rows are built once ([`SettingsPanel::gpu_rows`]) and drawn by the
-//! desktop tab here and by the console list (`console/gpu.rs`).
+//! desktop groups and by the console list (`console/gpu.rs`).
 
 use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 
 use gpui_kit::prelude::*;
-use gpui_kit::*;
 use heronite_i18n::tr;
 use heronite_launch::gpu::detect::{Card, Machine, ProtonFeatures};
 use heronite_launch::gpu::{self, DlssPreset, Gpu, Preference, Vendor, Vsync};
 use serde_json::{json, Value};
 
-use super::parts::{column, heading, help, rows, Rows};
+use super::parts::{help, Rows};
 use super::SettingsPanel;
 use crate::ui::fields::SelectOption;
 
@@ -31,9 +32,25 @@ static MACHINE: OnceLock<Arc<Machine>> = OnceLock::new();
 
 pub(super) type Pick = Rc<dyn Fn(&mut SettingsPanel, usize, &mut Context<SettingsPanel>)>;
 
-/// One row of the tab.
+/// Which rows of the card [`SettingsPanel::gpu_rows`] gives.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum GpuPart {
+    /// Graphics: the card that draws the game, and what the game is told about it.
+    Card,
+    /// Graphics: VSync.
+    Picture,
+    /// Graphics: DLSS, FSR 4, XeSS.
+    Upscalers,
+    /// Performance: Smooth Motion (frame generation).
+    Frames,
+    /// Performance: Reflex, Anti-Lag.
+    Latency,
+    /// Performance: the shader cache, threaded OpenGL.
+    Tweaks,
+}
+
+/// One row of a part.
 pub(super) enum GpuRow {
-    Header(&'static str),
     Toggle {
         key: &'static str,
         label: &'static str,
@@ -128,49 +145,99 @@ impl SettingsPanel {
         self.proton_features.as_ref().filter(|(bin, _)| *bin == self.wine_version().bin).map(|(_, f)| *f)
     }
 
-    /// The rows of the tab. `disabled`: a Steam game whose launch options
+    /// The rows of `part`. `disabled`: a Steam game whose launch options
     /// cannot change now.
-    pub(super) fn gpu_rows(&self, disabled: bool) -> Vec<GpuRow> {
+    pub(super) fn gpu_rows(&self, part: GpuPart, disabled: bool) -> Vec<GpuRow> {
         let Some(m) = self.machine.clone() else {
-            return vec![GpuRow::Info { id: "gpu-looking", label: tr!("Looking for graphics cards\u{2026}").into(), value: String::new() }];
+            return match part {
+                GpuPart::Card => {
+                    vec![GpuRow::Info { id: "gpu-looking", label: tr!("Looking for graphics cards\u{2026}").into(), value: String::new() }]
+                }
+                _ => Vec::new(),
+            };
         };
         let g = self.gpu_settings();
-        let mut v = vec![GpuRow::Header(tr!("Graphics card"))];
         if super::logic::windows_gpu() {
-            v.push(gpu_preference_row(&m, &g, disabled));
-            return v;
+            return match part {
+                GpuPart::Card => vec![gpu_preference_row(&m, &g, disabled)],
+                _ => Vec::new(),
+            };
         }
-        v.push(self.gpu_device_row(&m, &g, disabled));
         // No card found: every option shows, as every one applies.
         let target = gpu_target(&m, &g);
         let vendor = target.map(|c| c.vendor_id);
         let nvidia = vendor.is_none_or(|v| v == gpu::NVIDIA);
-        if nvidia {
-            v.extend(self.gpu_nvidia_rows(target, &m, &g, disabled));
+        let mesa = vendor.is_none_or(|v| v != gpu::NVIDIA);
+        let mut v = Vec::new();
+        match part {
+            GpuPart::Card => {
+                v.push(self.gpu_device_row(&m, &g, disabled));
+                if self.gpu_windows() {
+                    v.extend(self.gpu_seen_rows(&g, disabled));
+                }
+            }
+            GpuPart::Picture => {
+                let vsync_names = [tr!("The game's"), tr!("Always on"), tr!("Always off")];
+                v.push(GpuRow::Choice {
+                    id: "gpu-vsync",
+                    label: tr!("VSync"),
+                    desc: tr!("Off: more FPS and less lag, with tearing. NVIDIA's Vulkan follows the game").into(),
+                    options: vsync_names.iter().map(|n| (n.to_string(), None)).collect(),
+                    selected: Vsync::ALL.iter().position(|s| *s == g.vsync).unwrap_or(0),
+                    enabled: !disabled,
+                    pick: Rc::new(|this, i, cx| this.set(gpu::KEY_VSYNC, json!(Vsync::ALL[i].id()), cx)),
+                });
+            }
+            GpuPart::Upscalers if self.gpu_windows() => v.extend(self.gpu_upscaler_rows(vendor, &g, disabled)),
+            GpuPart::Upscalers => {}
+            GpuPart::Frames if nvidia => v.push(self.smooth_motion_row(target, &m, &g, disabled)),
+            GpuPart::Frames => {}
+            GpuPart::Latency => {
+                if nvidia && self.gpu_windows() {
+                    let has = self.gpu_proton().is_none_or(|f| f.reflex);
+                    v.push(GpuRow::Toggle {
+                        key: gpu::KEY_REFLEX,
+                        label: tr!("Reflex in Vulkan games"),
+                        desc: if has {
+                            tr!("Less input lag in Vulkan games with Reflex. DirectX games have it already").into()
+                        } else {
+                            tr!("Needs GE-Proton or Proton-CachyOS").into()
+                        },
+                        enabled: !disabled && (has || g.reflex),
+                    });
+                }
+                if mesa {
+                    v.push(GpuRow::Toggle {
+                        key: gpu::KEY_ANTI_LAG,
+                        label: tr!("Anti-Lag"),
+                        desc: if m.anti_lag {
+                            tr!("Less input lag, from Mesa's Anti-Lag layer").into()
+                        } else {
+                            tr!("Needs a Mesa with its Anti-Lag layer").into()
+                        },
+                        enabled: !disabled && (m.anti_lag || g.anti_lag),
+                    });
+                }
+            }
+            GpuPart::Tweaks => {
+                if nvidia {
+                    v.push(GpuRow::Toggle {
+                        key: gpu::KEY_SHADER_CACHE,
+                        label: tr!("Bigger shader cache"),
+                        desc: tr!("10 GB that is never trimmed: big games stop compiling shaders again").into(),
+                        enabled: !disabled,
+                    });
+                }
+                if mesa {
+                    v.push(GpuRow::Toggle {
+                        key: gpu::KEY_GLTHREAD,
+                        label: tr!("Threaded OpenGL"),
+                        desc: tr!("Faster OpenGL games, like Minecraft and older Source games").into(),
+                        enabled: !disabled,
+                    });
+                }
+            }
         }
-        if self.gpu_windows() {
-            v.extend(self.gpu_upscaler_rows(vendor, &g, disabled));
-        }
-        if vendor.is_none_or(|v| v != gpu::NVIDIA) {
-            v.push(GpuRow::Header(target.and_then(Card::vendor).map_or("Mesa", Vendor::name)));
-            v.push(GpuRow::Toggle {
-                key: gpu::KEY_ANTI_LAG,
-                label: tr!("Anti-Lag"),
-                desc: if m.anti_lag {
-                    tr!("Less input lag, from Mesa's Anti-Lag layer").into()
-                } else {
-                    tr!("Needs a Mesa with its Anti-Lag layer").into()
-                },
-                enabled: !disabled && (m.anti_lag || g.anti_lag),
-            });
-            v.push(GpuRow::Toggle {
-                key: gpu::KEY_GLTHREAD,
-                label: tr!("Threaded OpenGL"),
-                desc: tr!("Faster OpenGL games, like Minecraft and older Source games").into(),
-                enabled: !disabled,
-            });
-        }
-        v.extend(self.gpu_display_rows(&g, disabled));
         v
     }
 
@@ -228,9 +295,9 @@ impl SettingsPanel {
         }
     }
 
-    fn gpu_nvidia_rows(&self, card: Option<&Card>, m: &Machine, g: &Gpu, disabled: bool) -> Vec<GpuRow> {
-        let mut v = vec![GpuRow::Header("NVIDIA")];
-        let smooth_desc = if !m.smooth_motion {
+    /// NVIDIA's frame generation (RTX 40 and newer).
+    fn smooth_motion_row(&self, card: Option<&Card>, m: &Machine, g: &Gpu, disabled: bool) -> GpuRow {
+        let desc = if !m.smooth_motion {
             tr!("Needs NVIDIA driver 575 or newer").to_string()
         } else if card.and_then(|c| c.smooth_motion_capable()) == Some(false) {
             tr!("Needs a GeForce RTX 40 series card or newer").to_string()
@@ -239,32 +306,12 @@ impl SettingsPanel {
         } else {
             tr!("The driver generates frames between the game's: about twice the FPS. Vulkan and DirectX games").to_string()
         };
-        v.push(GpuRow::Toggle {
+        GpuRow::Toggle {
             key: gpu::KEY_SMOOTH_MOTION,
             label: tr!("Smooth Motion"),
-            desc: smooth_desc,
+            desc,
             enabled: !disabled && (m.smooth_motion || g.smooth_motion),
-        });
-        if self.gpu_windows() {
-            let has = self.gpu_proton().is_none_or(|f| f.reflex);
-            v.push(GpuRow::Toggle {
-                key: gpu::KEY_REFLEX,
-                label: tr!("Reflex in Vulkan games"),
-                desc: if has {
-                    tr!("Less input lag in Vulkan games with Reflex. DirectX games have it already").into()
-                } else {
-                    tr!("Needs GE-Proton or Proton-CachyOS").into()
-                },
-                enabled: !disabled && (has || g.reflex),
-            });
         }
-        v.push(GpuRow::Toggle {
-            key: gpu::KEY_SHADER_CACHE,
-            label: tr!("Bigger shader cache"),
-            desc: tr!("10 GB that is never trimmed: big games stop compiling shaders again").into(),
-            enabled: !disabled,
-        });
-        v
     }
 
     /// `vendor`: the maker of the card that draws the game (`None`: unknown).
@@ -274,7 +321,7 @@ impl SettingsPanel {
         let enabled = |on: bool| !disabled && (has || on);
         let needs = tr!("Needs GE-Proton or Proton-CachyOS");
         let desc = |text: &str| if has { text.to_string() } else { needs.to_string() };
-        let mut v = vec![GpuRow::Header(tr!("Upscalers"))];
+        let mut v = Vec::new();
         if vendor.is_none_or(|v| v == gpu::NVIDIA) {
             v.push(GpuRow::Toggle {
                 key: gpu::KEY_DLSS_UPGRADE,
@@ -331,21 +378,9 @@ impl SettingsPanel {
         v
     }
 
-    fn gpu_display_rows(&self, g: &Gpu, disabled: bool) -> Vec<GpuRow> {
-        let mut v = vec![GpuRow::Header(tr!("All cards"))];
-        let vsync_names = [tr!("The game's"), tr!("Always on"), tr!("Always off")];
-        v.push(GpuRow::Choice {
-            id: "gpu-vsync",
-            label: tr!("VSync"),
-            desc: tr!("Off: more FPS and less lag, with tearing. NVIDIA's Vulkan follows the game").into(),
-            options: vsync_names.iter().map(|n| (n.to_string(), None)).collect(),
-            selected: Vsync::ALL.iter().position(|s| *s == g.vsync).unwrap_or(0),
-            enabled: !disabled,
-            pick: Rc::new(|this, i, cx| this.set(gpu::KEY_VSYNC, json!(Vsync::ALL[i].id()), cx)),
-        });
-        if !self.gpu_windows() {
-            return v;
-        }
+    /// What DirectX games are told about the card (Wine / Proton only).
+    fn gpu_seen_rows(&self, g: &Gpu, disabled: bool) -> Vec<GpuRow> {
+        let mut v = Vec::new();
         let mut vendors: Vec<(String, Option<String>)> = vec![(tr!("The real one").into(), None)];
         vendors.extend(Vendor::ALL.iter().map(|x| (x.name().to_string(), None)));
         v.push(GpuRow::Choice {
@@ -384,34 +419,25 @@ impl SettingsPanel {
         v
     }
 
-    /// The desktop tab: a caption and a card per header.
-    pub(super) fn gpu_tab(&mut self, disabled: bool, cx: &mut Context<Self>) -> Div {
-        let mut col = column();
-        let mut card: Option<Rows> = None;
-        for r in self.gpu_rows(disabled) {
-            match r {
-                GpuRow::Header(text) => {
-                    if let Some(c) = card.take() {
-                        col = col.child(c.card());
-                    }
-                    col = col.child(heading(text));
-                    card = Some(rows());
-                }
-                row => {
-                    let c = card.take().unwrap_or_default();
-                    card = Some(self.gpu_desktop_row(c, row, cx));
-                }
-            }
+    /// The rows of `part` added to a desktop card (the rarely used ones
+    /// only while shown).
+    pub(super) fn gpu_card(&self, mut card: Rows, part: GpuPart, disabled: bool, cx: &mut Context<Self>) -> Rows {
+        for r in self.gpu_rows(part, disabled) {
+            card = self.gpu_desktop_row(card, r, cx);
         }
-        if let Some(c) = card {
-            col = col.child(c.card());
-        }
-        col
+        card
     }
 
     fn gpu_desktop_row(&self, c: Rows, row: GpuRow, cx: &mut Context<Self>) -> Rows {
+        let id = match &row {
+            GpuRow::Toggle { key, .. } => key,
+            GpuRow::Choice { id, .. } => id,
+            GpuRow::Info { id, .. } => id,
+        };
+        if !self.shows(id) {
+            return c;
+        }
         match row {
-            GpuRow::Header(_) => c,
             GpuRow::Toggle { key, label, desc, enabled } => c.child(self.toggle_row(key, key, false, label, Some(&desc), !enabled, cx)),
             GpuRow::Info { label, value, .. } => c.child(crate::ui::controls::row(label, None, help(&value))),
             GpuRow::Choice { id, label, desc, options, selected, enabled, pick } => {

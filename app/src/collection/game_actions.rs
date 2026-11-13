@@ -45,6 +45,8 @@ pub(super) enum GameAction {
     Favourite,
     OpenFolder,
     Settings,
+    /// "Edit details": the game's images, details and time played.
+    EditDetails,
     /// The Mods manager (installed PC games).
     Mods,
     /// The game settings on the ReShade section.
@@ -238,6 +240,13 @@ impl CollectionView {
                 ));
             }
         }
+        v.push(item(
+            A::EditDetails,
+            "edit-details",
+            tr!("Edit details\u{2026}"),
+            Icon::Edit,
+            "details name description notes tags images cover playtime detalhes nome descricao notas imagens capa",
+        ));
         // Emulated games have no mods; console mode builds no manager.
         if crate::services::mods::available()
             && game.installed
@@ -384,6 +393,12 @@ impl CollectionView {
             A::Settings => {
                 let (Some(ctx), Some(g)) = (self.dialog_ctx(), self.lib.as_ref().and_then(|l| l.get(key)).cloned()) else { return };
                 let tab = crate::dialogs::game_settings::Tab::settings_start(&g);
+                let view = cx.new(|cx| crate::dialogs::game_settings::GameSettingsDialog::new(ctx, g, tab, window, cx));
+                self.open_dialog(view, cx);
+            }
+            A::EditDetails => {
+                let (Some(ctx), Some(g)) = (self.dialog_ctx(), self.lib.as_ref().and_then(|l| l.get(key)).cloned()) else { return };
+                let tab = crate::dialogs::game_settings::Tab::Game;
                 let view = cx.new(|cx| crate::dialogs::game_settings::GameSettingsDialog::new(ctx, g, tab, window, cx));
                 self.open_dialog(view, cx);
             }

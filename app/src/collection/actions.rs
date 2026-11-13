@@ -30,11 +30,14 @@ impl CollectionView {
                 DialogEvent::Close => {
                     this.dialog = None;
                     this.dialog_sub = None;
+                    // The game settings may have changed what Setup says.
+                    this.load_setup(cx);
                 }
                 DialogEvent::Changed => this.reload(cx),
                 DialogEvent::ChangedAndClose => {
                     this.dialog = None;
                     this.dialog_sub = None;
+                    this.load_setup(cx);
                     this.reload(cx);
                 }
             }

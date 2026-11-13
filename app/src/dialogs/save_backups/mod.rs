@@ -139,6 +139,8 @@ pub struct SaveBackupsView {
     /// Console mode: the backup whose actions are listed.
     console_backup: Option<BackupKey>,
     console_list: crate::console::list::ListNav,
+    /// Console mode: the rows have the focus.
+    console_active: bool,
     /// Console mode: the on-screen keyboard for the name.
     layer: crate::console::Layer,
 }
@@ -224,6 +226,7 @@ impl SaveBackupsView {
             confirm_delete: None,
             console_backup: None,
             console_list: Default::default(),
+            console_active: true,
             layer: Default::default(),
         }
     }

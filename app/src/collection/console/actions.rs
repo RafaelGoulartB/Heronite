@@ -39,8 +39,20 @@ impl CollectionView {
     }
 
     pub(super) fn console_game_settings(&mut self, key: &SharedString, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(g) = self.lib.as_ref().and_then(|l| l.get(key)) else { return };
+        let tab = crate::dialogs::game_settings::Tab::settings_start(g);
+        self.console_game_tab(key, tab, window, cx);
+    }
+
+    /// The game settings on `tab` (`Tab::Game`: "Edit details").
+    pub(super) fn console_game_tab(
+        &mut self,
+        key: &SharedString,
+        tab: crate::dialogs::game_settings::Tab,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let (Some(ctx), Some(g)) = (self.dialog_ctx(), self.lib.as_ref().and_then(|l| l.get(key)).cloned()) else { return };
-        let tab = crate::dialogs::game_settings::Tab::settings_start(&g);
         let view = cx.new(|cx| crate::dialogs::game_settings::GameSettingsDialog::new(ctx, g, tab, window, cx));
         self.open_dialog(view, cx);
     }

@@ -15,6 +15,7 @@ use serde_json::{json, Value};
 
 use super::advanced::{PairTable, ENV, WRAPPERS};
 use super::gamescope::{UPSCALE_METHODS, WINDOW_TYPES};
+use super::gpu::GpuPart;
 use super::logic::{self, launcher_args_error, pairs};
 use super::saves::{GOG_MODES, MODES};
 use super::{GlobalView, Section, SettingsPanel};
@@ -57,8 +58,8 @@ pub(super) enum Act {
 }
 
 pub(super) struct Item {
-    row: Row,
-    act: Act,
+    pub(super) row: Row,
+    pub(super) act: Act,
 }
 
 pub(super) fn item(row: Row, act: Act) -> Item {
@@ -121,17 +122,18 @@ impl SettingsPanel {
         if self.winetricks_open() {
             return self.c_winetricks(cx);
         }
-        let mut v = match self.section {
+        let v = match self.section {
             Section::Compatibility if self.is_steam() => self.c_proton(),
-            Section::Performance if self.is_steam() => self.c_steam_other(cx),
-            Section::Launch if self.is_steam() => self.c_steam_advanced(cx),
-            Section::Gpu if self.is_steam() => self.c_steam_gpu(),
+            // A native game's Compatibility is its sandbox.
+            Section::Compatibility if self.native() => self.c_sandbox(),
             Section::Compatibility => self.c_wine(cx),
-            Section::Performance => self.c_other(cx),
-            Section::Gpu => self.c_gpu(false),
-            Section::Launch => self.c_advanced(cx),
+            Section::Graphics if self.is_steam() => self.c_steam_graphics(cx),
+            Section::Graphics => self.c_graphics(false, cx),
+            Section::Performance if self.is_steam() => self.c_steam_other(cx),
+            Section::Performance => self.c_perf(false, cx),
+            Section::Start if self.is_steam() => self.c_steam_advanced(cx),
+            Section::Start => self.c_advanced(cx),
             Section::Saves => self.c_saves(cx),
-            Section::Sandbox => self.c_sandbox(),
             Section::General => match self.global_view {
                 GlobalView::General => self.c_general(cx),
                 GlobalView::Downloads => self.c_downloads(cx),
@@ -144,6 +146,7 @@ impl SettingsPanel {
                 )],
             },
         };
+        let mut v = self.console_fold(v);
         if let Some(n) = &self.notice {
             v.push(Self::c_info("notice", if n.error { tr!("Problem") } else { tr!("Done") }, n.text.clone()));
         }
@@ -249,13 +252,6 @@ impl SettingsPanel {
                 !dxvk_on || busy,
             ));
         }
-        v.push(self.c_toggle(
-            "autoInstallDxvkNvapi",
-            false,
-            "DXVK-NVAPI",
-            Some(tr!("DLSS and other NVIDIA features (needs DXVK)")),
-            !dxvk_on || busy,
-        ));
         if self.is_game() && logic::offers_system_libs(&wine) {
             v.push(self.c_toggle(
                 "preferSystemLibs",
@@ -276,10 +272,20 @@ impl SettingsPanel {
             Some(tr!("Runs the game on Wayland instead of X11; needs a Wine build that has it")),
             false,
         ));
-        if self.flag("enableWineWayland", false) {
-            v.push(self.c_toggle("enableHDR", false, "HDR", Some(tr!("The screen and the game must support it")), false));
-        }
         v.push(self.c_toggle("enableWoW64", false, "WoW64", Some(tr!("32-bit games on 64-bit Wine; can break older games")), false));
+        v.push(Self::c_header("Proton"));
+        if self.has_sdl_row() {
+            v.push(self.c_sdl(false));
+        }
+        if self.is_game() && wine.kind == "proton" {
+            v.push(self.c_toggle(
+                "disableUMU",
+                false,
+                tr!("Disable umu"),
+                Some(tr!("Runs Proton directly, without umu and its game fixes")),
+                false,
+            ));
+        }
         if self.is_game() {
             v.push(Self::c_header(tr!("Tools")));
             let idle = self.tool_busy.is_none();
@@ -303,6 +309,10 @@ impl SettingsPanel {
             let eac = note(self.flag("eacRuntime", false), self.runtimes.1);
             v.push(self.c_toggle("battlEyeRuntime", false, "BattlEye", be, false));
             v.push(self.c_toggle("eacRuntime", false, "Easy Anti-Cheat", eac, false));
+        }
+        if self.facts().is_some_and(|f| f.sandbox) {
+            v.push(Self::c_header(tr!("Sandbox")));
+            v.extend(self.c_sandbox());
         }
         v
     }
@@ -350,28 +360,67 @@ impl SettingsPanel {
         v
     }
 
-    fn c_other(&self, cx: &App) -> Vec<Item> {
-        let native = self.native();
+    /// The Performance group. `steam`: a Steam game, whose rows follow the
+    /// launch options' lock.
+    pub(super) fn c_perf(&self, steam: bool, cx: &App) -> Vec<Item> {
+        let off = steam && !self.steam_fields_editable();
         let mut v = vec![Self::c_header(tr!("On screen"))];
-        if !native {
-            v.push(self.c_toggle("showFps", false, tr!("FPS counter"), Some(tr!("A small counter for DirectX 9 to 11 games")), false));
+        if !self.native() {
+            v.push(self.c_toggle("showFps", false, tr!("FPS counter"), Some(tr!("A small counter for DirectX 9 to 11 games")), off));
         }
         v.push(self.c_toggle(
             "showMangohud",
             false,
             "MangoHud",
             Some(tr!("FPS, frame times, temperatures and load (needs MangoHud)")),
-            false,
+            off,
         ));
         v.extend(self.c_replay(cx));
-        v.extend(self.c_fps(false));
-        v.extend(self.c_lsfg(false));
-        v.push(Self::c_header(tr!("Image")));
-        if !native {
+        v.extend(self.c_fps(steam));
+        v.extend(self.c_lsfg(steam));
+        v.extend(self.c_gpu(GpuPart::Frames, off));
+        v.push(Self::c_header(tr!("Latency")));
+        v.extend(self.c_gpu(GpuPart::Latency, off));
+        v.extend(self.c_system(steam));
+        v.extend(self.c_gpu(GpuPart::Tweaks, off));
+        v
+    }
+
+    /// The Graphics group (see `graphics.rs`). `steam`: a Steam game.
+    pub(super) fn c_graphics(&self, steam: bool, cx: &App) -> Vec<Item> {
+        let off = steam && !self.steam_fields_editable();
+        let reshade_only = self.facts().is_some_and(|f| logic::reshade_only(f.run_kind));
+        let mut v = vec![Self::c_header(tr!("Graphics card"))];
+        v.extend(self.c_gpu(GpuPart::Card, off));
+        v.push(Self::c_header(tr!("Picture")));
+        if self.through_wine() {
+            let wayland = self.flag("enableWineWayland", false);
+            let desc =
+                if wayland { tr!("The screen and the game must support it") } else { tr!("Needs the Wayland driver (Compatibility)") };
+            v.push(self.c_toggle("enableHDR", false, "HDR", Some(desc), off || (!wayland && !self.flag("enableHDR", false))));
+        }
+        v.extend(self.c_gpu(GpuPart::Picture, off));
+        v.push(Self::c_header(tr!("Upscaling")));
+        if steam {
+            v.push(self.c_toggle(heronite_steam::options::KEY_NVAPI, false, "NVAPI", Some(tr!("DLSS and other NVIDIA features")), off));
+        } else if self.through_wine() && self.wine_version().kind != "crossover" {
+            let busy = self.tool_toggle.is_some();
+            v.push(self.c_toggle(
+                "autoInstallDxvkNvapi",
+                false,
+                "DXVK-NVAPI",
+                Some(tr!("DLSS and other NVIDIA features (needs DXVK)")),
+                !self.flag("autoInstallDxvk", false) || busy,
+            ));
+        }
+        v.extend(self.c_gpu(GpuPart::Upscalers, off));
+        if !steam && self.through_wine() && !self.is_client() {
             v.extend(self.c_fsr());
         }
-        v.extend(self.c_gamescope(cx));
-        v.extend(self.c_system(false));
+        if !reshade_only && !self.is_client() && !off {
+            v.push(Self::c_header("gamescope"));
+            v.extend(self.c_gamescope(cx));
+        }
         v
     }
 
@@ -520,7 +569,7 @@ impl SettingsPanel {
             it.row = it.row.desc(tr!("Like \u{201c}fr\u{201d} or \u{201c}pt-BR\u{201d}; empty uses the app's language"));
             v.push(it);
         }
-        v.push(Self::c_header(tr!("Launch")));
+        v.push(Self::c_header(tr!("Starting")));
         if game {
             let err = launcher_args_error(&self.input_text("launcherArgs", cx));
             let mut it = self.c_text("launcherArgs", tr!("Game arguments"), cx);
@@ -543,10 +592,6 @@ impl SettingsPanel {
         }
         v.extend(self.c_pairs(ENV));
         v.extend(self.c_preview());
-        if game && !self.native() && self.wine_version().kind == "proton" {
-            v.push(Self::c_header(tr!("Legacy (mostly deprecated)")));
-            v.push(self.c_toggle("disableUMU", false, tr!("Disable umu"), None, false));
-        }
         if self.native() && wrappers {
             let current = match self.settings.get("steamRuntime") {
                 Some(Value::String(s)) if !s.is_empty() => s.clone(),

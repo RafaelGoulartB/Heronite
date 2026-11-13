@@ -94,7 +94,7 @@ fn menu_place(action: &GameAction) -> (usize, u8) {
         A::Hide => (1, 2),
         A::UngroupCopies => (1, 3),
 
-        A::Settings => (2, 0),
+        A::Settings | A::EditDetails => (2, 0),
         A::EditGame => (2, 1),
         A::Metadata => (2, 2),
         A::OpenFolder => (2, 3),
