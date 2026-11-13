@@ -17,6 +17,7 @@ pub struct FakeSpawner {
 struct FakeState {
     spawned: Vec<Command>,
     uris: Vec<String>,
+    steam_uris: Vec<String>,
     patterns: Vec<String>,
     handles: Vec<Arc<Mutex<FakeHandleState>>>,
     fail_spawn: Option<String>,
@@ -78,6 +79,10 @@ impl FakeSpawner {
     pub fn uris(&self) -> Vec<String> {
         self.state.lock().unwrap().uris.clone()
     }
+    /// The URIs handed to the Steam client directly ([`Spawner::open_with_steam`]).
+    pub fn steam_uris(&self) -> Vec<String> {
+        self.state.lock().unwrap().steam_uris.clone()
+    }
     pub fn patterns(&self) -> Vec<String> {
         self.state.lock().unwrap().patterns.clone()
     }
@@ -117,6 +122,10 @@ impl Spawner for FakeSpawner {
             return Err(io::Error::new(io::ErrorKind::NotFound, msg));
         }
         s.uris.push(uri.to_string());
+        Ok(())
+    }
+    fn open_with_steam(&self, uri: &str, _asked_at: std::time::Instant) -> io::Result<()> {
+        self.state.lock().unwrap().steam_uris.push(uri.to_string());
         Ok(())
     }
     fn kill_pattern(&self, pattern: &str, _since: u64) {

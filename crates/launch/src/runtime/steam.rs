@@ -16,7 +16,7 @@ use super::state::{Control, Shared};
 use super::{LaunchEvent, LaunchRequest};
 use crate::log_writer::GameLog;
 use crate::plan::SteamExtras;
-use crate::playtime_watch::{wait_for_steam_session, SteamWaitOutcome};
+use crate::playtime_watch::{wait_for_steam_session, LogMarks, SteamWaitOutcome};
 use crate::prepare::Notice;
 use crate::procs::processes_matching;
 use crate::record;
@@ -66,6 +66,9 @@ pub(super) fn run_steam(
     });
     // Steam closes after the game only when this launch is what opened it.
     let opened_steam = !shared.steam.client_running(&*shared.procs);
+    // What Steam logs from here on tells whether it got the URI.
+    let marks = LogMarks::capture(&shared.steam.log_files());
+    let sent_at = Instant::now();
     if let Err(e) = shared.spawner.open_uri(uri) {
         return fail(
             shared,
@@ -74,6 +77,12 @@ pub(super) fn run_steam(
             Notice::warn(format!("could not open {uri}: {e}"), tr!("could not open {uri}: {error}", uri, error = e)),
         );
     }
+    // A Steam this launch starts may update and sign in first.
+    let mut cfg = shared.cfg.steam.clone();
+    if opened_steam {
+        cfg.start_timeout += cfg.cold_start_grace;
+    }
+    let mut checked_delivery = false;
     let locator = shared.steam.clone();
     let mut announced: Option<u32> = None;
     // Started once Steam's logs show the game; their delays count from then.
@@ -82,7 +91,7 @@ pub(super) fn run_steam(
         app_id,
         &*shared.procs,
         &move || locator.log_files(),
-        &shared.cfg.steam,
+        &cfg,
         &control.abort,
         &control.wake,
         &control.steam_pids,
@@ -106,6 +115,18 @@ pub(super) fn run_steam(
             }
         },
         &mut || {
+            // Windows has no other way to ask Steam than the one that was used.
+            if cfg!(unix) && !checked_delivery && sent_at.elapsed() >= shared.cfg.steam.delivery_check {
+                checked_delivery = true;
+                if !steam_got_uri(shared, &marks, uri, opened_steam) {
+                    log.warning(&format!("Steam did not get {uri}; asking the Steam client directly"));
+                    if let Err(e) = shared.spawner.open_with_steam(uri, sent_at) {
+                        log.warning(&format!("could not ask the Steam client to open {uri}: {e}"));
+                    }
+                }
+            }
+        },
+        &mut || {
             if let Some(c) = companions.borrow_mut().as_mut() {
                 c.start_due(shared, &*probe, log, &status);
             }
@@ -114,7 +135,7 @@ pub(super) fn run_steam(
     let mut companions = companions.into_inner();
     match outcome {
         SteamWaitOutcome::NotStarted => {
-            let seconds = shared.cfg.steam.start_timeout.as_secs();
+            let seconds = cfg.start_timeout.as_secs();
             let title = &req.title;
             let notice = Notice::warn(
                 format!("Steam did not start {title} within {seconds}s"),
@@ -144,6 +165,18 @@ pub(super) fn run_steam(
             }
         }
     }
+}
+
+/// Whether Steam got `uri` (some time after it was sent). A running Steam
+/// logs every URL it executes; a Steam this launch opened gets the URI on its
+/// command line, so it got it once its client runs. Without any Steam log
+/// there is nothing to tell, so it counts as received.
+fn steam_got_uri(shared: &Shared, marks: &LogMarks, uri: &str, opened_steam: bool) -> bool {
+    if opened_steam {
+        return shared.steam.client_running(&*shared.procs);
+    }
+    let files = shared.steam.log_files();
+    files.is_empty() || marks.steam_received(&files, uri)
 }
 
 /// Whether the game is gone after its tracking stopped: Stop in the app ends
