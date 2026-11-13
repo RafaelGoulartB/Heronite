@@ -50,7 +50,7 @@ pub(super) fn rest<T: DeserializeOwned>(api_key: &str, path: &str) -> Result<T, 
 /// Nexus still sends them beside the new ones, so each is its own field.
 #[derive(Debug, Deserialize)]
 pub(super) struct RawUser {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     user_id: u64,
     #[serde(default, deserialize_with = "null_default")]
     name: String,
