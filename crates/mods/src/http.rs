@@ -116,9 +116,32 @@ fn is_nexus_host(host: &str) -> bool {
     host.split(':').next().is_some_and(|h| h == "nexusmods.com" || h.ends_with(".nexusmods.com"))
 }
 
+/// `url` with what a URI cannot hold raw (spaces, non-ASCII, `"<>[]{}|\^`
+/// and a backtick) percent-encoded after the host. Nexus Mods' download links
+/// carry the file's name as it was uploaded (`.../Some Mod-266-4-2.7z?md5=..`),
+/// which the HTTP client refuses as it is. What is already escaped stays.
+pub(crate) fn escape_url(url: &str) -> std::borrow::Cow<'_, str> {
+    let start = url.find("://").map_or(0, |i| i + 3);
+    let path_at = url[start..].find(['/', '?', '#']).map_or(url.len(), |i| start + i);
+    let raw = |b: u8| b.is_ascii_graphic() && !matches!(b, b'"' | b'<' | b'>' | b'[' | b']' | b'{' | b'}' | b'|' | b'\\' | b'^' | b'`');
+    if url.as_bytes()[path_at..].iter().all(|b| raw(*b)) {
+        return std::borrow::Cow::Borrowed(url);
+    }
+    let mut out = String::with_capacity(url.len() + 16);
+    out.push_str(&url[..path_at]);
+    for b in url[path_at..].bytes() {
+        if raw(b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    std::borrow::Cow::Owned(out)
+}
+
 /// Opens `url` with a streaming body and the status checked; for downloads.
 pub fn get_stream(url: &str, headers: &[(&str, &str)]) -> Result<ureq::http::Response<ureq::Body>, HttpError> {
-    let mut req = agent().get(url);
+    let mut req = agent().get(escape_url(url).as_ref());
     for (k, v) in headers {
         req = req.header(*k, *v);
     }
@@ -227,6 +250,23 @@ mod tests {
     fn components_cannot_escape() {
         assert_eq!(encode("skyrimspecialedition"), "skyrimspecialedition");
         assert_eq!(encode("a/../b?c d"), "a%2F..%2Fb%3Fc%20d");
+    }
+
+    #[test]
+    fn download_links_with_raw_names_are_escaped_after_the_host() {
+        let nexus = "https://cf-files.nexusmods.com/cdn/1704/266/Unofficial Skyrim Patch-266-4-2-5a.7z?md5=a1&expires=17&user_id=9";
+        let escaped = escape_url(nexus);
+        assert_eq!(
+            escaped,
+            "https://cf-files.nexusmods.com/cdn/1704/266/Unofficial%20Skyrim%20Patch-266-4-2-5a.7z?md5=a1&expires=17&user_id=9"
+        );
+        assert_eq!(escape_url("https://h/[Mod] Café|v1.zip"), "https://h/%5BMod%5D%20Caf%C3%A9%7Cv1.zip");
+        assert!(matches!(escape_url("https://h/a%20b.zip?x=1"), std::borrow::Cow::Borrowed(_)), "already escaped");
+        assert_eq!(escape_url("https://h"), "https://h");
+        for url in [nexus, "https://h/[Mod] Café|v1.zip"] {
+            assert!(ureq::http::Uri::try_from(url).is_err(), "refused raw: {url}");
+            assert!(ureq::http::Uri::try_from(escape_url(url).as_ref()).is_ok(), "taken escaped: {url}");
+        }
     }
 
     #[test]
