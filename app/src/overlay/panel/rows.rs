@@ -11,10 +11,9 @@ use crate::console::list::{Outcome, Row, Value};
 use crate::icons::Icon;
 use crate::overlay::{LiveChange, OverlayService};
 
-/// The MangoHud card of Home: "Show MangoHud", then the FPS limit under it
-/// (`OverlayPanel::render_body` draws them in one card).
-pub(super) const MANGOHUD: &str = "mangohud";
-pub(super) const FPS: &str = "fps";
+/// Home's "Show MangoHud" row and the FPS limit after it.
+const MANGOHUD: &str = "mangohud";
+const FPS: &str = "fps";
 /// Home's "Capture" row: one round button per [`Capture`], ◀ ▶ choose one
 /// and A runs it (`OverlayPanel::render_capture` draws it).
 pub(super) const CAPTURES: &str = "captures";
