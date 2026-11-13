@@ -156,17 +156,36 @@ fn sorted_children(dir: &Path) -> Vec<String> {
     v
 }
 
-/// `getSteamLibraries`: the system library plus every `path` in the default
-/// Steam's `libraryfolders.vdf` (only existing folders).
+/// `getSteamLibraries`: the system library plus every `path` in the
+/// `libraryfolders.vdf` of the default Steam, then of the other Steam
+/// installs in the home folder (native, Flatpak, Snap): the default one can
+/// be a stale install while Steam runs from another, whose extra libraries
+/// (a second drive) only its own list names. Existing folders, each once.
 pub fn steam_libraries(cfg: &WineConfig, env: &DetectEnv) -> Vec<String> {
     if !env.steam {
         return Vec::new();
     }
-    let system: Vec<String> = env.system_steam.iter().map(|p| p.to_string_lossy().into_owned()).collect();
-    let vdf_file = Path::new(&cfg.default_steam_path).join("steamapps/libraryfolders.vdf");
-    let Ok(text) = fs::read_to_string(&vdf_file) else { return system };
-    let Some(paths) = vdf::library_paths(&text) else { return system };
-    system.into_iter().chain(paths).filter(|p| Path::new(p).exists()).collect()
+    let system = env.system_steam.iter().map(|p| p.to_string_lossy().into_owned());
+    let installs = std::iter::once(PathBuf::from(&cfg.default_steam_path)).chain(
+        [
+            ".steam/steam",
+            ".local/share/Steam",
+            ".var/app/com.valvesoftware.Steam/.local/share/Steam",
+            "snap/steam/common/.local/share/Steam",
+        ]
+        .iter()
+        .map(|rel| env.home.join(rel))
+        .filter(|p| p.join("config").is_dir() || p.join("steam.sh").is_file()),
+    );
+    let listed = installs.flat_map(|install| {
+        fs::read_to_string(install.join("steamapps/libraryfolders.vdf")).ok().and_then(|text| vdf::library_paths(&text)).unwrap_or_default()
+    });
+    let mut seen = HashSet::new();
+    system
+        .chain(listed)
+        .filter(|p| Path::new(p).exists())
+        .filter(|p| seen.insert(fs::canonicalize(p).unwrap_or_else(|_| PathBuf::from(p))))
+        .collect()
 }
 
 /// `getDefaultWine`: `wine` on `PATH` and its `--version`.
@@ -269,6 +288,44 @@ mod tests {
         cfg.show_valve_proton = true;
         let list = list_installations_with(&data_paths, &cfg, &env(&home));
         assert!(list.iter().any(|w| w.name == "Proton 9.0"));
+    }
+
+    /// Issue #318: the default Steam folder is a stale install while Steam
+    /// runs from its Snap, whose list names a library on a second drive.
+    #[cfg(unix)]
+    #[test]
+    fn builds_in_the_libraries_of_every_steam_install_are_found() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let stale = home.join(".steam/steam");
+        let snap = home.join("snap/steam/common/.local/share/Steam");
+        let hdd = tmp.path().join("media/HDD/SteamLibrary");
+        let leftover = home.join(".var/app/com.valvesoftware.Steam/.local/share/Steam");
+        let old_drive = tmp.path().join("old/SteamLibrary");
+        let list = |paths: &[&Path]| {
+            let entries: String =
+                paths.iter().enumerate().map(|(i, p)| format!("\"{i}\"\n{{\n\"path\"\t\"{}\"\n}}\n", p.display())).collect();
+            format!("\"libraryfolders\"\n{{\n{entries}}}\n")
+        };
+        for (install, libs) in [(&stale, vec![stale.as_path()]), (&snap, vec![snap.as_path(), hdd.as_path()])] {
+            fs::create_dir_all(install.join("config")).unwrap();
+            fs::create_dir_all(install.join("steamapps")).unwrap();
+            fs::write(install.join("steamapps/libraryfolders.vdf"), list(&libs)).unwrap();
+        }
+        // Not a Steam install (no `config`): its old list is not read.
+        fs::create_dir_all(leftover.join("steamapps")).unwrap();
+        fs::write(leftover.join("steamapps/libraryfolders.vdf"), list(&[old_drive.as_path()])).unwrap();
+        touch(&snap.join("compatibilitytools.d/GE-Proton10-1/proton"));
+        touch(&hdd.join("steamapps/common/Proton 9.0/proton"));
+        touch(&old_drive.join("steamapps/common/Proton 8.0/proton"));
+
+        let cfg = WineConfig { default_steam_path: stale.to_string_lossy().into_owned(), show_valve_proton: true, ..Default::default() };
+        let libs = steam_libraries(&cfg, &env(&home));
+        let expected: Vec<String> = [&stale, &snap, &hdd].iter().map(|p| p.to_string_lossy().into_owned()).collect();
+        assert_eq!(libs, expected);
+        let data_paths = DataPaths::at(tmp.path().join("heronite"));
+        let names: Vec<_> = list_installations_with(&data_paths, &cfg, &env(&home)).into_iter().map(|w| w.name).collect();
+        assert_eq!(names, ["GE-Proton10-1", "Proton 9.0"]);
     }
 
     #[test]
