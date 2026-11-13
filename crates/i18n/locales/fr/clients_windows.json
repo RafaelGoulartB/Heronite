@@ -1,0 +1,16 @@
+{
+  "{client} is not installed on this PC. Set it up in Stores → {client}.": "{client} n’est pas installé sur ce PC. Installez-le dans Boutiques → {client}.",
+  "{client} was not installed: the administrator prompt was declined.": "{client} n’a pas été installé : la demande d’autorisation administrateur a été refusée.",
+  "The installer of {client} closed before {client} was installed.": "L’installateur de {client} s’est fermé avant la fin de l’installation de {client}.",
+  "The folder of this game was not found. Refresh the games of {client} in Stores → {client}.": "Le dossier de ce jeu est introuvable. Actualisez les jeux de {client} dans Boutiques → {client}.",
+  "Heronite downloads the official installer of {client} and runs it. Windows may ask you to allow it.": "Heronite télécharge et exécute l’installateur officiel de {client}. Windows peut vous demander de l’autoriser.",
+  "Installed in": "Installé dans",
+  "You sign in, install and update games in {client}; Heronite starts them through it and counts the play time for the game, not for {client}.": "Connectez-vous, installez et mettez à jour les jeux dans {client} ; Heronite les démarre via ce client et comptabilise le temps de jeu pour le jeu, pas pour {client}.",
+  "Downloads the official installer and runs it.": "Télécharge et exécute l’installateur officiel.",
+  "Download its installer and install it": "Télécharger son installateur et l’installer",
+  "Closes it and its helper programs": "Le ferme ainsi que ses programmes auxiliaires",
+  "Blizzard games": "Jeux Blizzard",
+  "EA games": "Jeux EA",
+  "Ubisoft games": "Jeux Ubisoft",
+  "Rockstar games": "Jeux Rockstar"
+}

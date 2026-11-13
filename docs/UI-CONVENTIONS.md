@@ -1297,8 +1297,9 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   `n_!` for constant tables. Never build a sentence from fragments
   (word order differs); never translate ids, keys or values that are saved or
   parsed. Add the Portuguese to `crates/i18n/locales/pt-BR/<area>.json`, the
-  Spanish to `crates/i18n/locales/es/<area>.json` and the German to
-  `crates/i18n/locales/de/<area>.json`;
+  Spanish to `crates/i18n/locales/es/<area>.json`, the German to
+  `crates/i18n/locales/de/<area>.json` and the French (`vous`) to
+  `crates/i18n/locales/fr/<area>.json`;
   `cargo test -p heronite-i18n` fails on a missing or unused key in any.
   Community terms stay in English in every language (Wine, Proton, DXVK,
   shaders, frame generation, overlay, runner, launcher, preset, backlog,

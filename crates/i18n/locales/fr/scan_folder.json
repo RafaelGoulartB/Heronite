@@ -1,0 +1,21 @@
+{
+  "A game with this name is in your Collection": "Un jeu de ce nom est dans votre Collection",
+  "Add from folder": "Ajouter depuis un dossier",
+  "Add games from a folder": "Ajouter des jeux depuis un dossier",
+  "Add games from a folder…": "Ajouter des jeux depuis un dossier…",
+  "Choose the folder your games are in. Heronite looks for the programs that start them, and you choose the games to add.": "Choisissez le dossier contenant vos jeux. Heronite recherche les programmes qui les démarrent, puis vous choisissez les jeux à ajouter.",
+  "Could not add the games: {error}": "Impossible d’ajouter les jeux : {error}",
+  "Find many games at once": "Trouver plusieurs jeux à la fois",
+  "Find the games in a folder and add them at once": "Trouver les jeux dans un dossier et les ajouter en une fois",
+  "Games are found by the programs that start them (.exe). Try the folder of one game, or the one that holds them.": "Les jeux sont détectés grâce aux programmes qui les démarrent (.exe). Essayez le dossier d’un jeu ou celui qui les contient tous.",
+  "Games are found by the programs that start them: Windows programs (.exe), AppImages, start scripts and Linux programs. Try the folder of one game, or the one that holds them.": "Les jeux sont détectés grâce aux programmes qui les démarrent : programmes Windows (.exe), AppImages, scripts de démarrage et programmes Linux. Essayez le dossier d’un jeu ou celui qui les contient tous.",
+  "Games folder": "Dossier des jeux",
+  "Give each Windows game its own Wine prefix": "Attribuer un préfixe Wine dédié à chaque jeu Windows",
+  "Looking for games…": "Recherche de jeux…",
+  "No games were found in this folder.": "Aucun jeu trouvé dans ce dossier.",
+  "Scan again": "Analyser à nouveau",
+  "The folder your games are in": "Le dossier contenant vos jeux",
+  "This folder does not exist.": "Ce dossier n’existe pas.",
+  "This folder is very big: only part of it was searched.": "Ce dossier est très volumineux : seule une partie a été analysée.",
+  "{n} already in Collection": "{n} déjà dans la Collection"
+}

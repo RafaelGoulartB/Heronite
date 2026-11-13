@@ -1,0 +1,19 @@
+{
+  "An update of Heronite is using {path}": "Une mise à jour d’Heronite utilise {path}",
+  "Could not move {path} to the Recycle Bin: {error}": "Impossible de déplacer {path} dans la Corbeille : {error}",
+  "Deleted. Heronite downloads them again when needed.": "Supprimés. Heronite les téléchargera à nouveau si nécessaire.",
+  "Disk space of games, store tools, caches": "Espace disque des jeux, outils des boutiques et caches",
+  "GOG redistributables": "Composants redistribuables GOG",
+  "Heronite updates": "Mises à jour d’Heronite",
+  "Leftover folders go to the Recycle Bin, where they can be restored; the rest is deleted.": "Les dossiers résiduels sont placés dans la Corbeille, d’où ils peuvent être restaurés ; le reste est supprimé.",
+  "Move to the Recycle Bin": "Déplacer dans la Corbeille",
+  "No game points to these folders any more. They go to the Recycle Bin, where they can be restored.": "Plus aucun jeu n’utilise ces dossiers. Ils sont placés dans la Corbeille, d’où ils peuvent être restaurés.",
+  "Old downloads": "Anciens téléchargements",
+  "Press A again to move it to the Recycle Bin": "Appuyez à nouveau sur A pour déplacer dans la Corbeille",
+  "Store tools": "Outils des boutiques",
+  "To the Recycle Bin": "Vers la Corbeille",
+  "Unfinished download of {name}": "Téléchargement inachevé de {name}",
+  "{freed} freed, {trashed} moved to the Recycle Bin": "{freed} libérés, {trashed} déplacés dans la Corbeille",
+  "{path} is on a removable drive, which has no Recycle Bin": "{path} se trouve sur un lecteur amovible, qui n’a pas de Corbeille",
+  "{size} moved to the Recycle Bin": "{size} déplacés dans la Corbeille"
+}

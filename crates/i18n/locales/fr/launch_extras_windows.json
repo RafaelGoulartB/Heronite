@@ -1,0 +1,10 @@
+{
+  "A program, or a .bat, .cmd or .ps1 script": "Un programme ou un script .bat, .cmd ou .ps1",
+  "Adds its variables and arguments to this game": "Ajoute ses variables et arguments à ce jeu",
+  "Adds its variables and arguments to this game, without duplicates.": "Ajoute ses variables et arguments à ce jeu, sans doublons.",
+  "Nothing to save: add environment variables or game arguments first.": "Rien à enregistrer : ajoutez d’abord des variables d’environnement ou des arguments de jeu.",
+  "Saves this game's variables and arguments under a name, to reuse in other games.": "Enregistre les variables et arguments de ce jeu sous un nom pour les réutiliser dans d’autres jeux.",
+  "Steam starts the game itself, as from its library. Heronite runs these when you play from Heronite.": "Steam démarre lui-même le jeu, comme depuis sa bibliothèque. Heronite exécute ces éléments lorsque vous jouez depuis Heronite.",
+  "This game's variables and arguments, for other games": "Les variables et arguments de ce jeu, pour d’autres jeux",
+  "Trainers and tools started with the game and closed with it.": "Trainers et outils lancés et fermés avec le jeu."
+}

@@ -1,0 +1,9 @@
+{
+  "A Windows program or a browser game.": "Un programme Windows ou un jeu par navigateur.",
+  "Linux programs do not run on Windows": "Les programmes Linux ne fonctionnent pas sous Windows",
+  "Maximize": "Agrandir",
+  "Minimize": "Réduire",
+  "What Steam adds to the game's command, however the game starts (Properties → General in Steam), like -novid or -dx11.": "Ce que Steam ajoute à la commande du jeu, quel que soit son mode de lancement (Propriétés → Général dans Steam), comme -novid ou -dx11.",
+  "Windows or browser": "Windows ou navigateur",
+  "Windows, web": "Windows, web"
+}

@@ -1,0 +1,6 @@
+{
+  "Shortcut registered with Windows and ready. The game's monitor is captured with DXGI Desktop Duplication.": "Raccourci enregistré auprès de Windows et prêt. L’écran du jeu est capturé avec DXGI Desktop Duplication.",
+  "The shortcut {accelerator} could not be registered: {error}": "Impossible d’enregistrer le raccourci {accelerator} : {error}",
+  "The shortcut {accelerator} is already used by another program": "Le raccourci {accelerator} est déjà utilisé par un autre programme",
+  "While a game runs, Windows hands this shortcut to Heronite alone: the game does not receive it, so pick keys the game does not use.": "Pendant l’exécution d’un jeu, Windows réserve ce raccourci à Heronite : le jeu ne le reçoit pas, choisissez donc des touches que le jeu n’utilise pas."
+}

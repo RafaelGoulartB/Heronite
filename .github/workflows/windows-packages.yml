@@ -57,7 +57,7 @@ jobs:
         run: ./scripts/windows/package.ps1 -CargoProfile quick
       - name: Check the packages
         run: |
-          foreach ($language in @('english', 'brazilianportuguese', 'spanish', 'german')) {
+          foreach ($language in @('english', 'brazilianportuguese', 'spanish', 'german', 'french')) {
             ./scripts/windows/smoke.ps1 -Language $language
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }

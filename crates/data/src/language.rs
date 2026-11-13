@@ -41,6 +41,8 @@ mod tests {
         std::fs::write(p.appearance(), r#"{"interfaceBlur": 15}"#).unwrap();
         save(&p, Preference::Fixed(Lang::PtBr)).unwrap();
         assert_eq!(load(&p), Preference::Fixed(Lang::PtBr));
+        save(&p, Preference::Fixed(Lang::Fr)).unwrap();
+        assert_eq!(load(&p), Preference::Fixed(Lang::Fr));
         assert_eq!(json_store::read_value(&p.appearance()).unwrap()["interfaceBlur"], 15);
         std::fs::write(p.appearance(), r#"{"language": 3}"#).unwrap();
         assert_eq!(load(&p), Preference::System);
