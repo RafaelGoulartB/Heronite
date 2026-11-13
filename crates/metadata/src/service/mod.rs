@@ -14,6 +14,8 @@ mod families;
 mod fetch;
 mod gather;
 mod job_run;
+mod launchbox_art;
+mod picture_sizes;
 mod review;
 mod source_settings;
 mod tag_fill;
@@ -97,6 +99,10 @@ pub struct MetadataService {
     steam_tags: gather::SteamTagsCache,
     /// The sources' downloads running now, by source id.
     downloads: source_settings::Downloads,
+    /// LaunchBox's index, shared with its source: the Covers dialog asks it too.
+    launchbox: Arc<crate::launchbox::LaunchBox>,
+    /// The picture sizes read for the dialogs.
+    sizes: picture_sizes::Sizes,
 }
 
 impl MetadataService {
@@ -109,12 +115,13 @@ impl MetadataService {
         let igdb = Arc::new(Igdb::new());
         let steam = Arc::new(SteamState::default());
         let playnite = Arc::new(RwLock::new(None));
+        let launchbox = Arc::new(crate::launchbox::LaunchBox::new());
         let sources = SourceRegistry::builtin(Shared {
             igdb: igdb.clone(),
             steam: steam.clone(),
             stores: Arc::new(StoreLibraries::default()),
             playnite: playnite.clone(),
-            launchbox: Arc::new(crate::launchbox::LaunchBox::new()),
+            launchbox: launchbox.clone(),
         });
         Self {
             paths,
@@ -133,6 +140,8 @@ impl MetadataService {
             review_revision: AtomicU64::new(0),
             steam_tags: Default::default(),
             downloads: Default::default(),
+            launchbox,
+            sizes: Default::default(),
         }
     }
 
@@ -341,7 +350,7 @@ impl MetadataService {
         };
         let mut seen: std::collections::HashSet<String> = sgdb.iter().map(|img| img.image_url.clone()).collect();
         let web = web.into_iter().filter(|img| seen.insert(img.image_url.clone())).collect();
-        Ok(ArtImages { steamgrid: sgdb, web })
+        Ok(ArtImages { steamgrid: sgdb, web, ..Default::default() })
     }
 
     /// HowLongToBeat for a game (cache first; see [`hltb::get_or_fetch_hltb`]).

@@ -59,6 +59,9 @@ pub struct GameSettings {
     pub use_game_mode: bool,
     pub show_fps: bool,
     pub show_mangohud: bool,
+    /// MangoHud starts hidden: its toggle key or the in-game overlay shows it
+    /// (`heroniteMangohudHidden`).
+    pub mangohud_hidden: bool,
     pub enable_esync: bool,
     pub enable_fsync: bool,
     pub enable_wine_wayland: bool,
@@ -211,6 +214,7 @@ impl GameSettings {
             use_game_mode: b("useGameMode"),
             show_fps: b("showFps"),
             show_mangohud: b("showMangohud"),
+            mangohud_hidden: b(crate::fps_limit::KEY_MANGOHUD_HIDDEN),
             enable_esync: b("enableEsync"),
             enable_fsync: b("enableFsync"),
             enable_wine_wayland: b("enableWineWayland"),

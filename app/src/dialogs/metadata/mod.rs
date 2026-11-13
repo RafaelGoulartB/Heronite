@@ -6,9 +6,11 @@
 //!   that it found nothing, could not be reached or was not asked (folded
 //!   into one line per reason). "Change" (`change.rs`) searches one source
 //!   and pins the game picked; "Automatic" unpins it.
-//! - Right (`fields.rs`): a row per field with a value: what will be saved,
-//!   where it comes from (segments with the source names when sources
-//!   differ, else a line) and a lock.
+//! - Right (`fields.rs`): a row per field with a value: the pictures first,
+//!   each source's as a tile in the picture's shape with its size and what
+//!   to know before picking it (`pictures.rs`); then what will be saved of
+//!   the other fields, where it comes from (segments with the source names
+//!   when sources differ, else a line) and a lock.
 //! - Footer: "Everything from…", Close and Apply, which saves the picks,
 //!   pins and locks of what is on screen without asking the sources again
 //!   (`actions.rs`).
@@ -22,6 +24,7 @@ mod change;
 mod fake;
 mod fields;
 mod found_as;
+mod pictures;
 
 use std::sync::Arc;
 
@@ -35,7 +38,7 @@ use heronite_metadata::{MetadataPreview, MetadataService};
 use indexmap::IndexMap;
 
 use super::art_images::{chain_for_url, picture, DialogImages};
-use super::covers::CoversDialog;
+use super::covers::{CoversDialog, Slot};
 use super::metadata_update::hub::{hub, MetadataHub};
 use super::{DialogCtx, DialogEvent};
 use crate::icons::Icon;
@@ -143,13 +146,16 @@ pub struct MetadataDialog {
     preview_task: Option<Task<()>>,
     /// The cover families this installation keeps: a row each.
     kept: Vec<CoverFamily>,
-    /// "Choose covers…": the Covers dialog over this one.
+    /// "More options…": the Covers dialog over this one.
     covers: Option<(Entity<CoversDialog>, Subscription)>,
     /// The pictures set by hand there, once it changed one.
     covers_art: Option<CollectionGameArt>,
     fields_scroll: ScrollHandle,
-    /// `metadata:covers`: the fields list shows the cover rows.
-    scroll_to_covers: bool,
+    /// The tiles of each picture row (`pictures.rs`), for its arrows.
+    tile_scrolls: std::collections::HashMap<&'static str, ScrollHandle>,
+    /// The sizes of the pictures read (`pictures.rs`), by address; `None`:
+    /// not a picture whose size can be read.
+    sizes: std::collections::HashMap<String, Option<(u32, u32)>>,
 }
 
 impl EventEmitter<DialogEvent> for MetadataDialog {}
@@ -204,7 +210,8 @@ impl MetadataDialog {
             covers: None,
             covers_art: None,
             fields_scroll: ScrollHandle::new(),
-            scroll_to_covers: false,
+            tile_scrolls: Default::default(),
+            sizes: Default::default(),
         }
     }
 
@@ -222,16 +229,17 @@ impl MetadataDialog {
         .detach();
     }
 
-    /// The pictures set by hand in "Choose covers…", once it changed one
+    /// The pictures set by hand in "More options…", once it changed one
     /// (for a host that shows them).
     pub fn covers_art(&self) -> Option<&CollectionGameArt> {
         self.covers_art.as_ref()
     }
 
-    /// "Choose covers…": the Covers dialog over this one.
-    fn open_covers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// "More options…" of a picture's row: the Covers dialog over this one,
+    /// on that picture's slot.
+    fn open_covers(&mut self, slot: Slot, window: &mut Window, cx: &mut Context<Self>) {
         let (ctx, game) = (self.ctx.clone(), self.game.clone());
-        let view = cx.new(|cx| CoversDialog::new(ctx, game, None, window, cx));
+        let view = cx.new(|cx| CoversDialog::new(ctx, game, Some(slot), window, cx));
         let sub = cx.subscribe(&view, |this: &mut Self, view, ev: &DialogEvent, cx| {
             if matches!(ev, DialogEvent::Changed | DialogEvent::ChangedAndClose) {
                 this.covers_art = Some(view.read(cx).art().clone());
@@ -375,23 +383,22 @@ impl MetadataDialog {
 
 /// Height of the two columns: they scroll inside, so many sources or fields
 /// never make the dialog grow.
-const COLUMNS_H: f32 = 470.;
+const COLUMNS_H: f32 = 517.;
 
 impl Render for MetadataDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.images.update(cx, |im, _| im.frame(window));
         let area = crate::ui::content_size(window);
         let (vw, vh) = (f32::from(area.width), f32::from(area.height));
-        let columns_h = COLUMNS_H.min(vh * 0.62).max(260.);
+        let columns_h = COLUMNS_H.min(vh * 0.68).max(260.);
         let left = match self.change.is_some() {
             true => self.render_change(cx),
             false => self.render_found_as(cx),
         };
-        let body = div()
-            .flex()
-            .flex_col()
-            .child(self.render_head(cx))
-            .child(div().flex().gap(px(20.)).h(px(columns_h)).child(left.w(px(310.)).flex_none()).child(self.render_fields(cx)));
+        let body =
+            div().flex().flex_col().child(self.render_head(cx)).child(
+                div().flex().gap(px(20.)).h(px(columns_h)).child(left.w(px(310.)).flex_none()).child(self.render_fields(window, cx)),
+            );
         let footer = self.render_footer(cx);
         let entity = cx.entity().downgrade();
         let main = dialog(

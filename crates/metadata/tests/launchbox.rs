@@ -2,15 +2,17 @@
 //! publishes the fixture's archive (`fixtures/launchbox/`, trimmed from the
 //! real XML): nothing asked before the download, the download and its
 //! refresh (unchanged, resumed, broken), what an emulated game gets, its
-//! place in the order, removal.
+//! place in the order, its box art in the cover family of its shape (ahead
+//! of SteamGridDB's made-up art) and in the Covers dialog, removal.
 
 mod common;
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use common::{Req, Resp, Server};
@@ -45,11 +47,66 @@ struct Published {
     etag: String,
 }
 
+/// Super Metroid's North American box in the fixture: landscape (its real
+/// size), unless a test says otherwise.
+const METROID_NA: &str = "r2_4f09af04-78b8-43e9-97a9-a8d9c4bb0b85.jpg";
+
+/// The start of a JPEG of `w` x `h` as LaunchBox serves its box art: 20 KB
+/// of metadata before the frame header (more than one read), then 300 KB
+/// of picture the size reader must not wait for.
+fn jpeg(w: u16, h: u16) -> Vec<u8> {
+    let mut b = vec![0xff, 0xd8, 0xff, 0xe1];
+    b.extend(20_000u16.to_be_bytes());
+    b.extend(vec![0u8; 19_998]);
+    b.extend([0xff, 0xc0, 0x00, 0x11, 0x08]);
+    b.extend(h.to_be_bytes());
+    b.extend(w.to_be_bytes());
+    b.extend([3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]);
+    b.extend(vec![0u8; 300_000]);
+    b
+}
+
+/// SteamGridDB's made-up art of the game it finds for any title: one grid
+/// of the dimensions asked, one hero, all on this server.
+fn sgdb(req: &Req, base: &str) -> Resp {
+    let path = req.path().trim_start_matches("/sgdb/api/v2");
+    if path.starts_with("/search/autocomplete/") {
+        return Resp::json(json!({"success": true, "data": [{"id": 5, "name": "Super Metroid"}]}));
+    }
+    let picture =
+        |name: &str, w: u32, h: u32| json!({"success": true, "data": [{"url": format!("{base}/img/{name}"), "width": w, "height": h}]});
+    match path {
+        "/grids/game/5" => {
+            let dims = req.query("dimensions").unwrap_or_default();
+            if dims.contains("512x512") {
+                Resp::json(picture("sgdb-square.png", 512, 512))
+            } else if dims.contains("460x215") {
+                Resp::json(picture("sgdb-wide.png", 920, 430))
+            } else {
+                Resp::json(picture("sgdb-tall.png", 600, 900))
+            }
+        }
+        "/heroes/game/5" => Resp::json(picture("sgdb-hero.png", 1920, 620)),
+        _ => Resp::raw_json(r#"{"success":false,"errors":["Game not found"]}"#.into()),
+    }
+}
+
 /// LaunchBox's archive (with `If-None-Match` and `Range` as its CDN
-/// answers them); Lutris knows "Super Metroid" and "Hollow Knight"; the
-/// rest is not found.
-fn mock(published: Arc<Mutex<Published>>) -> Server {
-    Server::start(move |req: &Req| match req.path() {
+/// answers them) and its pictures (`sizes`, else tall: 1000 x 1400);
+/// Lutris knows "Super Metroid" and "Hollow Knight"; SteamGridDB has
+/// made-up art of any title; the rest is not found.
+fn mock(published: Arc<Mutex<Published>>, sizes: Arc<Mutex<HashMap<String, (u16, u16)>>>) -> Server {
+    let base: Arc<OnceLock<String>> = Arc::new(OnceLock::new());
+    let b = base.clone();
+    let server = Server::start(move |req: &Req| match req.path() {
+        "/lbimages/gone.jpg" => Resp::status(404),
+        "/lbimages/busy.jpg" => Resp::status(503),
+        p if p.starts_with("/lbimages/") => {
+            let file = p.trim_start_matches("/lbimages/");
+            let (w, h) = sizes.lock().get(file).copied().unwrap_or((1000, 1400));
+            Resp::image(jpeg(w, h))
+        }
+        p if p.starts_with("/sgdb/") => sgdb(req, b.get().map_or("", String::as_str)),
         ARCHIVE => {
             let p = published.lock();
             if req.header("If-None-Match") == Some(p.etag.as_str()) {
@@ -82,7 +139,9 @@ fn mock(published: Arc<Mutex<Published>>) -> Server {
                               "genres": [{"name": "Platform"}], "platforms": [], "coverart": "https://lutris.net/c.jpg"}))
         }
         _ => Resp::status(404),
-    })
+    });
+    base.set(server.base.clone()).unwrap();
+    server
 }
 
 struct Setup {
@@ -91,6 +150,8 @@ struct Setup {
     svc: MetadataService,
     server: Server,
     published: Arc<Mutex<Published>>,
+    /// The sizes of LaunchBox's pictures, by file name.
+    sizes: Arc<Mutex<HashMap<String, (u16, u16)>>>,
 }
 
 fn write(path: &Path, v: Value) {
@@ -116,9 +177,10 @@ fn setup() -> Setup {
     );
     write(&paths.collection_settings(), json!({"metadata": {}}));
     let published = Arc::new(Mutex::new(Published { body: archive(), etag: "\"v1\"".into() }));
-    let server = mock(published.clone());
+    let sizes = Arc::new(Mutex::new(HashMap::from([(METROID_NA.to_string(), (4209, 2937))])));
+    let server = mock(published.clone(), sizes.clone());
     let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());
-    Setup { _dir: dir, paths, svc, server, published }
+    Setup { _dir: dir, paths, svc, server, published, sizes }
 }
 
 fn args(app: &str, title: &str) -> MetadataApplyArgs {
@@ -428,4 +490,109 @@ fn an_index_that_no_longer_opens_is_built_again() {
     assert!(s.svc.source_download_state("launchbox").unwrap().ready);
     let preview = s.svc.preview_game_metadata(&args("sm", "Super Metroid")).unwrap();
     assert!(matches!(state(&preview), SourceAnswer::Found { .. }));
+}
+
+fn picture_requests(server: &Server) -> usize {
+    server.count(|r| r.path().starts_with("/lbimages/"))
+}
+
+/// [`setup`] with LaunchBox downloaded, SteamGridDB on (a key), images
+/// kept as addresses, and `keep`: `keepCoverFamilies`.
+fn with_sgdb(keep: &[&str]) -> Setup {
+    let s = setup();
+    write(&s.paths.collection_settings(), json!({"metadata": {"downloadImages": false, "steamTags": false, "keepCoverFamilies": keep}}));
+    write(&s.paths.global_config(), json!({"defaultSettings": {"steamGridDbApiKey": "K"}, "version": "v0"}));
+    s.svc.download_source("launchbox").unwrap();
+    s
+}
+
+fn lb_url(s: &Setup, file: &str) -> String {
+    format!("{}/lbimages/{file}", s.server.base)
+}
+
+/// Issue #289: an emulated game whose box is landscape (the SNES's in North
+/// America) gets that box as its wide cover, not SteamGridDB's made-up art;
+/// its tall cover is the box as before.
+#[test]
+fn a_landscape_box_is_the_wide_cover() {
+    let s = with_sgdb(&["wide"]);
+    let saved = s.svc.apply_game_metadata(&args("sm", "Super Metroid")).unwrap();
+    assert_eq!(saved.cover_wide_url.as_deref(), Some(lb_url(&s, METROID_NA).as_str()));
+    assert_eq!(saved.field_sources["coverWide"], "launchbox");
+    assert_eq!((saved.cover_url.as_deref(), saved.field_sources["cover"].as_str()), (Some(lb_url(&s, METROID_NA).as_str()), "launchbox"));
+    assert_eq!(picture_requests(&s.server), 1, "one picture's size read");
+    // Its size is remembered: a fetch again reads nothing.
+    let mut again = args("sm", "Super Metroid");
+    again.overwrite_existing = Some(true);
+    s.svc.apply_game_metadata(&again).unwrap();
+    assert_eq!(picture_requests(&s.server), 1);
+}
+
+/// A CD case (a square box) is the square cover, ahead of SteamGridDB's.
+#[test]
+fn a_square_box_is_the_square_cover() {
+    let s = with_sgdb(&["square"]);
+    s.sizes.lock().insert(METROID_NA.into(), (1400, 1240));
+    let saved = s.svc.apply_game_metadata(&args("sm", "Super Metroid")).unwrap();
+    assert_eq!(saved.cover_square_url.as_deref(), Some(lb_url(&s, METROID_NA).as_str()));
+    assert_eq!(saved.field_sources["coverSquare"], "launchbox");
+    assert_eq!(saved.cover_wide_url, None, "the wide family is not kept: not fetched");
+}
+
+/// A tall box gives no wide cover: SteamGridDB's fills it as before. And
+/// where only the tall family is kept, no picture's size is read at all.
+#[test]
+fn a_tall_box_leaves_the_other_shapes_to_the_others() {
+    let s = with_sgdb(&["wide"]);
+    s.sizes.lock().insert(METROID_NA.into(), (1000, 1400));
+    let saved = s.svc.apply_game_metadata(&args("sm", "Super Metroid")).unwrap();
+    assert_eq!(saved.cover_wide_url.as_deref(), Some(format!("{}/img/sgdb-wide.png", s.server.base).as_str()));
+    assert_eq!(saved.field_sources["coverWide"], "steamgriddb");
+
+    let s = with_sgdb(&[]);
+    let saved = s.svc.apply_game_metadata(&args("sm", "Super Metroid")).unwrap();
+    assert_eq!(saved.cover_url.as_deref(), Some(lb_url(&s, METROID_NA).as_str()));
+    assert_eq!(picture_requests(&s.server), 0, "the tall cover takes the box whatever its shape");
+}
+
+/// The Covers dialog lists the game's boxes from LaunchBox first, those of
+/// the slot's shape ahead, each with its region and size; then SteamGridDB's.
+#[test]
+fn the_covers_dialog_offers_every_regions_box() {
+    let s = with_sgdb(&[]);
+    let game = args("sm", "Super Metroid");
+    let found = s.svc.search_game_art_images(&game, "Super Metroid", "\"Super Metroid\" cover", ArtKind::CoverWide).unwrap();
+    let lb = &found.launchbox;
+    assert_eq!(lb.len(), 6, "six regions' boxes");
+    assert_eq!((lb[0].region.as_str(), lb[0].image.image_url.clone()), ("North America", lb_url(&s, METROID_NA)));
+    assert_eq!((lb[0].image.width, lb[0].image.height), (4209, 2937));
+    assert!(lb[1..].iter().all(|c| (c.image.width, c.image.height) == (1000, 1400)), "the tall ones after");
+    assert_eq!(found.steamgrid.len(), 1);
+    let tall = s.svc.search_game_art_images(&game, "Super Metroid", "\"Super Metroid\" cover", ArtKind::Cover).unwrap();
+    assert_eq!(tall.launchbox.last().map(|c| c.region.as_str()), Some("North America"), "the landscape box last for a tall cover");
+    let hero = s.svc.launchbox_pictures(&game, "Super Metroid", ArtKind::Hero);
+    assert_eq!(hero.len(), 1);
+    // Other words: the game of that name, on the game's platform.
+    let other = s.svc.launchbox_pictures(&game, "link to the past", ArtKind::Cover);
+    assert!(other.iter().any(|c| c.image.image_url.ends_with("r2_689c3eda-bd3b-452d-997c-c25b5335656e.jpg")), "{other:?}");
+    // Not for a PC game (its option off), nor with LaunchBox off.
+    assert!(s.svc.launchbox_pictures(&args("hk", "Hollow Knight"), "Hollow Knight", ArtKind::Cover).is_empty());
+    s.svc.set_source_enabled("launchbox", false).unwrap();
+    assert!(s.svc.launchbox_pictures(&game, "Super Metroid", ArtKind::Cover).is_empty());
+}
+
+/// A picture the image server does not have is remembered as such (asked
+/// once); one it could not answer for now is asked again.
+#[test]
+fn a_missing_picture_is_asked_once() {
+    let s = setup();
+    let lb = launchbox::LaunchBox::new();
+    let base = format!("{}/lbimages", s.server.base);
+    let asked = |file: &str| s.server.count(|r| r.path() == format!("/lbimages/{file}"));
+    for _ in 0..2 {
+        assert_eq!(lb.picture_size(&s.svc.http, &base, "gone.jpg"), None);
+        assert_eq!(lb.picture_size(&s.svc.http, &base, "busy.jpg"), None);
+    }
+    assert_eq!((asked("gone.jpg"), asked("busy.jpg")), (1, 2));
+    assert_eq!(lb.picture_size(&s.svc.http, &base, METROID_NA), Some((4209, 2937)));
 }

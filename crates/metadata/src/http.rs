@@ -201,6 +201,41 @@ impl<'a> Request<'a> {
     }
 
     pub fn send(self) -> Result<Response> {
+        let max = self.max_bytes;
+        self.send_reading(|url, body| {
+            body.with_config().limit(max).read_to_vec().map_err(|e| match e {
+                ureq::Error::BodyExceedsLimit(max) => anyhow::Error::new(BodyTooLarge(max)),
+                e => anyhow::Error::new(Unreachable(format!("{url}: {e}"))),
+            })
+        })
+    }
+
+    /// [`send`](Self::send) that reads only the start of the body: up to
+    /// `max` bytes, and no further once `enough` says the bytes read are
+    /// (checked after each chunk). For a server that ignores `Range` (the
+    /// rest of the answer is dropped with the connection). Never fails for
+    /// a long body.
+    pub fn send_head(self, max: usize, enough: impl Fn(&[u8]) -> bool) -> Result<Response> {
+        self.send_reading(|url, body| {
+            let mut reader = body.as_reader();
+            let mut out: Vec<u8> = Vec::new();
+            let mut chunk = [0u8; 8 * 1024];
+            while out.len() < max && !enough(&out) {
+                let want = chunk.len().min(max - out.len());
+                match reader.read(&mut chunk[..want]) {
+                    Ok(0) => break,
+                    Ok(n) => out.extend_from_slice(&chunk[..n]),
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                    Err(e) => return Err(anyhow::Error::new(Unreachable(format!("{url}: {e}")))),
+                }
+            }
+            Ok(out)
+        })
+    }
+
+    /// Sends the request and reads its body with `read` (given the address,
+    /// for its errors).
+    fn send_reading(self, read: impl FnOnce(&str, &mut ureq::Body) -> Result<Vec<u8>>) -> Result<Response> {
         let agent = &self.http.agent;
         let redirects = if self.redirects { MAX_REDIRECTS } else { 0 };
         let mut resp = if self.post {
@@ -230,10 +265,7 @@ impl<'a> Request<'a> {
         let retry_after = header("retry-after").and_then(|v| v.trim().parse().ok());
         let headers =
             resp.headers().iter().filter_map(|(k, v)| Some((k.as_str().to_ascii_lowercase(), v.to_str().ok()?.to_owned()))).collect();
-        let body = resp.body_mut().with_config().limit(self.max_bytes).read_to_vec().map_err(|e| match e {
-            ureq::Error::BodyExceedsLimit(max) => anyhow::Error::new(BodyTooLarge(max)),
-            e => anyhow::Error::new(Unreachable(format!("{}: {e}", self.url))),
-        })?;
+        let body = read(&self.url, resp.body_mut())?;
         Ok(Response { status, content_type, content_length, retry_after, headers, body })
     }
 

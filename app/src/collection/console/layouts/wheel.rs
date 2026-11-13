@@ -168,10 +168,9 @@ impl CollectionView {
         let (first, last) = ((centre - REACH).max(0) as usize, (centre + REACH).clamp(0, n as isize - 1) as usize);
         // Tall enough to scroll the last game to the middle.
         let mut rows = div().relative().w_full().h(px(n as f32 * row_px + view_px));
-        for i in first..=last {
+        for (i, key) in data.keys.iter().enumerate().take(last + 1).skip(first) {
             let pads = pointer::focus_or_activate(pointer::along(index, i, Pad::Up, Pad::Down));
-            rows =
-                rows.children(self.wheel_row(&data.keys[i], i, i as f32 - pos, i == index, list_w, mid, window).map(|r| r.on_pads(pads)));
+            rows = rows.children(self.wheel_row(key, i, i as f32 - pos, i == index, list_w, mid, window).map(|r| r.on_pads(pads)));
         }
         let list =
             div().id(("console-wheel", tab)).flex_1().min_h_0().overflow_y_scroll().track_scroll(&handle).child(rows).child(glide.driver());

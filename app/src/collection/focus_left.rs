@@ -124,7 +124,12 @@ impl CollectionView {
                 }))
         });
         // Installed, with other ways to start or actions: an arrow with them.
-        let more = if vm.installed && !vm.playing { self.launch_more_button(&vm.key, cx) } else { None };
+        // Playing: an arrow back to the game's window.
+        let more = match (vm.installed, vm.playing) {
+            (_, true) => self.back_to_game_button(&vm.key, cx),
+            (true, false) => self.launch_more_button(&vm.key, cx),
+            (false, false) => None,
+        };
         let play = match (play, more) {
             (Some(play), Some(more)) => {
                 let row = div()
@@ -134,7 +139,7 @@ impl CollectionView {
                     .w_full()
                     .child(play.flex_1().w_auto())
                     .child(more)
-                    .children(self.launch_menu(&vm.key, cx))
+                    .children((!vm.playing).then(|| self.launch_menu(&vm.key, cx)).flatten())
                     .into_any_element();
                 return div().flex().flex_col().gap(px(8.)).child(row).children(epic_el).into_any_element();
             }

@@ -6,7 +6,10 @@
 //! theme without one, like Minimal) a grid of the results over the tab that
 //! B closes (`ConsoleUi::results`). A types the search on the on-screen
 //! keyboard, a physical keyboard types into the field directly; X resets
-//! everything; B or Y closes.
+//! everything; B or Y closes. Show, Sort and Favourites are kept for the
+//! next time console mode starts (`console.json`'s `keptFilters`). In a
+//! theme without a Grid, the results grid is not open then, so its Show
+//! also moves the Carousel's pill, and the pill moves it back.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -144,6 +147,7 @@ impl CollectionView {
             _ => return true,
         }
         if (self.tab_nav(target).grid.filters.clone(), self.console.search.clone()) != before {
+            self.keep_grid_filters(target, (before.0.show, before.0.favourites));
             self.console_show_filtered();
         }
         true

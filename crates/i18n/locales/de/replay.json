@@ -70,6 +70,7 @@
   "Resolution": "Auflösung",
   "Room for the panel": "Spielraum fürs Panel",
   "Save replay": "Replay speichern",
+  "Save replay · the last {n} s": "Replay speichern · die letzten {n} s",
   "Saved in": "Gespeichert in",
   "Saved in {staged} but not moved to {folder}: {err}": "In {staged} gespeichert, aber nicht nach {folder} verschoben: {err}",
   "Saves the replay (Settings → Replay) and marks it as a moment in the game's journal.": "Speichert das Replay (Einstellungen → Replay) und markiert es als Moment im Tagebuch des Spiels.",

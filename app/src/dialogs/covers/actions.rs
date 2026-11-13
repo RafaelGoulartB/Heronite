@@ -7,7 +7,7 @@ use heronite_data::cover_family::CoverFamily;
 use heronite_data::models::CollectionGameArt;
 use heronite_i18n::tr;
 use heronite_metadata::web_images::{cover_query, wallpaper_query};
-use heronite_metadata::ArtImages;
+use heronite_metadata::{ArtImages, MetadataApplyArgs};
 
 use gpui_kit::*;
 
@@ -39,6 +39,7 @@ impl CoversDialog {
             return;
         }
         self.slot = slot;
+        self.source = None;
         self.error.clear();
         self.search(cx);
         cx.notify();
@@ -83,8 +84,15 @@ impl CoversDialog {
             Slot::Cover(_) => cover_query(&typed),
         };
         let (service, kind) = (self.service.clone(), slot.kind());
+        let game = MetadataApplyArgs {
+            app_name: self.game.app_name.clone(),
+            runner: self.runner.clone(),
+            title: self.game.title.clone(),
+            ..Default::default()
+        };
+        let words = typed.clone();
         cx.spawn(async move |this, cx| {
-            let res = cx.background_spawn(async move { service.search_art_images(&query, kind, false) }).await;
+            let res = cx.background_spawn(async move { service.search_game_art_images(&game, &words, &query, kind) }).await;
             this.update(cx, |this, cx| this.found_for(id, slot, typed, res, cx)).ok();
         })
         .detach();
@@ -156,7 +164,7 @@ impl CoversDialog {
     /// "Use for <family>": downloads the picture picked (`pick`, else the
     /// selection) as the slot's.
     pub(super) fn use_selected(&mut self, pick: Option<usize>, cx: &mut Context<Self>) {
-        let Some((_, image)) = pick.or(self.selected).and_then(|i| self.found().get(i).map(|(s, img)| (*s, (*img).clone()))) else {
+        let Some(image) = pick.or(self.selected).and_then(|i| self.found().get(i).map(|f| f.image.clone())) else {
             return;
         };
         self.selected = pick.or(self.selected);

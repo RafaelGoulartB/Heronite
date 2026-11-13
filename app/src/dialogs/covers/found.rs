@@ -1,7 +1,8 @@
 //! The right column: for the picked slot, the picture it shows now, then
-//! the pictures SteamGridDB and the web found for it, each in the slot's
-//! shape with its source's mark and size, a search field and "Load more".
-//! A family that is not kept offers to keep it instead.
+//! the pictures LaunchBox (the game's boxes of every region), SteamGridDB
+//! and the web found for it, each in the slot's shape with its source's
+//! mark, its region and its size, a search field and "Load more". A family
+//! that is not kept offers to keep it instead.
 
 use std::time::Duration;
 
@@ -25,6 +26,11 @@ use crate::ui::icon;
 /// Pictures listed before the first "Load more", and added by each.
 pub(super) const PAGE: usize = 15;
 
+const LAUNCHBOX: &str = heronite_metadata::launchbox::SOURCE;
+
+/// A found picture as a tile draws it: its source, region and picture.
+type Tile = (&'static str, String, WebImage);
+
 /// Width of a found picture of each slot (its height follows the shape).
 fn tile_w(slot: Slot) -> f32 {
     match slot {
@@ -34,15 +40,105 @@ fn tile_w(slot: Slot) -> f32 {
     }
 }
 
+/// A picture found: its source, the region it is of (LaunchBox's box art;
+/// `""` for none) and the picture.
+pub(super) struct Found<'a> {
+    pub(super) source: &'static str,
+    pub(super) region: &'a str,
+    pub(super) image: &'a WebImage,
+}
+
 impl CoversDialog {
-    /// Every picture found for the slot, SteamGridDB's first, with its source.
-    pub(super) fn found(&self) -> Vec<(&'static str, &WebImage)> {
-        let sgdb = self.results.steamgrid.iter().map(|i| (ids::STEAMGRIDDB, i));
-        sgdb.chain(self.results.web.iter().map(|i| (ids::WEB_IMAGES, i))).collect()
+    /// Every picture found for the slot: the game's boxes from LaunchBox
+    /// first, then SteamGridDB's and the web's.
+    pub(super) fn found(&self) -> Vec<Found<'_>> {
+        let r = &self.results;
+        let launchbox = r.launchbox.iter().map(|c| Found { source: LAUNCHBOX, region: &c.region, image: &c.image });
+        let sgdb = r.steamgrid.iter().map(|image| Found { source: ids::STEAMGRIDDB, region: "", image });
+        let web = r.web.iter().map(|image| Found { source: ids::WEB_IMAGES, region: "", image });
+        launchbox.chain(sgdb).chain(web).collect()
+    }
+
+    /// The sources that found pictures, in the grid's order, and how many each.
+    fn source_counts(&self) -> Vec<(&'static str, usize)> {
+        let r = &self.results;
+        [(LAUNCHBOX, r.launchbox.len()), (ids::STEAMGRIDDB, r.steamgrid.len()), (ids::WEB_IMAGES, r.web.len())]
+            .into_iter()
+            .filter(|(_, n)| *n > 0)
+            .collect()
     }
 
     fn sources_found(&self) -> usize {
-        usize::from(!self.results.steamgrid.is_empty()) + usize::from(!self.results.web.is_empty())
+        self.source_counts().len()
+    }
+
+    /// The source listed alone, while it found pictures (a new search may
+    /// find none there: then every source is).
+    fn source_shown(&self) -> Option<&'static str> {
+        self.source.filter(|id| self.source_counts().iter().any(|(s, _)| s == id))
+    }
+
+    /// Lists the pictures of `source` alone (`None`: of every source). A
+    /// picture picked of another source is no longer picked.
+    fn show_source(&mut self, source: Option<&'static str>, cx: &mut Context<Self>) {
+        self.source = source;
+        self.visible = PAGE;
+        if let (Some(id), Some(i)) = (source, self.selected) {
+            if self.found().get(i).is_some_and(|f| f.source != id) {
+                self.selected = None;
+            }
+        }
+        cx.notify();
+    }
+
+    /// "All 90", then a pill per source that found pictures, with its mark
+    /// and count; the one listed is lit. None while one source alone found.
+    fn source_pills(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let counts = self.source_counts();
+        if self.loading || counts.len() < 2 {
+            return None;
+        }
+        let shown = self.source_shown();
+        let total: usize = counts.iter().map(|(_, n)| n).sum();
+        let pill = |id: SharedString, on: bool| {
+            div()
+                .id(id)
+                .flex()
+                .flex_none()
+                .items_center()
+                .gap(px(6.))
+                .px(px(10.))
+                .py(px(4.))
+                .rounded_full()
+                .border_1()
+                .text_size(px(12.))
+                .whitespace_nowrap()
+                .cursor_pointer()
+                .when(on, |d| d.bg(theme::accent_tint()).border_color(theme::accent_tint_border()).text_color(theme::text_primary()))
+                .when(!on, |d| {
+                    d.border_color(theme::ink_a(0.08))
+                        .text_color(theme::text_muted())
+                        .hover(|s| s.bg(theme::ink_a(0.06)).text_color(theme::text_bright()))
+                })
+        };
+        let count = |n: usize| div().text_color(theme::text_dim()).child(n.to_string());
+        let mut row = div().flex().flex_wrap().items_center().gap(px(6.)).child(
+            pill("cv-source-all".into(), shown.is_none())
+                .child(tr!("All"))
+                .child(count(total))
+                .on_click(cx.listener(|this, _, _, cx| this.show_source(None, cx))),
+        );
+        for (id, n) in counts {
+            let name = crate::dialogs::metadata_update::words::source_name(&self.service, id);
+            row = row.child(
+                pill(SharedString::from(format!("cv-source-{id}")), shown == Some(id))
+                    .child(labels::mark(id, &name, 16.))
+                    .child(name)
+                    .child(count(n))
+                    .on_click(cx.listener(move |this, _, _, cx| this.show_source(Some(id), cx))),
+            );
+        }
+        Some(row)
     }
 
     /// The source's mark and a few words under a picture.
@@ -88,10 +184,13 @@ impl CoversDialog {
         Some(Self::tile_frame("cv-now".into(), false).w(px(w + 12.)).child(pic).child(self.tile_label(None, text)))
     }
 
-    fn found_tile(&mut self, i: usize, source: &'static str, image: WebImage, w: f32, h: f32, cx: &mut Context<Self>) -> Stateful<Div> {
+    fn found_tile(&mut self, i: usize, (source, region, image): Tile, w: f32, h: f32, cx: &mut Context<Self>) -> Stateful<Div> {
         let selected = self.selected == Some(i);
         let pic = self.picture_box("found", &[ImageRef::Url(image.thumb_url.clone())], w, h, cx);
-        let size = if image.width > 0 && image.height > 0 { format!("{}\u{d7}{}", image.width, image.height) } else { String::new() };
+        let size = (image.width > 0 && image.height > 0).then(|| format!("{}\u{d7}{}", image.width, image.height));
+        // LaunchBox's region names are English; the ones Settings offers are translated.
+        let region = (!region.is_empty()).then(|| heronite_i18n::tr(&region).to_owned());
+        let size = region.into_iter().chain(size).collect::<Vec<_>>().join(" \u{b7} ");
         Self::tile_frame(SharedString::from(format!("cv-found-{i}")), selected)
             .w(px(w + 12.))
             .cursor_pointer()
@@ -199,13 +298,23 @@ impl CoversDialog {
             .child(div().w(px(260.)).flex_none().child(search_box(&self.query)));
         let w = tile_w(self.slot);
         let h = (w / self.slot.aspect()).round();
+        let shown = self.source_shown();
         let mut tiles = div().flex().flex_wrap().gap(px(8.));
-        tiles = tiles.children(self.now_tile(w, h, cx));
-        let found: Vec<(&'static str, WebImage)> = self.found().into_iter().map(|(s, i)| (s, i.clone())).collect();
+        if shown.is_none() {
+            tiles = tiles.children(self.now_tile(w, h, cx));
+        }
+        // Each keeps its index of every picture found, which `selected` is.
+        let found: Vec<(usize, Tile)> = self
+            .found()
+            .into_iter()
+            .enumerate()
+            .filter(|(_, f)| shown.is_none_or(|id| f.source == id))
+            .map(|(i, f)| (i, (f.source, f.region.to_owned(), f.image.clone())))
+            .collect();
         let total = found.len();
         if !self.loading {
-            for (i, (source, image)) in found.into_iter().take(self.visible).enumerate() {
-                tiles = tiles.child(self.found_tile(i, source, image, w, h, cx));
+            for (i, tile) in found.into_iter().take(self.visible) {
+                tiles = tiles.child(self.found_tile(i, tile, w, h, cx));
             }
         }
         let mut grid = div().id("cv-grid").flex().flex_col().gap(px(10.)).flex_1().min_h_0().overflow_y_scroll().pr(px(4.)).child(tiles);
@@ -238,6 +347,7 @@ impl CoversDialog {
                 .text_color(theme::danger_text())
                 .child(self.error.clone())
         });
-        col.child(head).child(grid).children(error)
+        let pills = self.source_pills(cx);
+        col.child(head).children(pills).child(grid).children(error)
     }
 }
