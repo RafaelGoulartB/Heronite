@@ -52,6 +52,7 @@ impl CoversDialog {
         // those still running stale: they must not replace what is shown.
         self.request += 1;
         self.note = None;
+        self.console_scroll.reset();
         self.selected = None;
         self.visible = found::PAGE;
         self.results = ArtImages::default();

@@ -10,6 +10,7 @@ use gpui_kit::*;
 use heronite_data::cover_family::CoverFamily;
 use heronite_i18n::{tr, trn};
 use heronite_images::ImageRef;
+use heronite_metadata::picture_size::resolution_label;
 
 use super::slots::{Look, Slot};
 use super::{found, Busy, CoversDialog};
@@ -17,6 +18,7 @@ use crate::console::browser::PickKind;
 use crate::console::kit::{self, u};
 use crate::console::layers::{open_browser, open_osk, open_sheet, HasLayer};
 use crate::console::list::Row;
+use crate::console::motion::Goal;
 use crate::console::pointer::{self, Clickable};
 use crate::console::{hint, Btn, Hint, Layer, Pad, PadTarget};
 use crate::dialogs::art_images::{first_address, picture};
@@ -276,7 +278,18 @@ impl CoversDialog {
         let (tw, th) = (tile_w(slot), (tile_w(slot) / slot.aspect()).round());
         let at = self.console_at(&listed);
         let covered = self.layer.is_open();
-        let mut grid = div().id("console-covers-grid").flex().flex_col().gap(u(GAP)).overflow_y_scroll().track_scroll(&self.console_scroll);
+        // What a source gave no size of is read from the picture itself.
+        if self.fake.is_none() {
+            let urls: Vec<String> = {
+                let found = self.found();
+                let unsized_ =
+                    listed.iter().filter_map(|i| found.get(*i)).filter(|f| resolution_label(f.image.width, f.image.height).is_none());
+                unsized_.map(|f| f.image.image_url.clone()).collect()
+            };
+            self.sizes.update(cx, |s, cx| s.ask(urls, cx));
+        }
+        let glide = self.console_scroll.clone();
+        let mut grid = div().id("console-covers-grid").flex().flex_col().gap(u(GAP)).overflow_y_scroll().track_scroll(glide.handle());
         for (row, chunk) in listed.chunks(cols).enumerate() {
             let mut line = div().flex().gap(u(GAP));
             for (j, index) in chunk.iter().enumerate() {
@@ -288,8 +301,7 @@ impl CoversDialog {
         if more {
             grid = grid.child(kit::body_text(tr!("X shows more results.")));
         }
-        self.console_scroll.scroll_to_item(at / cols);
-        grid.flex_1().min_h_0().into_any_element()
+        grid.child(glide.driver()).flex_1().min_h_0().into_any_element()
     }
 
     pub(super) fn render_console(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -304,15 +316,21 @@ impl CoversDialog {
             (None, Some(note)) => note.to_string(),
             (None, None) => tr!("Search: {query}", query = self.query.read(cx).value().to_string()),
         };
-        let body = div()
-            .flex()
-            .flex_1()
-            .min_h_0()
-            .gap(u(30.))
-            .px(u(SIDE))
-            .pb(u(16.))
-            .child(self.console_now(cx))
-            .child(div().flex().flex_col().flex_1().min_w_0().min_h_0().gap(u(10.)).child(self.console_grid(self.console_cols, cx)));
+        let body = div().flex().flex_1().min_h_0().gap(u(30.)).px(u(SIDE)).pb(u(16.)).child(self.console_now(cx)).child(
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_w_0()
+                .min_h_0()
+                .gap(u(10.))
+                .child(self.console_grid(self.console_cols, cx))
+                // The grid's empty state says it itself when nothing was found.
+                .children(
+                    (!self.error.is_empty() && !listed.is_empty())
+                        .then(|| kit::body_text(self.error.clone()).text_color(theme::danger_text())),
+                ),
+        );
         div()
             .absolute()
             .inset_0()
@@ -391,6 +409,9 @@ impl PadTarget for CoversDialog {
                     self.selected = listed.get(to).copied();
                 }
                 self.note = None;
+                let (now, _) = self.console_listed();
+                let row = self.console_at(&now) / self.console_cols;
+                self.console_scroll.go(Goal::Reveal { ix: row, margin: GAP });
             }
             Pad::A if self.busy.is_some() => {}
             Pad::A if !kept => {

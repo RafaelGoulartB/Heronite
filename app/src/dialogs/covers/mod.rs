@@ -90,7 +90,7 @@ pub struct CoversDialog {
     fake: Option<fake::Fake>,
     /// Console mode: the grid's scroll, the keyboard and sheets over it,
     /// the thumbnails to a row as last drawn, and what was just saved.
-    console_scroll: ScrollHandle,
+    console_scroll: crate::console::motion::Glide,
     layer: crate::console::Layer,
     console_cols: usize,
     note: Option<&'static str>,
@@ -167,7 +167,7 @@ impl CoversDialog {
             searched: HashMap::new(),
             screenshot: None,
             fake,
-            console_scroll: ScrollHandle::new(),
+            console_scroll: crate::console::motion::Glide::new(crate::console::motion::Axis::Y),
             layer: Default::default(),
             console_cols: 1,
             note: None,
