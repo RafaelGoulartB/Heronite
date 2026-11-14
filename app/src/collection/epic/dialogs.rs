@@ -361,9 +361,58 @@ impl CollectionView {
         self.open_dialog(view, cx);
     }
 
+    /// Play while signed out of Epic: legendary cannot start the game
+    /// without the account, so log in again (the Epic Games page) or start
+    /// it offline this once.
+    pub(super) fn epic_open_signed_out(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(game) = self.epic_game(key) else { return };
+        let mut spec = Confirm::new(
+            "epic-signed-out",
+            tr!("Signed out of Epic Games"),
+            tr!(
+                "{title} needs your Epic Games account to start, and Heronite is no longer signed in to it: Epic ended the saved session, or you logged out.\nLog in again to play. Play offline starts the game without the account, but some games need it and will not open.",
+                title = game.title
+            ),
+        );
+        spec.confirm = Some(tr!("Log in").into());
+        let weak = cx.entity().downgrade();
+        let k = key.to_string();
+        let offline = weak.clone();
+        spec.secondary = Some((
+            tr!("Play offline").into(),
+            Rc::new(move |cx| {
+                offline
+                    .update(cx, |this, cx| {
+                        if let Some(g) = this.epic_game(&k) {
+                            if let Err(err) = this.runtime.play_offline(&g) {
+                                this.report_launch_error(err, cx);
+                            }
+                        }
+                    })
+                    .ok();
+            }),
+        ));
+        let view = cx.new(|cx| {
+            EpicConfirmDialog::new(
+                spec,
+                move |_, cx| {
+                    weak.update(cx, |this, cx| {
+                        this.epic.pending = Some(Request::OpenEpic);
+                        cx.notify();
+                    })
+                    .ok();
+                },
+                window,
+                cx,
+            )
+        });
+        self.open_dialog(view, cx);
+    }
+
     /// `HERONITE_DEBUG_DIALOG=epic-install:<appName>` / `epic-import:<appName>` /
     /// `epic-uninstall:<appName>` / `epic-move:..` / `epic-verify:..` /
-    /// `epic-update:..` / `epic-modify:..` / `epic-eos-install:..` / `epic-message`;
+    /// `epic-update:..` / `epic-modify:..` / `epic-eos-install:..` /
+    /// `epic-signed-out:..` / `epic-message`;
     /// `gog-<what>:<appName>` and `nile-<what>:<appName>` open the same for a
     /// GOG / Amazon game.
     pub(in crate::collection) fn epic_debug_dialog(&mut self, which: &str, _window: &mut Window, cx: &mut Context<Self>) -> bool {
@@ -388,6 +437,7 @@ impl CollectionView {
             "epic-update" => Some(Request::UpdatePrompt(key)),
             "epic-modify" => Some(Request::Modify(key)),
             "epic-eos-install" => Some(Request::EosInstall(app.clone())),
+            "epic-signed-out" => Some(Request::SignedOut(key)),
             "epic-message" => Some(Request::Message {
                 title: "Cloud saves: Control".into(),
                 text: "[cli] INFO: Cloud save sync for Control\n[cli] INFO: Remote save is newer, downloading 3 files\n[cli] INFO: Download finished".into(),
