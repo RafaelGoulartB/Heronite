@@ -44,6 +44,11 @@ pub fn set_target(text: impl Into<SharedString>) {
     TARGET.with(|t| *t.borrow_mut() = Some(Target { text: text.into(), generation, bounds: None }));
 }
 
+/// The text being flashed and its jump (a new one each time).
+pub fn target() -> Option<(SharedString, u64)> {
+    TARGET.with(|t| t.borrow().as_ref().map(|t| (t.text.clone(), t.generation)))
+}
+
 /// Ends the flash.
 pub fn clear() {
     TARGET.with(|t| *t.borrow_mut() = None);

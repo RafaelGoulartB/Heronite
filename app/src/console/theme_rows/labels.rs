@@ -91,6 +91,11 @@ label_fn!(glyphs_name, Glyphs {
     Deck => n_!("Steam Deck"),
     Keyboard => n_!("Keyboard"),
 });
+label_fn!(confirm_name, ConfirmButton {
+    Auto => n_!("Automatic (the controller's)"),
+    South => n_!("South (Xbox A, PlayStation ✕)"),
+    East => n_!("East (Nintendo A)"),
+});
 label_fn!(hints_name, Hints { Always => n_!("Always"), Auto => n_!("Fades by itself"), Off => n_!("Hidden") });
 label_fn!(game_page_name, GamePage { Classic => n_!("Classic"), Hero => n_!("Hero"), Tabs => n_!("Tabs"), Sheet => n_!("Sheet") });
 label_fn!(menu_style_name, MenuStyle { Sidebar => n_!("Sidebar"), Grid => n_!("Grid"), Dock => n_!("Dock"), Rail => n_!("Rail of icons") });

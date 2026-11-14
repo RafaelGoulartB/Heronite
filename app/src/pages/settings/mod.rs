@@ -29,7 +29,7 @@
 //!
 //! Debug: `HERONITE_DEBUG_SETTINGS_SEARCH=<text>` types it in the search (`<text>!`: and presses Enter),
 //! `HERONITE_DEBUG_SETTINGS_KEYS=down,down,enter` then presses those keys in it (`lang:pt-BR` switches the language);
-//! `HERONITE_DEBUG_PAGE=settings[:general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|integrations|storage|mods|overlay|replay|metadata|screenshots|backups|cloud|logs|about]`.
+//! `HERONITE_DEBUG_PAGE=settings[:controls|general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|integrations|storage|mods|overlay|replay|metadata|screenshots|backups|cloud|logs|about]`.
 
 mod about;
 mod achievements;
@@ -39,6 +39,7 @@ mod backup;
 mod cloud;
 mod console;
 mod console_mode;
+mod controls;
 mod integrations;
 mod launchers;
 mod library;
@@ -156,6 +157,7 @@ pub struct SettingsPage {
     about: about::State,
     logs: logs::State,
     console_mode: Option<console_mode::State>,
+    controls: controls::State,
     /// Console mode focus, keyboard and pickers.
     console: console::ConsoleState,
     /// The section list's scroll, for its scrollbar.
@@ -254,6 +256,7 @@ impl SettingsPage {
             about: about::State::default(),
             logs: logs::State::default(),
             console_mode: None,
+            controls: controls::State::new(cx),
             console: Default::default(),
             nav_scroll: ScrollHandle::new(),
             nav_search,
@@ -371,6 +374,7 @@ impl SettingsPage {
     /// The Collection hid the page: its sections free what only a visible one
     /// needs (`refresh` brings it back when the page is shown).
     pub fn hidden(&mut self, window: &mut Window) {
+        controls::hidden(self);
         self.storage.hidden(window);
         console_mode::hidden(self, window);
         self.logs.release();
@@ -442,6 +446,7 @@ impl SettingsPage {
             Section::About => self.about.load(&self.ctx, cx),
             Section::Screenshots => self.screenshots.shown(cx),
             Section::Achievements => achievements::shown(self, cx),
+            Section::Controls => controls::shown(self, cx),
             Section::Overlay => overlay::shown(cx),
             Section::Launchers => launchers::shown(self, cx),
             Section::Replay => replay::shown(self, cx),
@@ -528,7 +533,7 @@ impl SettingsPage {
         };
         let layer = |ix: usize, radius: f32| nav_keys::item_layer(&self.nav_bounds, ix, cursor == Some(ix), px(radius));
         let pill = |s: Section, ix: usize, cx: &mut Context<Self>| {
-            nav_pill(SharedString::from(format!("settings-nav-{s:?}")), s.icon(), s.label(), self.section == s)
+            nav_pill(SharedString::from(format!("settings-nav-{s:?}")), nav_icon(s), s.label(), self.section == s)
                 .relative()
                 .child(layer(ix, 999.))
                 .on_click(cx.listener(move |this, _, window, cx| this.nav_clicked(ix, search::Pick::Section(s), window, cx)))
@@ -752,6 +757,7 @@ impl SettingsPage {
             Section::Library => self.library_section(cx).into_any_element(),
             Section::Storage => storage::render(self, window, cx),
             Section::Mods => mods::render(self, window, cx),
+            Section::Controls => controls::render(self, window, cx),
             Section::Overlay => overlay::render(self, window, cx),
             Section::Launchers => launchers::render(self, cx),
             Section::Integrations => integrations::render(self, window, cx),
@@ -859,5 +865,14 @@ impl Render for SettingsPage {
             .child(content)
             .child(close);
         div().size_full().p(px(12.)).pt(px(2.)).child(sheet).into_any_element()
+    }
+}
+
+/// A section's icon in the left list: [`Section::icon`] (which console mode
+/// draws too), except Mods, a puzzle piece here.
+fn nav_icon(section: Section) -> Icon {
+    match section {
+        Section::Mods => Icon::Extension,
+        s => s.icon(),
     }
 }

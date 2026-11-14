@@ -3569,6 +3569,7 @@ dependencies = [
  "smallvec",
  "tempfile",
  "trash",
+ "usvg 0.46.0",
 ]
 
 [[package]]

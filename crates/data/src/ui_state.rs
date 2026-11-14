@@ -13,7 +13,7 @@ use serde_json::{json, Map, Value};
 
 use crate::age_rating::AgeFilter;
 use crate::collection::{FacetFilters, FacetKind, InstallFilter, SortMode, FACET_KINDS};
-use crate::console_theme::{AutoConsole, ConsoleButton, OpenIn};
+use crate::console_theme::{AutoConsole, ConfirmButton, ConsoleButton, ControllerPrefs, Glyphs, OpenIn};
 use crate::json_store;
 use crate::organize::GroupBy;
 use crate::paths::AppPaths;
@@ -107,6 +107,11 @@ pub struct UiState {
     /// [`console_open_in`](Self::console_open_in) ([`set_console_fullscreen`]):
     /// a window that opens in console mode opens fullscreen.
     pub console_fullscreen: bool,
+    /// `controller` of `console.json`, mirrored like
+    /// [`console_open_in`](Self::console_open_in) ([`set_controller`]): the
+    /// overlay draws the buttons and swaps confirm and back without reading
+    /// that file.
+    pub controller: ControllerPrefs,
 }
 
 /// Range and default of [`UiState::grid_cover_w`].
@@ -216,6 +221,7 @@ impl Default for UiState {
             console_auto: AutoConsole::default(),
             console_button: ConsoleButton::default(),
             console_fullscreen: true,
+            controller: ControllerPrefs::default(),
         }
     }
 }
@@ -279,6 +285,11 @@ impl UiState {
         state.console_auto = value.get(CONSOLE_AUTO).and_then(Value::as_str).and_then(AutoConsole::parse).unwrap_or_default();
         state.console_button = value.get(CONSOLE_BUTTON).and_then(Value::as_str).and_then(ConsoleButton::parse).unwrap_or_default();
         state.console_fullscreen = value.get(CONSOLE_FULLSCREEN).and_then(Value::as_bool).unwrap_or(true);
+        let controller = value.get(CONTROLLER);
+        state.controller = ControllerPrefs {
+            glyphs: controller.and_then(|c| c.get("glyphs")).and_then(Value::as_str).and_then(Glyphs::parse).unwrap_or_default(),
+            confirm: controller.and_then(|c| c.get("confirm")).and_then(Value::as_str).and_then(ConfirmButton::parse).unwrap_or_default(),
+        };
         state
     }
 
@@ -794,6 +805,7 @@ const CONSOLE_OPEN_IN: &str = "consoleOpenIn";
 const CONSOLE_AUTO: &str = "consoleAuto";
 const CONSOLE_FULLSCREEN: &str = "consoleFullscreen";
 const CONSOLE_BUTTON: &str = "consoleButton";
+const CONTROLLER: &str = "controller";
 
 /// Stores `value` under `key`, or removes the key for the default (`None`).
 fn set_mirror(paths: &AppPaths, key: &str, value: Option<Value>) -> Result<()> {
@@ -824,6 +836,16 @@ pub fn set_console_auto(paths: &AppPaths, value: AutoConsole) -> Result<()> {
 /// Mirrors console.json's `consoleButton` into the UI state.
 pub fn set_console_button(paths: &AppPaths, value: ConsoleButton) -> Result<()> {
     set_mirror(paths, CONSOLE_BUTTON, (value != ConsoleButton::default()).then(|| value.as_str().into()))
+}
+
+/// Mirrors console.json's `controller` into the UI state (stored only when
+/// not automatic).
+pub fn set_controller(paths: &AppPaths, value: ControllerPrefs) -> Result<()> {
+    set_mirror(
+        paths,
+        CONTROLLER,
+        (value != ControllerPrefs::default()).then(|| json!({ "glyphs": value.glyphs.as_str(), "confirm": value.confirm.as_str() })),
+    )
 }
 
 /// Mirrors console.json's `fullscreen` into the UI state (stored only when off).
@@ -1069,11 +1091,15 @@ mod tests {
         set_console_fullscreen(&paths, false).unwrap();
         assert_eq!(UiState::load(&paths).console_button, ConsoleButton::Auto);
         set_console_button(&paths, ConsoleButton::Bumpers).unwrap();
+        assert_eq!(UiState::load(&paths).controller, ControllerPrefs::default());
+        let east = ControllerPrefs { glyphs: Glyphs::PlayStation, confirm: ConfirmButton::East };
+        set_controller(&paths, east).unwrap();
         let stale = UiState::default();
         let loaded = UiState::load(&paths);
         assert_eq!((loaded.console_open_in, loaded.console_auto), (OpenIn::Console, AutoConsole::Ask));
         assert!(!loaded.console_fullscreen);
         assert_eq!(loaded.console_button, ConsoleButton::Bumpers);
+        assert_eq!(loaded.controller, east);
         // A copy loaded before the change saves without undoing it.
         stale.save(&paths).unwrap();
         assert_eq!(UiState::load(&paths).console_open_in, OpenIn::Console);
@@ -1081,9 +1107,11 @@ mod tests {
         set_console_auto(&paths, AutoConsole::Off).unwrap();
         set_console_fullscreen(&paths, true).unwrap();
         set_console_button(&paths, ConsoleButton::Auto).unwrap();
+        set_controller(&paths, ControllerPrefs::default()).unwrap();
         let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
         assert!(on_disk.get(CONSOLE_OPEN_IN).is_none() && on_disk.get(CONSOLE_AUTO).is_none());
         assert!(on_disk.get(CONSOLE_FULLSCREEN).is_none() && on_disk.get(CONSOLE_BUTTON).is_none());
+        assert!(on_disk.get(CONTROLLER).is_none());
     }
 
     #[test]

@@ -238,6 +238,26 @@ fn refresh_info(cache: &ThumbnailCache, cx: &mut Context<SettingsPage>) {
 }
 
 /// `persistScreenshots`: writes the settings with some fields replaced.
+/// The capture shortcut as set (the default unless changed).
+pub(super) fn accelerator(d: &SettingsPage) -> String {
+    let s = &d.settings.screenshots;
+    if s.capture_accelerator.is_empty() {
+        DEFAULT_CAPTURE_ACCELERATOR.to_string()
+    } else {
+        s.capture_accelerator.clone()
+    }
+}
+
+/// Turns the in-game capture on or off (Settings → Controller).
+pub(super) fn set_capture(d: &mut SettingsPage, on: bool, cx: &mut Context<SettingsPage>) {
+    save(d, None, None, Some(on), None, cx);
+}
+
+/// Changes the capture shortcut and turns it on (Settings → Controller).
+pub(super) fn set_accelerator(d: &mut SettingsPage, accelerator: String, cx: &mut Context<SettingsPage>) {
+    save(d, None, None, Some(true), Some(accelerator), cx);
+}
+
 fn save(
     d: &mut SettingsPage,
     folder: Option<String>,

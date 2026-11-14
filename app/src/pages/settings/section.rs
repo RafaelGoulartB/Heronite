@@ -25,6 +25,9 @@ pub enum Section {
     Storage,
     /// Mods: the Nexus Mods account, the mod links, what applying mods needs.
     Mods,
+    /// What every controller button does, where, and what can change
+    /// (`controls`).
+    Controls,
     /// The in-game overlay (Guide button).
     Overlay,
     /// The replay buffer: the last seconds of a game, saved on request.
@@ -48,7 +51,7 @@ pub enum Section {
 impl Section {
     /// Left navigation: caption + sections (the caption is translated when drawn).
     pub const GROUPS: [(&'static str, &'static [Section]); 6] = [
-        (n_!("App"), &[Section::General, Section::Appearance, Section::ConsoleMode]),
+        (n_!("App"), &[Section::General, Section::Appearance, Section::ConsoleMode, Section::Controls]),
         (n_!("Games"), &[Section::GameDefaults, Section::Downloads, Section::Launchers, Section::Integrations, Section::Mods]),
         (n_!("Collection"), &[Section::Library, Section::Metadata, Section::Achievements]),
         (n_!("While playing"), &[Section::Overlay, Section::Screenshots, Section::Replay]),
@@ -57,10 +60,11 @@ impl Section {
     ];
 
     /// Same order as [`Section::GROUPS`].
-    pub const ALL: [Section; 21] = [
+    pub const ALL: [Section; 22] = [
         Section::General,
         Section::Appearance,
         Section::ConsoleMode,
+        Section::Controls,
         Section::GameDefaults,
         Section::Downloads,
         Section::Launchers,
@@ -113,6 +117,7 @@ impl Section {
             Section::Integrations => tr!("Integrations"),
             Section::Storage => tr!("Storage"),
             Section::Mods => tr!("Mods"),
+            Section::Controls => tr!("Controller"),
             Section::Overlay => tr!("Overlay"),
             Section::Replay => tr!("Replay"),
             Section::Metadata => tr!("Metadata"),
@@ -139,6 +144,7 @@ impl Section {
             Section::Integrations => Icon::Tv,
             Section::Storage => Icon::FaHardDrive,
             Section::Mods => Icon::CallMerge,
+            Section::Controls => Icon::SportsEsports,
             Section::Overlay => Icon::SportsEsports,
             Section::Replay => Icon::Videocam,
             Section::Metadata => Icon::TravelExplore,
@@ -169,6 +175,7 @@ impl Section {
             Section::Integrations => tr!("Sunshine keeps your games in its list, with their covers, so Moonlight can start them from a phone, a TV or another computer."),
             Section::Storage => tr!("What your games take on disk, and what can go."),
             Section::Mods => tr!("Your Nexus Mods account, the download buttons of the mod sites, and what Heronite needs to apply mods when a game starts. Each game's mods are managed from its own Mods."),
+            Section::Controls => tr!("What every button does, where it works, and what you can change."),
             Section::Overlay => crate::overlay::labels::section_blurb(),
             Section::Replay => tr!("The last seconds of a game kept in memory and saved as a moment with Guide + X, and the memory that takes."),
             Section::Metadata => tr!("Where the details and pictures of your games come from. Sources are asked from the top of each list down; a field stays with the first one that has it."),
@@ -196,6 +203,7 @@ impl Section {
             Section::Integrations => "integrations sunshine moonlight stream streaming remote play tv phone couch integracoes transmitir transmissao jogar remotamente celular sofa",
             Section::Storage => "storage disk space free up clean cleanup size prefixes proton cache leftovers uninstall armazenamento disco espaco liberar limpar limpeza tamanho prefixos sobras desinstalar",
             Section::Mods => "mods nexus thunderstore nxm ror2mm api key account premium links fuse overlayfs fomod mod manager modding mods conta chave link modificacoes gerenciador",
+            Section::Controls => "controls controller gamepad buttons shortcuts guide back start chord bindings console checks steam input conflict controles controle botoes atalhos conflito",
             Section::Overlay => "overlay guide button controller gamepad keyboard in-game volume screenshot shortcut botao guia controle teclado sobreposicao no jogo volume captura atalho",
             Section::Replay => "replay clip video record recording buffer last seconds guide gpu-screen-recorder memory ram vram vulkan nvenc vaapi encoder disk gravar gravacao clipe video ultimos segundos memoria codificador disco",
             Section::Achievements => "achievements trophies retroachievements retro emulator rom steam gog epic unlocked rare points hardcore web api key conquistas trofeus emulador desbloqueadas raras pontos chave",
@@ -231,6 +239,7 @@ impl Section {
             "integrations" | "sunshine" => Some(Section::Integrations),
             "storage" | "disk" => Some(Section::Storage),
             "mods" | "nexus" => Some(Section::Mods),
+            "controls" | "shortcuts" | "controller" => Some(Section::Controls),
             "overlay" => Some(Section::Overlay),
             "replay" => Some(Section::Replay),
             "metadata" => Some(Section::Metadata),
@@ -268,6 +277,7 @@ mod tests {
         assert_eq!(Section::parse("mods"), Some(Section::Mods));
         assert_eq!(Section::parse("console-mode"), Some(Section::ConsoleMode));
         assert_eq!(Section::parse("sunshine"), Some(Section::Integrations));
+        assert_eq!(Section::parse("controls"), Some(Section::Controls));
         assert_eq!(Section::parse("nope"), None);
         assert_eq!(crate::pages::Page::from_debug("settings"), Some(crate::pages::Page::Settings));
         assert_eq!(crate::pages::Page::from_debug("settings:about"), Some(crate::pages::Page::Settings));
