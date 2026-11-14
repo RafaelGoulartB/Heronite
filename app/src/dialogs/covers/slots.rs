@@ -132,7 +132,7 @@ impl CoversDialog {
 
     /// The muted line of a slot: where its picture comes from, then who
     /// draws it.
-    fn slot_line(&self, info: &SlotInfo) -> String {
+    pub(super) fn slot_line(&self, info: &SlotInfo) -> String {
         let what = match info.look {
             Look::NotKept => return tr!("Not kept on this PC").to_string(),
             Look::Missing => tr!("No picture").to_string(),

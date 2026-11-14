@@ -16,6 +16,8 @@ use crate::console::kit::{self, u};
 use crate::console::list::{Outcome, Row, Value};
 use crate::console::osk::{Osk, OskEvent};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
+use crate::dialogs::covers::CoversDialog;
+use crate::dialogs::DialogEvent;
 use crate::icons::Icon;
 use crate::theme;
 
@@ -136,10 +138,11 @@ impl GameSettingsDialog {
                     Row::header(tr!("Images")),
                     Row::info("img-cover", tr!("Cover"), if self.art.cover_url.is_some() { tr!("Custom") } else { tr!("Default") }),
                     Row::info("img-hero", tr!("Background"), if self.art.hero_url.is_some() { tr!("Custom") } else { tr!("Default") }),
-                    Row::action("img-reset", tr!("Use the default images"))
-                        .icon(Icon::Replay)
-                        .enabled(custom && self.busy.is_none())
-                        .desc(tr!("Choosing new images from the web needs desktop mode")),
+                    Row::action("img-find", tr!("Change pictures\u{2026}"))
+                        .icon(Icon::Image)
+                        .enabled(self.busy.is_none())
+                        .desc(tr!("Covers and backgrounds, from the web or a file")),
+                    Row::action("img-reset", tr!("Use the default images")).icon(Icon::Replay).enabled(custom && self.busy.is_none()),
                     Row::header(tr!("Details")),
                     Row::text("f:name", tr!("Name"), d.name.read(cx).value().to_string()),
                     Row::text("f:release", tr!("Release date"), d.release.read(cx).value().to_string()),
@@ -202,6 +205,24 @@ impl GameSettingsDialog {
             cx.notify();
         });
         self.layer.open(&osk, sub);
+    }
+
+    /// "Change pictures…": the Covers dialog over this page. What it saves
+    /// shows in the rows at once and reaches the Collection.
+    fn console_find_pictures(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (ctx, game) = (self.ctx.clone(), self.game.clone());
+        let view = cx.new(|cx| CoversDialog::new(ctx, game, None, window, cx));
+        let sub = cx.subscribe(&view, |this: &mut Self, view, ev: &DialogEvent, cx| {
+            if !matches!(ev, DialogEvent::Close) {
+                this.art = view.read(cx).art().clone();
+                cx.emit(DialogEvent::Changed);
+            }
+            if !matches!(ev, DialogEvent::Changed) {
+                this.layer.close();
+            }
+            cx.notify();
+        });
+        self.layer.open(&view, sub);
     }
 
     fn pick_launch_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -423,6 +444,7 @@ impl PadTarget for GameSettingsDialog {
                 "command" => self.edit_launch_command(window, cx),
                 "save-launch" => self.save_launch(cx),
                 "save-details" => self.save_details(cx),
+                "img-find" => self.console_find_pictures(window, cx),
                 "img-reset" => self.reset_all_images(cx),
                 "f:name" => self.edit_field(Field::Name, tr!("Name"), window, cx),
                 "f:release" => self.edit_field(Field::Release, tr!("Release date"), window, cx),

@@ -779,6 +779,16 @@ for the picked slot), "Reset" (back to what the sources gave; only when the slot
 the primary "Use for Square" (Tall, Wide, Background; "Downloading…" while it saves), which needs a picture picked. Every
 change is saved at once and the Collection behind shows it; Esc closes the screenshot picker first.
 
+In console mode (`covers/console.rs`, in `console::registry`) the dialog fills the window: the slots are tabs on LB / RB, the picture
+the slot shows now is on the left (its shape, where it comes from, its resolution) and what was found is a grid of thumbnails the
+d-pad moves over, each with its source (or LaunchBox's region) and resolution. A uses the focused one ("Downloading…", then
+"Saved"; a slot that is not kept says so and A keeps the shape), Y types another search on the on-screen keyboard, X lists
+more (so does Down on the last row), Start opens Options ("Choose a file…" with the console browser, "Reset", and one source
+alone when more than one found pictures) and B closes. It opens from the game page's Manage › "Change pictures…" (any game; the Sheet page
+style has it under Full page) and from Game settings › Game › Images' "Change pictures…", where it sits over the page in its `Layer`. "From a
+screenshot…" is the desktop's alone. `HERONITE_DEBUG_DIALOG=covers[:<state>]` also opens it in console mode
+(`HERONITE_DEBUG_CONSOLE=1`).
+
 **Get more sources** (`dialogs/extensions/`: `mod.rs` the dialog and its two faces, `gallery.rs` the entries and the picked
 one's panel, `confirm.rs` the installer, `lists_manager.rs` "Lists…", `permissions.rs` "What it is allowed to do",
 `words.rs` every error, origin and trust sentence and how old a copy is, `actions.rs` what runs off the UI thread,

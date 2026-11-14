@@ -11,7 +11,6 @@
   "Can't add \"{title}\" to Steam while Steam is running. Close Steam and try again (Steam overwrites shortcuts.vdf when it exits).": "Impossible d’ajouter « {title} » à Steam pendant son exécution. Fermez Steam et réessayez (Steam réécrit shortcuts.vdf à sa fermeture).",
   "Can't remove \"{title}\" from Steam user \"{folder}\". \"{file}\" is corrupted!\n{problems}": "Impossible de retirer « {title} » de l’utilisateur Steam « {folder} ». « {file} » est corrompu !\n{problems}",
   "Can't remove \"{title}\" from Steam while Steam is running. Close Steam and try again (Steam overwrites shortcuts.vdf when it exits).": "Impossible de retirer « {title} » de Steam pendant son exécution. Fermez Steam et réessayez (Steam réécrit shortcuts.vdf à sa fermeture).",
-  "Choosing new images from the web needs desktop mode": "Choisir de nouvelles images sur le Web nécessite le mode bureau",
   "Cloud saves failed: {error}": "Échec des sauvegardes cloud : {error}",
   "Cloud saves: {problem}": "Sauvegardes cloud : {problem}",
   "Connection to the Steam client failed": "Échec de la connexion au client Steam",

@@ -62,7 +62,7 @@ impl CoversDialog {
     }
 
     /// The sources that found pictures, in the grid's order, and how many each.
-    fn source_counts(&self) -> Vec<(&'static str, usize)> {
+    pub(super) fn source_counts(&self) -> Vec<(&'static str, usize)> {
         let r = &self.results;
         [(LAUNCHBOX, r.launchbox.len()), (ids::STEAMGRIDDB, r.steamgrid.len()), (ids::WEB_IMAGES, r.web.len())]
             .into_iter()
@@ -70,19 +70,19 @@ impl CoversDialog {
             .collect()
     }
 
-    fn sources_found(&self) -> usize {
+    pub(super) fn sources_found(&self) -> usize {
         self.source_counts().len()
     }
 
     /// The source listed alone, while it found pictures (a new search may
     /// find none there: then every source is).
-    fn source_shown(&self) -> Option<&'static str> {
+    pub(super) fn source_shown(&self) -> Option<&'static str> {
         self.source.filter(|id| self.source_counts().iter().any(|(s, _)| s == id))
     }
 
     /// Lists the pictures of `source` alone (`None`: of every source). A
     /// picture picked of another source is no longer picked.
-    fn show_source(&mut self, source: Option<&'static str>, cx: &mut Context<Self>) {
+    pub(super) fn show_source(&mut self, source: Option<&'static str>, cx: &mut Context<Self>) {
         self.source = source;
         self.visible = PAGE;
         if let (Some(id), Some(i)) = (source, self.selected) {

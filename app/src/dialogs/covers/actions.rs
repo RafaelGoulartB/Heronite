@@ -51,6 +51,7 @@ impl CoversDialog {
         // Every search, even one shown from before, makes the answers of
         // those still running stale: they must not replace what is shown.
         self.request += 1;
+        self.note = None;
         self.selected = None;
         self.visible = found::PAGE;
         self.results = ArtImages::default();
@@ -125,6 +126,7 @@ impl CoversDialog {
                 self.art = art;
                 self.selected = None;
                 self.sizes.update(cx, |s, _| s.forget_local());
+                self.note = Some(tr!("Saved"));
                 self.compute_slots();
                 if self.fake.is_none() {
                     cx.emit(DialogEvent::Changed);
@@ -184,19 +186,16 @@ impl CoversDialog {
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = rx.await else { return };
             let Some(path) = paths.into_iter().next() else { return };
-            this.update(cx, |this, cx| {
-                let kind = this.kind();
-                let file = path.to_string_lossy().into_owned();
-                let shown = file.clone();
-                this.save(
-                    move |s, runner, app| s.set_art_from_file(runner, app, kind, &file),
-                    move |art| *kind.of_art_mut(art) = Some(shown),
-                    cx,
-                );
-            })
-            .ok();
+            this.update(cx, |this, cx| this.use_file(path.to_string_lossy().into_owned(), cx)).ok();
         })
         .detach();
+    }
+
+    /// The file at `file` as the slot's picture.
+    pub(super) fn use_file(&mut self, file: String, cx: &mut Context<Self>) {
+        let kind = self.kind();
+        let shown = file.clone();
+        self.save(move |s, runner, app| s.set_art_from_file(runner, app, kind, &file), move |art| *kind.of_art_mut(art) = Some(shown), cx);
     }
 
     /// "Reset": back to what the sources gave for the slot.
