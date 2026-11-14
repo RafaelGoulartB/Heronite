@@ -152,8 +152,8 @@ fn autoplay_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement 
         .child(
             toggle_row(
                 "video-autoplay",
-                tr!("Play trailers by themselves"),
-                Some(tr!("The first trailer of the game you pick starts without sound. Off, a trailer plays when you press it, also without sound.")),
+                tr!("Autoplay trailers"),
+                Some(tr!("The selected game's first trailer starts on its own, muted. Trailers always start muted: turn the sound on from their controls.")),
                 on,
             )
             .on_click(cx.listener(move |d, _, _, cx| {

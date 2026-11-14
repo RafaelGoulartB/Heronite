@@ -1371,7 +1371,7 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   PipeWire on Linux only), its name and a bar (play / pause, time, seek bar, sound) fade in while the pointer is over
   the stage; paused they stay. Every trailer starts without sound (the sound button turns it on for that trailer);
   "Show" (a sub-row of Store media, `storeMediaKinds`: Both, Videos or Screenshots) keeps one kind; with
-  Screenshots only, the rows about trailers are left out. "Play trailers by themselves" (a sub-row of Store media, `videoAutoplay`, off by default) starts the focused game's
+  Screenshots only, the rows about trailers are left out. "Autoplay trailers" (a sub-row of Store media, `videoAutoplay`, off by default) starts the focused game's
   first trailer once the section is drawn. Arrows on the stage's sides step through the items. It stops when the game is no
   longer focused, when the section is not drawn (another page, the drawer closed, the section off) and when a game
   starts. A failure says so on the stage with "Watch on the store page".
