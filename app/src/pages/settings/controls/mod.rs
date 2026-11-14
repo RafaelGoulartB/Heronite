@@ -374,7 +374,7 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
         .gap(px(12.))
         .child(device_bar(d, cx))
         .child(show_bar(d, cx))
-        .child(pad::map(d, cx))
+        .child(pad::map(d, window, cx))
         .child(table::render(d, window, cx))
         .into_any_element()
 }

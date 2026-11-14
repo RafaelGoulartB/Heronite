@@ -1,8 +1,9 @@
-//! The drawn controller of Settings → Controller: an Xbox-style pad (the
-//! body, bumpers and triggers painted with curves; sticks, face buttons,
-//! Guide, View and Menu as round boxes) whose face buttons show what the
-//! controller prints on them (`look::pad_glyphs`), the buttons the tab uses lit, and a
-//! callout for each in a column on its side (Guide's on top) joined to the
+//! The drawn controller of Settings → Controller: an Xbox Series controller
+//! (`controller.svg`, built from Zacksly's "Xbox Series Button Icons and
+//! Controls", CC BY 3.0, without the Xbox logo; the triggers are ours) in
+//! the theme's colours, the buttons the tab uses lit, its face buttons drawn
+//! as the controller prints them (`look::pad_glyphs`), and a callout for
+//! each button in a column on its side (Guide's on top) joined to the
 //! button's rim by an elbow line. A binding that is off has a dashed callout
 //! and line. A click on a button or a callout picks it here and in the
 //! table.
@@ -22,10 +23,11 @@ use crate::theme;
 /// scaled to the page's width.
 const BOX_W: f32 = 880.;
 const BOX_H: f32 = 340.;
-/// The pad's own units (the outline below) map into the box at this scale,
-/// with its point (440, 260) at `ORIGIN`.
-const PAD_SCALE: f32 = 0.78;
-const ORIGIN: (f32, f32) = (440., 184.);
+/// The pad's own units (those of the drawing it comes from, 4096 wide) map
+/// into the box at this scale, its top middle (2048.5, 482) at `ORIGIN`.
+const PAD_SCALE: f32 = 0.236;
+const PAD_TOP: (f32, f32) = (2048.5, 482.);
+const ORIGIN: (f32, f32) = (440., 50.);
 /// A callout's width and height, and the gap between two, in box units.
 const CALLOUT_W: f32 = 212.;
 const CALLOUT_H: f32 = 32.;
@@ -33,7 +35,7 @@ const CALLOUT_GAP: f32 = 6.;
 
 /// A pad point in box units.
 fn at_box(x: f32, y: f32) -> (f32, f32) {
-    (ORIGIN.0 + (x - 440.) * PAD_SCALE, ORIGIN.1 + (y - 260.) * PAD_SCALE)
+    (ORIGIN.0 + (x - PAD_TOP.0) * PAD_SCALE, ORIGIN.1 + (y - PAD_TOP.1) * PAD_SCALE)
 }
 
 /// A part of the drawn controller.
@@ -98,20 +100,20 @@ impl Part {
     /// Its centre in pad units.
     fn centre(self) -> (f32, f32) {
         match self {
-            Part::LT => (300., 84.),
-            Part::RT => (580., 84.),
-            Part::LB => (300., 108.),
-            Part::RB => (580., 108.),
-            Part::LStick => (322., 174.),
-            Part::RStick => (520., 250.),
-            Part::DPad => (382., 250.),
-            Part::Y => (568., 142.),
-            Part::A => (568., 206.),
-            Part::X => (536., 174.),
-            Part::B => (600., 174.),
-            Part::View => (408., 174.),
-            Part::Menu => (472., 174.),
-            Part::Guide => (440., 136.),
+            Part::LT => (1640., 475.),
+            Part::RT => (2457., 475.),
+            Part::LB => (1617., 548.),
+            Part::RB => (2480., 548.),
+            Part::LStick => (1602.26, 815.86),
+            Part::RStick => (2275.88, 1073.),
+            Part::DPad => (1816.41, 1091.48),
+            Part::Y => (2490.79, 695.37),
+            Part::A => (2490.79, 925.05),
+            Part::X => (2375.95, 810.21),
+            Part::B => (2605.63, 810.52),
+            Part::View => (1921.91, 808.15),
+            Part::Menu => (2173.03, 808.15),
+            Part::Guide => (2048.5, 636.52),
         }
     }
 
@@ -120,20 +122,20 @@ impl Part {
     /// their neighbours, so no line crosses another button.
     fn route(self) -> (Side, (f32, f32), (f32, f32)) {
         match self {
-            Part::LT => (Side::Left, (268., 78.), (240., 62.)),
-            Part::LB => (Side::Left, (240., 106.), (216., 94.)),
-            Part::LStick => (Side::Left, (292., 174.), (250., 176.)),
-            Part::DPad => (Side::Left, (352., 254.), (300., 272.)),
-            Part::RT => (Side::Right, (612., 78.), (640., 62.)),
-            Part::RB => (Side::Right, (640., 106.), (664., 94.)),
-            Part::Y => (Side::Right, (581., 137.), (612., 124.)),
-            Part::X => (Side::Right, (548., 170.), (606., 150.)),
-            Part::B => (Side::Right, (613., 174.), (640., 178.)),
-            Part::A => (Side::Right, (580., 212.), (612., 226.)),
-            Part::RStick => (Side::Right, (548., 258.), (600., 280.)),
-            Part::Menu => (Side::Top, (472., 168.), (472., 168.)),
-            Part::View => (Side::Top, (408., 168.), (408., 168.)),
-            Part::Guide => (Side::Top, (440., 121.), (440., 121.)),
+            Part::LT => (Side::Left, (1505., 520.), (1430., 470.)),
+            Part::LB => (Side::Left, (1455., 610.), (1380., 600.)),
+            Part::LStick => (Side::Left, (1507.4, 815.86), (1330., 818.)),
+            Part::DPad => (Side::Left, (1676.4, 1091.48), (1450., 1100.)),
+            Part::RT => (Side::Right, (2592., 520.), (2667., 470.)),
+            Part::RB => (Side::Right, (2642., 610.), (2717., 600.)),
+            Part::Y => (Side::Right, (2531.6, 654.5), (2580., 620.)),
+            Part::X => (Side::Right, (2426., 781.3), (2560., 735.)),
+            Part::B => (Side::Right, (2663.4, 810.52), (2700., 812.)),
+            Part::A => (Side::Right, (2531.6, 965.9), (2580., 990.)),
+            Part::RStick => (Side::Right, (2370.75, 1073.), (2560., 1110.)),
+            Part::Menu => (Side::Top, (2173.03, 768.1), (2173.03, 768.1)),
+            Part::View => (Side::Top, (1921.91, 768.1), (1921.91, 768.1)),
+            Part::Guide => (Side::Top, (2048.5, 570.85), (2048.5, 570.85)),
         }
     }
 }
@@ -286,75 +288,63 @@ pub(super) fn callouts(d: &SettingsPage, show: Show) -> Vec<Callout> {
     }
 }
 
-/// The controller's outline in pad units: cubic curves from (440, 118).
-const BODY: [[f32; 6]; 12] = [
-    [492., 118., 540., 102., 592., 106.],
-    [642., 110., 668., 138., 682., 186.],
-    [698., 240., 712., 330., 708., 380.],
-    [704., 424., 672., 444., 642., 428.],
-    [618., 414., 602., 380., 584., 350.],
-    [566., 322., 530., 306., 440., 306.],
-    [350., 306., 314., 322., 296., 350.],
-    [278., 380., 262., 414., 238., 428.],
-    [208., 444., 176., 424., 172., 380.],
-    [168., 330., 182., 240., 198., 186.],
-    [212., 138., 238., 110., 288., 106.],
-    [340., 102., 388., 118., 440., 118.],
+/// The controller's outlines in pad units (SVG paths): the body, the left
+/// bumper and the d-pad's cross from the Zacksly drawing; the left trigger
+/// and its ridge are ours. The right ones are mirrored (`mirror`).
+const BODY: &str = "M2662,630.58c-136.49-129.36-351.3-108-351.3-108L2049,515.49v0l-.51,0-.5,0v0l-261.66,7.09s-214.81-21.36-351.3,108c0,0-265.38,583.77-246,815.34,0,0-9.13,188.61,171.26,231.58,0,0,95.74-55.93,242.11-252.94,0,0,68-93.36,177.23-84.66l268.39.79h1l268.39-.79c109.18-8.7,177.23,84.66,177.23,84.66,146.37,197,242.11,252.94,242.11,252.94,180.39-43,171.26-231.58,171.26-231.58C2927.35,1214.35,2662,630.58,2662,630.58Z";
+const BUMPER: [(f32, f32); 7] =
+    [(1443., 623.26), (1486.32, 485.67), (1720., 482.5), (1737.41, 485.), (1742.55, 489.15), (1772.85, 519.33), (1791.65, 522.44)];
+const TRIGGER: [(f32, f32); 13] = [
+    (1490., 548.),
+    (1515., 488.),
+    (1590., 446.),
+    (1680., 440.),
+    (1730., 437.),
+    (1762., 452.),
+    (1772., 488.),
+    (1773.3, 497.),
+    (1774.7, 506.),
+    (1776., 515.),
+    (1690., 505.),
+    (1580., 515.),
+    (1490., 548.),
 ];
+const RIDGE: [(f32, f32); 4] = [(1560., 500.), (1590., 468.), (1640., 452.), (1700., 450.)];
+const CROSS: &str = "M1940.49,1053.79s-3-7.32-12.85-7.91h-65v-65c-.6-9.89-7.91-12.86-7.91-12.86-7.12-4.15-37-4.15-37-4.15s-31.85,0-39,4.15c0,0-7.32,3-7.91,12.86v65h-65c-9.89.59-12.86,7.91-12.86,7.91-4.15,7.12-4.15,37-4.15,37s0,31.85,4.15,39c0,0,3,7.31,12.86,7.91h65v65c.59,9.890,7.91,12.85,7.91,12.85,7.12,4.16,37,4.16,37,4.16s31.85,0,39-4.16c0,0,7.31-3,7.91-12.85v-65h65c9.89-.6,12.85-7.91,12.85-7.91,4.16-7.12,4.16-37,4.16-37S1944.65,1060.91,1940.49,1053.79Z";
+/// View's, Menu's and Share's marks (lines), and Share's pill.
+const MARKS: &str = "<line x1='2151.97' y1='807.76' x2='2194.09' y2='807.76'/><line x1='2151.97' y1='796.43' x2='2194.09' y2='796.43'/><line x1='2151.97' y1='819.09' x2='2194.09' y2='819.09'/><rect x='1917.97' y='805.21' width='21.22' height='16.29'/><polyline points='1910.96 807.76 1904.33 807.76 1904.33 790.43 1925.93 790.43 1925.93 796.55'/><polyline points='2025.55 898.43 2025.55 914.16 2070.45 914.16 2070.45 898.43'/><line x1='2048' y1='905.39' x2='2048' y2='890.81'/><polyline points='2038.78 900.02 2048 890.81 2057.22 900.02'/>";
+const SHARE: &str = "M2069.1,879.86h-45.2a24.92,24.92,0,0,0,0,49.84h45.2a24.92,24.92,0,1,0,0-49.84Z";
+/// The radius of a stick's well and of its cap, of the d-pad's well, of a
+/// face button, of View and Menu, and of Guide, in pad units.
+const STICK_WELL: f32 = 94.87;
+const STICK_CAP: f32 = 63.82;
+const DPAD_WELL: f32 = 140.02;
+const FACE_R: f32 = 57.76;
+const SMALL_R: f32 = 40.03;
+const GUIDE_R: f32 = 65.67;
 
-/// A shoulder part's outline (left side; the right one is mirrored): a start
-/// point and cubic curves or lines (a line has its control points on it).
-fn shoulder(part: Part) -> ((f32, f32), Vec<[f32; 6]>) {
-    let (start, segs): ((f32, f32), Vec<[f32; 6]>) = match part {
-        Part::LT | Part::RT => (
-            (250., 104.),
-            vec![
-                [256., 82., 276., 72., 304., 70.],
-                [314., 70., 326., 70., 336., 70.],
-                [352., 70., 358., 82., 352., 100.],
-                [318., 101., 284., 102., 250., 104.],
-            ],
-        ),
-        _ => (
-            (206., 146.),
-            vec![
-                [220., 114., 252., 98., 296., 96.],
-                [321., 97., 347., 99., 372., 100.],
-                [386., 101., 386., 116., 372., 116.],
-                [347., 115., 321., 114., 296., 114.],
-                [262., 116., 236., 130., 220., 154.],
-                [215., 151., 210., 149., 206., 146.],
-            ],
-        ),
-    };
-    let flip = matches!(part, Part::RT | Part::RB);
-    let m = |x: f32| if flip { 880. - x } else { x };
-    let segs = segs.into_iter().map(|[a, b, c, d2, e, f]| [m(a), b, m(c), d2, m(e), f]).collect();
-    ((m(start.0), start.1), segs)
+/// `x` on the other side of the controller.
+fn mirror(x: f32) -> f32 {
+    2. * PAD_TOP.0 - x
 }
 
-/// The d-pad's cross as a polygon in pad units.
-fn dpad() -> Vec<(f32, f32)> {
-    let (cx, cy) = Part::DPad.centre();
-    let (a, l) = (11., 30.);
-    vec![
-        (cx - a, cy - l),
-        (cx + a, cy - l),
-        (cx + a, cy - a),
-        (cx + l, cy - a),
-        (cx + l, cy + a),
-        (cx + a, cy + a),
-        (cx + a, cy + l),
-        (cx - a, cy + l),
-        (cx - a, cy + a),
-        (cx - l, cy + a),
-        (cx - l, cy - a),
-        (cx - a, cy - a),
-    ]
+/// A closed path of cubic curves through `pts` (a start, then three points
+/// a curve), on the right side when `right`.
+fn curves(pts: &[(f32, f32)], right: bool, close: bool) -> String {
+    let x = |v: f32| if right { mirror(v) } else { v };
+    let mut d = format!("M{:.1},{:.1}", x(pts[0].0), pts[0].1);
+    for c in pts[1..].chunks(3) {
+        d.push('C');
+        d.push_str(&c.iter().map(|(px, py)| format!("{:.1},{:.1}", x(*px), py)).collect::<Vec<_>>().join(" "));
+    }
+    if close {
+        d.push('Z');
+    }
+    d
 }
 
 /// How a part looks: not used in this tab, used, or picked.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Look {
     Idle,
     Used,
@@ -382,12 +372,12 @@ impl Tones {
         let body = base.blend(theme::ink_a(0.07));
         Tones {
             body,
-            body_line: theme::ink_a(0.24),
+            body_line: theme::ink_a(0.36),
             well: base.blend(theme::ink_a(0.03)),
             part: body.blend(theme::ink_a(0.05)),
-            part_line: theme::ink_a(0.26),
-            used: body.blend(theme::ink_a(0.18)),
-            used_line: theme::ink_a(0.80),
+            part_line: theme::ink_a(0.42),
+            used: body.blend(theme::ink_a(0.26)),
+            used_line: theme::ink_a(0.85),
             picked: theme::accent().into(),
             picked_fill: body.blend(theme::accent_alpha(0.22).into()),
             lead: theme::ink_a(0.30),
@@ -418,87 +408,159 @@ struct Lead {
     picked: bool,
 }
 
-/// What the painter needs.
+/// What the controller's picture and the lines need.
 struct Paint {
     tones: Tones,
-    /// The look of each painted part (shoulders and d-pad).
+    /// The look of each part.
     looks: Vec<(Part, Look)>,
     /// Only the d-pad's vertical arms are lit.
     dpad_vertical: bool,
     leads: Vec<Lead>,
 }
 
-fn paint(bounds: Bounds<Pixels>, p: &Paint, window: &mut Window) {
+impl Paint {
+    fn look(&self, part: Part) -> Look {
+        self.looks.iter().find(|(q, _)| *q == part).map(|(_, l)| *l).unwrap_or(Look::Idle)
+    }
+}
+
+/// `#rrggbb` and its opacity, as SVG attributes `name` and `name-opacity`.
+fn paint_attr(name: &str, c: Hsla) -> String {
+    let c = Rgba::from(c);
+    let b = |v: f32| (v.clamp(0., 1.) * 255.).round() as u8;
+    format!("{name}='#{:02x}{:02x}{:02x}' {name}-opacity='{:.3}'", b(c.r), b(c.g), b(c.b), c.a)
+}
+
+/// The controller as an SVG `px_w` pixels wide, in box units (its picture
+/// fills the drawing): triggers and bumpers behind the body, then the
+/// sticks, the d-pad, View, Menu, Share and Guide in their looks. The face
+/// buttons are drawn over it (`face_button`), in the controller's style.
+fn controller_svg(p: &Paint, px_w: f32) -> String {
+    let t = &p.tones;
+    let k = PAD_SCALE;
+    // Strokes in box units, made pad units.
+    let fill_line = |look: Look| {
+        let (c, w) = t.line(look);
+        format!("{} {} stroke-width='{:.1}'", paint_attr("fill", t.fill(look)), paint_attr("stroke", c), w / k)
+    };
+    let mut o = String::with_capacity(6000);
+    o.push_str(&format!(
+        "<svg xmlns='http://www.w3.org/2000/svg' width='{w:.0}' height='{h:.0}' viewBox='0 0 {BOX_W} {BOX_H}'>",
+        w = px_w,
+        h = px_w * BOX_H / BOX_W,
+    ));
+    // The body is lighter in the middle, as a moulded shell.
+    o.push_str(&format!(
+        "<defs><linearGradient id='b' gradientUnits='userSpaceOnUse' x1='1188' y1='0' x2='2909' y2='0'>\
+         <stop offset='0' {e}/><stop offset='0.5' {m}/><stop offset='1' {e}/></linearGradient>\
+         <clipPath id='dp'><path d='{CROSS}'/></clipPath></defs>",
+        e = paint_attr("stop-color", t.body).replace("stop-color-opacity", "stop-opacity"),
+        m = paint_attr("stop-color", t.body.blend(theme::ink_a(0.05))).replace("stop-color-opacity", "stop-opacity"),
+    ));
+    o.push_str(&format!(
+        "<g transform='translate({:.3},{:.3}) scale({k})' stroke-linejoin='round' stroke-linecap='round'>",
+        ORIGIN.0 - PAD_TOP.0 * k,
+        ORIGIN.1 - PAD_TOP.1 * k,
+    ));
+    // Triggers (idle: in the shade behind the bumpers), with a ridge.
+    for (part, right) in [(Part::LT, false), (Part::RT, true)] {
+        let look = p.look(part);
+        let fill = if look == Look::Idle { t.well } else { t.fill(look) };
+        let (c, w) = t.line(look);
+        o.push_str(&format!(
+            "<path d='{}' {} {} stroke-width='{:.1}'/><path d='{}' fill='none' {} stroke-width='{:.1}' opacity='0.7'/>",
+            curves(&TRIGGER, right, true),
+            paint_attr("fill", fill),
+            paint_attr("stroke", c),
+            w / k,
+            curves(&RIDGE, right, false),
+            paint_attr("stroke", c),
+            w * 0.8 / k,
+        ));
+    }
+    for (part, right) in [(Part::LB, false), (Part::RB, true)] {
+        o.push_str(&format!("<path d='{}' {}/>", curves(&BUMPER, right, true), fill_line(p.look(part))));
+    }
+    o.push_str(&format!("<path d='{BODY}' fill='url(#b)' {} stroke-width='{:.1}'/>", paint_attr("stroke", t.body_line), 2. / k));
+    let well = |cx: f32, cy: f32, r: f32| {
+        format!(
+            "<circle cx='{cx}' cy='{cy}' r='{r}' {} {} stroke-width='{:.1}'/>",
+            paint_attr("fill", t.well),
+            paint_attr("stroke", t.body_line),
+            1.2 / k
+        )
+    };
+    for part in [Part::LStick, Part::RStick] {
+        let (cx, cy) = part.centre();
+        o.push_str(&well(cx, cy, STICK_WELL));
+        o.push_str(&format!("<circle cx='{cx}' cy='{cy}' r='{STICK_CAP}' {}/>", fill_line(p.look(part))));
+    }
+    let (dx, dy) = Part::DPad.centre();
+    o.push_str(&well(dx, dy, DPAD_WELL));
+    let dl = p.look(Part::DPad);
+    if p.dpad_vertical && dl != Look::Idle {
+        // Only up and down lit: the cross idle, its vertical bar filled.
+        o.push_str(&format!("<path d='{CROSS}' {}/>", paint_attr("fill", t.fill(Look::Idle))));
+        o.push_str(&format!(
+            "<rect x='{:.1}' y='{:.1}' width='78' height='270' clip-path='url(#dp)' {}/>",
+            dx - 39.,
+            dy - 135.,
+            paint_attr("fill", t.fill(dl))
+        ));
+        let (c, w) = t.line(dl);
+        o.push_str(&format!("<path d='{CROSS}' fill='none' {} stroke-width='{:.1}'/>", paint_attr("stroke", c), w / k));
+    } else {
+        o.push_str(&format!("<path d='{CROSS}' {}/>", fill_line(dl)));
+    }
+    for part in [Part::View, Part::Menu] {
+        let (cx, cy) = part.centre();
+        o.push_str(&format!("<circle cx='{cx}' cy='{cy}' r='{SMALL_R}' {}/>", fill_line(p.look(part))));
+    }
+    o.push_str(&format!("<path d='{SHARE}' {}/>", fill_line(Look::Idle)));
+    let mark = |look: Look| if look == Look::Idle { theme::text_dim() } else { theme::text_primary() };
+    // The marks follow View and Menu (Share is never lit).
+    o.push_str(&format!(
+        "<g fill='none' {} stroke-width='{:.1}'>{MARKS}</g>",
+        paint_attr("stroke", mark(p.look(Part::View).max(p.look(Part::Menu))).into()),
+        1.1 / k
+    ));
+    let (gx, gy) = Part::Guide.centre();
+    o.push_str(&format!("<circle cx='{gx}' cy='{gy}' r='{GUIDE_R}' {}/>", fill_line(p.look(Part::Guide))));
+    for part in [Part::A, Part::B, Part::X, Part::Y] {
+        // A shade under each face button (drawn over it): its seat.
+        let (cx, cy) = part.centre();
+        o.push_str(&format!("<circle cx='{cx}' cy='{cy}' r='{:.1}' {}/>", FACE_R + 6., paint_attr("fill", t.well)));
+    }
+    o.push_str("</g></svg>");
+    o
+}
+
+thread_local! {
+    /// The pictures made (one per set of looks and colours), so a frame
+    /// draws the one it had.
+    static MADE: std::cell::RefCell<std::collections::HashMap<String, std::sync::Arc<Image>>> = Default::default();
+}
+
+/// The controller's picture for `p`, `px_w` pixels wide.
+fn picture(p: &Paint, px_w: f32) -> std::sync::Arc<Image> {
+    let src = controller_svg(p, px_w);
+    MADE.with(|m| {
+        let mut m = m.borrow_mut();
+        if m.len() > 24 {
+            m.clear();
+        }
+        m.entry(src).or_insert_with_key(|src| std::sync::Arc::new(Image::from_bytes(ImageFormat::Svg, src.clone().into_bytes()))).clone()
+    })
+}
+
+/// The leader lines, and a dot where each meets its part.
+fn paint_leads(bounds: Bounds<Pixels>, leads: &[Lead], tones: &Tones, window: &mut Window) {
     let o = bounds.origin;
     // Box units to pixels.
     let k = f32::from(bounds.size.width) / BOX_W;
     let px_of = |(x, y): (f32, f32)| point(o.x + px(x * k), o.y + px(y * k));
-    let pad = |(x, y): (f32, f32)| px_of(at_box(x, y));
-    let w = |v: f32| px(v * PAD_SCALE * k);
-    let look = |part: Part| p.looks.iter().find(|(q, _)| *q == part).map(|(_, l)| *l).unwrap_or(Look::Idle);
-    let curves = |start: (f32, f32), segs: &[[f32; 6]], builder: PathBuilder| {
-        let mut b = builder;
-        b.move_to(pad(start));
-        for [ax, ay, bx, by, x, y] in segs {
-            b.cubic_bezier_to(pad((*x, *y)), pad((*ax, *ay)), pad((*bx, *by)));
-        }
-        b.close();
-        b.build()
-    };
-    let fill_and_line = |start: (f32, f32), segs: &[[f32; 6]], fill: Hsla, line: (Hsla, f32), window: &mut Window| {
-        if let Ok(path) = curves(start, segs, PathBuilder::fill()) {
-            window.paint_path(path, fill);
-        }
-        if let Ok(path) = curves(start, segs, PathBuilder::stroke(w(line.1))) {
-            window.paint_path(path, line.0);
-        }
-    };
-    let polygon = |pts: &[(f32, f32)], fill: Hsla, line: (Hsla, f32), window: &mut Window| {
-        let points: Vec<Point<Pixels>> = pts.iter().map(|q| pad(*q)).collect();
-        let mut b = PathBuilder::fill();
-        b.add_polygon(&points, true);
-        if let Ok(path) = b.build() {
-            window.paint_path(path, fill);
-        }
-        if line.1 > 0. {
-            let mut b = PathBuilder::stroke(w(line.1));
-            b.add_polygon(&points, true);
-            if let Ok(path) = b.build() {
-                window.paint_path(path, line.0);
-            }
-        }
-    };
-    let t = &p.tones;
-    // Triggers and bumpers behind the body, then the body. (Lit bumpers are
-    // drawn again over the body and the lines, whole, at the end.)
-    let shoulders = [Part::LT, Part::RT, Part::LB, Part::RB];
-    for part in shoulders {
-        let (start, segs) = shoulder(part);
-        let l = look(part);
-        fill_and_line(start, &segs, t.fill(l), t.line(l), window);
-    }
-    fill_and_line((440., 118.), &BODY, t.body, (t.body_line, 2.), window);
-
-    // The d-pad: the cross; lit only up and down, its vertical bar is
-    // filled under the cross's outline.
-    let dl = look(Part::DPad);
-    let cross = &dpad();
-    if p.dpad_vertical && dl != Look::Idle {
-        polygon(cross, t.fill(Look::Idle), (t.fill(Look::Idle), 0.), window);
-        let (cx, cy) = Part::DPad.centre();
-        let bar = [(cx - 11., cy - 30.), (cx + 11., cy - 30.), (cx + 11., cy + 30.), (cx - 11., cy + 30.)];
-        polygon(&bar, t.fill(dl), (t.fill(dl), 0.), window);
-        let mut b = PathBuilder::stroke(w(t.line(dl).1));
-        b.add_polygon(&cross.iter().map(|q| pad(*q)).collect::<Vec<_>>(), true);
-        if let Ok(path) = b.build() {
-            window.paint_path(path, t.line(dl).0);
-        }
-    } else {
-        polygon(cross, t.fill(dl), t.line(dl), window);
-    }
-    // Leader lines, and a dot where each meets its part.
-    for lead in &p.leads {
-        let color = if lead.picked { t.picked } else { t.lead };
+    for lead in leads {
+        let color = if lead.picked { tones.picked } else { tones.lead };
         let mut b = PathBuilder::stroke(px(if lead.picked { 1.6 } else { 1.2 }));
         if lead.dashed {
             b = b.dash_array(&[px(3.), px(4.)]);
@@ -527,13 +589,6 @@ fn paint(bounds: Bounds<Pixels>, p: &Paint, window: &mut Window) {
             if let Ok(path) = b.build() {
                 window.paint_path(path, color);
             }
-        }
-    }
-    for part in [Part::LB, Part::RB] {
-        let l = look(part);
-        if l != Look::Idle {
-            let (start, segs) = shoulder(part);
-            fill_and_line(start, &segs, t.fill(l), t.line(l), window);
         }
     }
 }
@@ -646,7 +701,7 @@ fn routes(parts: &[Part], placed: &[Placed]) -> Vec<Vec<(f32, f32)>> {
 const LANE: f32 = 9.;
 
 /// The drawing, its callouts and their lines, for the page's tab.
-pub(super) fn map(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
+pub(super) fn map(d: &SettingsPage, window: &Window, cx: &mut Context<SettingsPage>) -> Div {
     let show = d.controls.show;
     let picked = d.controls.selected;
     let lines = callouts(d, show);
@@ -674,6 +729,9 @@ pub(super) fn map(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
         && !lines.iter().any(|c| c.part == Part::DPad && !c.vertical && !c.off);
     let paint_data = Paint { tones: Tones::new(), looks: Part::ALL.iter().map(|p| (*p, look_of(*p))).collect(), dpad_vertical, leads };
     let tones = paint_data.tones;
+    // Drawn at the window's pixels for the widest the drawing gets.
+    let image = picture(&paint_data, (BOX_W * window.scale_factor()).round());
+    let leads = paint_data.leads;
     let mut root = div()
         .relative()
         .w_full()
@@ -682,25 +740,18 @@ pub(super) fn map(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
         .min_w(px(MIN_W))
         .aspect_ratio(BOX_W / BOX_H)
         .mx_auto()
-        .child(canvas(|_, _, _| (), move |bounds, _, window, _| paint(bounds, &paint_data, window)).absolute().inset_0());
-    // The round parts as boxes (crisp at any size), and a click area on every part.
+        .child(img(image).absolute().inset_0().size_full())
+        .child(canvas(|_, _, _| (), move |bounds, _, window, _| paint_leads(bounds, &leads, &tones, window)).absolute().inset_0());
+    // The face buttons as boxes (drawn as the controller has them), Guide's
+    // mark, and a click area on every part.
     let pad_box = |x: f32, y: f32, wd: f32, ht: f32| {
         let (bx, by) = at_box(x - wd / 2., y - ht / 2.);
         (fx(bx), fy(by), fx(wd * PAD_SCALE), fy(ht * PAD_SCALE))
     };
-    for (part, (cx0, cy0)) in [(Part::LStick, Part::LStick.centre()), (Part::RStick, Part::RStick.centre())] {
-        let (l, t, wd, ht) = pad_box(cx0, cy0, 60., 60.);
-        root =
-            root.child(div().absolute().left(l).top(t).w(wd).h(ht).rounded_full().bg(tones.well).border_1().border_color(tones.body_line));
-        let look = look_of(part);
-        let (lc, lw) = tones.line(look);
-        let (l, t, wd, ht) = pad_box(cx0, cy0, 40., 40.);
-        root = root.child(div().absolute().left(l).top(t).w(wd).h(ht).rounded_full().bg(tones.fill(look)).border(px(lw)).border_color(lc));
-    }
     let style = crate::console::look::pad_glyphs();
     for part in [Part::A, Part::B, Part::X, Part::Y] {
         let (cx0, cy0) = part.centre();
-        let (l, t, wd, ht) = pad_box(cx0, cy0, 26., 26.);
+        let (l, t, wd, ht) = pad_box(cx0, cy0, 2. * FACE_R, 2. * FACE_R);
         let look = look_of(part);
         let f = part.face();
         let (colour, letter) = super::face_look(style, f);
@@ -737,47 +788,27 @@ pub(super) fn map(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
         };
         root = root.child(b);
     }
-    for part in [Part::View, Part::Menu] {
-        let (cx0, cy0) = part.centre();
-        let (l, t, wd, ht) = pad_box(cx0, cy0, 18., 11.);
-        let look = look_of(part);
-        let (lc, lw) = tones.line(look);
-        root = root.child(div().absolute().left(l).top(t).w(wd).h(ht).rounded_full().bg(tones.fill(look)).border(px(lw)).border_color(lc));
-    }
     {
         let (cx0, cy0) = Part::Guide.centre();
-        let (l, t, wd, ht) = pad_box(cx0, cy0, 30., 30.);
-        let look = look_of(Part::Guide);
-        let (lc, lw) = tones.line(look);
-        let ic = if look == Look::Idle { theme::text_dim() } else { theme::text_primary() };
-        root = root.child(
-            div()
-                .absolute()
-                .left(l)
-                .top(t)
-                .w(wd)
-                .h(ht)
-                .rounded_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .bg(tones.fill(look))
-                .border(px(lw))
-                .border_color(lc)
-                .child(crate::ui::icon(crate::icons::Icon::SportsEsports, px(12.), ic)),
-        );
+        let (l, t, wd, ht) = pad_box(cx0, cy0, 2. * GUIDE_R, 2. * GUIDE_R);
+        let ic = if look_of(Part::Guide) == Look::Idle { theme::text_dim() } else { theme::text_primary() };
+        root = root.child(div().absolute().left(l).top(t).w(wd).h(ht).flex().items_center().justify_center().child(crate::ui::icon(
+            crate::icons::Icon::SportsEsports,
+            px(13.),
+            ic,
+        )));
     }
-    // Click areas over every part (the shoulders and the d-pad are painted).
+    // Click areas over every part (most are in the picture).
     for part in Part::ALL {
         let (cx0, cy0) = part.centre();
         let (bw, bh) = match part {
-            Part::LT | Part::RT => (90., 30.),
-            Part::LB | Part::RB => (120., 22.),
-            Part::LStick | Part::RStick => (60., 60.),
-            Part::DPad => (60., 60.),
-            Part::View | Part::Menu => (24., 18.),
-            Part::Guide => (30., 30.),
-            _ => (28., 28.),
+            Part::LT | Part::RT => (210., 90.),
+            Part::LB | Part::RB => (330., 80.),
+            Part::LStick | Part::RStick => (2. * STICK_WELL, 2. * STICK_WELL),
+            Part::DPad => (2. * DPAD_WELL, 2. * DPAD_WELL),
+            Part::View | Part::Menu => (2. * SMALL_R + 12., 2. * SMALL_R + 12.),
+            Part::Guide => (2. * GUIDE_R, 2. * GUIDE_R),
+            _ => (2. * FACE_R, 2. * FACE_R),
         };
         let (l, t, wd, ht) = pad_box(cx0, cy0, bw, bh);
         root = root.child(

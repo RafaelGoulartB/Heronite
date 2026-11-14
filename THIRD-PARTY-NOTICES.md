@@ -25,6 +25,12 @@ Heronite is licensed under the [GNU General Public License v3.0](LICENSE). It in
 | [Font Awesome Free](https://fontawesome.com) 6 | `app/assets/icons/fa-*.svg` | Copyright (c) 2024 Fonticons, Inc. | CC BY 4.0 ([`licenses/FontAwesome-Free.txt`](licenses/FontAwesome-Free.txt)) |
 | [Simple Icons](https://simpleicons.org) 16.36.0 | `app/assets/icons/brand-*.svg` (the logos of the stores, Dolphin and RetroArch, path data unchanged) | the Simple Icons contributors; the logos are trademarks of their owners | CC0 1.0 ([`licenses/CC0-1.0-simple-icons.txt`](licenses/CC0-1.0-simple-icons.txt)) |
 
+## Illustrations
+
+| Illustration | Files | Copyright | License |
+|---|---|---|---|
+| [Xbox Series Button Icons and Controls](https://zacksly.itch.io/xbox-series-button-icons-and-controls) | the controller drawn in Settings → Controller (`app/src/pages/settings/controls/pad.rs`): the outlines of its body, bumpers, d-pad, sticks and buttons, without the Xbox logo, with triggers added and recoloured | Zacksly | CC BY 3.0 ([`licenses/CC-BY-3.0-Zacksly.txt`](licenses/CC-BY-3.0-Zacksly.txt)) |
+
 ## Libraries in the AppImage
 
 The AppImage carries these libraries in `usr/lib` because not every system has them (`scripts/appimage.sh`). libxkbcommon is built unchanged from its release source (`scripts/xkbcommon.sh`); the others are taken unchanged from Ubuntu 22.04. The .deb, .rpm and Arch packages use the system's copies instead. Each one is a separate shared library: replace it in an extracted AppImage to use another build.
