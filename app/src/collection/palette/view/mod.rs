@@ -63,15 +63,6 @@ const LIST_MAX_H: f32 = 9. * ROW_H + CAPTION_H;
 const PANEL_W: f32 = 620.;
 const INPUT_H: f32 = 54.;
 const FOOTER_H: f32 = 42.;
-/// Room around the quick launcher's panel for its shadow. None on X11: a
-/// window manager without a compositor draws a see-through window black.
-fn launcher_margin() -> f32 {
-    if cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_none() {
-        0.
-    } else {
-        24.
-    }
-}
 const TOP: f32 = 90.;
 fn root_placeholder() -> &'static str {
     tr!("Type a command, page or game\u{2026}")
@@ -275,10 +266,10 @@ impl PaletteView {
         self.entries.iter().find(|e| matches!(&e.act, Act::SelectGame(k) if k == key)).and_then(|e| e.game.clone())
     }
 
-    /// The window the quick launcher needs for the palette (logical px).
+    /// The quick launcher's window: the panel's size, nothing around it (a
+    /// shadow would be cut square by the window's edge).
     pub fn launcher_size() -> Size<Pixels> {
-        let m = 2. * launcher_margin();
-        size(px(PANEL_W + preview::PANE_W + 2. + m), px(INPUT_H + LIST_MAX_H + FOOTER_H + 4. + m))
+        size(px(PANEL_W + preview::PANE_W), px(INPUT_H + LIST_MAX_H + FOOTER_H + 2.))
     }
 
     /// Asks for the actions of the selected game (or of the game the

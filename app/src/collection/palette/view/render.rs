@@ -12,7 +12,7 @@ use super::super::launcher;
 use super::super::rank::{Filter, ItemRef};
 use super::super::sources::Act;
 use super::preview::{PANE_W, THUMB_H, THUMB_W};
-use super::{launcher_margin, Mode, PaletteEvent, PaletteView, CAPTION_H, FOOTER_H, INPUT_H, LIST_MAX_H, LIST_PAD, PANEL_W, ROW_H, TOP};
+use super::{Mode, PaletteEvent, PaletteView, CAPTION_H, FOOTER_H, INPUT_H, LIST_MAX_H, LIST_PAD, PANEL_W, ROW_H, TOP};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::kbd;
@@ -312,7 +312,7 @@ impl Render for PaletteView {
             .flex_col()
             .w(px(if pane { PANEL_W + PANE_W } else { PANEL_W }))
             .when(self.mode == Mode::InApp, |d| d.max_h(relative(0.9)))
-            .when(self.mode == Mode::Launcher, |d| d.h(px(INPUT_H + LIST_MAX_H + FOOTER_H + 2.)))
+            .when(self.mode == Mode::Launcher, |d| d.size_full().shadow(Vec::new()))
             .font_family(theme::font_body())
             .text_color(theme::text_primary())
             // Clicks on the panel keep the input focused and do not close it.
@@ -327,10 +327,17 @@ impl Render for PaletteView {
             .child(div().flex().flex_none().min_h_0().child(list).when(pane, |d| d.child(preview)))
             .child(footer);
 
+        let slide = self.mode == Mode::InApp;
         let panel = if theme::animations() {
             panel
-                .with_animation("palette-open", Animation::new(Duration::from_millis(140)).with_easing(ease_out_quint()), |el, t| {
-                    el.opacity(t).mt(px(-10. * (1. - t)))
+                .with_animation("palette-open", Animation::new(Duration::from_millis(140)).with_easing(ease_out_quint()), move |el, t| {
+                    // The launcher's window is the panel: it fades in place.
+                    let el = el.opacity(t);
+                    if slide {
+                        el.mt(px(-10. * (1. - t)))
+                    } else {
+                        el
+                    }
                 })
                 .into_any_element()
         } else {
@@ -338,18 +345,8 @@ impl Render for PaletteView {
         };
 
         if self.mode == Mode::Launcher {
-            // The window is the panel's size plus room for its shadow; a click
-            // in that margin closes it like one outside the panel.
-            return div()
-                .id("palette-backdrop")
-                .size_full()
-                .flex()
-                .flex_col()
-                .items_center()
-                .p(px(launcher_margin()))
-                .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| cx.emit(PaletteEvent::Close)))
-                .child(panel)
-                .into_any_element();
+            // The window is the panel's size: nothing is drawn around it.
+            return div().id("palette-backdrop").size_full().child(panel).into_any_element();
         }
         deferred(
             div()

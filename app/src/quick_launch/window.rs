@@ -5,9 +5,9 @@
 //! out of the taskbar). `HERONITE_DEBUG_QUICK_LAUNCH` always draws it in a
 //! normal window, so captures can find it.
 //!
-//! The window is the view alone, like the overlay's: the component library's
-//! `Root` would paint the theme's background and a window frame around the
-//! panel, where the window must stay see-through.
+//! The window is the panel's size and holds the view alone, like the
+//! overlay's: the component library's `Root` would paint the theme's
+//! background and a window frame around it.
 
 use gpui_kit::*;
 
