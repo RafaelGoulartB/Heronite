@@ -253,6 +253,11 @@ pub(super) fn set_capture(d: &mut SettingsPage, on: bool, cx: &mut Context<Setti
     save(d, None, None, Some(on), None, cx);
 }
 
+/// Changes the capture shortcut and turns it on (Settings → Controller).
+pub(super) fn set_accelerator(d: &mut SettingsPage, accelerator: String, cx: &mut Context<SettingsPage>) {
+    save(d, None, None, Some(true), Some(accelerator), cx);
+}
+
 fn save(
     d: &mut SettingsPage,
     folder: Option<String>,

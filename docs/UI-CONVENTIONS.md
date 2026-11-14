@@ -48,11 +48,16 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   (`Section::GROUPS`): App (General, Appearance, Console mode), Games (Game defaults, Downloads, Other launchers),
   Collection (Library, Metadata, Achievements), While playing (Controller, Overlay, Screenshots, Replay), Data (Storage, Saves,
   Backups), System (Advanced, Logs, About). Controller (`controls/`, `Section::Controls`): the controller found and
-  how console mode draws its buttons (its theme's, read only), the checks (Steam Input as a note, Guide's tap-and-hold
-  clash outside games with a fix), "Show" (All, In a game, Outside games, Overlay open, Console mode), the drawn
-  controller with a callout per button joined by a line (`pad.rs`; a click on either lights both and its table rows),
-  then every binding in a table by context (`table.rs`: action, controller chord, keyboard key, a switch, the button
-  to change; keys open Overlay, Screenshots or Replay; console mode's rows are locked, from its theme). A section =
+  how console mode draws its buttons (its theme's, read only), then one tab at a time (In a game, Outside games, Overlay
+  open, Console mode): the drawn controller with the tab's buttons lit and a callout per button in a column on its side
+  (Guide, View and Menu on top), joined by lines that never cross (`pad.rs`, tested; a click on a button or callout lights
+  it and its table row), then the tab's shortcuts in a table (`table.rs`: action, controller, keyboard). Every shortcut
+  that changes is a chip with a chevron whose popover (one at a time) picks the screenshot's button, the button held for
+  console mode, records a key, or turns a fixed button's shortcut on or off; an off one is a dashed chip saying "Off".
+  Outside games Guide may both open the overlay (a tap) and enter console mode (a hold): one callout says both, no warning. Overlay open and Console mode
+  are read-only (console mode's rows come from its theme). `HERONITE_DEBUG_CONTROLS=<tab>[:<popover>]` opens a tab
+  (`ingame`, `outside`, `overlay`, `console`) and a popover (`shot`, `replay`, `moment`, `volume`, `anywhere`,
+  `console-button`, `key-overlay`, `key-shot`, `key-replay`). A section =
   title + lead (`Section::blurb`) +
   captioned cards of rows. The Collection sections live in `app/src/pages/settings/<section>.rs`
   (`appearance`, `metadata/`, `screenshots`, `saves` + `backup/` for Backups: settings, what goes in, then the restore list

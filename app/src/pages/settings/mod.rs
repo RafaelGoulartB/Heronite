@@ -256,7 +256,7 @@ impl SettingsPage {
             about: about::State::default(),
             logs: logs::State::default(),
             console_mode: None,
-            controls: Default::default(),
+            controls: controls::State::new(cx),
             console: Default::default(),
             nav_scroll: ScrollHandle::new(),
             nav_search,

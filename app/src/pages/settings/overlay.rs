@@ -118,7 +118,7 @@ pub(super) fn button_short(b: ChordButton) -> String {
 }
 
 /// The button in the menu.
-fn button_label(b: ChordButton) -> String {
+pub(super) fn button_label(b: ChordButton) -> String {
     match b {
         ChordButton::Left => tr!("D-pad left").into(),
         ChordButton::Right => tr!("D-pad right").into(),
