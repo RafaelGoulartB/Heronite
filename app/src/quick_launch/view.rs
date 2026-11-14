@@ -102,11 +102,18 @@ impl QuickLauncher {
         let covers = Rc::new(l.covers);
         self.palette.update(cx, |p, cx| p.set_entries(Rc::new(entries), covers, cx));
         // `HERONITE_DEBUG_QUICK_LAUNCH_KEYS`, once the games are listed.
-        for k in keys.iter().flat_map(|k| k.split(',')).filter(|k| !k.is_empty()) {
-            if let Ok(ks) = Keystroke::parse(k) {
-                self.key(&ks, window, cx);
-            }
+        let keys = keys.iter().flat_map(|k| k.split(',')).filter(|k| !k.is_empty()).map(str::to_string).collect();
+        self.feed_keys(keys, window, cx);
+    }
+
+    /// Debug keys, one per cycle, so what a key asks for (a game's actions)
+    /// is there before the next.
+    fn feed_keys(&mut self, mut keys: std::collections::VecDeque<String>, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(k) = keys.pop_front() else { return };
+        if let Ok(ks) = Keystroke::parse(&k) {
+            self.key(&ks, window, cx);
         }
+        cx.defer_in(window, move |this, window, cx| this.feed_keys(keys, window, cx));
     }
 
     fn key(&mut self, ks: &Keystroke, window: &mut Window, cx: &mut Context<Self>) -> bool {
