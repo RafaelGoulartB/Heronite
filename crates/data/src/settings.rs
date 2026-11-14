@@ -170,6 +170,9 @@ pub struct EffectiveSettings {
     pub ludusavi: LudusaviSettings,
     /// MB, 0 = no cap ([`DEFAULT_IMAGE_CACHE_LIMIT_MB`] when unset).
     pub image_cache_limit_mb: u32,
+    /// MB of store videos kept on this PC, 0 = none
+    /// ([`DEFAULT_VIDEO_CACHE_LIMIT_MB`] when unset).
+    pub video_cache_limit_mb: u32,
     /// Heroic `store/config.json` `theme` (default `midnightMirage`).
     pub theme: String,
     /// The interface language (`heronite_i18n`), which also picks the Steam
@@ -240,6 +243,7 @@ impl EffectiveSettings {
                 extra: Default::default(),
             },
             image_cache_limit_mb: file.image_cache_limit_mb.unwrap_or(DEFAULT_IMAGE_CACHE_LIMIT_MB),
+            video_cache_limit_mb: file.video_cache_limit_mb.map_or(DEFAULT_VIDEO_CACHE_LIMIT_MB, |mb| mb.min(MAX_VIDEO_CACHE_LIMIT_MB)),
             theme: config.theme.clone().unwrap_or_else(|| DEFAULT_THEME.to_owned()),
             language: heronite_i18n::current().code().to_owned(),
             all_tiles_in_color: config.all_tiles_in_color.unwrap_or(false),
@@ -279,6 +283,11 @@ pub const BACKUP_OPTIONAL_PARTS: [&str; 3] = ["settings", "art", "logins"];
 /// Cap of the image caches when unset: about 4x what a library of a few
 /// hundred games uses, so it only trims a cache that grew without bound.
 pub const DEFAULT_IMAGE_CACHE_LIMIT_MB: u32 = 1024;
+/// The store videos kept when unset: the start of the trailer of about a
+/// dozen games, so it plays at once while the rest streams.
+pub const DEFAULT_VIDEO_CACHE_LIMIT_MB: u32 = 50;
+/// A hand-edited size is clamped to this.
+pub const MAX_VIDEO_CACHE_LIMIT_MB: u32 = 1024;
 
 /// Shortest and longest time between save backups while a game runs, in
 /// minutes: a hand-edited value is clamped into this range.
@@ -550,6 +559,14 @@ pub fn save_image_cache_limit(paths: &DataPaths, limit_mb: u32) -> Result<Effect
     load(paths)
 }
 
+pub fn save_video_cache_limit(paths: &DataPaths, limit_mb: u32) -> Result<EffectiveSettings> {
+    json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |file| {
+        file.video_cache_limit_mb = Some(limit_mb.min(MAX_VIDEO_CACHE_LIMIT_MB));
+        Ok(())
+    })?;
+    load(paths)
+}
+
 /// `setCollectionMetadataSettings`: `patch` replaces the metadata section after
 /// normalisation; `field_priority` entries are merged over the current ones.
 pub fn save_metadata(paths: &DataPaths, patch: &MetadataSettings) -> Result<EffectiveSettings> {
@@ -727,6 +744,9 @@ mod tests {
         assert_eq!(s.backup.exclude, ["logins"]);
         assert_eq!(s.image_cache_limit_mb, DEFAULT_IMAGE_CACHE_LIMIT_MB);
         assert_eq!(save_image_cache_limit(&paths, 0).unwrap().image_cache_limit_mb, 0);
+        assert_eq!(s.video_cache_limit_mb, DEFAULT_VIDEO_CACHE_LIMIT_MB);
+        assert_eq!(save_video_cache_limit(&paths, 0).unwrap().video_cache_limit_mb, 0);
+        assert_eq!(save_video_cache_limit(&paths, 1 << 20).unwrap().video_cache_limit_mb, MAX_VIDEO_CACHE_LIMIT_MB);
         let mut md = MetadataSettings { igdb_client_id: " id ".into(), cover_aspect: "dvd".into(), ..Default::default() };
         md.field_priority.insert("cover".into(), vec!["steam".into(), "bogus".into()]);
         let s = save_metadata(&paths, &md).unwrap();

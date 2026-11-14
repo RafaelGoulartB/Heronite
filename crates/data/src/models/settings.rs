@@ -24,6 +24,9 @@ pub struct CollectionSettingsFile {
     /// Size cap of the downloaded art and its resized copies, in MB (0 = no cap).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_cache_limit_mb: Option<u32>,
+    /// Size of the store videos kept so they start at once, in MB (0 = none).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video_cache_limit_mb: Option<u32>,
     #[serde(flatten)]
     pub extra: Extra,
 }

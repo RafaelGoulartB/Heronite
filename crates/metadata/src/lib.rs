@@ -40,6 +40,7 @@ pub mod sources;
 pub mod steam;
 pub mod steam_tags;
 pub mod store;
+pub mod store_media;
 pub mod types;
 pub mod util;
 pub mod web_images;

@@ -467,6 +467,12 @@ impl AppPaths {
     pub fn thumbs_dir(&self) -> PathBuf {
         self.cache.join("thumbs")
     }
+    /// The stores' trailers and screenshots lists, and the start of some
+    /// trailers (`heronite_metadata::store_media`): deleted when the "Store
+    /// media" section is turned off.
+    pub fn store_media_dir(&self) -> PathBuf {
+        self.cache.join("store-media")
+    }
     /// Settings → Sync of this PC: where the library syncs and this PC's id
     /// (see `heronite_sync::prefs`).
     pub fn sync_prefs(&self) -> PathBuf {
