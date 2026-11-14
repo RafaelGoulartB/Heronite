@@ -125,6 +125,12 @@ enum Show {
 /// not translated).
 const GUIDE: &[&str] = if cfg!(windows) { &["Back", "Start"] } else { &["Guide"] };
 
+/// The page is hidden (Settings left for another page): it stops looking
+/// for controllers (`shown` starts again when it comes back).
+pub(super) fn hidden(d: &mut SettingsPage) {
+    d.controls.watch += 1;
+}
+
 /// Looks for the controllers, as the Overlay section does, and again every
 /// few seconds while the page shows: one plugged in (or its batteries put
 /// back) shows up, and the automatic choices follow it.
@@ -374,7 +380,7 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
         .gap(px(12.))
         .child(device_bar(d, cx))
         .child(show_bar(d, cx))
-        .child(pad::map(d, window, cx))
+        .child(pad::map(d, cx))
         .child(table::render(d, window, cx))
         .into_any_element()
 }

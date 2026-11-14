@@ -54,7 +54,7 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   drawing follows the controller in use (`look::glyphs_for_controller`), and a Nintendo drawing confirms with the east
   button (its A) and goes back with the south one, in console mode (`console::input`), the overlay (`panel::pad_of`)
   and every hint (`kit::glyph`). Then one tab at a time (In a game, Outside games, Overlay
-  open, Console mode): the drawn controller of the buttons in use (`pad/model.rs`: an Xbox Series controller, a DualSense or a Switch Pro Controller, as an SVG made each time its looks change, from Zacksly's CC BY 3.0 drawings without the makers' logos, in the theme's colours) with the tab's buttons lit and a callout per button in a column on its side
+  open, Console mode): the drawn controller of the buttons in use (`pad/model.rs`: an Xbox Series controller, a DualSense or a Switch Pro Controller, from Zacksly's CC BY 3.0 drawings without the makers' logos: their geometry read once with `usvg` and painted as paths in the theme's colours, no picture rasterized or kept) with the tab's buttons lit and a callout per button in a column on its side
   (Guide, View and Menu on top), joined by lines that never cross (`pad.rs`, tested; a click on a button or callout lights
   it and its table row), then the tab's shortcuts in a table (`table.rs`: action, controller, keyboard). Every button is
   drawn as the controller has it (✕ ○ □ △ and L1 / Options for PlayStation, B A Y X and ZL / + for Nintendo). Every shortcut

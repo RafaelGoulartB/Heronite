@@ -4,13 +4,13 @@
 //! (CC BY 3.0) without the makers' logos; the triggers behind the bumpers
 //! are ours. For each: where its parts are and where their callouts' lines
 //! leave them (in its own units, those of the drawings, 4096 wide), and its
-//! picture as an SVG in the theme's colours with the tab's parts lit.
+//! shapes, each with what it is (`Role`), painted in the theme's colours.
 
-use gpui_kit::*;
+use std::sync::OnceLock;
+
 use heronite_data::console_theme::Glyphs;
 
-use super::{paint_attr, Look, Paint, Part, Side, Tones, BOX_H, BOX_W};
-use crate::theme;
+use super::{Part, Side};
 
 /// A drawn controller.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -231,156 +231,170 @@ impl Model {
         }
     }
 
-    /// The picture, `px_w` pixels wide, in box units (it fills the
-    /// drawing). The face buttons are drawn over it.
-    pub(super) fn svg(self, p: &Paint, px_w: f32) -> String {
-        let (x0, x1) = match self {
-            Model::Xbox => (1188., 2909.),
-            Model::PlayStation => (1082., 3014.),
-            Model::Nintendo => (1189., 2906.),
+    /// The drawing's shapes in pad units, in the order they are painted:
+    /// read once from `svg` (`usvg` turns its circles, arcs and rounded
+    /// boxes into curves), painted as paths by `pad::paint_controller` in
+    /// the theme's colours. No picture is made: nothing to rasterize or
+    /// keep when the lit buttons change.
+    pub(super) fn shapes(self) -> &'static [Shape] {
+        static XBOX: OnceLock<Vec<Shape>> = OnceLock::new();
+        static PLAYSTATION: OnceLock<Vec<Shape>> = OnceLock::new();
+        static NINTENDO: OnceLock<Vec<Shape>> = OnceLock::new();
+        let cell = match self {
+            Model::Xbox => &XBOX,
+            Model::PlayStation => &PLAYSTATION,
+            Model::Nintendo => &NINTENDO,
         };
-        let mut s = Svg::new(self, &p.tones, px_w, (x0, x1));
+        cell.get_or_init(|| {
+            let (svg, roles) = self.svg();
+            parse(&svg, &roles)
+        })
+    }
+
+    /// The drawing as an SVG in pad units, only its geometry: each element's
+    /// id (`s<n>`) is its index in the roles returned.
+    fn svg(self) -> (String, Vec<Role>) {
+        let mut s = Svg { o: String::with_capacity(16000), roles: Vec::new(), model: self };
+        // Painted or not, `usvg` keeps only what has a fill or a stroke.
+        s.o.push_str("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4096 2160'><g fill='#000' stroke='#000'>");
         match self {
-            Model::Xbox => xbox(&mut s, p),
-            Model::PlayStation => playstation(&mut s, p),
-            Model::Nintendo => nintendo(&mut s, p),
+            Model::Xbox => xbox(&mut s),
+            Model::PlayStation => playstation(&mut s),
+            Model::Nintendo => nintendo(&mut s),
         }
         for part in [Part::A, Part::B, Part::X, Part::Y] {
-            // A shade under each face button: its seat.
             let (cx, cy) = self.centre(part);
-            s.raw(&format!("<circle cx='{cx}' cy='{cy}' r='{:.1}' {}/>", self.face_r() + 6., paint_attr("fill", s.t.well)));
+            s.el(Role::Seat, &format!("circle cx='{cx}' cy='{cy}' r='{:.1}'", self.face_r() + 6.));
         }
-        s.end()
+        s.o.push_str("</g></svg>");
+        (s.o, s.roles)
     }
 }
 
-/// An SVG being written, in a model's units.
-struct Svg<'a> {
-    o: String,
-    t: &'a Tones,
-    model: Model,
-    /// Box units per pad unit (strokes are in box units).
-    k: f32,
-}
-
-impl<'a> Svg<'a> {
-    /// The header: the body's gradient (lighter in the middle, a moulded
-    /// shell) across `x0`..`x1`, and the model's transform.
-    fn new(model: Model, t: &'a Tones, px_w: f32, (x0, x1): (f32, f32)) -> Self {
-        let f = model.frame();
-        let k = f.scale;
-        let stop = |c: Hsla| paint_attr("stop-color", c).replace("stop-color-opacity", "stop-opacity");
-        let mut o = String::with_capacity(12000);
-        o.push_str(&format!(
-            "<svg xmlns='http://www.w3.org/2000/svg' width='{w:.0}' height='{h:.0}' viewBox='0 0 {BOX_W} {BOX_H}'>\
-             <defs><linearGradient id='b' gradientUnits='userSpaceOnUse' x1='{x0}' y1='0' x2='{x1}' y2='0'>\
-             <stop offset='0' {e}/><stop offset='0.5' {m}/><stop offset='1' {e}/></linearGradient></defs>\
-             <g transform='translate({tx:.3},{ty:.3}) scale({k})' stroke-linejoin='round' stroke-linecap='round'>",
-            w = px_w,
-            h = px_w * BOX_H / BOX_W,
-            e = stop(t.body),
-            m = stop(t.body.blend(theme::ink_a(0.05))),
-            tx = f.origin.0 - f.top.0 * k,
-            ty = f.origin.1 - f.top.1 * k,
-        ));
-        Self { o, t, model, k }
-    }
-
-    fn end(mut self) -> String {
-        self.o.push_str("</g></svg>");
-        self.o
-    }
-
-    fn raw(&mut self, s: &str) {
-        self.o.push_str(s);
-    }
-
-    /// Fill and stroke of a part in `look`.
-    fn fill_line(&self, look: Look) -> String {
-        let (c, w) = self.t.line(look);
-        format!("{} {} stroke-width='{:.1}'", paint_attr("fill", self.t.fill(look)), paint_attr("stroke", c), w / self.k)
-    }
-
-    /// `el` (an element's name and geometry, "circle cx=…") as a part in `look`.
-    fn part(&mut self, el: &str, look: Look) {
-        let a = self.fill_line(look);
-        self.o.push_str(&format!("<{el} {a}/>"));
-    }
-
-    /// A path as a part in `look`.
-    fn path(&mut self, d: &str, look: Look) {
-        self.part(&format!("path d='{d}'"), look);
-    }
-
-    fn circle(&mut self, (cx, cy): (f32, f32), r: f32, look: Look) {
-        self.part(&format!("circle cx='{cx}' cy='{cy}' r='{r}'"), look);
-    }
-
-    /// The body: the shell's gradient and outline.
-    fn body(&mut self, d: &str) {
-        self.o.push_str(&format!(
-            "<path d='{d}' fill='url(#b)' {} stroke-width='{:.1}'/>",
-            paint_attr("stroke", self.t.body_line),
-            2. / self.k
-        ));
-    }
-
+/// What a shape of a drawing is, which says how it is painted.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum Role {
+    /// A part: filled and outlined in its look.
+    Part(Part),
+    /// A button that is never lit (Share, the touchpad, Capture...).
+    Idle,
+    /// A trigger: in the shade behind the bumpers while idle.
+    Trigger(Part),
+    /// The line across a trigger.
+    Ridge(Part),
+    Body,
     /// A recess (a stick's or the d-pad's well).
-    fn well(&mut self, (cx, cy): (f32, f32), r: f32) {
-        self.o.push_str(&format!(
-            "<circle cx='{cx}' cy='{cy}' r='{r}' {} {} stroke-width='{:.1}'/>",
-            paint_attr("fill", self.t.well),
-            paint_attr("stroke", self.t.body_line),
-            1.2 / self.k
-        ));
+    Well,
+    /// Seams and edges of the shell: thin lines.
+    Seam,
+    /// The speaker's holes.
+    Dots,
+    /// The shade under a face button.
+    Seat,
+    /// Lines on parts (View's icon...), in the brighter look of the two
+    /// (`None`: idle).
+    Marks(Option<Part>, Option<Part>),
+    /// The d-pad's arrows, filled.
+    Arrows,
+    /// One of the DualSense's d-pad buttons: up or down (`true`), or not.
+    Arm(bool),
+    /// A one-piece d-pad; its vertical arm, lit alone for up and down; and
+    /// its outline again over that arm.
+    Cross,
+    CrossArm,
+    CrossLine,
+}
+
+/// A piece of a shape's outline, in pad units.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum Seg {
+    Move(f32, f32),
+    Line(f32, f32),
+    Quad((f32, f32), (f32, f32)),
+    Cubic((f32, f32), (f32, f32), (f32, f32)),
+    Close,
+}
+
+/// A shape of a drawing.
+pub(super) struct Shape {
+    pub role: Role,
+    pub segs: Vec<Seg>,
+}
+
+/// The shapes of `svg`, in order, with their roles (by id).
+fn parse(svg: &str, roles: &[Role]) -> Vec<Shape> {
+    fn walk(g: &usvg::Group, roles: &[Role], out: &mut Vec<Shape>) {
+        for node in g.children() {
+            match node {
+                usvg::Node::Group(g) => walk(g, roles, out),
+                usvg::Node::Path(p) => {
+                    let Some(&role) = p.id().strip_prefix('s').and_then(|n| n.parse::<usize>().ok()).and_then(|i| roles.get(i)) else {
+                        continue;
+                    };
+                    let ts = p.abs_transform();
+                    let at = |q: usvg::tiny_skia_path::Point| (ts.sx * q.x + ts.kx * q.y + ts.tx, ts.ky * q.x + ts.sy * q.y + ts.ty);
+                    use usvg::tiny_skia_path::PathSegment as S;
+                    let segs = p
+                        .data()
+                        .segments()
+                        .map(|seg| match seg {
+                            S::MoveTo(a) => Seg::Move(at(a).0, at(a).1),
+                            S::LineTo(a) => Seg::Line(at(a).0, at(a).1),
+                            S::QuadTo(c, a) => Seg::Quad(at(c), at(a)),
+                            S::CubicTo(c1, c2, a) => Seg::Cubic(at(c1), at(c2), at(a)),
+                            S::Close => Seg::Close,
+                        })
+                        .collect();
+                    out.push(Shape { role, segs });
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    match usvg::Tree::from_str(svg, &usvg::Options::default()) {
+        Ok(tree) => walk(tree.root(), roles, &mut out),
+        Err(e) => log::warn!("the controller drawing does not read: {e}"),
+    }
+    out
+}
+
+/// A drawing's SVG being written: its elements, each with the id of its role.
+struct Svg {
+    o: String,
+    roles: Vec<Role>,
+    model: Model,
+}
+
+impl Svg {
+    /// `el` (an element's name and geometry: "circle cx=…") as `role`.
+    fn el(&mut self, role: Role, el: &str) {
+        self.o.push_str(&format!("<{el} id='s{}'/>", self.roles.len()));
+        self.roles.push(role);
     }
 
-    /// Seams and edges of the shell: thin lines, no fill.
-    fn seam(&mut self, d: &str) {
-        self.o.push_str(&format!(
-            "<path d='{d}' fill='none' {} stroke-width='{:.1}'/>",
-            paint_attr("stroke", self.t.body_line),
-            0.9 / self.k
-        ));
+    fn path(&mut self, role: Role, d: &str) {
+        self.el(role, &format!("path d='{d}'"));
     }
 
-    /// The colour of a mark on a part in `look`.
-    fn mark_colour(look: Look) -> Hsla {
-        if look == Look::Idle { theme::text_dim() } else { theme::text_primary() }.into()
+    fn circle(&mut self, role: Role, (cx, cy): (f32, f32), r: f32) {
+        self.el(role, &format!("circle cx='{cx}' cy='{cy}' r='{r}'"));
     }
 
-    /// Marks drawn as lines (icons on View, Menu...), in a part's `look`.
-    fn marks(&mut self, inner: &str, look: Look) {
-        self.o.push_str(&format!(
-            "<g fill='none' {} stroke-width='{:.1}'>{inner}</g>",
-            paint_attr("stroke", Self::mark_colour(look)),
-            1.1 / self.k
-        ));
-    }
-
-    /// Marks drawn filled (the d-pad's arrows), in a part's `look`.
-    fn filled_marks(&mut self, inner: &str, look: Look) {
-        self.o.push_str(&format!("<g {}>{inner}</g>", paint_attr("fill", Self::mark_colour(look))));
+    /// Each element of `inner` ("<line …/><rect …/>") as `role`.
+    fn each(&mut self, role: Role, inner: &str) {
+        for el in inner.split('<').map(|e| e.trim().trim_end_matches("/>").trim_end_matches('/').trim()).filter(|e| !e.is_empty()) {
+            self.el(role, el);
+        }
     }
 
     /// The triggers: `pts` the left one's outline (a start, then three
-    /// points a curve), `ridge` a line across it; idle, in the shade behind
-    /// the bumpers.
-    fn triggers(&mut self, p: &Paint, pts: &[(f32, f32)], ridge: &[(f32, f32)]) {
+    /// points a curve), `ridge` a line across it.
+    fn triggers(&mut self, pts: &[(f32, f32)], ridge: &[(f32, f32)]) {
         for (part, right) in [(Part::LT, false), (Part::RT, true)] {
-            let look = p.look(part);
-            let fill = if look == Look::Idle { self.t.well } else { self.t.fill(look) };
-            let (c, w) = self.t.line(look);
-            let k = self.k;
-            let (outline, ridge) = (self.curves(pts, right, true), self.curves(ridge, right, false));
-            self.o.push_str(&format!(
-                "<path d='{outline}' {} {} stroke-width='{:.1}'/><path d='{ridge}' fill='none' {} stroke-width='{:.1}' opacity='0.7'/>",
-                paint_attr("fill", fill),
-                paint_attr("stroke", c),
-                w / k,
-                paint_attr("stroke", c),
-                w * 0.8 / k,
-            ));
+            let (outline, line) = (self.curves(pts, right, true), self.curves(ridge, right, false));
+            self.path(Role::Trigger(part), &outline);
+            self.path(Role::Ridge(part), &line);
         }
     }
 
@@ -400,115 +414,91 @@ impl<'a> Svg<'a> {
     }
 
     /// The sticks: a well and a cap each.
-    fn sticks(&mut self, p: &Paint) {
+    fn sticks(&mut self) {
         let (well, cap) = self.model.stick();
         for part in [Part::LStick, Part::RStick] {
             let c = self.model.centre(part);
-            self.well(c, well);
-            self.circle(c, cap, p.look(part));
+            self.circle(Role::Well, c, well);
+            self.circle(Role::Part(part), c, cap);
         }
     }
 
-    /// A one-piece d-pad (`cross`), its vertical arm `arm` (left, top,
-    /// width, height) lit alone when only up and down are used.
-    fn cross(&mut self, p: &Paint, cross: &str, arm: (f32, f32, f32, f32)) {
-        let look = p.look(Part::DPad);
-        if p.dpad_vertical && look != Look::Idle {
-            self.o.push_str(&format!(
-                "<clipPath id='dp'><path d='{cross}'/></clipPath><path d='{cross}' {}/>\
-                 <rect x='{}' y='{}' width='{}' height='{}' clip-path='url(#dp)' {}/>",
-                paint_attr("fill", self.t.fill(Look::Idle)),
-                arm.0,
-                arm.1,
-                arm.2,
-                arm.3,
-                paint_attr("fill", self.t.fill(look)),
-            ));
-            let (c, w) = self.t.line(look);
-            self.o.push_str(&format!("<path d='{cross}' fill='none' {} stroke-width='{:.1}'/>", paint_attr("stroke", c), w / self.k));
-        } else {
-            self.path(cross, look);
-        }
+    /// A one-piece d-pad (`cross`) and its vertical arm (left, top, width,
+    /// height, corner radius).
+    fn cross(&mut self, cross: &str, arm: (f32, f32, f32, f32, f32)) {
+        self.path(Role::Cross, cross);
+        let (x, y, w, h, r) = arm;
+        self.el(Role::CrossArm, &format!("rect x='{x}' y='{y}' width='{w}' height='{h}' rx='{r}'"));
+        self.path(Role::CrossLine, cross);
     }
 }
 
-/// The look of the d-pad's arrows: idle ones lit alone (up / down) stay idle.
-fn arm_look(p: &Paint, vertical: bool) -> Look {
-    if p.dpad_vertical && !vertical {
-        Look::Idle
-    } else {
-        p.look(Part::DPad)
-    }
-}
-
-fn xbox(s: &mut Svg, p: &Paint) {
-    s.triggers(p, &XBOX_TRIGGER, &XBOX_RIDGE);
+fn xbox(s: &mut Svg) {
+    s.triggers(&XBOX_TRIGGER, &XBOX_RIDGE);
     for (part, right) in [(Part::LB, false), (Part::RB, true)] {
         let d = s.curves(&XBOX_BUMPER, right, true);
-        s.path(&d, p.look(part));
+        s.path(Role::Part(part), &d);
     }
-    s.body(XBOX_BODY);
-    s.sticks(p);
-    s.well(Model::Xbox.centre(Part::DPad), 140.02);
-    let (dx, dy) = Model::Xbox.centre(Part::DPad);
-    s.cross(p, XBOX_CROSS, (dx - 39., dy - 135., 78., 270.));
+    s.path(Role::Body, XBOX_BODY);
+    s.sticks();
+    s.circle(Role::Well, Model::Xbox.centre(Part::DPad), 140.02);
+    s.cross(XBOX_CROSS, (1770.8, 963.9, 91.8, 255.2, 14.));
     for part in [Part::View, Part::Menu] {
-        s.circle(Model::Xbox.centre(part), 40.03, p.look(part));
+        s.circle(Role::Part(part), Model::Xbox.centre(part), 40.03);
     }
-    s.path(XBOX_SHARE, Look::Idle);
-    // The marks follow View and Menu (Share is never lit).
-    s.marks(XBOX_MARKS, p.look(Part::View).max(p.look(Part::Menu)));
-    s.circle(Model::Xbox.centre(Part::Guide), 65.67, p.look(Part::Guide));
+    s.path(Role::Idle, XBOX_SHARE);
+    // View's and Menu's marks, and Share's (never lit).
+    s.each(Role::Marks(Some(Part::View), Some(Part::Menu)), XBOX_MARKS);
+    s.circle(Role::Part(Part::Guide), Model::Xbox.centre(Part::Guide), 65.67);
 }
 
-fn playstation(s: &mut Svg, p: &Paint) {
-    s.triggers(p, &PS_TRIGGER, &PS_RIDGE);
-    s.path(PS_L1, p.look(Part::LB));
-    s.path(PS_R1, p.look(Part::RB));
-    s.body(PS_BODY);
+fn playstation(s: &mut Svg) {
+    s.triggers(&PS_TRIGGER, &PS_RIDGE);
+    s.path(Role::Part(Part::LB), PS_L1);
+    s.path(Role::Part(Part::RB), PS_R1);
+    s.path(Role::Body, PS_BODY);
     for d in [PS_SEAM_L, PS_SEAM_R] {
-        s.seam(d);
+        s.path(Role::Seam, d);
     }
     // The touchpad, the microphone button and the speaker: never lit.
-    s.path(PS_TOUCHPAD, Look::Idle);
-    s.seam(PS_PAD_EDGE);
-    s.path(PS_MIC, Look::Idle);
-    let dots = format!("<g {}>{PS_DOTS}</g>", paint_attr("fill", s.t.part_line));
-    s.raw(&dots);
+    s.path(Role::Idle, PS_TOUCHPAD);
+    s.path(Role::Seam, PS_PAD_EDGE);
+    s.path(Role::Idle, PS_MIC);
+    s.each(Role::Dots, PS_DOTS);
     // Four separate arrows.
     for (d, vertical) in [(PS_UP, true), (PS_DOWN, true), (PS_LEFT, false), (PS_RIGHT, false)] {
-        s.path(d, arm_look(p, vertical));
+        s.path(Role::Arm(vertical), d);
     }
-    s.filled_marks(PS_ARROWS, p.look(Part::DPad));
-    s.path(PS_CREATE, p.look(Part::View));
-    s.marks(PS_CREATE_MARKS, p.look(Part::View));
-    s.path(PS_OPTIONS, p.look(Part::Menu));
-    s.marks(PS_OPTIONS_MARKS, p.look(Part::Menu));
-    s.sticks(p);
-    s.circle(Model::PlayStation.centre(Part::Guide), 46., p.look(Part::Guide));
+    s.each(Role::Arrows, PS_ARROWS);
+    s.path(Role::Part(Part::View), PS_CREATE);
+    s.each(Role::Marks(Some(Part::View), None), PS_CREATE_MARKS);
+    s.path(Role::Part(Part::Menu), PS_OPTIONS);
+    s.each(Role::Marks(Some(Part::Menu), None), PS_OPTIONS_MARKS);
+    s.sticks();
+    s.circle(Role::Part(Part::Guide), Model::PlayStation.centre(Part::Guide), 46.);
 }
 
-fn nintendo(s: &mut Svg, p: &Paint) {
-    s.triggers(p, &PRO_TRIGGER, &PRO_RIDGE);
-    s.path(PRO_L, p.look(Part::LB));
-    s.path(PRO_R, p.look(Part::RB));
-    s.body(PRO_BODY);
+fn nintendo(s: &mut Svg) {
+    s.triggers(&PRO_TRIGGER, &PRO_RIDGE);
+    s.path(Role::Part(Part::LB), PRO_L);
+    s.path(Role::Part(Part::RB), PRO_R);
+    s.path(Role::Body, PRO_BODY);
     for d in [PRO_SEAM_L, PRO_SEAM_R] {
-        s.seam(d);
+        s.path(Role::Seam, d);
     }
-    s.sticks(p);
-    let (dx, dy) = Model::Nintendo.centre(Part::DPad);
-    s.cross(p, PRO_CROSS, (dx - 43.6, dy - 127., 87.3, 254.));
-    s.filled_marks(PRO_ARROWS, p.look(Part::DPad));
-    s.circle(Model::Nintendo.centre(Part::View), 35.34, p.look(Part::View));
-    s.marks(PRO_MINUS_MARKS, p.look(Part::View));
-    s.circle(Model::Nintendo.centre(Part::Menu), 35.34, p.look(Part::Menu));
-    s.marks(PRO_PLUS_MARKS, p.look(Part::Menu));
-    s.circle(Model::Nintendo.centre(Part::Guide), 35.34, p.look(Part::Guide));
-    s.marks(PRO_HOME_MARKS, p.look(Part::Guide));
+    s.sticks();
+    s.cross(PRO_CROSS, (1740.6, 950.1, 87.3, 252.8, 16.9));
+    s.each(Role::Arrows, PRO_ARROWS);
+    let n = Model::Nintendo;
+    s.circle(Role::Part(Part::View), n.centre(Part::View), 35.34);
+    s.each(Role::Marks(Some(Part::View), None), PRO_MINUS_MARKS);
+    s.circle(Role::Part(Part::Menu), n.centre(Part::Menu), 35.34);
+    s.each(Role::Marks(Some(Part::Menu), None), PRO_PLUS_MARKS);
+    s.circle(Role::Part(Part::Guide), n.centre(Part::Guide), 35.34);
+    s.each(Role::Marks(Some(Part::Guide), None), PRO_HOME_MARKS);
     // Capture: never lit.
-    s.part(PRO_CAPTURE.trim_start_matches('<').trim_end_matches("/>"), Look::Idle);
-    s.marks(PRO_CAPTURE_MARKS, Look::Idle);
+    s.each(Role::Idle, PRO_CAPTURE);
+    s.each(Role::Marks(None, None), PRO_CAPTURE_MARKS);
 }
 
 // The outlines, in pad units. Xbox: the body, the left bumper (mirrored for
@@ -609,3 +599,24 @@ const PRO_PLUS_MARKS: &str =
     "<line x1='2242.5' y1='711.42' x2='2279.43' y2='711.42'/><line x1='2260.96' y1='729.88' x2='2260.96' y2='692.96'/>";
 const PRO_HOME_MARKS: &str = "<polygon points='2171.53 819.41 2153.45 835.29 2156.12 835.29 2156.12 857.16 2171.53 857.16 2186.94 857.16 2186.94 835.29 2189.6 835.29 2171.53 819.41'/><rect x='2165.05' y='838.29' width='12.96' height='11.76'/>";
 const PRO_CAPTURE_MARKS: &str = "<circle cx='1927.99' cy='842.8' r='20.7'/>";
+
+#[cfg(test)]
+mod tests {
+    use super::{Model, Part, Role};
+
+    /// Every drawing reads, with each part it lights.
+    #[test]
+    fn every_drawing_reads_with_its_parts() {
+        for model in Model::ALL {
+            let shapes = model.shapes();
+            let has = |role: Role| shapes.iter().any(|s| s.role == role && !s.segs.is_empty());
+            assert!(has(Role::Body), "{model:?}: no body");
+            for part in [Part::LB, Part::RB, Part::LStick, Part::RStick, Part::View, Part::Menu, Part::Guide] {
+                assert!(has(Role::Part(part)), "{model:?}: no {part:?}");
+            }
+            assert!(has(Role::Trigger(Part::LT)) && has(Role::Trigger(Part::RT)), "{model:?}: no triggers");
+            assert!(has(Role::Cross) || (has(Role::Arm(true)) && has(Role::Arm(false))), "{model:?}: no d-pad");
+            assert_eq!(shapes.iter().filter(|s| s.role == Role::Seat).count(), 4, "{model:?}: face buttons' seats");
+        }
+    }
+}

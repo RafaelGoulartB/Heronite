@@ -320,29 +320,80 @@ impl Paint {
     }
 }
 
-/// `#rrggbb` and its opacity, as SVG attributes `name` and `name-opacity`.
-fn paint_attr(name: &str, c: Hsla) -> String {
-    let c = Rgba::from(c);
-    let b = |v: f32| (v.clamp(0., 1.) * 255.).round() as u8;
-    format!("{name}='#{:02x}{:02x}{:02x}' {name}-opacity='{:.3}'", b(c.r), b(c.g), b(c.b), c.a)
+/// The colour of marks on a part in `look`.
+fn mark_colour(look: Look) -> Hsla {
+    if look == Look::Idle { theme::text_dim() } else { theme::text_primary() }.into()
 }
 
-thread_local! {
-    /// The pictures made (one per set of looks and colours), so a frame
-    /// draws the one it had.
-    static MADE: std::cell::RefCell<std::collections::HashMap<String, std::sync::Arc<Image>>> = Default::default();
-}
-
-/// `model`'s picture for `p`, `px_w` pixels wide.
-fn picture(model: Model, p: &Paint, px_w: f32) -> std::sync::Arc<Image> {
-    let src = model.svg(p, px_w);
-    MADE.with(|m| {
-        let mut m = m.borrow_mut();
-        if m.len() > 24 {
-            m.clear();
+/// `model`'s shapes as paths in the theme's colours, the tab's parts lit.
+fn paint_controller(bounds: Bounds<Pixels>, model: Model, p: &Paint, window: &mut Window) {
+    use model::{Role, Seg};
+    let o = bounds.origin;
+    // Box units to pixels.
+    let k = f32::from(bounds.size.width) / BOX_W;
+    let at = |(x, y): (f32, f32)| {
+        let (bx, by) = model.at_box(x, y);
+        point(o.x + px(bx * k), o.y + px(by * k))
+    };
+    let build = |segs: &[Seg], mut b: PathBuilder| {
+        for seg in segs {
+            match *seg {
+                Seg::Move(x, y) => b.move_to(at((x, y))),
+                Seg::Line(x, y) => b.line_to(at((x, y))),
+                Seg::Quad(c, a) => b.curve_to(at(a), at(c)),
+                Seg::Cubic(c1, c2, a) => b.cubic_bezier_to(at(a), at(c1), at(c2)),
+                Seg::Close => b.close(),
+            }
         }
-        m.entry(src).or_insert_with_key(|src| std::sync::Arc::new(Image::from_bytes(ImageFormat::Svg, src.clone().into_bytes()))).clone()
-    })
+        b.build().ok()
+    };
+    let t = &p.tones;
+    let dpad = p.look(Part::DPad);
+    let vertical = p.dpad_vertical && dpad != Look::Idle;
+    for shape in model.shapes() {
+        // Its fill, and its outline with its width in box units.
+        let (fill, line): (Option<Hsla>, Option<(Hsla, f32)>) = match shape.role {
+            Role::Part(part) => (Some(t.fill(p.look(part))), Some(t.line(p.look(part)))),
+            Role::Idle => (Some(t.fill(Look::Idle)), Some(t.line(Look::Idle))),
+            Role::Trigger(part) => {
+                let look = p.look(part);
+                (Some(if look == Look::Idle { t.well } else { t.fill(look) }), Some(t.line(look)))
+            }
+            Role::Ridge(part) => {
+                let (c, w) = t.line(p.look(part));
+                (None, Some((c.opacity(0.7), w * 0.8)))
+            }
+            Role::Body => (Some(t.body.blend(theme::ink_a(0.025))), Some((t.body_line, 2.))),
+            Role::Well => (Some(t.well), Some((t.body_line, 1.2))),
+            Role::Seam => (None, Some((t.body_line, 0.9))),
+            Role::Dots => (Some(t.part_line), None),
+            Role::Seat => (Some(t.well), None),
+            Role::Marks(a, b) => {
+                let look = [a, b].into_iter().flatten().map(|q| p.look(q)).max().unwrap_or(Look::Idle);
+                (None, Some((mark_colour(look), 1.1)))
+            }
+            Role::Arrows => (Some(mark_colour(dpad)), None),
+            // Lit alone (up and down): the others stay idle.
+            Role::Arm(up_down) => {
+                let look = if p.dpad_vertical && !up_down { Look::Idle } else { dpad };
+                (Some(t.fill(look)), Some(t.line(look)))
+            }
+            Role::Cross if vertical => (Some(t.fill(Look::Idle)), None),
+            Role::Cross => (Some(t.fill(dpad)), Some(t.line(dpad))),
+            Role::CrossArm => (vertical.then(|| t.fill(dpad)), None),
+            Role::CrossLine => (None, vertical.then(|| t.line(dpad))),
+        };
+        if let Some(c) = fill {
+            if let Some(path) = build(&shape.segs, PathBuilder::fill()) {
+                window.paint_path(path, c);
+            }
+        }
+        if let Some((c, w)) = line {
+            if let Some(path) = build(&shape.segs, PathBuilder::stroke(px(w * k))) {
+                window.paint_path(path, c);
+            }
+        }
+    }
 }
 
 /// The leader lines, and a dot where each meets its part.
@@ -497,7 +548,7 @@ fn routes(model: Model, parts: &[Part], placed: &[Placed]) -> Vec<Vec<(f32, f32)
 const LANE: f32 = 9.;
 
 /// The drawing, its callouts and their lines, for the page's tab.
-pub(super) fn map(d: &SettingsPage, window: &Window, cx: &mut Context<SettingsPage>) -> Div {
+pub(super) fn map(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     let show = d.controls.show;
     let picked = d.controls.selected;
     let lines = callouts(d, show);
@@ -527,9 +578,6 @@ pub(super) fn map(d: &SettingsPage, window: &Window, cx: &mut Context<SettingsPa
         && !lines.iter().any(|c| c.part == Part::DPad && !c.vertical && !c.off);
     let paint_data = Paint { tones: Tones::new(), looks: Part::ALL.iter().map(|p| (*p, look_of(*p))).collect(), dpad_vertical, leads };
     let tones = paint_data.tones;
-    // Drawn at the window's pixels for the widest the drawing gets.
-    let image = picture(model, &paint_data, (BOX_W * window.scale_factor()).round());
-    let leads = paint_data.leads;
     let mut root = div()
         .relative()
         .w_full()
@@ -538,8 +586,17 @@ pub(super) fn map(d: &SettingsPage, window: &Window, cx: &mut Context<SettingsPa
         .min_w(px(MIN_W))
         .aspect_ratio(BOX_W / BOX_H)
         .mx_auto()
-        .child(img(image).absolute().inset_0().size_full())
-        .child(canvas(|_, _, _| (), move |bounds, _, window, _| paint_leads(bounds, &leads, &tones, window)).absolute().inset_0());
+        .child(
+            canvas(
+                |_, _, _| (),
+                move |bounds, _, window, _| {
+                    paint_controller(bounds, model, &paint_data, window);
+                    paint_leads(bounds, &paint_data.leads, &paint_data.tones, window);
+                },
+            )
+            .absolute()
+            .inset_0(),
+        );
     // The face buttons as boxes (drawn as the controller has them), Guide's
     // mark, and a click area on every part.
     let k = model.scale();

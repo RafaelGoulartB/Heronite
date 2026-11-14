@@ -374,6 +374,7 @@ impl SettingsPage {
     /// The Collection hid the page: its sections free what only a visible one
     /// needs (`refresh` brings it back when the page is shown).
     pub fn hidden(&mut self, window: &mut Window) {
+        controls::hidden(self);
         self.storage.hidden(window);
         console_mode::hidden(self, window);
         self.logs.release();
