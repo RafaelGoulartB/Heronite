@@ -42,8 +42,32 @@ pub(super) fn open<V: Render>(cx: &mut App, build: impl Fn(&mut Window, &mut App
         window.set_window_title("Heronite");
         build(window, cx)
     })?;
+    #[cfg(windows)]
+    drop_frame(cx, handle.into());
     cx.activate(true);
     Ok(handle.into())
+}
+
+/// Windows: no frame around the panel (see `overlay_window::drop_frame`).
+/// Run once the borrows unwind, as that sends GPUI synchronous messages.
+#[cfg(windows)]
+fn drop_frame(cx: &mut App, handle: AnyWindowHandle) {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    let hwnd = handle.update(cx, |_, window, _| match window.window_handle().map(|h| h.as_raw()) {
+        Ok(RawWindowHandle::Win32(raw)) => Some(raw.hwnd),
+        _ => None,
+    });
+    let Ok(Some(hwnd)) = hwnd else {
+        log::warn!("quick launcher: no Windows window handle, its frame stays");
+        return;
+    };
+    cx.foreground_executor()
+        .spawn(async move {
+            if let Err(e) = heronite_platform::overlay_window::drop_frame(hwnd) {
+                log::warn!("quick launcher: could not take the frame off: {e}");
+            }
+        })
+        .detach();
 }
 
 /// Windows: the screen of the foreground window (where the user is), else
