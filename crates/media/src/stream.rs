@@ -134,13 +134,15 @@ fn volume_command(volume: f32) -> String {
 /// (the volume), else it never reads its stdin.
 fn args(spec: &StreamSpec) -> Vec<String> {
     let sound = spec.sound && sound_supported();
-    let mut a: Vec<String> = ["-hide_banner", "-loglevel", "error"].map(String::from).to_vec();
+    // Two decoder threads and one for the filters are plenty for 480p; by
+    // default ffmpeg starts dozens and holds about 40 MB more.
+    let mut a: Vec<String> = ["-hide_banner", "-loglevel", "error", "-filter_threads", "1"].map(String::from).to_vec();
     if !sound {
         a.insert(0, "-nostdin".into());
     }
     // A local playlist names files and web addresses side by side.
     let input = |a: &mut Vec<String>, src: &str| {
-        a.extend(["-protocol_whitelist", "file,http,https,tcp,tls,crypto", "-re"].map(String::from));
+        a.extend(["-threads", "2", "-protocol_whitelist", "file,http,https,tcp,tls,crypto", "-re"].map(String::from));
         if spec.start > 0. {
             a.extend(["-ss".into(), format!("{:.3}", spec.start)]);
         }
