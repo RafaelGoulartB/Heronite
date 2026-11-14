@@ -544,6 +544,8 @@
   "Box art region": "Região das capas",
   "Look up games that are not emulated in its Windows and DOS lists too.": "Procura também os jogos que não são emulados nas listas de Windows e DOS.",
   "Also for PC games": "Também para jogos de PC",
+  "Find games not on Steam by name": "Encontrar pelo nome os jogos que não estão no Steam",
+  "A PC game with no Steam page is looked up on Steam by its exact title. A title that is only alike is never taken.": "Um jogo de PC sem página no Steam é procurado no Steam pelo título exato. Um título apenas parecido nunca é aceito.",
   "North America": "América do Norte",
   "World": "Mundo",
   "United Kingdom": "Reino Unido",

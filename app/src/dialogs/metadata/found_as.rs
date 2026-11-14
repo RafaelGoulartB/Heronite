@@ -5,7 +5,9 @@
 //! a pinned one has a pin; "Change" searches the source for another game. A source
 //! asked only as a fallback, which the others made unnecessary, keeps its
 //! row with "Search"; the other sources that were not asked fold into one
-//! muted line per reason. Below, "Search
+//! muted line per reason. A source the game can be linked to by hand (Steam,
+//! for a game that is not on it) keeps its row too, "Not linked" with "Link".
+//! Below, "Search
 //! every source again"; above, the busy line, the offline line and the hint
 //! of a missing IGDB key.
 
@@ -130,6 +132,13 @@ impl MetadataDialog {
             SourceAnswer::NotAsked { why: NotAsked::Fallback } => {
                 (tr!("Not asked: the others found it").into(), String::new(), false, searchable.then_some(tr!("Search")))
             }
+            // A page the user can link the game to: the row stays, to pick it.
+            SourceAnswer::NotAsked { why: NotAsked::NotLinked } => (
+                tr!("Not linked").into(),
+                tr!("Pick this game's page to get its details from there.").into(),
+                false,
+                searchable.then_some(tr!("Link")),
+            ),
             // Folded into the line under the rows.
             SourceAnswer::NotAsked { .. } => (String::new(), String::new(), false, None),
         };
@@ -215,7 +224,7 @@ impl MetadataDialog {
                     NotAsked::NeedsKey => tr!("Needs a key: {sources}", sources),
                     NotAsked::NeedsDownload => tr!("Needs a download: {sources}", sources),
                     NotAsked::Failing => tr!("Stopped after errors: {sources}", sources),
-                    NotAsked::NotChosen | NotAsked::Fallback => tr!("Not asked: {sources}", sources),
+                    NotAsked::NotChosen | NotAsked::Fallback | NotAsked::NotLinked => tr!("Not asked: {sources}", sources),
                 }))
             })
             .collect()
@@ -236,7 +245,8 @@ impl MetadataDialog {
             }
             Some(p) => {
                 let row = |s: &&SourceState| {
-                    !matches!(s.answer, SourceAnswer::NotAsked { .. }) || s.answer == SourceAnswer::NotAsked { why: NotAsked::Fallback }
+                    !matches!(s.answer, SourceAnswer::NotAsked { .. })
+                        || matches!(s.answer, SourceAnswer::NotAsked { why: NotAsked::Fallback | NotAsked::NotLinked })
                 };
                 let agreed = Agreed::of(&p.sources);
                 if let Some(a) = &agreed {

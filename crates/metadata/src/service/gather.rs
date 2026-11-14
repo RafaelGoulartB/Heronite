@@ -222,7 +222,8 @@ impl MetadataService {
                     return Plan::Not(NotAsked::NotChosen);
                 }
                 if pin.is_none() && !sources.applies(&self.paths, settings, d, game_view) {
-                    return Plan::Not(NotAsked::NotForThisGame);
+                    let linkable = d.searchable && d.link_for.as_ref().is_some_and(|a| a.matches(game_view));
+                    return Plan::Not(if linkable { NotAsked::NotLinked } else { NotAsked::NotForThisGame });
                 }
                 // Never asked, not even for a pinned game, before the user downloads its database.
                 if !sources.downloaded(&self.paths, &d.id) {

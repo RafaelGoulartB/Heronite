@@ -334,6 +334,15 @@ impl MetadataService {
             record::clear_no_match(&mut proposed);
         }
         record_matches(args, current, candidates, &mut proposed);
+        // "Automatic" for a source the game is only linked to by hand takes
+        // the link away: the source is not asked for it any more.
+        let own_steam = self.source_game(sources, args, current).steam_app_id.is_some();
+        for (source, pin) in args.pins.iter().flatten() {
+            let linked = sources.get(source).is_some_and(|d| d.link_for.is_some());
+            if pin.is_none() && linked && !own_steam && !candidates.iter().any(|c| &c.source == source) {
+                record::unlink(&mut proposed, source);
+            }
+        }
         let asked = args.only_fields.as_deref();
         if !(asks_details(asked) && found(sources, asked, candidates)) {
             proposed.fetched_at = current.and_then(|c| c.fetched_at.clone());
@@ -496,6 +505,22 @@ impl MetadataService {
             let Some(md) = file.games.get_mut(&key) else { return Ok(None) };
             for (field, locked) in locks {
                 record::set_locked(md, field, *locked);
+            }
+            Ok(Some(md.clone()))
+        })
+    }
+}
+
+impl MetadataService {
+    /// Takes away the links of a stored record to `sources` (the games the
+    /// user linked it to by hand), without asking any source. Creates no
+    /// record; the fields the sources gave stay.
+    pub fn unlink_sources(&self, runner: &str, app_name: &str, sources: &[String]) -> Result<Option<CollectionGameMetadata>> {
+        let key = metadata_key(as_runner(runner), app_name);
+        json_store::update::<heronite_data::models::MetadataFile, _>(&self.paths.metadata(), |file| {
+            let Some(md) = file.games.get_mut(&key) else { return Ok(None) };
+            for source in sources {
+                record::unlink(md, source);
             }
             Ok(Some(md.clone()))
         })

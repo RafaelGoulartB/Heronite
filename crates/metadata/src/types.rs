@@ -222,6 +222,9 @@ pub enum NotAsked {
     /// Asked only as a fallback, and nothing called for it: the other
     /// sources found the game ([`crate::sources::Asked::AsFallback`]).
     Fallback,
+    /// A source the game can be linked to by hand ([`crate::sources::SourceDescriptor::link_for`])
+    /// and is not: nothing is asked until the user picks its game.
+    NotLinked,
     /// It could not be loaded, or failed too many times in a row
     /// ([`crate::sources::SourceHealth`]).
     Failing,

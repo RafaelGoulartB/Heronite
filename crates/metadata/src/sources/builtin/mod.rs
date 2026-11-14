@@ -16,7 +16,9 @@ use super::{
     AlsoFor, AppliesTo, Asked, Entry, MetadataSource, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind, SourceRegistry,
     SourceTest,
 };
-use crate::covers::{find_steamgrid_game, search_steam, steamgrid_api_key, steamgrid_pictures};
+use crate::covers::{
+    find_steamgrid_game, lookup_steam_app_id_exact, search_steam, steam_id_in, steamgrid_api_key, steamgrid_pictures, strict_steam_score,
+};
 use crate::igdb::{Igdb, IgdbCredentials};
 use crate::launchbox::{self, map as lb_map, LaunchBox};
 use crate::libretro;
@@ -41,6 +43,8 @@ mod libretro_source;
 /// LaunchBox's options.
 const BOX_REGION: &str = "boxRegion";
 const PC_GAMES: &str = "pcGames";
+/// Steam's option: PC games with no Steam id are looked up by their exact title.
+const BY_NAME: &str = "byName";
 
 /// The service's state the adapters share with its other entry points
 /// (IGDB token and queue, Steam caches, parsed store libraries, Playnite).
@@ -76,6 +80,7 @@ fn source(id: &str, name: &str, kind: SourceKind, provides: &[&str]) -> SourceDe
         about: None,
         download: None,
         also_for: None,
+        link_for: None,
         leads_for: None,
         extension: None,
     }
@@ -112,8 +117,17 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
         },
         SourceDescriptor {
             applies_to: AppliesTo::HasSteamId,
-            finds_by: vec![SteamId],
+            finds_by: vec![SteamId, ExactTitle],
             searchable: true,
+            link_for: Some(AppliesTo::Pc),
+            also_for: Some(AlsoFor { option: BY_NAME.into(), applies_to: AppliesTo::Pc }),
+            options: vec![SourceOption {
+                help: Some(
+                    n_!("A PC game with no Steam page is looked up on Steam by its exact title. A title that is only alike is never taken.")
+                        .into(),
+                ),
+                ..option(BY_NAME, n_!("Find games not on Steam by name"), OptionKind::Switch)
+            }],
             ..source(
                 STEAM,
                 "Steam",
@@ -387,7 +401,17 @@ impl MetadataSource for SteamSource {
     }
 
     fn lookup(&self, ctx: &SourceContext<'_>, game: &SourceGame) -> Lookup<MetadataCandidate> {
-        self.app(ctx, game, game.steam_app_id.as_deref(), MatchedBy::SteamId)
+        match game.steam_app_id.as_deref() {
+            Some(id) => self.app(ctx, game, Some(id), MatchedBy::SteamId),
+            // Only asked for a game with no id when the user turned the
+            // search by name on: the same title, never one that is alike.
+            None => match lookup_steam_app_id_exact(ctx.http, &game.title) {
+                Lookup::Found(id) => self.app(ctx, game, Some(&id), MatchedBy::ExactTitle),
+                Lookup::NotFound => Lookup::NotFound,
+                Lookup::Unreachable => Lookup::Unreachable,
+                Lookup::Skipped => Lookup::Skipped,
+            },
+        }
     }
 
     fn lookup_id(&self, ctx: &SourceContext<'_>, game: &SourceGame, id: &str) -> Lookup<MetadataCandidate> {
@@ -395,11 +419,43 @@ impl MetadataSource for SteamSource {
     }
 
     fn search(&self, ctx: &SourceContext<'_>, query: &str) -> Lookup<Vec<SourceHit>> {
-        search_steam(ctx.http, query)
+        // A store address or an app id names its game: it comes first.
+        let named = steam_id_in(query).and_then(|id| self.hit_of(ctx, &id));
+        // The games named as typed come before the others (the store lists a sequel first).
+        let by_name = search_steam(ctx.http, query).map(|mut hits| {
+            hits.sort_by_key(|h| std::cmp::Reverse(h.title.as_deref().map_or(0, |t| strict_steam_score(query, t))));
+            hits
+        });
+        match (named, by_name) {
+            (Some(hit), Lookup::Found(mut hits)) => {
+                hits.retain(|h| h.id != hit.id);
+                hits.insert(0, hit);
+                Lookup::Found(hits)
+            }
+            (Some(hit), _) => Lookup::Found(vec![hit]),
+            (None, found) => found,
+        }
     }
 }
 
 impl SteamSource {
+    /// The game of `id` as a search hit: its name, year and cover (`None`:
+    /// Steam has no such app, or could not be asked).
+    fn hit_of(&self, ctx: &SourceContext<'_>, id: &str) -> Option<SourceHit> {
+        let details = steam::get_steam_app_details(ctx.paths, ctx.http, &self.state, id, None)?;
+        Some(SourceHit {
+            source: STEAM.into(),
+            thumb_url: steam::steam_cdn_cover(Some(id)),
+            id: Some(id.to_owned()),
+            title: Some(details.name.clone()).filter(|n| !n.is_empty()),
+            year: details.release_date.as_deref().and_then(steam::year_of_date),
+            platform: None,
+            matched_by: None,
+            alt_title: None,
+            thumb_adult: false,
+        })
+    }
+
     fn app(&self, ctx: &SourceContext<'_>, game: &SourceGame, id: Option<&str>, matched_by: MatchedBy) -> Lookup<MetadataCandidate> {
         steam::fetch_steam_metadata(ctx.paths, ctx.http, &self.state, &game.app_name, &game.runner, id, game.language.as_deref()).map(
             |md| {

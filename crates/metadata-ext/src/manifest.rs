@@ -383,6 +383,7 @@ impl Manifest {
             // or a place ahead of the sources already in a field's order.
             download: None,
             also_for: None,
+            link_for: None,
             leads_for: None,
             extension: Some(ExtensionInfo {
                 version: self.version.to_string(),

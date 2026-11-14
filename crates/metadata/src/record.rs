@@ -24,7 +24,7 @@ pub const LOCKED_FIELDS: &str = "lockedFields";
 pub const NO_MATCH: &str = "noMatch";
 
 const IGDB: &str = "igdb";
-const STEAM: &str = "steam";
+pub(crate) const STEAM: &str = "steam";
 const LUTRIS: &str = "lutris";
 
 /// Which game of a source a record is.
@@ -133,6 +133,16 @@ pub fn clear_source_match(md: &mut CollectionGameMetadata, source: &str) {
             write(md, SOURCE_MATCHES, &all);
         }
     }
+}
+
+/// Takes away the link of a game to `source` that the user made by hand:
+/// the match, and for Steam the id the record kept with it (the game's own
+/// Steam id, in its library entry, is not the record's).
+pub fn unlink(md: &mut CollectionGameMetadata, source: &str) {
+    if source == STEAM {
+        md.steam_app_id = None;
+    }
+    clear_source_match(md, source);
 }
 
 /// Lets later lookups of `source` find the game again by themselves (the
@@ -253,6 +263,22 @@ mod tests {
         md.lutris_slug = Some("x".into());
         clear_source_match(&mut md, "lutris");
         assert_eq!(md.lutris_slug, None);
+    }
+
+    #[test]
+    fn unlinking_a_page_takes_its_id_with_it() {
+        let mut md = blank_metadata("a", "sideload");
+        let page = SourceMatch { id: "620".into(), pinned: true, ..Default::default() };
+        set_source_match(&mut md, "steam", page, None);
+        assert_eq!(md.steam_app_id.as_deref(), Some("620"));
+        assert_eq!(pinned_ids(&md).get("steam").map(String::as_str), Some("620"));
+        unlink(&mut md, "steam");
+        assert_eq!(md.steam_app_id, None);
+        assert!(source_matches(&md).is_empty() && !md.extra.contains_key(SOURCE_MATCHES));
+        // Clearing a Steam match alone keeps the id: it can be the game's own.
+        md.steam_app_id = Some("7".into());
+        clear_source_match(&mut md, "steam");
+        assert_eq!(md.steam_app_id.as_deref(), Some("7"));
     }
 
     #[test]

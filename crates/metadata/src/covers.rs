@@ -188,12 +188,28 @@ pub fn steam_app_id_exact(http: &Http, title: &str) -> Option<String> {
 }
 
 fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Option<String> {
+    lookup_steam_app_id(http, title, strict).into_option()
+}
+
+/// [`steam_app_id_exact`] that tells "no such game" from "Steam could not be
+/// asked" (nothing answered: offline).
+pub fn lookup_steam_app_id_exact(http: &Http, title: &str) -> Lookup<String> {
+    lookup_steam_app_id(http, title, true)
+}
+
+fn lookup_steam_app_id(http: &Http, title: &str, strict: bool) -> Lookup<String> {
     let mut best = BestApp(None, strict);
+    let (mut answered, mut failed) = (false, None);
+    let mut note = |r: &Result<Value>, answered: &mut bool| match r {
+        Ok(_) => *answered = true,
+        Err(e) => failed = Some(Lookup::<String>::from_error(e)),
+    };
     for query in title_queries(title) {
         let community = http
             .get(format!("{}/actions/SearchApps/{}", http.endpoints.steam_community, encode_uri_component(&query)))
             .send_ok()
             .and_then(|r| r.json::<Value>());
+        note(&community, &mut answered);
         match community {
             Ok(Value::Array(hits)) => best_from_search_apps(&mut best, &hits, title),
             Ok(_) => {}
@@ -208,6 +224,7 @@ fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Option<String>
             .query(&[("term", query.as_str()), ("l", "english"), ("cc", "US")])
             .send_ok()
             .and_then(|r| r.json::<Value>());
+        note(&store, &mut answered);
         match store {
             Ok(v) => best_from_store_search(&mut best, &v, title),
             Err(e) => log::warn!("Steam store search failed for {query}: {e}"),
@@ -216,7 +233,30 @@ fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Option<String>
             break;
         }
     }
-    best.0.map(|(id, _)| id)
+    match (best.0, answered, failed) {
+        (Some((id, _)), ..) => Lookup::Found(id),
+        (None, false, Some(failure)) => failure,
+        _ => Lookup::NotFound,
+    }
+}
+
+/// The Steam app a typed address or number names: a store or community
+/// page (`https://store.steampowered.com/app/620/Portal_2/`,
+/// `steamcommunity.com/app/620`), a SteamDB one, or the app id alone.
+pub fn steam_id_in(query: &str) -> Option<String> {
+    let query = query.trim();
+    let digits = |s: &str| s.bytes().all(|b| b.is_ascii_digit()) && !s.is_empty() && s.len() <= 10;
+    if digits(query) {
+        return Some(query.to_owned());
+    }
+    let lower = query.to_ascii_lowercase();
+    let from_host = ["store.steampowered.com", "steamcommunity.com", "steamdb.info"].iter().any(|h| lower.contains(h));
+    if !from_host {
+        return None;
+    }
+    let after = lower.split("/app/").nth(1)?;
+    let id: String = after.chars().take_while(char::is_ascii_digit).collect();
+    digits(&id).then_some(id)
 }
 
 fn best_from_search_apps(best: &mut BestApp, hits: &[Value], title: &str) {
@@ -630,6 +670,25 @@ mod tests {
 
     fn fixture(name: &str) -> Value {
         serde_json::from_str(&std::fs::read_to_string(format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn a_typed_address_or_number_names_a_steam_app() {
+        for typed in [
+            "620",
+            " 620 ",
+            "https://store.steampowered.com/app/620/Portal_2/",
+            "http://store.steampowered.com/app/620",
+            "store.steampowered.com/app/620/",
+            "https://steamcommunity.com/app/620/discussions/",
+            "https://steamdb.info/app/620/charts/",
+        ] {
+            assert_eq!(steam_id_in(typed).as_deref(), Some("620"), "{typed}");
+        }
+        for typed in ["", "Portal 2", "2048 Tiles", "https://example.com/app/620", "https://store.steampowered.com/sub/469", "12345678901"]
+        {
+            assert_eq!(steam_id_in(typed), None, "{typed}");
+        }
     }
 
     #[test]

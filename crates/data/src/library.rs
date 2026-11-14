@@ -1247,6 +1247,36 @@ mod tests {
     }
 
     #[test]
+    fn a_steam_page_linked_in_the_record_does_not_make_a_steam_game() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let w = |p: PathBuf, s: &str| {
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, s).unwrap();
+        };
+        w(
+            paths.sideload_library(),
+            r#"{"games":[{"runner":"sideload","app_name":"manual","title":"Hades","is_installed":true,"install":{"executable":"/g/hades.exe"}}]}"#,
+        );
+        w(
+            paths.local_meta(),
+            r#"{"games":{"manual":{"appName":"manual","runner":"sideload","source":"manual","launchKind":"executable"}}}"#,
+        );
+        w(paths.metadata(), r#"{"games":{"sideload:manual":{"appName":"manual","runner":"sideload","steamAppId":"1145360"}}}"#);
+        // The account owns other games: its library is known, and Hades is not in it.
+        w(paths.steam_owned(), r#"{"games":[{"appId":"4","name":"Portal"}],"updatedAt":"2026-10-13T00:00:00Z"}"#);
+        let lib = Library::load(&paths).unwrap();
+        let game = lib.get("sideload_manual").unwrap();
+        assert_eq!((game.steam_app_id.as_deref(), game.steam_launch_id.as_deref()), (None, None));
+        assert!(game.steam_link.is_none() && !game.via_steam && game.installed);
+        assert_eq!(game.launch_kind.as_deref(), Some("executable"));
+        // What the metadata reads: tags, ProtonDB and the links use the record's id.
+        assert_eq!(game.tag_steam_id(), Some("1145360"));
+        let stores = &game.facets[crate::collection::FacetKind::Store.index()];
+        assert_eq!(stores.iter().map(|i| i.value.as_str()).collect::<Vec<_>>(), ["Added manually"]);
+    }
+
+    #[test]
     fn zoom_needs_the_experimental_flag() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
