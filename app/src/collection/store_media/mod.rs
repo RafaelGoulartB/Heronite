@@ -12,7 +12,7 @@
 //! turned off), and when a game starts. Turning the section off deletes
 //! everything it kept (`clear_kept`).
 //!
-//! Debug: `HERONITE_DEBUG_MEDIA=play|paused|pick:<n>` (see `media_debug`).
+//! Debug: `HERONITE_DEBUG_MEDIA=play|paused|paused-sound|pick:<n>` (see `media_debug`).
 
 mod view;
 
@@ -41,14 +41,16 @@ use super::CollectionView;
 const FPS: u32 = 30;
 const FRAME_W: u32 = 854;
 const FRAME_H: u32 = 480;
-/// A trailer stops when the window has not drawn for this long (minimized,
-/// on another workspace): its frames would only pile up unseen.
+/// A trailer stops when the window has not drawn this long after a frame
+/// asked it to (minimized, on another workspace): nobody sees it.
 const UNSEEN: Duration = Duration::from_millis(1500);
 /// Browsing the list with the keys asks the store only for the game the
 /// selection stays on.
 const LIST_DELAY: Duration = Duration::from_millis(250);
 /// A trailer's start is kept only for a game looked at this long.
 const KEEP_AFTER: Duration = Duration::from_secs(3);
+/// Loudness of a trailer once its sound is turned on, until the user moves it.
+const DEFAULT_VOLUME: f32 = 0.5;
 
 /// The focused game's list.
 #[derive(Clone, Default)]
@@ -67,7 +69,6 @@ pub(super) enum PlayState {
     Loading,
     Playing,
     Paused,
-    Ended,
     Failed(SharedString),
 }
 
@@ -130,17 +131,25 @@ pub(super) struct StoreMediaUi {
     swept: bool,
     /// What the list on screen keeps: videos, screenshots or both.
     kinds: StoreMediaKinds,
-    /// When the window last drew.
-    last_draw: Option<Instant>,
+    /// When a frame first asked for a draw that has not happened yet.
+    draw_asked: Option<Instant>,
     /// ffmpeg's sound output was looked for off the UI thread.
     warmed: bool,
     /// Games running at the last frame.
     games_running: usize,
     /// Where the seek bar is, for its clicks.
     bar: Rc<std::cell::Cell<Bounds<Pixels>>>,
+    /// Where the volume bar is, for its clicks and drags.
+    volume_bar: Rc<std::cell::Cell<Bounds<Pixels>>>,
+    /// The trailers' loudness (`0.0..=1.0`) this session; `None` = [`DEFAULT_VOLUME`].
+    volume: Option<f32>,
 }
 
 impl StoreMediaUi {
+    pub(super) fn volume(&self) -> f32 {
+        self.volume.unwrap_or(DEFAULT_VOLUME)
+    }
+
     fn reset(&mut self) {
         self.stop();
         self.game = None;
@@ -190,7 +199,7 @@ impl CollectionView {
     /// Every frame, before the layout: follows the focused game, stops a
     /// trailer the panel no longer draws, drops the frames shown before.
     pub(super) fn sync_store_media(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.media.last_draw = Some(Instant::now());
+        self.media.draw_asked = None;
         // The newest frame becomes the one drawn; the one before goes from the GPU now.
         if let Some(p) = self.media.player.as_mut() {
             let newest = p.slot.lock().unwrap_or_else(|e| e.into_inner()).take();
@@ -335,18 +344,27 @@ impl CollectionView {
         .detach();
     }
 
-    /// `HERONITE_DEBUG_MEDIA=play|paused|pick:<n>`: plays the first trailer
+    /// `HERONITE_DEBUG_MEDIA=play|paused|paused-sound|pick:<n>`: plays the first trailer
     /// (without sound; `paused` pauses it after 5 s) or puts item `n` on the
     /// stage, once the list is read.
     fn media_debug(&mut self, cx: &mut Context<Self>) {
         let Some(spec) = crate::env::value("HERONITE_DEBUG_MEDIA") else { return };
-        if spec == "play" || spec == "paused" {
+        let paused = spec == "paused" || spec == "paused-sound";
+        if spec == "play" || paused {
             self.media_play(0, 0., false, cx);
         }
-        if spec == "paused" {
+        if paused {
+            // `paused-sound` shows the sound's controls without playing any.
+            let sound = spec == "paused-sound";
             cx.spawn(async move |this, cx| {
                 cx.background_executor().timer(std::time::Duration::from_secs(5)).await;
-                this.update(cx, |this, cx| this.media_pause(cx)).ok();
+                this.update(cx, |this, cx| {
+                    this.media_pause(cx);
+                    if let Some(p) = this.media.player.as_mut() {
+                        p.sound |= sound;
+                    }
+                })
+                .ok();
             })
             .detach();
         } else if let Some(n) = spec.strip_prefix("pick:").and_then(|n| n.parse().ok()) {
@@ -408,6 +426,16 @@ impl CollectionView {
         if p.stream.is_some() {
             let (video, at, sound) = (p.video, p.position(), p.sound);
             self.media_play(video, at, sound, cx);
+        }
+        cx.notify();
+    }
+
+    /// Sets the trailers' loudness, at once on the one playing.
+    pub(super) fn media_set_volume(&mut self, volume: f32, cx: &mut Context<Self>) {
+        let volume = volume.clamp(0., 1.);
+        self.media.volume = Some(volume);
+        if let Some(stream) = self.media.player.as_ref().and_then(|p| p.stream.as_ref()) {
+            stream.set_volume(volume);
         }
         cx.notify();
     }
@@ -484,10 +512,20 @@ impl CollectionView {
     /// Runs ffmpeg on `playable`. Its frames wait in the player's slot for
     /// the next draw; each one only asks for a draw.
     fn media_stream(&mut self, playable: cache::Playable, at: f64, sound: bool, generation: u64, cx: &mut Context<Self>) {
+        let volume = self.media.volume();
         let Some(p) = self.media.player.as_mut() else { return };
         let (slot, count) = (p.slot.clone(), p.count.clone());
         let (tx, mut rx) = unbounded::<Option<StreamEvent>>();
-        let spec = StreamSpec { video: playable.video, audio: playable.audio, start: at, width: FRAME_W, height: FRAME_H, fps: FPS, sound };
+        let spec = StreamSpec {
+            video: playable.video,
+            audio: playable.audio,
+            start: at,
+            width: FRAME_W,
+            height: FRAME_H,
+            fps: FPS,
+            sound,
+            volume,
+        };
         p.stream = Some(Stream::start(spec, move |ev| match ev {
             StreamEvent::Frame(f) => {
                 let n = count.fetch_add(1, Ordering::Relaxed) + 1;
@@ -505,12 +543,15 @@ impl CollectionView {
             while let Some(ev) = rx.next().await {
                 let alive = this
                     .update(cx, |this, cx| {
-                        let unseen = this.media.last_draw.is_none_or(|t| t.elapsed() > UNSEEN);
+                        // A draw asked for this long ago never came.
+                        let unseen = this.media.draw_asked.is_some_and(|t| t.elapsed() > UNSEEN);
+                        this.media.draw_asked.get_or_insert_with(Instant::now);
                         let Some(p) = this.media.player.as_mut().filter(|p| p.generation == generation) else { return false };
                         match ev {
+                            // Trailers loop: from the start again, with the sound as it was.
                             Some(StreamEvent::Ended) => {
-                                p.stream = None;
-                                p.state = PlayState::Ended;
+                                let (video, sound) = (p.video, p.sound);
+                                this.media_play(video, 0., sound, cx);
                             }
                             Some(StreamEvent::Failed(why)) => {
                                 log::warn!("trailer: {why}");

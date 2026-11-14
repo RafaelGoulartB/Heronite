@@ -2,9 +2,10 @@
 //! screenshot, and the strip of everything the store has under it (the
 //! trailers first, each with a play mark).
 //!
-//! On a trailer the stage shows its still and a play button; playing, a bar
-//! fades in while the pointer is over it: play / pause, the time, the seek
-//! bar, the sound (Linux) and the store page. Arrows on its sides step
+//! On a trailer the stage shows its still and a play button; once played it
+//! loops. Playing, a bar fades in while the pointer is over it: play /
+//! pause, the time, the seek bar, and on Linux the sound with its volume
+//! (50% at first). Arrows on its sides step
 //! through the items.
 
 use std::time::Duration;
@@ -255,12 +256,9 @@ impl CollectionView {
         }
         let center = div().absolute().inset_0().flex().flex_col().items_center().justify_center().gap(px(10.));
         stage = match &state {
-            None | Some(PlayState::Ended) => stage.child(
-                center.child(
-                    stage_button("sm-play-big", if state.is_some() { Icon::Replay } else { Icon::PlayArrow }, 64.)
-                        .on_click(cx.listener(|this, _, _, cx| this.media_toggle_play(cx))),
-                ),
-            ),
+            None => stage.child(center.child(
+                stage_button("sm-play-big", Icon::PlayArrow, 64.).on_click(cx.listener(|this, _, _, cx| this.media_toggle_play(cx))),
+            )),
             Some(PlayState::Loading) => stage.child(center.child(spinner("sm-play-spin"))),
             Some(PlayState::Failed(why)) => stage.child(
                 center
@@ -366,7 +364,54 @@ impl CollectionView {
                     .tooltip(tooltip(label))
                     .on_click(cx.listener(|this, _, _, cx| this.media_toggle_sound(cx))),
             );
+            if sound {
+                bar = bar.child(self.media_volume_bar(cx));
+            }
         }
         bar
+    }
+
+    /// The loudness of a trailer playing with sound: click or drag along it.
+    fn media_volume_bar(&mut self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let volume = self.media.volume();
+        let cell = self.media.volume_bar.clone();
+        fn at(this: &CollectionView, x: Pixels) -> Option<f32> {
+            let b = this.media.volume_bar.get();
+            let w = f32::from(b.size.width);
+            (w > 0.).then(|| f32::from(x - b.origin.x) / w)
+        }
+        div()
+            .id("sm-volume")
+            .flex_none()
+            .w(px(76.))
+            .py(px(8.))
+            .cursor_pointer()
+            .tooltip(tooltip(format!("{}%", (volume * 100.).round())))
+            .child(
+                div()
+                    .relative()
+                    .h(px(4.))
+                    .rounded_full()
+                    .bg(theme::rgb_a(255, 255, 255, 0.25))
+                    .child(div().absolute().top_0().left_0().h_full().w(relative(volume)).rounded_full().bg(rgb(0xf4f6f8)))
+                    .child(div().absolute().top(px(-4.)).left(relative(volume)).ml(px(-6.)).size(px(12.)).rounded_full().bg(rgb(0xf4f6f8)))
+                    .child(canvas(move |b, _, _| cell.set(b), |_, _, _, _| {}).absolute().size_full()),
+            )
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, ev: &MouseDownEvent, _, cx| {
+                    if let Some(v) = at(this, ev.position.x) {
+                        this.media_set_volume(v, cx);
+                    }
+                    cx.stop_propagation();
+                }),
+            )
+            .on_mouse_move(cx.listener(|this, ev: &MouseMoveEvent, _, cx| {
+                if ev.pressed_button == Some(MouseButton::Left) {
+                    if let Some(v) = at(this, ev.position.x) {
+                        this.media_set_volume(v, cx);
+                    }
+                }
+            }))
     }
 }

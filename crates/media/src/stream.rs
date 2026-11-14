@@ -9,9 +9,13 @@
 //! The frames come on the thread that reads ffmpeg's output, which also
 //! started it (the process ends with that thread, `heronite_data::proc`).
 //! [`Stream::stop`] (or dropping the [`Stream`]) ends ffmpeg at once.
+//!
+//! With sound, the volume goes through ffmpeg's `volume` filter, changed
+//! while it plays by ffmpeg's own command keys on its stdin (`c`, then
+//! `volume -1 volume 0.5`): no restart, no gap.
 
-use std::io::Read;
-use std::process::{Child, Command, Stdio};
+use std::io::{Read, Write};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -33,6 +37,8 @@ pub struct StreamSpec {
     pub fps: u32,
     /// Play the sound (only where [`sound_supported`]).
     pub sound: bool,
+    /// Loudness of the sound, `0.0..=1.0`.
+    pub volume: f32,
 }
 
 #[derive(Debug)]
@@ -47,6 +53,8 @@ pub enum StreamEvent {
 /// A video being played; ffmpeg is ended when it is dropped.
 pub struct Stream {
     child: Arc<Mutex<Option<Child>>>,
+    /// ffmpeg's stdin while it plays with sound (its command keys).
+    stdin: Arc<Mutex<Option<ChildStdin>>>,
     stopped: Arc<AtomicBool>,
 }
 
@@ -56,10 +64,11 @@ impl Stream {
     /// [`StreamEvent::Failed`] (never after [`stop`](Self::stop)).
     pub fn start(spec: StreamSpec, mut on: impl FnMut(StreamEvent) + Send + 'static) -> Stream {
         let child: Arc<Mutex<Option<Child>>> = Arc::default();
+        let stdin: Arc<Mutex<Option<ChildStdin>>> = Arc::default();
         let stopped = Arc::new(AtomicBool::new(false));
-        let (slot, stop) = (child.clone(), stopped.clone());
+        let (slot, keys, stop) = (child.clone(), stdin.clone(), stopped.clone());
         let spawned = std::thread::Builder::new().name("video-stream".into()).spawn(move || {
-            let end = run(&spec, &slot, &stop, &mut on);
+            let end = run(&spec, &slot, &keys, &stop, &mut on);
             if !stop.load(Ordering::SeqCst) {
                 on(end);
             }
@@ -67,7 +76,15 @@ impl Stream {
         if let Err(e) = spawned {
             log::warn!("video stream thread: {e}");
         }
-        Stream { child, stopped }
+        Stream { child, stdin, stopped }
+    }
+
+    /// Sets the loudness (`0.0..=1.0`) of a stream started with sound;
+    /// nothing for one without. Never blocks for long (a line on a pipe).
+    pub fn set_volume(&self, volume: f32) {
+        if let Some(keys) = self.stdin.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            let _ = write!(keys, "c{}", volume_command(volume)).and_then(|_| keys.flush());
+        }
     }
 
     /// Ends ffmpeg; no event comes after this.
@@ -108,9 +125,19 @@ pub fn sound_supported() -> bool {
     })
 }
 
-/// ffmpeg's arguments for `spec`.
+/// The line after ffmpeg's `c` key that sets every `volume` filter.
+fn volume_command(volume: f32) -> String {
+    format!("volume -1 volume {:.3}\n", volume.clamp(0., 1.))
+}
+
+/// ffmpeg's arguments for `spec`. With sound it reads its command keys
+/// (the volume), else it never reads its stdin.
 fn args(spec: &StreamSpec) -> Vec<String> {
-    let mut a: Vec<String> = ["-nostdin", "-hide_banner", "-loglevel", "error"].map(String::from).to_vec();
+    let sound = spec.sound && sound_supported();
+    let mut a: Vec<String> = ["-hide_banner", "-loglevel", "error"].map(String::from).to_vec();
+    if !sound {
+        a.insert(0, "-nostdin".into());
+    }
     // A local playlist names files and web addresses side by side.
     let input = |a: &mut Vec<String>, src: &str| {
         a.extend(["-protocol_whitelist", "file,http,https,tcp,tls,crypto", "-re"].map(String::from));
@@ -120,7 +147,6 @@ fn args(spec: &StreamSpec) -> Vec<String> {
         a.extend(["-i".into(), src.to_owned()]);
     };
     input(&mut a, &spec.video);
-    let sound = spec.sound && sound_supported();
     let audio_input = match (&spec.audio, sound) {
         (Some(audio), true) => {
             input(&mut a, audio);
@@ -145,6 +171,8 @@ fn args(spec: &StreamSpec) -> Vec<String> {
             "-map".into(),
             map.into(),
             "-vn".into(),
+            "-filter:a".into(),
+            format!("volume={:.3}", spec.volume.clamp(0., 1.)),
             "-f".into(),
             "pulse".into(),
             "-name".into(),
@@ -155,12 +183,19 @@ fn args(spec: &StreamSpec) -> Vec<String> {
     a
 }
 
-fn run(spec: &StreamSpec, slot: &Mutex<Option<Child>>, stop: &AtomicBool, on: &mut dyn FnMut(StreamEvent)) -> StreamEvent {
+fn run(
+    spec: &StreamSpec,
+    slot: &Mutex<Option<Child>>,
+    keys: &Mutex<Option<ChildStdin>>,
+    stop: &AtomicBool,
+    on: &mut dyn FnMut(StreamEvent),
+) -> StreamEvent {
     if !crate::posters::available() {
         return StreamEvent::Failed("ffmpeg is not installed".into());
     }
     let mut cmd = Command::new("ffmpeg");
-    cmd.args(args(spec)).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let sound = spec.sound && sound_supported();
+    cmd.args(args(spec)).stdin(if sound { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::piped());
     guard(&mut cmd);
     let mut child = match spawn(&mut cmd) {
         Ok(c) => c,
@@ -170,6 +205,7 @@ fn run(spec: &StreamSpec, slot: &Mutex<Option<Child>>, stop: &AtomicBool, on: &m
         let _ = child.kill();
         return StreamEvent::Failed("ffmpeg: no output".into());
     };
+    *keys.lock().unwrap_or_else(|e| e.into_inner()) = child.stdin.take();
     *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(child);
     if stop.load(Ordering::SeqCst) {
         // Stopped while it started: `stop` found the slot empty.
@@ -194,6 +230,7 @@ fn run(spec: &StreamSpec, slot: &Mutex<Option<Child>>, stop: &AtomicBool, on: &m
         frames += 1;
         on(StreamEvent::Frame(Decoded { width: spec.width, height: spec.height, bgra }));
     }
+    keys.lock().unwrap_or_else(|e| e.into_inner()).take();
     let status = slot.lock().unwrap_or_else(|e| e.into_inner()).take().and_then(|mut c| c.wait().ok());
     let errors = errors.join().unwrap_or_default();
     match status {
@@ -220,6 +257,7 @@ mod tests {
             height: 480,
             fps: 30,
             sound: false,
+            volume: 0.5,
         }
     }
 
@@ -231,6 +269,13 @@ mod tests {
         assert!(!a.contains(&"-ss".to_string()));
         assert!(a.iter().any(|x| x.starts_with("fps=30,scale=854:480:")));
         assert_eq!(a.last().map(String::as_str), Some("pipe:1"));
+    }
+
+    #[test]
+    fn the_volume_command_is_one_clamped_line() {
+        assert_eq!(volume_command(0.5), "volume -1 volume 0.500\n");
+        assert_eq!(volume_command(3.), "volume -1 volume 1.000\n");
+        assert!(args(&spec()).contains(&"-nostdin".to_string()), "without sound ffmpeg never reads its stdin");
     }
 
     #[test]
@@ -254,6 +299,7 @@ mod tests {
             height: 36,
             fps: 10,
             sound: false,
+            volume: 0.5,
         };
         // `lavfi` is a device, not a file: play it through a tiny wrapper.
         let dir = tempfile::tempdir().unwrap();

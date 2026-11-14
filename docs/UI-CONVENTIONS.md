@@ -1369,12 +1369,13 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   title row says "6 videos · 8 screenshots" and has a "Steam ↗" link to the store page. A trailer shows its still and
   a 64px play button; playing (`heronite_media::stream`, ffmpeg at 480p and 30 fps, sound through PulseAudio /
   PipeWire on Linux only), its name and a bar (play / pause, time, seek bar, sound) fade in while the pointer is over
-  the stage; paused they stay. Every trailer starts without sound (the sound button turns it on for that trailer);
+  the stage; paused they stay. Every trailer starts without sound (the sound button turns it on for that trailer, with a volume bar
+  beside it, 50% at first, changed live through ffmpeg's command keys) and loops once played;
   "Show" (a sub-row of Store media, `storeMediaKinds`: Both, Videos or Screenshots) keeps one kind; with
   Screenshots only, the rows about trailers are left out. "Autoplay trailers" (a sub-row of Store media, `videoAutoplay`, off by default) starts the focused game's
   first trailer once the section is drawn. Arrows on the stage's sides step through the items. It stops when the game is no
   longer focused, when the section is not drawn (another page, the drawer closed, the section off) and when a game
-  starts, or when the window has not drawn for 1.5 s (minimized, another workspace). Frames wait in one slot and only
+  starts, or when the window has not drawn 1.5 s after a frame asked it to (minimized, another workspace). Frames wait in one slot and only
   the newest becomes a texture when the window draws, so a slow or hidden window never piles them up. A failure says so
   on the stage with "Watch on the store page".
 - Only the lists (3 days) and the first 15 s of the first trailer of the installed games visited are kept, under
@@ -1389,7 +1390,7 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   none) with Add, then the game's own links (its metadata's websites) with a remove button and the ones found by
   themselves with a "Found by itself" pill; each change is saved at once. A game without links shows "No links yet."
   under the title.
-- `HERONITE_DEBUG_MEDIA=play|paused|pick:<n>` plays the first trailer without sound (`paused`: pauses it after 5 s)
+- `HERONITE_DEBUG_MEDIA=play|paused|paused-sound|pick:<n>` plays the first trailer without sound (`paused`: pauses it after 5 s; `paused-sound`: then shows its sound controls, without playing any)
   or picks item `n` once the list is read.
 
 ## Verifying visually (mandatory for UI work)
