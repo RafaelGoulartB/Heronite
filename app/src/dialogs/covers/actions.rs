@@ -124,6 +124,7 @@ impl CoversDialog {
             Ok(art) => {
                 self.art = art;
                 self.selected = None;
+                self.sizes.update(cx, |s, _| s.forget_local());
                 self.compute_slots();
                 if self.fake.is_none() {
                     cx.emit(DialogEvent::Changed);

@@ -34,7 +34,7 @@ use heronite_data::models::CollectionGameArt;
 use heronite_i18n::tr;
 use heronite_metadata::{ArtImages, ArtKind, MetadataService};
 
-use super::art_images::DialogImages;
+use super::art_images::{DialogImages, PictureSizes};
 use super::metadata_update::hub::hub;
 use super::screenshot_art::ScreenshotArtDialog;
 use super::{DialogCtx, DialogEvent};
@@ -59,6 +59,8 @@ pub struct CoversDialog {
     ctx: DialogCtx,
     service: Arc<MetadataService>,
     images: Entity<DialogImages>,
+    /// What the pictures measure, for the captions under them.
+    sizes: Entity<PictureSizes>,
     game: Game,
     runner: String,
     /// The game's pictures set by hand (`art.json`), as last saved.
@@ -122,6 +124,8 @@ impl CoversDialog {
         let service = hub(cx).read(cx).service.clone();
         let images = cx.new(|cx| DialogImages::new(&ctx, cx));
         cx.observe(&images, |_, _, cx| cx.notify()).detach();
+        let sizes = cx.new(|_| PictureSizes::new(service.clone()));
+        cx.observe(&sizes, |_, _, cx| cx.notify()).detach();
         let query = new_input(window, cx, &game.title, "");
         cx.subscribe_in(&query, window, |this, _, ev: &InputEvent, _, cx| {
             if matches!(ev, InputEvent::PressEnter { .. }) {
@@ -136,6 +140,7 @@ impl CoversDialog {
         let mut this = Self {
             service,
             images,
+            sizes,
             runner,
             art: game.art.as_deref().cloned().unwrap_or_default(),
             game,

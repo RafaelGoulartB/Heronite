@@ -12,9 +12,10 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::tr;
 use heronite_images::ImageRef;
+use heronite_metadata::picture_size::resolution_label;
 use heronite_metadata::{MetadataService, WebImage};
 
-use crate::dialogs::art_images::{picture, DialogImages};
+use crate::dialogs::art_images::{picture, DialogImages, PictureSizes};
 use crate::dialogs::metadata_wizard::hub;
 use crate::dialogs::DialogCtx;
 use crate::icons::Icon;
@@ -43,6 +44,7 @@ pub enum PickerEvent {
 pub struct ImagePicker {
     service: Arc<MetadataService>,
     images: Entity<DialogImages>,
+    sizes: Entity<PictureSizes>,
     slot: Slot,
     query: Entity<InputState>,
     results: Vec<WebImage>,
@@ -74,6 +76,8 @@ impl ImagePicker {
         let service = hub(cx).read(cx).service.clone();
         let images = cx.new(|cx| DialogImages::new(ctx, cx));
         cx.observe(&images, |_, _, cx| cx.notify()).detach();
+        let sizes = cx.new(|_| PictureSizes::new(service.clone()));
+        cx.observe(&sizes, |_, _, cx| cx.notify()).detach();
         let query = new_input(window, cx, &default_query(title, slot), "");
         cx.subscribe_in(&query, window, |this, _, ev: &InputEvent, _, cx| {
             if matches!(ev, InputEvent::PressEnter { .. }) {
@@ -84,6 +88,7 @@ impl ImagePicker {
         let mut this = Self {
             service,
             images,
+            sizes,
             slot,
             query,
             results: Vec::new(),
@@ -135,6 +140,14 @@ impl ImagePicker {
         cx.notify();
     }
 
+    /// Reads the sizes of the listed pictures their search gave none of.
+    fn read_sizes(&mut self, cx: &mut Context<Self>) {
+        let shown = self.results.len().min(self.visible);
+        let urls: Vec<String> =
+            self.results[..shown].iter().filter(|i| resolution_label(i.width, i.height).is_none()).map(|i| i.image_url.clone()).collect();
+        self.sizes.update(cx, |s, cx| s.ask(urls, cx));
+    }
+
     fn pick(&mut self, index: Option<usize>, cx: &mut Context<Self>) {
         if let Some(image) = index.or(self.selected).and_then(|i| self.results.get(i)) {
             cx.emit(PickerEvent::Picked(self.slot, image.image_url.clone()));
@@ -146,6 +159,9 @@ impl ImagePicker {
 impl Render for ImagePicker {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.images.update(cx, |im, _| im.frame(window));
+        if !self.loading {
+            self.read_sizes(cx);
+        }
         if crate::console::active() {
             return self.render_console(cx);
         }
@@ -190,7 +206,7 @@ impl Render for ImagePicker {
                 let selected = self.selected == Some(i);
                 let chain = vec![ImageRef::Url(image.thumb_url.clone())];
                 let src = self.images.update(cx, |im, _| im.get(&format!("ag:{}", image.thumb_url), chain, tw, th));
-                let size = (image.width > 0 && image.height > 0).then(|| format!("{}\u{d7}{}px", image.width, image.height));
+                let size = self.sizes.read(cx).caption(&image);
                 grid = grid.child(
                     div()
                         .id(SharedString::from(format!("ag-pick-item-{i}")))
@@ -213,7 +229,7 @@ impl Render for ImagePicker {
                             cx.notify();
                         }))
                         .child(picture(src).w(px(tw)).h(px(th)))
-                        .children(size.map(|s| div().text_size(px(13.33)).text_color(theme::text_bright()).child(s))),
+                        .child(div().h(px(15.)).text_size(px(12.)).text_color(theme::text_dim()).children(size)),
                 );
             }
         }

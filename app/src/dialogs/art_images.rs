@@ -2,11 +2,16 @@
 //! so several dialogs (and nested ones) can show covers, thumbnails and
 //! previews without touching the Collection's store.
 
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+
 use futures::StreamExt;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::DataPaths;
 use heronite_images::{ImageRef, Variant};
+use heronite_metadata::picture_size::resolution_label;
+use heronite_metadata::{MetadataService, WebImage};
 
 use super::DialogCtx;
 use crate::images::ImageStore;
@@ -140,5 +145,75 @@ impl GameChains {
             CoverFamily::Wide => &self.wide,
         };
         heronite_data::art::pick_family(family, own, &self.stage, &self.tall)
+    }
+}
+
+/// The sizes of the pictures a dialog lists, for the captions under them.
+/// A source says the size of most of its pictures; the others are read from
+/// the picture's own first bytes (`MetadataService::picture_sizes`, off the
+/// UI thread). The texture of a thumbnail is no help: it is made to fit its
+/// box, whatever the picture measures.
+pub struct PictureSizes {
+    service: Arc<MetadataService>,
+    /// By address; `None`: asked, and it cannot be read.
+    known: HashMap<String, Option<(u32, u32)>>,
+    asked: HashSet<String>,
+}
+
+impl PictureSizes {
+    pub fn new(service: Arc<MetadataService>) -> Self {
+        Self { service, known: HashMap::new(), asked: HashSet::new() }
+    }
+
+    /// The size read of `url`, once it was.
+    pub fn read(&self, url: &str) -> Option<(u32, u32)> {
+        self.known.get(url).copied().flatten()
+    }
+
+    /// The caption of a found picture: the size its source gave, else the
+    /// one read; `None` while neither is known.
+    pub fn caption(&self, image: &WebImage) -> Option<String> {
+        resolution_label(image.width, image.height).or_else(|| self.read(&image.image_url).and_then(|(w, h)| resolution_label(w, h)))
+    }
+
+    /// The caption of a picture of the game (a web address, `localart://`, a
+    /// file) once read.
+    pub fn caption_of(&self, url: &str) -> Option<String> {
+        self.read(url).and_then(|(w, h)| resolution_label(w, h))
+    }
+
+    /// Drops what was read of local pictures: a save writes a new one under
+    /// the same name.
+    pub fn forget_local(&mut self) {
+        let web = |u: &String| u.starts_with("http://") || u.starts_with("https://");
+        self.known.retain(|u, _| web(u));
+        self.asked.retain(web);
+    }
+
+    /// Reads the sizes of `urls` not asked yet; each is asked once.
+    pub fn ask(&mut self, urls: impl IntoIterator<Item = String>, cx: &mut Context<Self>) {
+        let urls: Vec<String> = urls.into_iter().filter(|u| !u.is_empty() && self.asked.insert(u.clone())).collect();
+        if urls.is_empty() {
+            return;
+        }
+        let service = self.service.clone();
+        cx.spawn(async move |this, cx| {
+            let sizes = cx.background_spawn(async move { service.picture_sizes(&urls) }).await;
+            this.update(cx, |this, cx| {
+                this.known.extend(sizes);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+}
+
+/// The address `chain` starts with, as `PictureSizes` asks for it.
+pub fn first_address(chain: &[ImageRef]) -> Option<String> {
+    match chain.first()? {
+        ImageRef::Url(u) => Some(u.clone()),
+        ImageRef::File(p) => Some(p.to_string_lossy().into_owned()),
+        _ => None,
     }
 }

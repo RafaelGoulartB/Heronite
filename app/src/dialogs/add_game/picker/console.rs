@@ -68,7 +68,7 @@ impl ImagePicker {
                     let src = self
                         .images
                         .update(cx, |im, _| im.get(&format!("ag:{}", image.thumb_url), chain, f32::from(u(tw)), f32::from(u(th))));
-                    let size = (image.width > 0 && image.height > 0).then(|| format!("{}\u{d7}{}", image.width, image.height));
+                    let size = self.sizes.read(cx).caption(&image);
                     line = line.child(
                         div()
                             .flex()

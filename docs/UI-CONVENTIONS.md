@@ -691,10 +691,10 @@ source…"), and again after a match is pinned and after "Search every source ag
   behind). Each value is a tile in the picture's own shape, every tile 60 px high so the rows stay low, with the
   sources' marks over its corner ("Now" when only the game has it); a click picks it (accent border and check), and
   the tile under the pointer shows its details beside the tiles: who has it ("· now" when the game has it), its size (read from the picture's first bytes,
-  `MetadataService::picture_sizes`, "…" while read) and badges: "Own shape" (green) or "Cropped: the picture is
+  `MetadataService::picture_sizes`, "…" while read; `heronite_metadata::picture_size::resolution_label` writes it as "1920 × 1080") and badges: "Own shape" (green) or "Cropped: the picture is
   square / wide / tall" (amber; a background is meant to be wide), "Low resolution" (amber: under 200 px on a cover's
   short side, under 960 px of a background's width), and "Set in Covers" (tooltip "Your picture from Covers is shown
-  instead") when a picture set by hand wins. The tiles are one row; those that do not fit scroll sideways, with a round ‹ or › over the end that has more (a click moves the row by most of what is in view). A tile whose size says it is cropped or low resolution has an amber warning in its corner. Then
+  instead") when a picture set by hand wins. The tiles are one row; those that do not fit scroll sideways, with a round ‹ or › over the end that has more (a click moves the row by most of what is in view). A tile whose size says it is cropped or low resolution has an amber warning in its corner. Under each picture its resolution is a dimmed caption ("1920 × 1080"; the line stays empty until it is read). Then
   the "Details" card: a header (Field, What will be saved, Source) and a row per other field that has a value now or from some
   source, in the usual order: the field's name, the value that will be saved (two lines at most, "Empty" when
   none), where it comes from, and the lock. Sources with the same value are
@@ -769,7 +769,7 @@ family); the dot is green for a picture of its own, amber for a crop and grey fo
 slot. A click on a card picks the slot. Right: for the picked slot, "Square pictures found · 9 from 2 sources" (or
 "Backgrounds found") and a search field (the game's title; Enter searches), then, when more than one source found pictures, a pill per source with its mark and count after "All 90" (a click lists that source's pictures alone, without the one shown now; another slot lists all again), then the picture the slot shows now first,
 labelled "{source} · now" or "Cropped · now", and what SteamGridDB (first) and the web found for that shape, each with its
-source's mark and size ("1024×1024"), 15 at a time with "Load more"; a search already made is not asked again on the way
+source's mark, its name (LaunchBox: the region) and, dimmed under it, its resolution ("1024 × 1024"; the size the source gave, else read from the picture's first bytes, `art_images::PictureSizes`, and nothing while unknown; the picture shown now has it too), 15 at a time with "Load more"; a search already made is not asked again on the way
 back, "Searching…" shows while it runs, "No pictures found. Try another search." when nothing came, and a failure in red
 under the grid. A click picks a picture (a double click uses it). A slot that is not kept shows, in place of all this,
 "Square covers are not kept", why ("No view on this PC draws square covers, so updates do not download them. Keep the shape
