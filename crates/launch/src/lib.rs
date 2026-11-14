@@ -1,7 +1,7 @@
 //! Launching games and tracking playtime.
 //!
 //! * [`plan`]: pure `LaunchPlan` building (Steam URI, native, Wine/Proton/umu,
-//!   emulators, legendary).
+//!   emulators, Epic).
 //! * [`runtime`]: the [`runtime::Launcher`] that executes plans through a
 //!   [`runtime::Spawner`], tracks the game and emits [`runtime::LaunchEvent`]s.
 //! * [`record`]: session / playtime / recent-games writes, in Heronite's
@@ -17,6 +17,8 @@ pub mod diagnose;
 pub mod dxvk;
 pub mod emulators;
 pub mod env;
+pub mod epic;
+pub mod epic_launch;
 pub mod epic_native_setup;
 pub mod first_launch;
 pub mod fps_limit;
@@ -29,9 +31,6 @@ pub mod install_state;
 pub mod keep_awake;
 pub mod known_fixes;
 pub mod launch_option;
-pub mod legendary;
-pub mod legendary_install;
-pub mod legendary_windows;
 pub mod library;
 pub mod live_fps;
 pub mod log_reader;

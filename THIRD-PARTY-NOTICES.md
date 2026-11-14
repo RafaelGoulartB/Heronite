@@ -7,7 +7,14 @@ Heronite is licensed under the [GNU General Public License v3.0](LICENSE). It in
 - **Project:** [Heroic Games Launcher](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher)
 - **Copyright:** the Heroic Games Launcher contributors
 - **License:** GPL-3.0 ([`LICENSE`](LICENSE))
-- **Used in Heronite:** parts of the code are ported from Heroic. This includes the Epic Games integration through legendary, the Wine Manager, game settings, Steam shortcuts, and the data formats Heronite reads and writes.
+- **Used in Heronite:** parts of the code are ported from Heroic. This includes the Epic Games integration, the Wine Manager, game settings, Steam shortcuts, and the data formats Heronite reads and writes.
+
+## legendary and heroic-gogdl
+
+- **Projects:** [legendary](https://github.com/derrod/legendary) and [heroic-gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl)
+- **Copyright:** the legendary contributors; the heroic-gogdl contributors
+- **License:** GPL-3.0 ([`LICENSE`](LICENSE))
+- **Used in Heronite:** the Epic Games and GOG protocol code (`crates/epic-api`, `crates/gog-api`) is written in Rust from these tools' behaviour: their sign-in, manifest, chunk, launch and cloud save handling, and the files they keep, which Heronite reads and writes in the same formats. Neither tool is included or downloaded.
 
 ## Fonts
 
@@ -68,7 +75,7 @@ The Rust crates Heronite depends on are listed in [`Cargo.lock`](Cargo.lock). Ea
 
 Heronite runs these programs if they are installed. It does not include them:
 
-- [legendary](https://github.com/derrod/legendary) (GPL-3.0) for Epic Games
+- [nile](https://github.com/imLinguin/nile) (GPL-3.0) for Amazon Games, downloaded from its GitHub release when it is not installed
 - [Comet](https://github.com/imLinguin/comet) (GPL-3.0) for the achievements of GOG games, with its dummy `GalaxyCommunication` service, downloaded from its GitHub releases when a GOG game first needs it
 - [Ludusavi](https://github.com/mtkennerly/ludusavi) (MIT) for save backups
 - [rclone](https://github.com/rclone/rclone) (MIT) for the cloud accounts of Settings → Cloud, downloaded from rclone's site when it is not installed

@@ -182,12 +182,13 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     }
     // MangoHud's limit moves into a file of ours so the overlay can change it.
     let mut command = plan.command.clone();
+    // Before Epic's step, which keeps the command's variables.
     if let Some(m) = &mods {
         add_env(&mut command.env, &m.env);
     }
-    // An Epic game on Windows: legendary names the program to start.
-    if plan.ask_legendary {
-        match super::epic::ask_legendary(shared, log, req, control, &command, &status) {
+    // An Epic game: Epic signs in and names what starts.
+    if let Some(launch) = &plan.epic {
+        match super::epic::ask_epic(shared, log, req, control, &command, launch, &status) {
             Some(game) => command = game,
             None => return,
         }
@@ -202,7 +203,7 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     }
     let live = crate::live_fps::prepare(&mut command, &req.app_name, &*services.probe);
     *control.live_fps.lock().unwrap() = live;
-    // For the program that really starts (legendary named it above).
+    // For the program that really starts (Epic's launch completed it above).
     let gpu_exe = plan.gpu_preference.and_then(|p| set_gpu_preference(shared, &*services.gpu_registry, log, &command.program, p));
     log.info(&format!("Launching {}: {}\n", req.title, log_writer::command_line_for_log(&command)));
     log.info("Game Output:");

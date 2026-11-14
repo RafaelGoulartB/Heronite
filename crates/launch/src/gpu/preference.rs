@@ -376,7 +376,7 @@ fn attach_on(plan: &mut LaunchPlan, g: &Gpu, windows: bool) {
     // An emulator's program draws every game it runs: its own GPU setting
     // is Windows'.
     let p = match plan {
-        LaunchPlan::Native(p) | LaunchPlan::Legendary { process: p, .. } => p,
+        LaunchPlan::Native(p) => p,
         _ => return,
     };
     if p.handoff.is_some() {

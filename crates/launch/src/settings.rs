@@ -304,10 +304,6 @@ impl GlobalSettings {
     pub fn default_steam_path(&self) -> Option<String> {
         self.string("defaultSteamPath").map(|s| s.trim_matches('\'').to_owned())
     }
-
-    pub fn alt_legendary_bin(&self) -> Option<String> {
-        self.string("altLegendaryBin")
-    }
 }
 
 /// Reads `GamesConfig/<appName>.json` (the section named after the game) and

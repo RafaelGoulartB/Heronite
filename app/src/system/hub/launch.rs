@@ -110,7 +110,7 @@ fn on_headless_game(cx: &mut App, req: LaunchRequest, found: Result<Option<Arc<C
         maybe_exit_idle(cx);
         return;
     }
-    // `--no-gui` skips legendary's version check (Heroic does the same).
+    // `--no-gui` skips Epic's update check (Heroic does the same).
     let result = if game.runner == "legendary" { runtime.play_skip_version_check(&game) } else { runtime.play(&game) };
     match result {
         Ok(()) => {

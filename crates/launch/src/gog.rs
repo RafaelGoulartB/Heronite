@@ -4,10 +4,8 @@
 //! of their folder. A build this system cannot run is unavailable
 //! ([`crate::host::run_mode`]).
 //!
-//! On Windows the task is started directly rather than through `gogdl
-//! launch`: gogdl would only read the same file and start the same program,
-//! one process later, and the session follows the game's own process tree
-//! (its job object) from the start.
+//! On Windows the task is started directly, so the session follows the
+//! game's own process tree (its job object) from the start.
 
 use heronite_data::models::GameInfo;
 use heronite_i18n::tr;
@@ -15,8 +13,8 @@ use serde_json::Value;
 
 use crate::args::{split_args, split_args_for, split_windows_args};
 use crate::env::join;
+use crate::epic::{cached_umu_id, known_fixes_env, known_fixes_steps};
 use crate::host::{run_mode, unavailable_reason, Os, RunMode};
-use crate::legendary::{cached_umu_id, known_fixes_env, known_fixes_steps};
 use crate::plan::{native_plan, windows_plan, CloudSaves, FirstLaunch, LaunchOptions, LaunchPlan, PlanContext, WineRuntime};
 use crate::probe::Probe;
 use crate::settings::GameSettings;

@@ -33,10 +33,19 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      reaches public addresses only
  ├─ heronite-sync       the cloud account: the library synced between PCs,
  │                      backups, game saves, screenshots (rclone)    → data, backup, metadata, launch
- ├─ heronite-launch     launch plans, game runtime, playtime, logs   → data
- ├─ heronite-epic       legendary CLI, Epic library, download queue  → data, launch
- ├─ heronite-gog        gogdl CLI + GOG web APIs: GOG account,
- │                      library, installs, updates, cloud saves      → data, launch, epic
+ ├─ heronite-depot      store-agnostic downloads: chunks fetched in
+ │                      parallel into files, resume, verify, delta   → data
+ ├─ heronite-epic-api   Epic's protocol: sign-in, library, manifests
+ │                      and chunks, launch sign-in, cloud saves, EOS
+ │                      overlay, in legendary's files                → data
+ ├─ heronite-gog-api    GOG's protocol: sign-in, builds, v1/v2
+ │                      manifests, chunks, Linux installers, redists,
+ │                      cloud saves, in gogdl's files                → data
+ ├─ heronite-launch     launch plans, game runtime, playtime, logs   → data, epic-api
+ ├─ heronite-epic       Epic account, library, installs, download
+ │                      queue                                        → data, launch, epic-api, depot
+ ├─ heronite-gog        GOG account, library, installs, updates,
+ │                      cloud saves                                  → data, launch, epic, gog-api, depot
  ├─ heronite-amazon     nile CLI: Amazon Games account, library,
  │                      installs, updates                            → data, launch, epic
  ├─ heronite-clients    store clients (Battle.net, EA app, Ubisoft
@@ -226,7 +235,7 @@ text size) and applies it.
   run together share it (`runtime/galaxy.rs`: a thread of its own owns it, so on Linux it gets SIGINT if the
   app dies; its output goes to `logs/runners/comet.log`). Once the last of them is gone it gets Ctrl+C
   (`heronite_platform::process::interrupt`), so it uploads what is left, and is ended after 15 s. Nothing of it
-  fails or holds up a launch for long: the account (30 s, gogdl ended past it), Comet's first download (60 s,
+  fails or holds up a launch for long: the account (30 s, the refresh left running past it), Comet's first download (60 s,
   then it finishes in the background for the next launch), each Wine command of the prefix setup (45 s) and
   the start (10 s) have limits, past which the game runs without Comet. A Wine prefix gets Comet's dummy `GalaxyCommunication` service the first time (copied to
   `ProgramData`, `sc create`, GOG Galaxy's registry path), as Heroic does; on Windows registering it needs the
@@ -246,7 +255,7 @@ text size) and applies it.
   network namespaces and a private home (`<data>/sandbox/<prefix or game>`,
   `DataPaths::sandbox_home_of_*`). The program goes after the wrappers that
   stay outside (gamescope, GameMode, MangoHud) and before umu / Proton / the
-  game, so legendary gets it inside `--wrapper` too. Inside, the command runs
+  game. Inside, the command runs
   under a small `sh` that waits for every process of the sandbox (its pid
   namespace ends with its first process). The pid namespace is what keeps the
   sandbox closed: without it `/proc/<pid>/root` of any process of the user
@@ -273,25 +282,68 @@ text size) and applies it.
   never follow links the sandbox could have planted. bubblewrap must create
   a user namespace (`--unshare-user`, checked once it works and then kept):
   the running sandbox is found by it, for at most `sandbox::FOUND_WITHIN`.
-- **heronite-epic:** `cmd` runs legendary. `manager` + `queue` are the
-  download queue (`store/download-manager.json`), shared by every store: an
-  element's `params.runner` picks the job (legendary, gogdl or nile), and
-  `progress` parses the reports of all three tools. `ops` covers install,
-  repair, uninstall and import. `moves` is the resumable install move with
-  its journal. `eos_overlay` manages the EOS overlay.
+- **heronite-depot:** the downloads of every native store. A store turns
+  its manifest into a `Plan`: the files to write, each a list of `Part`s
+  (bytes of a chunk the store serves, or bytes of the file installed now,
+  so an update downloads only what changed), the files to remove and the
+  folders to create. `install` fetches chunks through the store's `Source`
+  on worker threads ahead of the writer, keeps each decoded chunk until its
+  last use within a memory budget, writes every file beside its place
+  (`.heronite-part`) and renames it when it is complete, and keeps a resume
+  journal so a stopped run goes on where it was. `verify` checks files
+  against their hashes (repair); `space_needed` is the free space a plan
+  takes. It does no network itself.
+- **heronite-epic-api / heronite-gog-api:** the stores' own protocols, in
+  Rust, written from legendary's and heroic-gogdl's behaviour. They keep
+  those tools' files and formats (`legendaryConfig/legendary/`: `user.json`,
+  `assets.json`, `metadata/`, `installed.json`, `manifests/`; `gog_store/auth.json`
+  and `gogdlConfig/heroic_gogdl/manifests/`), so installs made with legendary
+  or gogdl carry over and the rest of the app reads them as before. Epic:
+  `auth` (the session, renewed once at a time, the exchange code and
+  ownership token a game signs in with), `library` (`legendary list`),
+  `manifest` and `chunk` (binary and JSON manifests, encrypted ones, the
+  plan of an install, update or repair), `info` (what `legendary info
+  --json` printed), `launch`, `saves`, `eos`. GOG: `auth` (tokens keyed by
+  client id, the games' own clients), `builds`, `v2` / `v1` manifests,
+  `chunk` (secure links), `plan`, `info` (what `gogdl info` printed),
+  `linux` (a Linux installer's zip read over HTTP ranges), `redist`,
+  `saves`, `import`. Both are plain models: the store crates turn them into
+  depot plans.
+- **heronite-epic:** `client::Epic` is the handle every operation goes
+  through (legendary's config folder and the client of Epic's services).
+  `manager` + `queue` are the download queue (`store/download-manager.json`),
+  shared by every store: an element's `params.runner` picks the job
+  (`legendary`, `gog` or `nile`), and `progress` is what the queue shows,
+  from a native download's report or nile's progress lines. `download`
+  writes installs, updates and repairs with heronite-depot (chunks from
+  Epic's CDN, signed URLs, delta manifests, the old files' bytes, the
+  resume journal in legendary's `tmp`) and then legendary's records. `ops`
+  covers install, repair, uninstall and import. `moves` is the resumable
+  install move with its journal. `eos_overlay` manages the EOS overlay.
+  `session` turns a refused sign-in into "log in again" for every store.
 - **heronite-gog / heronite-amazon:** the same shape for GOG and Amazon
-  Games. The tools (`gogdl`, `nile`) are found or downloaded into
-  `<data>/tools/bin` by `heronite_launch::store_tools`. GOG's library comes
-  from GOG's web APIs (token from gogdl's `gog_store/auth.json`) into
+  Games. GOG is native: `download` writes the plans of heronite-gog-api
+  (v2 chunks, v1 `main.bin` ranges checked by the whole file's md5, the
+  game and support folders) with heronite-depot, streams Linux installers'
+  entries out of their zip, and writes gogdl's stored build or
+  `.gogdl-linux-manifest`; its resume journals are in
+  `gogdlConfig/heronite-resume`. Amazon still runs `nile`, found or
+  downloaded into `<data>/tools/bin` by `heronite_launch::store_tools`. GOG's
+  library comes from GOG's web APIs (the token of `gog_store/auth.json`) into
   `store_cache/gog_library.json`, installs are listed in
   `gog_store/installed.json`; Amazon's library and installs are nile's own
   files (`nile_config/nile/`), mirrored into `store_cache/nile_library.json`.
   Both libraries are read by the Collection like Epic's. Launching is in
   `heronite-launch` (`gog.rs`: the primary task of `goggame-<id>.info`, or
-  `start.sh` for Linux builds; `nile.rs`: `fuel.json`), always through the
-  Wine/Proton plan of local games (`galaxy.rs`: Comet, GOG Galaxy's service
-  for the games' achievements, runs beside a GOG game's Windows build); the first launch in a prefix runs the
-  store's installers (`first_launch::StoreSetup`, Amazon's `PostInstall`).
+  `start.sh` for Linux builds; `nile.rs`: `fuel.json`; `epic.rs`: the game's
+  own program), always through the Wine/Proton plan of local games
+  (`galaxy.rs`: Comet, GOG Galaxy's service for the games' achievements,
+  runs beside a GOG game's Windows build); the first launch in a prefix runs
+  the store's installers (`first_launch::StoreSetup`, Amazon's
+  `PostInstall`). An Epic plan uses no network: right before the spawn,
+  `epic_launch` signs in, checks for an update (unless "Play anyway") and
+  adds the build's arguments and this session's sign-in (exchange code,
+  ownership token), or gives the link the EA app or Ubisoft Connect opens.
 
 - **heronite-import:** the other launchers: Linux's, and Heroic and Playnite
   on Windows (`Launcher::here`). `detect` finds Heroic,
@@ -910,12 +962,12 @@ text size) and applies it.
   with `dlcappid`) as optional `groups` on the set and a `group` id on each
   achievement (`AchievementGroup`: a developer's collection inside one game,
   unlike `AchievementSet`, one game at one source); `sections()` splits a
-  game by them (a flat list unless two known groups have achievements); `gog` `gameplay.gog.com` with gogdl's token,
+  game by them (a flat list unless two known groups have achievements); `gog` `gameplay.gog.com` with the GOG token,
   and `comet` the same achievements while the game runs, from the SQLite database Comet keeps per game and
   account (`<comet data>/gameplay/<client id>/<galaxy user id>/gameplay.db`, read-only), where an unlock lands
   seconds before GOG's servers have it;
   `epic` the store's GraphQL
-  (`launcher.store.epicgames.com`, legendary's token, the namespace as
+  (`launcher.store.epicgames.com`, the Epic token renewed by heronite-epic-api, the namespace as
   sandbox, the launcher's User-Agent); `retro` RetroAchievements: the user
   signs in with the username and password once (`connect`, the client API
   `dorequest.php` emulators use: `login2` gives the token kept instead of the

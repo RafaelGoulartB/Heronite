@@ -198,7 +198,7 @@ fn open_game_log(shared: &Shared, req: &LaunchRequest) -> Arc<GameLog> {
     let process = req.plan.process();
     let native = matches!(req.plan, LaunchPlan::Native(_) | LaunchPlan::Emulator { .. } | LaunchPlan::SteamUri { .. })
         // An Epic game on Windows: no Wine.
-        || process.is_some_and(|p| p.ask_legendary);
+        || process.is_some_and(|p| p.epic.is_some() && p.prep.wine.is_none());
     let system_info = shared.system_info.lock().unwrap().clone().map(|f| f());
     let settings_path = shared.paths.game_config(&req.app_name);
     let mut notes = process.map(|p| p.notes.clone()).unwrap_or_default();

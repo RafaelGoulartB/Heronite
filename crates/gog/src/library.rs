@@ -13,7 +13,6 @@ use heronite_epic::util::js_date_now;
 use serde_json::{json, Map, Value};
 
 use crate::api::{self, bearer, parallel_map, percent_encode};
-use crate::cmd::Gogdl;
 use crate::gamesdb::{self, id_text};
 use crate::installed::{self, Installed};
 use crate::user::{self, Credentials};
@@ -311,8 +310,8 @@ fn assemble(loaded: Vec<Loaded>, saved: &[Value], installed: &[Installed]) -> (V
 
 /// Fetches the library and rewrites `store_cache/gog_library.json`. Network.
 /// Returns the number of games.
-pub fn refresh(paths: &DataPaths, gogdl: &Gogdl) -> Result<usize> {
-    let creds = user::credentials(paths, gogdl)?;
+pub fn refresh(paths: &DataPaths) -> Result<usize> {
+    let creds = user::credentials(paths)?;
     let releases = fetch_releases(&creds)?;
     let cache = read_api_cache(paths);
     let saved = saved_games(paths);

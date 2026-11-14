@@ -25,7 +25,7 @@ use gpui_kit::*;
 
 fn main() {
     // First: on Windows this program may be started again only to send a
-    // helper (legendary, gogdl, nile) the Ctrl+C that asks it to stop.
+    // helper (nile) the Ctrl+C that asks it to stop.
     heronite_platform::process::init_stop_helper();
     // `--display-probe`: print the displays and exit, touching nothing else.
     if system::cli::wants_display_probe(std::env::args_os().skip(1)) {
@@ -57,11 +57,10 @@ fn main() {
     }
     match migration {
         heronite_data::migrate::Outcome::Migrated(r) => log::info!(
-            "copied the Heroic setup into the data folder: {} files, {} MB, {} files with rewritten paths, legendary from {:?}",
+            "copied the Heroic setup into the data folder: {} files, {} MB, {} files with rewritten paths",
             r.files,
             r.bytes / 1_000_000,
-            r.rewritten,
-            r.legendary
+            r.rewritten
         ),
         heronite_data::migrate::Outcome::Fresh => log::info!("new data folder"),
         heronite_data::migrate::Outcome::NotNeeded => {}

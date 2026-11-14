@@ -19,18 +19,9 @@ const REPO: &str = heronite_update::REPO_PAGE;
 pub struct State {
     loaded: bool,
     system: SystemInfo,
-    legendary: Option<String>,
     wine_count: Option<usize>,
     proton_count: Option<usize>,
     copied: bool,
-}
-
-/// `legendary --version` first line, from the bundled/alternative binary.
-fn legendary_version(data_paths: &heronite_data::DataPaths) -> Option<String> {
-    let lg = heronite_epic::cmd::Legendary::locate(data_paths).ok()?;
-    let out = lg.run(&["--version"], &[]).ok()?;
-    let line = out.stdout.lines().find(|l| !l.trim().is_empty())?.trim().to_string();
-    Some(line)
 }
 
 impl State {
@@ -44,7 +35,7 @@ impl State {
             let system = sysinfo::gather();
             let installs = heronite_wine::list_installations(&data_paths);
             let proton = installs.iter().filter(|w| w.kind == "proton").count();
-            (system, legendary_version(&data_paths), installs.len(), proton)
+            (system, installs.len(), proton)
         };
         // Debug captures only keep the first frames: gather in place there.
         if crate::env::value("HERONITE_DEBUG_PAGE").is_some() {
@@ -62,9 +53,8 @@ impl State {
         .detach();
     }
 
-    fn apply(&mut self, (system, legendary, wine_all, proton): (SystemInfo, Option<String>, usize, usize)) {
+    fn apply(&mut self, (system, wine_all, proton): (SystemInfo, usize, usize)) {
         self.system = system;
-        self.legendary = legendary;
         self.wine_count = Some(wine_all - proton);
         self.proton_count = Some(proton);
     }
@@ -90,7 +80,6 @@ impl State {
         if !s.session.is_empty() {
             out.push(format!("Session: {}", s.session));
         }
-        out.push(format!("Legendary: {}", self.legendary.as_deref().unwrap_or("not found")));
         out.push(format!("Data folder: {}", ctx.data_paths.root.display()));
         out.join("\n")
     }
@@ -176,12 +165,6 @@ impl SettingsPage {
         let s = &a.system;
         let app = card([
             info_row(tr!("Version"), format!("Heronite {}", env!("CARGO_PKG_VERSION"))),
-            info_row(
-                "Legendary",
-                a.legendary
-                    .clone()
-                    .unwrap_or_else(|| if a.loaded && a.wine_count.is_some() { tr!("not found").into() } else { "...".into() }),
-            ),
             info_row(
                 tr!("Wine / Proton found"),
                 match (a.wine_count, a.proton_count) {
@@ -287,7 +270,6 @@ pub(super) fn console_rows(p: &SettingsPage, cx: &App) -> Vec<crate::console::li
     rows.extend([
         Row::header("Heronite"),
         Row::info("i:version", tr!("Version"), format!("Heronite {}", env!("CARGO_PKG_VERSION"))),
-        Row::info("i:legendary", "Legendary", a.legendary.clone().unwrap_or_else(|| "\u{2026}".into())),
         Row::info(
             "i:wine",
             tr!("Wine / Proton found"),

@@ -239,7 +239,6 @@
   "You have {current}": "Tienes la versión {current}",
   "Zip compression": "Compresión del zip",
   "not detected": "no detectada",
-  "not found": "no encontrado",
   "{count} PNG capture ({size}) · about {saved} could be freed": "{count} captura PNG ({size}) · se podrían liberar unos {saved}",
   "{count} PNG captures ({size}) · about {saved} could be freed": "{count} capturas PNG ({size}) · se podrían liberar unos {saved}",
   "{count} capture left; it resumes a minute after the game closes.": "Queda {count} captura; se reanuda un minuto después de cerrar el juego.",

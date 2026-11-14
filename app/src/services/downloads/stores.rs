@@ -1,14 +1,13 @@
 //! GOG and Amazon Games: accounts, library refreshes and update checks, and
 //! the one-off operations on their games (verify, uninstall, move, import).
 //! Installs and updates run in the shared download queue (`queue.rs`), which
-//! hands their elements to gogdl / nile.
+//! runs GOG's elements itself and hands Amazon's to nile.
 
 use gpui_kit::*;
 use heronite_amazon::cmd::Nile;
 use heronite_data::DataPaths;
 use heronite_epic::cmd::Cancel;
 use heronite_epic::ops::{self as epic_ops, OpResult};
-use heronite_gog::cmd::Gogdl;
 use heronite_i18n::{tr, trn};
 use serde_json::Value;
 
@@ -57,15 +56,14 @@ fn read_local(paths: &DataPaths, store: Store) -> Local {
 fn refresh_blocking(paths: &DataPaths, store: Store) -> anyhow::Result<Local> {
     match store {
         Store::Gog => {
-            let gogdl = Gogdl::locate_or_install(paths)?;
-            heronite_gog::library::refresh(paths, &gogdl)?;
+            heronite_gog::library::refresh(paths)?;
             // GOG Galaxy's games of the library show as installed (Windows).
             if cfg!(windows) {
                 if let Err(err) = heronite_gog::galaxy::import(paths) {
                     log::warn!("gog: reading GOG Galaxy's games: {err:#}");
                 }
             }
-            if let Err(err) = heronite_gog::updates::check(paths, &gogdl) {
+            if let Err(err) = heronite_gog::updates::check(paths) {
                 log::warn!("gog: checking for updates: {err:#}");
             }
         }
@@ -215,10 +213,7 @@ impl Downloads {
                             let nile = Nile::locate_or_install(&paths)?;
                             heronite_amazon::user::register(&paths, &nile, &request, &input)?.name
                         }
-                        _ => {
-                            let gogdl = Gogdl::locate_or_install(&paths)?;
-                            heronite_gog::user::login(&paths, &gogdl, &input)?.username
-                        }
+                        _ => heronite_gog::user::login(&paths, &input)?.username,
                     };
                     // The library right away, like after an Epic login.
                     let local = match refresh_blocking(&paths, store) {
@@ -394,7 +389,7 @@ impl Downloads {
             move |paths, cancel, report| {
                 let mut on_percent = |p: f64| report(Some(p as f32));
                 let res = match store {
-                    Store::Gog => Gogdl::locate(paths).and_then(|g| heronite_gog::ops::repair(paths, &g, &app, cancel, &mut on_percent)),
+                    Store::Gog => heronite_gog::ops::repair(paths, &app, cancel, &mut on_percent),
                     Store::Amazon => {
                         Nile::locate(paths).and_then(|n| heronite_amazon::ops::verify(paths, &n, &app, cancel, &mut on_percent))
                     }
@@ -484,7 +479,7 @@ impl Downloads {
             cx,
             move |paths, _, _| {
                 let res = match (store, app_name) {
-                    (Store::Gog, _) => Gogdl::locate_or_install(paths).and_then(|g| heronite_gog::ops::import(paths, &g, &folder)),
+                    (Store::Gog, _) => heronite_gog::ops::import(paths, &folder),
                     (Store::Amazon, Some(app)) => {
                         Nile::locate_or_install(paths).and_then(|n| heronite_amazon::ops::import(paths, &n, &app, &folder)).map(|_| app)
                     }
@@ -511,13 +506,11 @@ impl Downloads {
 /// (download before the game starts) or `--skip-download` (upload after it
 /// exits). Blocking.
 pub fn gog_sync_saves_flag(paths: &DataPaths, app_name: &str, flag: &str) -> Result<String, String> {
-    let gogdl = Gogdl::locate_or_install(paths).map_err(|e| format!("{e:#}"))?;
-    heronite_gog::saves::sync_flag(paths, &gogdl, app_name, flag).map_err(|e| format!("{e:#}"))
+    heronite_gog::saves::sync_flag(paths, app_name, flag).map_err(|e| format!("{e:#}"))
 }
 
 /// The GOG account Comet signs in with while a GOG game runs (see
-/// `heronite_launch::galaxy`): the signed-in one, with tokens gogdl
-/// refreshes, unless Comet is off in Settings → Achievements.
+/// `heronite_launch::galaxy`): the signed-in one, with fresh tokens, unless Comet is off in Settings → Achievements.
 pub struct GogGalaxyAccount(pub DataPaths);
 
 impl heronite_launch::galaxy::GalaxyAccount for GogGalaxyAccount {
@@ -527,12 +520,10 @@ impl heronite_launch::galaxy::GalaxyAccount for GogGalaxyAccount {
             return Ok(None);
         }
         let Some(account) = heronite_gog::user::account(&self.0) else { return Ok(None) };
-        // Signed in, gogdl is there: never a download before a game starts.
-        let gogdl = Gogdl::locate(&self.0).map_err(|e| format!("{e:#}"))?;
         let limit = heronite_launch::galaxy::LOGIN_LIMIT;
-        let c = heronite_gog::user::credentials_within(&self.0, &gogdl, limit).map_err(|e| format!("{e:#}"))?;
+        let c = heronite_gog::user::credentials_within(&self.0, limit).map_err(|e| format!("{e:#}"))?;
         if c.refresh_token.is_empty() {
-            return Err("gogdl has no refresh token for the GOG account: log in to GOG again".into());
+            return Err("there is no refresh token for the GOG account: log in to GOG again".into());
         }
         Ok(Some(heronite_launch::galaxy::GalaxyLogin {
             access_token: c.access_token,
@@ -543,8 +534,8 @@ impl heronite_launch::galaxy::GalaxyAccount for GogGalaxyAccount {
     }
 }
 
-/// The first launch of a GOG game in a prefix asks gogdl for the game's
-/// installers and redistributables (the launch crate cannot depend on the
+/// The first launch of a GOG game in a prefix asks the GOG crate for the
+/// game's installers and redistributables (the launch crate cannot depend on the
 /// GOG crate).
 pub struct StoreLaunchSetup(pub DataPaths);
 
@@ -553,7 +544,6 @@ impl heronite_launch::first_launch::StoreSetup for StoreLaunchSetup {
         if runner != "gog" {
             return Ok(Vec::new());
         }
-        let gogdl = Gogdl::locate_or_install(&self.0).map_err(|e| format!("{e:#}"))?;
-        heronite_gog::setup::first_launch_steps(&self.0, &gogdl, app_name, install_path).map_err(|e| format!("{e:#}"))
+        heronite_gog::setup::first_launch_steps(&self.0, app_name, install_path).map_err(|e| format!("{e:#}"))
     }
 }

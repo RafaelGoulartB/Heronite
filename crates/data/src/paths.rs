@@ -253,16 +253,16 @@ impl DataPaths {
     pub fn gog_installed(&self) -> PathBuf {
         self.j("gog_store/installed.json")
     }
-    /// gogdl's tokens (`--auth-config-path`).
+    /// GOG's tokens (gogdl's file).
     pub fn gog_auth(&self) -> PathBuf {
         self.j("gog_store/auth.json")
     }
-    /// `GOGDL_CONFIG_PATH`: gogdl keeps its manifests and support files in
-    /// `heroic_gogdl/` under it.
+    /// gogdl's config folder: the stored builds and support files of GOG
+    /// installs, in `heroic_gogdl/` under it (kept in gogdl's layout).
     pub fn gogdl_config_dir(&self) -> PathBuf {
         self.j("gogdlConfig")
     }
-    /// GOG's shared redistributables (`gogdl redist`).
+    /// GOG's shared redistributables.
     pub fn gog_redist_dir(&self) -> PathBuf {
         self.j("tools/redist/gog")
     }
@@ -326,11 +326,6 @@ impl DataPaths {
     /// (the hash: two app names can give the same safe name).
     pub fn sandbox_home_of_game(&self, app_name: &str) -> PathBuf {
         self.j("sandbox").join(format!("game-{}-{:08x}", file_name_safe(app_name), fnv32(app_name)))
-    }
-    /// The legendary binary this app runs (copied in by `migrate`, or
-    /// downloaded): `tools/bin/legendary`, `legendary.exe` on Windows.
-    pub fn legendary_bin(&self) -> PathBuf {
-        self.tools_dir().join("bin").join(format!("legendary{}", std::env::consts::EXE_SUFFIX))
     }
     pub fn known_fixes(&self) -> PathBuf {
         self.j("known_fixes.json")

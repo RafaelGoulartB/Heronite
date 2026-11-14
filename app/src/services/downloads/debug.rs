@@ -15,7 +15,7 @@ use super::{library_entry, Downloads, EosGame, InstallRequest};
 
 impl Downloads {
     /// `HERONITE_DEBUG_EPIC_OP=verify:<app>|uninstall:<app>[:prefix][:settings]|move:<app>:<dir>|import:<app>:<dir>|sync:<app>|install-dlc:<dlc>:<dir>|eos-install|eos-remove|eos-enable:<app>|eos-disable:<app>`:
-    /// runs one operation at startup (for end-to-end checks with a fake legendary).
+    /// runs one operation at startup (for end-to-end checks with a fake Epic server).
     pub(super) fn debug_op(&mut self, op: &str, cx: &mut Context<Self>) {
         let parts: Vec<&str> = op.split(':').collect();
         let app = parts.get(1).copied().unwrap_or_default().to_string();
@@ -50,8 +50,8 @@ impl Downloads {
 
     /// `HERONITE_DEBUG_QUEUE_INSTALL=<appName>`: queues an install of that game
     /// into `$HERONITE_DEBUG_INSTALL_DIR` the way the install dialog would
-    /// (any store's game; GOG / Amazon with a fake gogdl / nile through
-    /// `HERONITE_GOGDL_BIN` / `HERONITE_NILE_BIN`).
+    /// (any store's game; Amazon with a fake nile through
+    /// `HERONITE_NILE_BIN`).
     pub(super) fn debug_queue_install(&mut self, app_name: &str, cx: &mut Context<Self>) {
         let Some(game_info) = super::stores::any_library_entry(&self.data_paths, app_name) else {
             log::warn!("debug install: {app_name} is not in a store library");
@@ -80,7 +80,7 @@ impl Downloads {
     }
 
     /// `HERONITE_DEBUG_FAKE_DOWNLOAD=<appName>`: a queue with a fake running
-    /// install (no legendary), one waiting and one finished, for screenshots.
+    /// install (nothing downloaded), one waiting and one finished, for screenshots.
     pub(super) fn seed_fake(&mut self, app_name: &str) {
         let games = json_store::read_value(&self.data_paths.legendary_library()).unwrap_or(Value::Null);
         let list: Vec<Value> = games.get("library").and_then(Value::as_array).cloned().unwrap_or_default();

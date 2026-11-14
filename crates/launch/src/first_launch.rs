@@ -44,7 +44,7 @@ pub struct Prerequisite {
     pub args: String,
 }
 
-/// What the setup needs from the Epic side (legendary), implemented by the
+/// What the setup needs from the Epic side, implemented by the
 /// app because the Epic crate depends on this one.
 pub trait EpicSetup: Send + Sync {
     /// `getInstallInfo(...).manifest.prerequisites` (`Ok(None)`: none).
@@ -292,7 +292,7 @@ impl Prep<'_> {
     ) -> Flow {
         let mut steps = fl.post_install.clone();
         if let Some(store) = store {
-            // gogdl may download the redistributables first: it can take a while.
+            // The redistributables may be downloaded first: it can take a while.
             self.notice(Notice::info("Getting the game's installers...", tr!("Getting the game's installers...")));
             match store.steps(&fl.runner, &fl.app_name, &fl.install_path) {
                 Ok(more) => steps.extend(more),

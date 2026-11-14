@@ -232,7 +232,7 @@ pub(super) fn graceful_quit(cx: &mut App) {
     let hotkeys = [crate::overlay::take_hotkey(cx), crate::services::replay::take_hotkey(cx)];
     let downloads = crate::services::try_downloads(cx);
     if let Some(d) = &downloads {
-        // Only asks (legendary gets SIGTERM); waited for below.
+        // Only asks the running download to stop (nile gets SIGTERM); waited for below.
         d.update(cx, |d, _| d.pause_for_shutdown());
     }
     // If a step hangs, the process still ends.

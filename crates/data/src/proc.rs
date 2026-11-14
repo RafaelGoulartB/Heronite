@@ -1,4 +1,4 @@
-//! One way to run helper processes (rsync, tar, ludusavi, legendary, the Epic
+//! One way to run helper processes (rsync, tar, ludusavi, nile, the store
 //! login window...).
 //!
 //! Helpers must not outlive the app: each one gets its own process group and,
@@ -64,7 +64,7 @@ pub fn idle_priority() {
 }
 
 /// Lets another thread stop a running command: asked first, once (SIGTERM,
-/// Ctrl+C on Windows: legendary then saves its resume data), the whole
+/// Ctrl+C on Windows, so a tool can save its state), the whole
 /// process group killed if it lingers.
 #[derive(Debug, Default)]
 pub struct Cancel {
@@ -225,7 +225,7 @@ impl<'a> Run<'a> {
         self.grace = grace;
         self
     }
-    /// SIGTERM only the main process, so it can save its state (legendary);
+    /// SIGTERM only the main process, so it can save its state;
     /// the whole group is still SIGKILLed after the grace period. (On Windows
     /// the Ctrl+C reaches every process on the helper's console either way.)
     pub fn term_main_only(mut self) -> Self {
@@ -385,7 +385,7 @@ fn spawn_reader(mut pipe: impl Read + Send + 'static, is_err: bool, tx: mpsc::Se
     })
 }
 
-/// Splits a byte stream on `\n` and `\r` (legendary redraws progress with
+/// Splits a byte stream on `\n` and `\r` (tools redraw progress with
 /// `\r`); empty lines are dropped.
 #[derive(Default)]
 struct LineSplitter {

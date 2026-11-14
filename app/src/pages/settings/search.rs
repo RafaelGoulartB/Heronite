@@ -106,8 +106,6 @@ const INDEX: &[(Section, &[&str])] = &[
         Section::Downloads,
         &[
             "Download workers",
-            "Legendary binary",
-            "gogdl binary",
             "nile binary",
             "Updates",
             "Download games without HTTPS",
@@ -346,7 +344,6 @@ const INDEX: &[(Section, &[&str])] = &[
             "Ask a question",
             "Like Heronite?",
             "Version",
-            "Legendary",
             "Wine / Proton found",
             "Data folder",
             "Settings folder",

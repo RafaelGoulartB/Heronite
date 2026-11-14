@@ -419,7 +419,7 @@ impl Render for EpicPage {
         } else {
             let login = row(
                 tr!("Log in with Epic Games"),
-                Some(tr!("Your login is handled by legendary.")),
+                Some(tr!("You sign in on Epic's own page, in a window of Heronite.")),
                 action_button(
                     "epic-login-window",
                     ButtonKind::Primary,
@@ -491,10 +491,12 @@ impl Render for EpicPage {
                     .child(err.lines().next().unwrap_or("").to_string()),
             );
         }
-        let eos = div()
-            .child(caption("EOS Overlay"))
-            .child(self.eos_panel(cx))
-            .child(div().mt(px(18.)).mx(px(6.)).child(meta_text(tr!("Games are installed, updated and verified with legendary."))));
+        let eos = div().child(caption("EOS Overlay")).child(self.eos_panel(cx)).child(
+            div()
+                .mt(px(18.))
+                .mx(px(6.))
+                .child(meta_text(tr!("Heronite installs, updates and verifies the games itself, from Epic's servers."))),
+        );
         // Wide: the account on the left, the EOS Overlay on the right.
         let wide = stores::content_width(window) >= 1000.;
         let body = columns(wide, [column, eos]);
