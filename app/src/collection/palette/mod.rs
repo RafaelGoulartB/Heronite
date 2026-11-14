@@ -21,6 +21,7 @@
 //! none); `HERONITE_DEBUG_PALETTE=<query>@pages|actions|games` also picks the
 //! filter, and `HERONITE_DEBUG_PALETTE_KEYS=down,right,...` feeds it keys.
 
+mod random;
 mod rank;
 mod sources;
 mod view;
@@ -50,6 +51,8 @@ pub(super) struct Host {
     /// Keeps the keystroke interceptor alive.
     _keys: Option<Subscription>,
     debug_done: bool,
+    /// The last random picks, most recent first (`random.rs`).
+    random_recent: std::collections::VecDeque<String>,
 }
 
 impl Host {
@@ -116,6 +119,10 @@ impl CollectionView {
     fn on_palette_event(&mut self, view: &Entity<PaletteView>, ev: &PaletteEvent, window: &mut Window, cx: &mut Context<Self>) {
         match ev {
             PaletteEvent::Close => self.close_palette(window, cx),
+            PaletteEvent::Run { act: Act::Random(scope), id } => {
+                self.remember_palette_item(id);
+                self.palette_random(scope.clone(), view, window, cx);
+            }
             PaletteEvent::Run { act, id } => {
                 self.remember_palette_item(id);
                 self.close_palette(window, cx);
@@ -164,6 +171,7 @@ impl CollectionView {
         }
         v.extend(self.page_commands(cx).iter().map(|(page, c)| sources::page_entry(*page, c)));
         let Some(lib) = self.lib.clone() else { return v };
+        v.extend(self.random_entries());
         let smart: Vec<(String, String)> = self.smart_groups.groups.iter().map(|g| (g.id.clone(), g.name.clone())).collect();
         v.extend(sources::view_entries(&self.ui, &collect_facet_options(&lib.games), &self.categories, &smart));
         let mut games: Vec<_> = lib.games.iter().collect();
@@ -336,6 +344,8 @@ impl CollectionView {
             }
             // The view handles it (second level); nothing to run here.
             Act::GameActions(_) => {}
+            // Run with the palette open (`on_palette_event`).
+            Act::Random(_) => {}
         }
     }
 

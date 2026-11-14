@@ -76,6 +76,8 @@ pub enum Icon {
     Update,
     WifiOff,
     Language,
+    /// Dice: "Pick a random game".
+    Casino,
     Memory,
     BarChart,
     Tv,
@@ -298,6 +300,7 @@ impl Icon {
             Update => "icons/update.svg",
             WifiOff => "icons/wifi-off.svg",
             Language => "icons/language.svg",
+            Casino => "icons/casino.svg",
             Memory => "icons/memory.svg",
             Trophy => "icons/trophy.svg",
             Lock => "icons/lock.svg",

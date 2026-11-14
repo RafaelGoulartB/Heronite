@@ -177,6 +177,12 @@ what the Cover aspect asks for and the Cover shapes card counts it) and "Review 
   goes in the page's `palette.rs` (`pages::commands::PaletteCommands`: list it, even before the page exists, from the
   services or `CommandCtx`; run it; say when the page has a dialog open with `page_modal`). Something that cannot run
   now is listed with `disabled(Some(reason))`, not left out.
+  "Pick a random game" (`palette/random.rs`) picks from the games on screen (search, filters and categories in use),
+  the installed ones, the ones never played, the favourites, the whole Collection, or one category, manual or smart
+  (those only when something is typed); each entry says how many games it picks from and is dimmed when there are
+  none. The pick is focused in the Collection and the palette stays on it: "Pick another" first (Enter rolls again
+  from the same games), then the game's actions; Esc goes back to the main list. The last eight picks wait while
+  other games remain.
 
 ## Glass design system (menus, dialogs, pages, settings)
 
