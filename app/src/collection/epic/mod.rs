@@ -55,7 +55,7 @@ pub enum Request {
 
 /// The Epic items of a game's actions (context menu and palette).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum EpicAction {
+pub(crate) enum EpicAction {
     ShowInDownloads,
     Import,
     Update,

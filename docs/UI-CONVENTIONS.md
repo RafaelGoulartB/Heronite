@@ -190,6 +190,24 @@ what the Cover aspect asks for and the Cover shapes card counts it) and "Review 
   none. The pick is focused in the Collection and the palette stays on it: "Pick another" first (Enter rolls again
   from the same games), then the game's actions; Esc goes back to the main list. The last eight picks wait while
   other games remain.
+  Game rows show the game's cover (22×30) where the other rows have an icon. Beside the list, when the window is
+  wide enough (the list and the pane, plus 48px), a 268px pane shows the selected item (`palette/view/preview.rs`): a
+  game (or one of its verbs) its cover, title, store and state (Installed, Not installed, Playing now) and its facts
+  (Played, Last played, Status); a page, a Settings section or an action its icon, what it does, why it is dimmed and
+  its shortcut. With the pane the list keeps its full height, so the panel does not change size while you type or
+  move.
+  The quick launcher (`app/src/quick_launch/`) is the same palette in a window of its own (`Mode::Launcher`): the
+  panel at its full size with the pane, no backdrop: the window is the panel, nothing is drawn around it (no shadow, which the window's edge would cut square), and it fades in without sliding. Its list
+  is the pages, Settings sections, global actions and games (no View menu, page commands or random pick: they are the
+  Collection's). Enter on a game plays it (stops it while it runs; one to install is shown in Heronite), Shift Enter
+  shows it in Heronite, → lists its actions (its verbs and "Show X in Heronite"). An item that opens Heronite has a
+  13px `OpenInNew` at the right of its row and "Opens Heronite" in the pane; the footer says what Enter does (play,
+  stop, run, open in Heronite). It closes on Esc, after running something and when it loses the keyboard.
+  Settings → Quick launcher (`pages/settings/quick_launch.rs`, in App after Controller) has a "How it works" card (the
+  shortcut's keys, Enter, Shift Enter and the ↗ mark, one line each) and an "Opening it" card: the keyboard shortcut
+  field (none unless set; refused with a line when the overlay, the screenshot or the replay has the keys, and the
+  replay's field refuses the launcher's), its registration status, the command to bind in the desktop's settings
+  (Linux, "Copy command") and "Open the quick launcher" to try it.
 
 ## Glass design system (menus, dialogs, pages, settings)
 

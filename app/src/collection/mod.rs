@@ -23,7 +23,7 @@ mod family_art;
 mod focus;
 mod focus_left;
 mod folder_size;
-mod game_actions;
+pub(crate) mod game_actions;
 mod game_facts;
 mod grid;
 mod grid_drawer;
@@ -55,7 +55,7 @@ mod nav;
 mod onboarding;
 mod open_links;
 pub(crate) mod organize;
-mod palette;
+pub(crate) mod palette;
 mod pumps;
 mod render_focus;
 mod replays;
@@ -85,6 +85,7 @@ mod view_mode;
 mod view_options;
 mod welcome;
 pub use load::{discard_preload, preload_library};
+pub(crate) use open_links::open_install_folder_of;
 pub use screenshots::screenshots_global;
 pub mod stage;
 mod vm;
@@ -212,7 +213,8 @@ pub struct CollectionView {
     media: store_media::StoreMediaUi,
     toast_task: Option<Task<()>>,
     images: ImageStore,
-    cover_chains: HashMap<SharedString, Vec<ImageRef>>,
+    /// Shared with the command palette (Ctrl K), which only reads it.
+    cover_chains: std::rc::Rc<HashMap<SharedString, Vec<ImageRef>>>,
     stage_chains: HashMap<SharedString, Vec<ImageRef>>,
     /// The games' own square and wide covers (`family_art.rs`).
     family_chains: family_art::FamilyChains,
@@ -427,7 +429,7 @@ impl CollectionView {
             shots: Default::default(),
             media: Default::default(),
             images,
-            cover_chains: HashMap::new(),
+            cover_chains: Default::default(),
             stage_chains: HashMap::new(),
             family_chains: Default::default(),
             shown_stage: None,

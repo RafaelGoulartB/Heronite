@@ -22,7 +22,7 @@ use crate::icons::Icon;
 use heronite_i18n::tr;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) enum GameAction {
+pub(crate) enum GameAction {
     /// Play, Stop or Install: the focus panel's main button.
     Primary,
     /// Play an Epic game with one of its ways to start (`None`: the default).

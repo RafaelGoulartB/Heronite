@@ -27,7 +27,7 @@ const REMEMBERED: usize = 8;
 
 /// Which games a random pick is made from.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::collection) enum RandomScope {
+pub(crate) enum RandomScope {
     /// The cards on screen.
     OnScreen,
     All,

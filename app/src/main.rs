@@ -13,6 +13,7 @@ mod images;
 mod language;
 mod overlay;
 mod pages;
+mod quick_launch;
 mod runtime;
 mod services;
 mod system;
@@ -207,6 +208,7 @@ fn single_instance(cli: &system::cli::Cli) -> SingleInstance {
         open_client: cli.open_client,
         stop: cli.stop.clone(),
         screenshot: cli.screenshot,
+        quick_launch: cli.quick_launch,
         no_gui: cli.no_gui,
         console: cli.console,
         fullscreen: cli.fullscreen,

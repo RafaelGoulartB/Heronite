@@ -1,274 +1,60 @@
-//! The palette overlay: input, grouped results, footer.
-//!
-//! Two levels: the main list, and the actions of one game (→ or Ctrl Enter
-//! on a game, its chevron, or "All actions"). Esc, or Backspace in the empty
-//! box, goes back to the main list with its text as it was.
+//! Drawing the palette: rows, filter pills, the crumb of a game's actions,
+//! the footer and the panel over its backdrop.
 
-use std::rc::Rc;
 use std::time::Duration;
 
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::Input;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::tr;
 
-use super::rank::{actions_list, search, Filter, ItemRef, Results};
-use super::sources::{Act, Entry};
+use super::super::launcher;
+use super::super::rank::{Filter, ItemRef};
+use super::super::sources::Act;
+use super::preview::{PANE_W, THUMB_H, THUMB_W};
+use super::{Mode, PaletteEvent, PaletteView, CAPTION_H, FOOTER_H, INPUT_H, LIST_MAX_H, LIST_PAD, PANEL_W, ROW_H, TOP};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::kbd;
 use crate::ui::glass::glass_panel;
 use crate::ui::icon;
 
-#[derive(Clone, Debug)]
-pub(super) enum PaletteEvent {
-    /// Run `act`; `id` goes to the history.
-    Run {
-        act: Act,
-        id: SharedString,
-    },
-    /// List every action of this game (the host answers with
-    /// [`PaletteView::show_game`]).
-    OpenGame(String),
-    Close,
-}
-
-const ROW_H: f32 = 38.;
-const CAPTION_H: f32 = 30.;
-const LIST_PAD: f32 = 6.;
-/// Room for about nine rows (and a caption); the rest scrolls.
-const LIST_MAX_H: f32 = 9. * ROW_H + CAPTION_H;
-const PANEL_W: f32 = 620.;
-const TOP: f32 = 90.;
-fn root_placeholder() -> &'static str {
-    tr!("Type a command, page or game\u{2026}")
-}
-
-/// The second level: one game's actions.
-struct GameLevel {
-    title: SharedString,
-    entries: Rc<Vec<Entry>>,
-    /// The main list as it was, restored by [`PaletteView::back`].
-    root_query: String,
-    root_selected: usize,
-}
-
-pub(super) struct PaletteView {
-    entries: Rc<Vec<Entry>>,
-    /// Ids run lately, most recent first.
-    recent: Rc<Vec<String>>,
-    game: Option<GameLevel>,
-    input: Entity<InputState>,
-    query: String,
-    filter: Filter,
-    results: Results,
-    selected: usize,
-    scroll: ScrollHandle,
-    _sub: Subscription,
-}
-
-impl EventEmitter<PaletteEvent> for PaletteView {}
-
 impl PaletteView {
-    pub fn new(entries: Rc<Vec<Entry>>, recent: Rc<Vec<String>>, query: &str, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let input = cx.new(|cx| {
-            let mut s = InputState::new(window, cx);
-            s.set_placeholder(root_placeholder(), window, cx);
-            s.set_value(query.to_string(), window, cx);
-            s
-        });
-        let sub = cx.subscribe_in(&input, window, |this, input, ev: &InputEvent, _window, cx| {
-            if matches!(ev, InputEvent::Change) {
-                let value = input.read(cx).value().to_string();
-                if value != this.query {
-                    this.query = value;
-                    this.recompute(cx);
-                }
-            }
-        });
-        input.update(cx, |s, cx| s.focus(window, cx));
-        let mut this = Self {
-            entries,
-            recent,
-            game: None,
-            input,
-            query: query.to_string(),
-            filter: Filter::All,
-            results: Results::default(),
-            selected: 0,
-            scroll: ScrollHandle::new(),
-            _sub: sub,
+    /// Whether the preview pane fits beside the list (a narrow window keeps
+    /// the list alone).
+    fn shows_pane(&self, window: &Window) -> bool {
+        self.mode == Mode::Launcher || f32::from(crate::ui::content_bounds(window).size.width) >= PANEL_W + PANE_W + 48.
+    }
+
+    /// What Enter does on the selected item, for the footer.
+    fn enter_label(&self) -> &'static str {
+        let Some(e) = self.selected_entry() else { return tr!("open") };
+        if self.game.is_some() && self.mode == Mode::InApp {
+            return tr!("run");
+        }
+        if self.mode == Mode::InApp {
+            return tr!("open");
+        }
+        match (&e.act, &e.game) {
+            (Act::SelectGame(_), Some(b)) if b.playing => tr!("stop"),
+            (Act::SelectGame(_), Some(b)) if b.installed => tr!("play"),
+            (Act::SelectGame(_), _) => tr!("show in Heronite"),
+            (Act::GameActions(_), _) => tr!("open"),
+            _ if !launcher::runs_alone(e) => tr!("open in Heronite"),
+            _ => tr!("run"),
+        }
+    }
+
+    fn row(&mut self, n: usize, item: ItemRef, window: &Window, cx: &mut Context<Self>) -> Stateful<Div> {
+        // A game of the list shows its cover where the others have an icon.
+        let cover_key = match &self.entry(item) {
+            e if e.game.is_some() => match &e.act {
+                Act::SelectGame(k) => Some(k.clone()),
+                _ => None,
+            },
+            _ => None,
         };
-        this.results = this.rank();
-        this
-    }
-
-    fn rank(&self) -> Results {
-        match &self.game {
-            Some(g) => actions_list(&g.entries, &self.query, &self.recent, &g.title),
-            None => search(&self.entries, &self.query, self.filter, &self.recent),
-        }
-    }
-
-    fn recompute(&mut self, cx: &mut Context<Self>) {
-        self.results = self.rank();
-        self.selected = 0;
-        self.scroll.set_offset(point(px(0.), px(0.)));
-        cx.notify();
-    }
-
-    fn entry(&self, r: ItemRef) -> &Entry {
-        match (r, &self.game) {
-            (ItemRef::Entry(i), Some(g)) => &g.entries[i],
-            (ItemRef::Entry(i), None) => &self.entries[i],
-            (ItemRef::Verb(i), _) => &self.results.verbs[i],
-        }
-    }
-
-    fn selected_entry(&self) -> Option<&Entry> {
-        self.results.items().nth(self.selected).map(|i| self.entry(i))
-    }
-
-    /// Top and bottom of the selected row inside the list content (a group's
-    /// first row includes its caption).
-    fn selected_span(&self) -> Option<(f32, f32)> {
-        let mut y = LIST_PAD;
-        let mut n = 0;
-        for g in &self.results.groups {
-            let cap_top = y;
-            y += CAPTION_H;
-            for k in 0..g.items.len() {
-                if n == self.selected {
-                    return Some((if k == 0 { cap_top } else { y }, y + ROW_H));
-                }
-                y += ROW_H;
-                n += 1;
-            }
-        }
-        None
-    }
-
-    fn content_h(&self) -> f32 {
-        let mut h = 2. * LIST_PAD;
-        for g in &self.results.groups {
-            h += CAPTION_H + ROW_H * g.items.len() as f32;
-        }
-        h
-    }
-
-    fn reveal_selected(&mut self) {
-        let Some((top, bottom)) = self.selected_span() else { return };
-        let view_h = self.content_h().min(LIST_MAX_H);
-        let shown = f32::from(-self.scroll.offset().y);
-        let new = if top < shown {
-            top
-        } else if bottom > shown + view_h {
-            bottom - view_h
-        } else {
-            return;
-        };
-        self.scroll.set_offset(point(px(0.), px(-new)));
-    }
-
-    /// Moves the selection by `delta` rows, wrapping around.
-    pub(super) fn move_selection(&mut self, delta: isize, cx: &mut Context<Self>) {
-        let n = self.results.count() as isize;
-        if n == 0 {
-            return;
-        }
-        self.selected = (self.selected as isize + delta).rem_euclid(n) as usize;
-        self.reveal_selected();
-        cx.notify();
-    }
-
-    /// Next / previous filter (the main list only).
-    pub(super) fn cycle_filter(&mut self, back: bool, cx: &mut Context<Self>) {
-        if self.game.is_some() {
-            return;
-        }
-        self.filter = if back { self.filter.prev() } else { self.filter.next() };
-        self.recompute(cx);
-    }
-
-    fn set_filter(&mut self, f: Filter, cx: &mut Context<Self>) {
-        if self.filter != f {
-            self.filter = f;
-            self.recompute(cx);
-        }
-    }
-
-    /// Runs the selected item. A disabled one only tells why (it is shown).
-    pub fn activate(&mut self, cx: &mut Context<Self>) {
-        let Some(e) = self.selected_entry() else { return };
-        if e.disabled.is_some() {
-            return;
-        }
-        let ev = match &e.act {
-            Act::GameActions(key) => PaletteEvent::OpenGame(key.clone()),
-            act => PaletteEvent::Run { act: act.clone(), id: e.id.clone() },
-        };
-        cx.emit(ev);
-    }
-
-    /// Asks for the actions of the selected game (or of the game the
-    /// selected verb is about). Returns whether there was one.
-    pub fn open_selected_game(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.game.is_some() {
-            return false;
-        }
-        let Some(key) = self.selected_entry().and_then(|e| e.game_key()).map(str::to_string) else { return false };
-        cx.emit(PaletteEvent::OpenGame(key));
-        true
-    }
-
-    /// The second level, for the game `title` (entries from `action_entries`).
-    /// Shown again over a game's list (another random pick), Esc still goes
-    /// back to the main list as it was.
-    pub fn show_game(&mut self, title: SharedString, entries: Vec<Entry>, window: &mut Window, cx: &mut Context<Self>) {
-        let (root_query, root_selected) = match self.game.take() {
-            Some(g) => (g.root_query, g.root_selected),
-            None => (std::mem::take(&mut self.query), self.selected),
-        };
-        self.query.clear();
-        let placeholder = tr!("Search the actions of {title}\u{2026}", title);
-        self.game = Some(GameLevel { title, entries: Rc::new(entries), root_query, root_selected });
-        self.input.update(cx, |s, cx| {
-            s.set_value(String::new(), window, cx);
-            s.set_placeholder(placeholder, window, cx);
-        });
-        self.recompute(cx);
-    }
-
-    /// Back to the main list from a game's actions; `false` when on it.
-    pub fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let Some(g) = self.game.take() else { return false };
-        self.query = g.root_query.clone();
-        self.input.update(cx, |s, cx| {
-            s.set_value(g.root_query, window, cx);
-            s.set_placeholder(root_placeholder(), window, cx);
-        });
-        self.results = self.rank();
-        self.selected = g.root_selected.min(self.results.count().saturating_sub(1));
-        self.reveal_selected();
-        cx.notify();
-        true
-    }
-
-    pub fn in_game(&self) -> bool {
-        self.game.is_some()
-    }
-
-    pub fn query_is_empty(&self) -> bool {
-        self.query.is_empty()
-    }
-
-    /// Currently listed titles (tests and debugging).
-    #[allow(dead_code)]
-    pub fn listed(&self) -> Vec<String> {
-        self.results.items().map(|i| self.entry(i).title.to_string()).collect()
-    }
-
-    fn row(&self, n: usize, item: ItemRef, cx: &mut Context<Self>) -> Stateful<Div> {
+        let thumb = cover_key.map(|k| self.cover(&k, THUMB_W, THUMB_H, window.scale_factor(), 100, cx));
         let e = self.entry(item);
         let sel = n == self.selected;
         let off = e.disabled.is_some();
@@ -324,7 +110,23 @@ impl PaletteView {
             .when(sel && !off, |d| {
                 d.child(div().absolute().left(px(0.)).top(px(8.)).bottom(px(8.)).w(px(2.)).rounded_full().bg(theme::accent()))
             })
-            .child(icon(e.icon, px(16.), icon_color))
+            .child(match thumb {
+                Some(src) => div()
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .w(px(THUMB_W))
+                    .h(px(THUMB_H))
+                    .my(px(-6.))
+                    .rounded(px(4.))
+                    .overflow_hidden()
+                    .bg(theme::ink_a(0.08))
+                    .when(src.is_none(), |d| d.child(icon(e.icon, px(13.), icon_color)))
+                    .children(src.map(|src| img(src).size_full().object_fit(ObjectFit::Cover)))
+                    .into_any_element(),
+                None => icon(e.icon, px(16.), icon_color).into_any_element(),
+            })
             .child(
                 div()
                     .flex_none()
@@ -343,6 +145,7 @@ impl PaletteView {
                     .text_color(if off { theme::text_muted() } else { theme::text_dim() })
                     .child(e.disabled.clone().unwrap_or_else(|| e.subtitle.clone())),
             )
+            .when(self.mode == Mode::Launcher && !launcher::runs_alone(e), |d| d.child(icon(Icon::OpenInNew, px(13.), theme::text_dim())))
             .children(e.shortcut.map(kbd))
             .children(chevron)
     }
@@ -403,16 +206,22 @@ fn hint(keys: Vec<&'static str>, label: &'static str) -> Div {
 }
 
 impl Render for PaletteView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.drop_evicted_covers(window);
+        let pane = self.shows_pane(window);
         let mut list = div()
             .id("palette-list")
             .flex()
             .flex_col()
+            .flex_none()
+            .w(px(PANEL_W))
             .px(px(8.))
             .py(px(LIST_PAD))
-            .max_h(px(LIST_MAX_H))
             .overflow_y_scroll()
             .track_scroll(&self.scroll);
+        // Beside the pane the list keeps its height, so the panel does not
+        // change size as the results do.
+        list = if pane { list.h(px(LIST_MAX_H)) } else { list.max_h(px(LIST_MAX_H)) };
         if self.results.count() == 0 {
             list = list.child(
                 div()
@@ -441,7 +250,7 @@ impl Render for PaletteView {
                     .child(caption),
             );
             for item in items {
-                list = list.child(self.row(n, item, cx));
+                list = list.child(self.row(n, item, window, cx));
                 n += 1;
             }
         }
@@ -451,7 +260,7 @@ impl Render for PaletteView {
             .flex_none()
             .items_center()
             .gap(px(10.))
-            .h(px(54.))
+            .h(px(INPUT_H))
             .px(px(18.))
             .border_b_1()
             .border_color(theme::ink_a(0.08))
@@ -474,13 +283,17 @@ impl Render for PaletteView {
             .items_center()
             .gap(px(18.))
             .px(px(16.))
-            .py(px(9.))
+            .h(px(FOOTER_H))
             .border_t_1()
             .border_color(theme::ink_a(0.08))
             .text_size(px(12.))
             .text_color(theme::text_dim())
             .child(hint(vec!["\u{2191}", "\u{2193}"], tr!("move")))
-            .child(hint(vec!["\u{21b5}"], if self.game.is_some() { tr!("run") } else { tr!("open") }));
+            .child(hint(vec!["\u{21b5}"], self.enter_label()))
+            .when(
+                self.mode == Mode::Launcher && self.selected_entry().is_some_and(|e| e.game_key().is_some() && launcher::runs_alone(e)),
+                |f| f.child(hint(vec!["\u{21e7}", "\u{21b5}"], tr!("show in Heronite"))),
+            );
         footer = if self.game.is_some() {
             footer.child(hint(vec!["Esc"], tr!("back"))).child(div().flex_1())
         } else {
@@ -491,13 +304,15 @@ impl Render for PaletteView {
                 .child(self.filter_pills(cx))
         };
 
+        let preview = if pane { self.preview(window, cx) } else { div() };
         let panel = glass_panel(theme::R_POPOVER)
             .id("palette")
             .occlude()
             .flex()
             .flex_col()
-            .w(px(PANEL_W))
-            .max_h(relative(0.9))
+            .w(px(if pane { PANEL_W + PANE_W } else { PANEL_W }))
+            .when(self.mode == Mode::InApp, |d| d.max_h(relative(0.9)))
+            .when(self.mode == Mode::Launcher, |d| d.size_full().shadow(Vec::new()))
             .font_family(theme::font_body())
             .text_color(theme::text_primary())
             // Clicks on the panel keep the input focused and do not close it.
@@ -509,19 +324,30 @@ impl Render for PaletteView {
                 }),
             )
             .child(input_row)
-            .child(list)
+            .child(div().flex().flex_none().min_h_0().child(list).when(pane, |d| d.child(preview)))
             .child(footer);
 
+        let slide = self.mode == Mode::InApp;
         let panel = if theme::animations() {
             panel
-                .with_animation("palette-open", Animation::new(Duration::from_millis(140)).with_easing(ease_out_quint()), |el, t| {
-                    el.opacity(t).mt(px(-10. * (1. - t)))
+                .with_animation("palette-open", Animation::new(Duration::from_millis(140)).with_easing(ease_out_quint()), move |el, t| {
+                    // The launcher's window is the panel: it fades in place.
+                    let el = el.opacity(t);
+                    if slide {
+                        el.mt(px(-10. * (1. - t)))
+                    } else {
+                        el
+                    }
                 })
                 .into_any_element()
         } else {
             panel.into_any_element()
         };
 
+        if self.mode == Mode::Launcher {
+            // The window is the panel's size: nothing is drawn around it.
+            return div().id("palette-backdrop").size_full().child(panel).into_any_element();
+        }
         deferred(
             div()
                 .id("palette-backdrop")
@@ -537,5 +363,6 @@ impl Render for PaletteView {
                 .child(panel),
         )
         .with_priority(40)
+        .into_any_element()
     }
 }
