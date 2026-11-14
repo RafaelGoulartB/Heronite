@@ -42,19 +42,35 @@ pub struct WatchedHud {
 }
 
 /// The config files MangoHud watches in the game whose process (group
-/// leader) is `game_pid`; `None` when the HUD cannot be shown or hidden this
-/// way. Blocking (`/proc`).
+/// leader) is `game_pid`, and for a Steam game (`steam_app_id`) in what
+/// Steam runs under its `reaper` (the pid Steam names is its runtime's
+/// launch client, apart from the game); `None` when the HUD cannot be shown
+/// or hidden this way. Blocking (`/proc`).
 #[cfg(target_os = "linux")]
-pub fn find(game_pid: u32) -> Option<WatchedHud> {
+pub fn find(game_pid: u32, steam_app_id: Option<&str>) -> Option<WatchedHud> {
+    let mut procs = crate::procs::game_processes(game_pid);
+    if let Some(id) = steam_app_id.filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())) {
+        for p in crate::procs::steam_game_processes(id) {
+            if !procs.contains(&p) {
+                procs.push(p);
+            }
+        }
+    }
     let mut files: Vec<PathBuf> = Vec::new();
-    for pid in crate::procs::game_processes(game_pid) {
+    let mut seen = 0;
+    for pid in procs.iter().copied() {
         if !loads_mangohud(pid) {
             continue;
         }
-        let env = std::fs::read(format!("/proc/{pid}/environ")).ok()?;
+        seen += 1;
+        let Ok(env) = std::fs::read(format!("/proc/{pid}/environ")) else {
+            log::info!("MangoHud toggle: game {game_pid}: the environment of {pid} cannot be read");
+            return None;
+        };
         let var = |key: &str| crate::procs::environ_value(&env, key);
         // Applied over the file on every reload, or the file is not read.
         if !file_counts(var("MANGOHUD_CONFIG").as_deref()) {
+            log::info!("MangoHud toggle: game {game_pid}: {pid}'s MANGOHUD_CONFIG decides the HUD");
             return None;
         }
         // MangoHud's watch waits for modifications; other inotify users of
@@ -62,11 +78,17 @@ pub fn find(game_pid: u32) -> Option<WatchedHud> {
         let watched: Vec<(u64, u64)> =
             inotify_watches(pid).into_iter().filter(|w| w.mask & IN_MODIFY != 0).map(|w| (w.ino, w.sdev)).collect();
         if watched.is_empty() {
+            log::info!("MangoHud toggle: game {game_pid}: {pid} loads MangoHud but watches no file");
             continue;
         }
+        let candidates = candidates(&var);
         // A process whose file cannot be placed (or used) keeps its HUD as it is.
-        let Some(file) = candidates(&var).into_iter().filter(|f| usable(f)).find(|f| kernel_id(f).is_some_and(|id| watched.contains(&id)))
+        let Some(file) = candidates.iter().filter(|f| usable(f)).find(|f| kernel_id(f).is_some_and(|id| watched.contains(&id))).cloned()
         else {
+            log::info!(
+                "MangoHud toggle: game {game_pid}: none of {candidates:?} is what {pid} watches ({watched:x?}; usable: {:?})",
+                candidates.iter().filter(|f| usable(f)).map(|f| (f, kernel_id(f))).collect::<Vec<_>>()
+            );
             continue;
         };
         if !files.contains(&file) {
@@ -74,14 +96,16 @@ pub fn find(game_pid: u32) -> Option<WatchedHud> {
         }
     }
     if files.is_empty() {
+        log::info!("MangoHud toggle: game {game_pid}: {} processes, {seen} with MangoHud, no config file to use", procs.len());
         return None;
     }
     let shown = files.iter().all(|f| std::fs::read_to_string(f).is_ok_and(|t| !hides_hud(&t)));
+    log::info!("MangoHud toggle: game {game_pid}: {files:?} (shown: {shown})");
     Some(WatchedHud { files, shown })
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn find(_game_pid: u32) -> Option<WatchedHud> {
+pub fn find(_game_pid: u32, _steam_app_id: Option<&str>) -> Option<WatchedHud> {
     None
 }
 
@@ -602,6 +626,18 @@ mod tests {
         assert_eq!(kernel_id(&dir.join("missing.conf")), None);
     }
 
+    /// A Steam game running now (`HERONITE_TEST_STEAM_APP_ID`): what the
+    /// overlay would find. Only reads.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "needs a Steam game running with MangoHud"]
+    fn finds_a_running_steam_game() {
+        let id = std::env::var("HERONITE_TEST_STEAM_APP_ID").expect("HERONITE_TEST_STEAM_APP_ID");
+        let found = find(u32::MAX, Some(&id));
+        eprintln!("found: {found:?}");
+        assert!(found.is_some());
+    }
+
     /// The real MangoHud (`--include-ignored`, with `vkcube` and a display):
     /// finds the file vkcube's MangoHud watches, hides the HUD and shows it
     /// again. `HERONITE_TEST_MANGOHUD_DIR` puts it on another filesystem
@@ -627,12 +663,12 @@ mod tests {
             .spawn()
             .unwrap();
         std::thread::sleep(std::time::Duration::from_secs(3));
-        let found = find(child.id());
+        let found = find(child.id(), None);
         let record = home.join("rec");
         if let Some(hud) = &found {
             set_shown(hud, false, &record).unwrap();
         }
-        let after = find(child.id());
+        let after = find(child.id(), None);
         child.kill().ok();
         child.wait().ok();
         assert_eq!(found, Some(WatchedHud { files: vec![conf.clone()], shown: true }));
