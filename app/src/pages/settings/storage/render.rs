@@ -86,7 +86,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             .into_any_element();
     }
     // The column: the window minus the sheet's inset, the nav and the padding.
-    let column = (f32::from(crate::ui::content_size(window).width) - 24. - 230. - 72.).min(MAX_W);
+    let column = super::super::room(window).min(MAX_W);
     let mut col =
         div().flex().flex_col().child(overview(&d.storage, cx)).child(free_up(&d.storage, cx)).child(games(d, column, window, cx));
     for group in Group::ALL.into_iter().filter(|g| *g != Group::Games) {

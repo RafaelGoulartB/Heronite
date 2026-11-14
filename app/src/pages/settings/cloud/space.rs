@@ -210,10 +210,21 @@ pub(super) fn render(d: &mut SettingsPage, p: &SyncPrefs, cx: &mut Context<Setti
         .when(!d.cloud.measuring, |b| b.on_click(cx.listener(|d, _, _, cx| measure(d, cx))));
     let head = div()
         .flex()
+        .flex_wrap()
         .items_center()
         .justify_between()
-        .gap(px(12.))
-        .child(div().flex_1().min_w_0().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_muted()).child(summary(&u, p)))
-        .child(div().flex().flex_none().gap(px(4.)).child(toggle).child(again));
+        .gap_x(px(12.))
+        .gap_y(px(4.))
+        .child(
+            div()
+                .flex_grow(1.)
+                .flex_basis(px(240.))
+                .min_w_0()
+                .text_size(px(13.))
+                .line_height(px(18.))
+                .text_color(theme::text_muted())
+                .child(summary(&u, p)),
+        )
+        .child(div().flex().flex_none().ml_auto().gap(px(4.)).child(toggle).child(again));
     col.child(head).child(bar(&u, p)).when(open, |c| c.child(map(&u, p)))
 }

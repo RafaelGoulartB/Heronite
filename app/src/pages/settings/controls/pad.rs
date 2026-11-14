@@ -446,8 +446,8 @@ struct Placed {
     rank: usize,
 }
 
-/// The narrowest the drawing gets.
-const MIN_W: f32 = 680.;
+/// The narrowest the drawing gets: a narrower page shows only the table.
+pub(super) const MIN_W: f32 = 640.;
 
 /// A lone top callout's width (it has the room).
 const TOP_W: f32 = 290.;

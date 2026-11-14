@@ -29,6 +29,8 @@ use crate::ui::icon;
 /// Widths of the controller and keyboard columns.
 const PAD_W: f32 = 236.;
 const KEY_W: f32 = 236.;
+/// Below this width the table has no columns (see [`render`]).
+const NARROW_BELOW: f32 = 720.;
 /// The popovers' width.
 const POP_W: f32 = 330.;
 
@@ -300,7 +302,7 @@ fn footer(
         .children(switch)
 }
 
-fn line_el(i: usize, l: Line, picked: Option<Part>, cx: &mut Context<SettingsPage>) -> AnyElement {
+fn line_el(i: usize, l: Line, picked: Option<Part>, narrow: bool, cx: &mut Context<SettingsPage>) -> AnyElement {
     let on = picked.is_some() && (l.part == picked || l.also == picked);
     let label: SharedString = l.action.into();
     let action = div()
@@ -316,22 +318,28 @@ fn line_el(i: usize, l: Line, picked: Option<Part>, cx: &mut Context<SettingsPag
         .children(l.extra);
     let part = l.part;
     // A cell's clicks stay in it (the row picks its button on the drawing).
+    // Narrow: the cells as wide as they need, on a line under the action.
     let cell = |id: String, w: f32| {
         div()
             .id(SharedString::from(id))
             .flex_none()
-            .w(px(w))
+            .when(!narrow, |c| c.w(px(w)))
             .flex()
             .items_center()
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
     };
-    let row = div()
-        .flex()
-        .items_center()
-        .gap(px(12.))
-        .child(action)
-        .child(cell(format!("controls-row-{i}-pad"), PAD_W).child(l.pad))
-        .child(cell(format!("controls-row-{i}-key"), KEY_W).child(l.key));
+    let pad = cell(format!("controls-row-{i}-pad"), PAD_W).child(l.pad);
+    let key = cell(format!("controls-row-{i}-key"), KEY_W).child(l.key);
+    let row = if narrow {
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .child(action)
+            .child(div().flex().flex_wrap().items_center().gap_x(px(16.)).gap_y(px(6.)).child(pad).child(key))
+    } else {
+        div().flex().items_center().gap(px(12.)).child(action).child(pad).child(key)
+    };
     div()
         .id(SharedString::from(format!("controls-row-{i}")))
         .flex()
@@ -975,6 +983,8 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
             None => c.flex_1(),
         }
     };
+    // Too narrow for three columns: each row puts its shortcuts under the action.
+    let narrow = super::super::room(window) < NARROW_BELOW;
     let mut table = div()
         .flex()
         .flex_col()
@@ -983,17 +993,19 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
         .bg(theme::card_fill())
         .border_1()
         .border_color(theme::card_border())
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(12.))
-                .px(px(16.))
-                .py(px(10.))
-                .child(head(tr!("Action"), None))
-                .child(head(tr!("Controller"), Some(PAD_W)))
-                .child(head(tr!("Keyboard"), Some(KEY_W))),
-        );
+        .when(!narrow, |t| {
+            t.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(12.))
+                    .px(px(16.))
+                    .py(px(10.))
+                    .child(head(tr!("Action"), None))
+                    .child(head(tr!("Controller"), Some(PAD_W)))
+                    .child(head(tr!("Keyboard"), Some(KEY_W))),
+            )
+        });
     let lines = match show {
         Show::InGame => {
             if !d.overlay.prefs.enabled {
@@ -1006,7 +1018,7 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
         Show::Console => console(d, cx),
     };
     for (i, l) in lines.into_iter().enumerate() {
-        table = table.child(line_el(i, l, picked, cx));
+        table = table.child(line_el(i, l, picked, narrow, cx));
     }
     if show == Show::InGame && supported(Feature::Overlay) {
         let note = if cfg!(windows) {
@@ -1024,7 +1036,7 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
                 .border_t_1()
                 .border_color(theme::row_separator())
                 .child(div().pt(px(1.)).child(icon(Icon::InfoOutlined, px(14.), theme::text_dim())))
-                .child(div().flex_1().text_size(px(12.)).line_height(px(17.)).text_color(theme::text_muted()).child(note)),
+                .child(div().flex_1().min_w_0().text_size(px(12.)).line_height(px(17.)).text_color(theme::text_muted()).child(note)),
         );
     }
     table

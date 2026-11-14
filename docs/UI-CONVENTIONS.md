@@ -47,7 +47,14 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
 - Settings: there is ONE place, the ☰ Settings page (`app/src/pages/settings/`, Ctrl ,). The left nav is grouped under captions
   (`Section::GROUPS`): App (General, Appearance, Console mode, Controller), Games (Game defaults, Downloads, Other launchers),
   Collection (Library, Metadata, Achievements), While playing (Overlay, Screenshots, Replay), Data (Storage, Saves,
-  Backups), System (Advanced, Logs, About). Controller (`controls/`, `Section::Controls`): the controller found (looked
+  Backups), System (Advanced, Logs, About). Under 1000px of window the list is a column of icons
+  (`SettingsPage::rail`, names in tooltips) and its search button, Ctrl F or typing opens the whole list over the page
+  until an item is picked (`nav_overlay`). A section lays its blocks out from `settings::room(window)` (the width its
+  column gets), never from the window's width: side columns go under (Replay), tables lose their columns (Controller,
+  Metadata's sources), grids lose a column (Achievements' emulators), and the Controller's drawing hides under 640px.
+  A `controls::row` wraps its control under the label when both do not fit (the label keeps 200px); hand-made rows
+  do the same with `flex_wrap` + a `flex_basis` on the text, and text beside something else gets `min_w_0()` so it
+  wraps instead of spilling. Check a section at 640px, ~780px and 1000px (`scripts/shot.sh` + a resize). Controller (`controls/`, `Section::Controls`): the controller found (looked
   for again every 3 s while the page shows) with the layout its name says, then "Buttons drawn as" and "Confirm button",
   the controller's options (`ConsolePrefs::controller`, not a theme's: console mode, the overlay and this page follow
   them; mirrored in `ui-state.json` so the overlay never reads `console.json`). Both are automatic by default: the
