@@ -213,10 +213,23 @@ pub fn twins(candidates: &[Candidate<'_>], owned: &SteamOwnedFile) -> HashMap<St
     out
 }
 
-/// Whether this app added the entry by itself ([`AUTO_KEY`]): a Steam game
-/// from the library or found installed. A Steam game the user added is not.
+/// Whether this app added the entry by itself: a Steam game from the library
+/// or found installed. A Steam game the user added, or a Playnite import's,
+/// is not.
+///
+/// Entries added since [`AUTO_KEY`] existed carry it. Earlier scans of the
+/// installed games wrote the same entry without it, but always with the
+/// Playnite id `steam_<app id>` (the entry's own app name): Playnite's own ids
+/// are GUIDs, so that pair never belongs to an import.
 pub fn added_by_app(meta: &LocalGameMeta) -> bool {
-    meta.launch_kind == "steam-uri" && meta.extra.get(AUTO_KEY) == Some(&serde_json::Value::Bool(true))
+    if meta.launch_kind != "steam-uri" {
+        return false;
+    }
+    if meta.extra.get(AUTO_KEY) == Some(&serde_json::Value::Bool(true)) {
+        return true;
+    }
+    let id = meta.steam_app_id.as_deref().filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()));
+    id.is_some_and(|id| meta.app_name == format!("steam_{id}") && meta.playnite_id == meta.app_name && meta.source == "steam")
 }
 
 /// The app names of the Steam entries this app added to the Collection:
@@ -352,6 +365,16 @@ mod tests {
         m
     }
 
+    /// A `steam-uri` entry without the mark, as the first scans wrote it.
+    fn old_scan(app: &str, playnite_id: &str) -> LocalGameMeta {
+        let id = app.strip_prefix("steam_").unwrap();
+        let mut m = meta(app, "steam-uri", false);
+        m.source = "steam".into();
+        m.steam_app_id = Some(id.into());
+        m.playnite_id = playnite_id.into();
+        m
+    }
+
     #[test]
     fn only_the_steam_entries_the_app_added_are_selected() {
         let mut file = LocalMetaFile::default();
@@ -365,10 +388,14 @@ mod tests {
             meta("sideload_b", "executable", false),
             // The mark alone is not enough: the entry has to start a Steam game.
             meta("sideload_c", "executable", true),
+            // Added by the scan of the installed games before the mark existed.
+            old_scan("steam_730", "steam_730"),
+            // A Playnite import: same app name, a GUID for the Playnite id.
+            old_scan("steam_900", "2960f4cd-04a7-4847-a6f5-debcc7e11da3"),
         ] {
             file.games.insert(m.app_name.clone(), m);
         }
-        assert_eq!(added_entries(&file), ["steam_620"]);
+        assert_eq!(added_entries(&file), ["steam_620", "steam_730"]);
         assert!(added_entries(&LocalMetaFile::default()).is_empty());
     }
 

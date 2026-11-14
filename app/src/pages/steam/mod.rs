@@ -79,8 +79,11 @@ impl SteamPage {
             s.reload(cx);
         });
         let mut this = Self { svc, console_list: Default::default(), confirm_remove: false, layer: Default::default(), _subs: subs };
-        // `HERONITE_DEBUG_STEAM_REMOVE=1` shows the confirmation of "Remove Steam games" (for screenshots).
-        if crate::env::flag("HERONITE_DEBUG_STEAM_REMOVE") {
+        // `HERONITE_DEBUG_STEAM_REMOVE=busy` shows "Removing…" without removing anything (for screenshots).
+        if crate::env::value("HERONITE_DEBUG_STEAM_REMOVE").as_deref() == Some("busy") {
+            this.svc.update(cx, |s, _| s.removing = true);
+        } else if crate::env::flag("HERONITE_DEBUG_STEAM_REMOVE") {
+            // Any other value shows the confirmation of "Remove Steam games".
             this.confirm_remove = true;
             if crate::console::active() {
                 cx.spawn(async move |this, cx| {
@@ -252,11 +255,27 @@ impl SteamPage {
             return Some((e.clone(), true));
         }
         match &s.removal {
-            Some(Ok(n)) => {
-                return Some((
-                    trn!(*n, "Removed {n} Steam game from the Collection.", "Removed {n} Steam games from the Collection.").to_string(),
-                    false,
-                ))
+            Some(Ok(r)) => {
+                let mut said = Vec::new();
+                if r.removed > 0 {
+                    said.push(
+                        trn!(r.removed, "Removed {n} Steam game from the Collection.", "Removed {n} Steam games from the Collection.")
+                            .to_string(),
+                    );
+                }
+                if r.running > 0 {
+                    said.push(
+                        trn!(
+                            r.running,
+                            "{n} Steam game is running and stays. Remove it once it closes.",
+                            "{n} Steam games are running and stay. Remove them once they close."
+                        )
+                        .to_string(),
+                    );
+                }
+                if !said.is_empty() {
+                    return Some((said.join(" "), false));
+                }
             }
             Some(Err(e)) => return Some((tr!("Could not remove every Steam game: {err}", err = e.as_str()), true)),
             None => {}
@@ -306,13 +325,14 @@ impl SteamPage {
             self.explanation(cx).map(|text| (text, if stuck || state == SteamState::Failed { Tone::Warning } else { Tone::Neutral }));
         let reading = self.svc.read(cx).enabled();
         let mut actions: Vec<AnyElement> = button.into_iter().collect();
-        if self.can_remove(cx) && !self.confirm_remove {
+        let removing = self.svc.read(cx).removing;
+        if removing || (self.can_remove(cx) && !self.confirm_remove) {
             actions.push(
                 action_button(
                     "steam-remove",
                     ButtonKind::Glass,
-                    tr!("Remove Steam games"),
-                    true,
+                    if removing { tr!("Removing\u{2026}") } else { tr!("Remove Steam games") },
+                    !removing,
                     cx.listener(|this, _, _, cx| {
                         this.confirm_remove = true;
                         cx.notify();

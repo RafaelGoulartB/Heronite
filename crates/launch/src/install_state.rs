@@ -232,11 +232,11 @@ pub fn refresh_local_install_states(paths: &DataPaths, probe: &dyn Probe) -> any
             known.insert(id.to_string());
         }
     }
-    // Settings → Stores → Steam: off, no Steam game is added by itself.
-    let reading = heronite_data::settings::read_steam_library(paths);
-    let owned_changed = reading && refresh_owned_installs(paths, &installed_steam)?;
+    // The cache keeps mirroring the manifests (the entries that stay need it);
+    // only adding games is turned off with Stores → Steam's switch.
+    let owned_changed = refresh_owned_installs(paths, &installed_steam)?;
     let mut new_steam = Vec::new();
-    let mut installed_games = if reading { list_installed_games(&locator) } else { Vec::new() };
+    let mut installed_games = if heronite_data::settings::read_steam_library(paths) { list_installed_games(&locator) } else { Vec::new() };
     // Once the client was read, its list says what is a game: tools stay
     // out (a game bought since is added by the next read of the library).
     // So do games hidden in Steam: the read of the library adds them, hidden.
@@ -547,9 +547,18 @@ mod tests {
         .unwrap();
         let paths = DataPaths::at(dir.path().join("heroic"));
         heronite_data::settings::save_read_steam_library(&paths, false).unwrap();
+        // The cached library says game 400 is installed; its manifest is gone.
+        std::fs::create_dir_all(paths.steam_owned().parent().unwrap()).unwrap();
+        std::fs::write(
+            paths.steam_owned(),
+            r#"{"games":[{"appId":"400","name":"Portal","installed":true},{"appId":"620","name":"Portal 2"}],"updatedAt":"x"}"#,
+        )
+        .unwrap();
         let probe = FakeProbe::new(home.to_str().unwrap()).with_steam_roots(vec![home.join(".steam/steam")]);
-        assert!(!refresh_local_install_states(&paths, &probe).unwrap().changed());
+        // Nothing is added, but what stays keeps following the manifests.
+        assert_eq!(refresh_local_install_states(&paths, &probe).unwrap().added, 0);
         assert!(!paths.local_meta().exists() || json_store::read::<LocalMetaFile>(&paths.local_meta()).unwrap().games.is_empty());
+        assert!(!heronite_data::steam_owned::SteamOwnedFile::read(&paths).games[0].installed);
         // On again: the installed game comes in.
         heronite_data::settings::save_read_steam_library(&paths, true).unwrap();
         assert_eq!(refresh_local_install_states(&paths, &probe).unwrap().added, 1);

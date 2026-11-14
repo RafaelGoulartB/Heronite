@@ -634,12 +634,11 @@ pub fn read_steam_library(paths: &DataPaths) -> bool {
     json_store::read::<CollectionSettingsFile>(&paths.collection_settings()).map_or(true, |f| f.read_steam_library != Some(false))
 }
 
-pub fn save_read_steam_library(paths: &DataPaths, on: bool) -> Result<EffectiveSettings> {
+pub fn save_read_steam_library(paths: &DataPaths, on: bool) -> Result<()> {
     json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |file| {
         file.read_steam_library = Some(on);
         Ok(())
-    })?;
-    load(paths)
+    })
 }
 
 /// `setCollectionMetadataSettings`: `patch` replaces the metadata section after
@@ -825,9 +824,10 @@ mod tests {
         assert!(!s.video_autoplay);
         assert!(save_video_autoplay(&paths, true).unwrap().video_autoplay);
         assert!(s.read_steam_library && read_steam_library(&paths));
-        assert!(!save_read_steam_library(&paths, false).unwrap().read_steam_library);
-        assert!(!read_steam_library(&paths));
-        assert!(save_read_steam_library(&paths, true).unwrap().read_steam_library);
+        save_read_steam_library(&paths, false).unwrap();
+        assert!(!read_steam_library(&paths) && !load(&paths).unwrap().read_steam_library);
+        save_read_steam_library(&paths, true).unwrap();
+        assert!(read_steam_library(&paths) && load(&paths).unwrap().read_steam_library);
         assert_eq!(s.store_media_kinds, StoreMediaKinds::Both);
         assert_eq!(save_store_media_kinds(&paths, StoreMediaKinds::Videos).unwrap().store_media_kinds, StoreMediaKinds::Videos);
         assert_eq!(StoreMediaKinds::parse("bogus"), StoreMediaKinds::Both);

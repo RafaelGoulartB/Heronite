@@ -88,5 +88,7 @@
   "Removed {n} Steam games from the Collection.": "{n} jeux Steam retirés de la Collection.",
   "Could not remove every Steam game: {err}": "Impossible de retirer tous les jeux Steam : {err}",
   "Reading Steam is off": "La lecture de Steam est désactivée",
-  "Reading your Steam library is off. Turn it on in the Stores, on the Steam page.": "La lecture de votre bibliothèque Steam est désactivée. Activez-la dans Boutiques, sur la page Steam."
+  "Reading your Steam library is off. Turn it on in the Stores, on the Steam page.": "La lecture de votre bibliothèque Steam est désactivée. Activez-la dans Boutiques, sur la page Steam.",
+  "{n} Steam game is running and stays. Remove it once it closes.": "{n} jeu Steam est en cours d’exécution et reste. Retirez-le une fois fermé.",
+  "{n} Steam games are running and stay. Remove them once they close.": "{n} jeux Steam sont en cours d’exécution et restent. Retirez-les une fois fermés."
 }
