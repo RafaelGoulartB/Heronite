@@ -221,38 +221,7 @@ impl CollectionView {
                 self.close_palette(window, cx);
                 return true;
             }
-            if ctrl && key == "enter" {
-                view.update(cx, |p, cx| p.open_selected_game(cx));
-                return true;
-            }
-            let plain = !m.control && !m.alt && !m.platform;
-            if !plain {
-                return false;
-            }
-            match key {
-                "escape" => {
-                    if !view.update(cx, |p, cx| p.back(window, cx)) {
-                        self.close_palette(window, cx);
-                    }
-                }
-                // In the empty box of a game's actions: back to the main list.
-                "backspace" if view.read(cx).in_game() && view.read(cx).query_is_empty() => {
-                    view.update(cx, |p, cx| p.back(window, cx));
-                }
-                // On a game: its actions (else the input moves its caret).
-                "right" => return view.update(cx, |p, cx| p.open_selected_game(cx)),
-                "up" => view.update(cx, |p, cx| p.move_selection(-1, cx)),
-                "down" => view.update(cx, |p, cx| p.move_selection(1, cx)),
-                "pageup" => view.update(cx, |p, cx| p.move_selection(-8, cx)),
-                "pagedown" => view.update(cx, |p, cx| p.move_selection(8, cx)),
-                "tab" => {
-                    let back = m.shift;
-                    view.update(cx, |p, cx| p.cycle_filter(back, cx));
-                }
-                "enter" => view.update(cx, |p, cx| p.activate(cx)),
-                _ => return false,
-            }
-            return true;
+            return view.update(cx, |p, cx| p.key(ks, window, cx));
         }
         // Closed: global shortcuts, unless something modal is up.
         if self.modal_open(cx) {
