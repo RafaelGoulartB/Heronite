@@ -355,6 +355,10 @@ impl CoversDialog {
             }))
             .child(body)
             .children(self.layer.view())
+            // The dialog's buttons are not obvious (Y, X and Start), so its bar
+            // shows whatever the theme's hints say. When the shell draws its own
+            // it covers this one at the same place.
+            .child(div().absolute().left_0().right_0().bottom_0().child(kit::hint_bar(&self.hints(cx)).bg(theme::console_bg())))
             .into_any_element()
     }
 }
