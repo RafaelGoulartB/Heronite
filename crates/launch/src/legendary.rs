@@ -110,7 +110,7 @@ fn option_flags(ctx: &PlanContext, game: &GameInfo, s: &GameSettings, opts: &Lau
     } else if !s.target_exe.is_empty() {
         args.extend(["--override-exe".into(), s.target_exe.clone()]);
     }
-    if s.offline_mode {
+    if s.offline_mode || opts.offline {
         args.push("--offline".into());
     }
     if flag(&game.rest, "isEAManaged") {
@@ -487,6 +487,18 @@ mod tests {
         let anyway = LaunchOptions { skip_version_check: true, ..Default::default() };
         let process = legendary_process(&p, &s, &anyway);
         assert!(process.command.args.contains(&"--skip-version-check".to_string()));
+    }
+
+    #[test]
+    fn play_offline_passes_offline_once() {
+        let p = probe();
+        let s = settings(json!({}));
+        let offline = "--offline".to_string();
+        assert!(!legendary_process(&p, &s, &Default::default()).command.args.contains(&offline));
+        let once = LaunchOptions { offline: true, ..Default::default() };
+        assert_eq!(legendary_process(&p, &s, &once).command.args.iter().filter(|a| **a == offline).count(), 1);
+        let both = settings(json!({"offlineMode": true}));
+        assert_eq!(legendary_process(&p, &both, &once).command.args.iter().filter(|a| **a == offline).count(), 1);
     }
 
     #[test]
