@@ -27,6 +27,9 @@ pub struct CollectionSettingsFile {
     /// Size of the store videos kept so they start at once, in MB (0 = none).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub video_cache_limit_mb: Option<u32>,
+    /// The focused game's first trailer plays by itself, without sound.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video_autoplay: Option<bool>,
     #[serde(flatten)]
     pub extra: Extra,
 }

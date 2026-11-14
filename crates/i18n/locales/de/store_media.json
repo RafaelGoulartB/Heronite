@@ -10,5 +10,9 @@
   "The trailer could not be loaded.": "Der Trailer konnte nicht geladen werden.",
   "The trailer could not be played.": "Der Trailer konnte nicht abgespielt werden.",
   "Video cache": "Video-Cache",
-  "The first seconds of the trailers of the installed games you visit, so they start at once. Trailers are never downloaded whole: the rest streams while they play.": "Die ersten Sekunden der Trailer der installierten Spiele, die du ansiehst, damit sie sofort starten. Trailer werden nie ganz heruntergeladen: Der Rest wird beim Abspielen gestreamt."
+  "The first seconds of the trailers of the installed games you visit, so they start at once. Trailers are never downloaded whole: the rest streams while they play.": "Die ersten Sekunden der Trailer der installierten Spiele, die du ansiehst, damit sie sofort starten. Trailer werden nie ganz heruntergeladen: Der Rest wird beim Abspielen gestreamt.",
+  "Play trailers by themselves": "Trailer automatisch abspielen",
+  "The first trailer of the game you pick starts without sound. Off, a trailer plays when you press it, also without sound.": "Der erste Trailer des gewählten Spiels startet ohne Ton. Aus startet ein Trailer erst, wenn du ihn drückst, ebenfalls ohne Ton.",
+  "Add links…": "Links hinzufügen…",
+  "No links yet. Add the game's sites from its title.": "Noch keine Links. Füge die Seiten des Spiels über den Titel hinzu."
 }

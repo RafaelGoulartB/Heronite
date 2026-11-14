@@ -126,6 +126,26 @@ pub(super) fn section_label(s: Section) -> &'static str {
 /// Sizes offered for the store videos kept on this PC, in MB (0 = none).
 const VIDEO_CACHE_SIZES: [u32; 5] = [0, 25, 50, 100, 250];
 
+/// Under "Store media": whether the first trailer plays by itself.
+fn autoplay_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    let on = d.settings.video_autoplay;
+    div()
+        .pl(px(20.))
+        .child(
+            toggle_row(
+                "video-autoplay",
+                tr!("Play trailers by themselves"),
+                Some(tr!("The first trailer of the game you pick starts without sound. Off, a trailer plays when you press it, also without sound.")),
+                on,
+            )
+            .on_click(cx.listener(move |d, _, _, cx| {
+                let res = heronite_data::settings::save_video_autoplay(&d.ctx.data_paths, !on);
+                d.saved(res, cx);
+            })),
+        )
+        .into_any_element()
+}
+
 /// Under "Store media": how much of the trailers stays on this PC.
 fn video_cache_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
     let now = d.settings.video_cache_limit_mb;
@@ -777,6 +797,7 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
                 .into_any_element(),
         );
         if section == Section::Media && shown {
+            rows.push(autoplay_row(d, cx));
             rows.push(video_cache_row(d, cx));
         }
     }

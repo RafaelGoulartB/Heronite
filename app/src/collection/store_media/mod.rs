@@ -102,8 +102,9 @@ pub(super) struct StoreMediaUi {
     pick: usize,
     strip: ScrollHandle,
     player: Option<Player>,
-    /// Sound on for the trailers played (until the app closes).
-    muted: bool,
+    /// The list was read with autoplay on: the first trailer starts once
+    /// the section is drawn.
+    autoplay: bool,
     /// The section was drawn since the last frame (else a trailer stops).
     drawn: bool,
     /// Textures of frames shown before, dropped on the next frame.
@@ -186,6 +187,9 @@ impl CollectionView {
         if self.media.player.as_ref().is_some_and(|p| p.stream.is_some()) && (!drawn || game_started) {
             self.media_pause(cx);
         }
+        if drawn && std::mem::take(&mut self.media.autoplay) && self.media.pick == 0 && self.media.player.is_none() {
+            self.media_play(0, 0., false, cx);
+        }
         if !shown() || crate::console::active() {
             if self.media.game.is_some() {
                 self.media.reset();
@@ -230,6 +234,8 @@ impl CollectionView {
                 if installed {
                     this.keep_first_trailer(cx);
                 }
+                let autoplay = this.lib.as_ref().is_some_and(|l| l.settings.video_autoplay);
+                this.media.autoplay = autoplay && matches!(&this.media.list, List::Ready(m) if !m.videos.is_empty());
                 this.media_debug(cx);
                 cx.notify();
             })
@@ -263,8 +269,7 @@ impl CollectionView {
     fn media_debug(&mut self, cx: &mut Context<Self>) {
         let Some(spec) = crate::env::value("HERONITE_DEBUG_MEDIA") else { return };
         if spec == "play" || spec == "paused" {
-            self.media.muted = true;
-            self.media_play(0, 0., cx);
+            self.media_play(0, 0., false, cx);
         }
         if spec == "paused" {
             cx.spawn(async move |this, cx| {
@@ -288,16 +293,16 @@ impl CollectionView {
     }
 
     /// The trailer on the stage: plays it from where it stopped (from the
-    /// start once it ended), or pauses it.
+    /// start once it ended, always without sound), or pauses it.
     pub(super) fn media_toggle_play(&mut self, cx: &mut Context<Self>) {
         let video = self.media.pick;
         match &self.media.player {
             Some(p) if p.video == video && matches!(p.state, PlayState::Playing | PlayState::Loading) => self.media_pause(cx),
             Some(p) if p.video == video && p.state == PlayState::Paused => {
-                let at = p.position();
-                self.media_play(video, at, cx);
+                let (at, sound) = (p.position(), p.sound);
+                self.media_play(video, at, sound, cx);
             }
-            _ => self.media_play(video, 0., cx),
+            _ => self.media_play(video, 0., false, cx),
         }
     }
 
@@ -319,27 +324,32 @@ impl CollectionView {
             return;
         }
         let at = (p.seconds * fraction.clamp(0., 1.) as f64).min((p.seconds - 1.).max(0.));
-        self.media_play(p.video, at, cx);
+        let (video, sound) = (p.video, p.sound);
+        self.media_play(video, at, sound, cx);
     }
 
+    /// Sound on or off for the trailer on the stage (it starts again where
+    /// it is; a paused one keeps it for when it plays).
     pub(super) fn media_toggle_sound(&mut self, cx: &mut Context<Self>) {
-        self.media.muted = !self.media.muted;
-        if let Some(p) = self.media.player.as_ref().filter(|p| p.stream.is_some()) {
-            let (video, at) = (p.video, p.position());
-            self.media_play(video, at, cx);
+        let Some(p) = self.media.player.as_mut() else { return };
+        p.sound = !p.sound;
+        if p.stream.is_some() {
+            let (video, at, sound) = (p.video, p.position(), p.sound);
+            self.media_play(video, at, sound, cx);
         }
         cx.notify();
     }
 
-    /// Starts the trailer `video` at `at` seconds: its playlists first (the
-    /// kept start read from this PC), then the stream.
-    fn media_play(&mut self, video: usize, at: f64, cx: &mut Context<Self>) {
+    /// Starts the trailer `video` at `at` seconds, with `sound` or muted:
+    /// its playlists first (the kept start read from this PC), then the
+    /// stream. A trailer started from the beginning is always muted.
+    fn media_play(&mut self, video: usize, at: f64, sound: bool, cx: &mut Context<Self>) {
         let List::Ready(m) = &self.media.list else { return };
         let Some(v) = m.videos.get(video).cloned() else { return };
         let app_id = self.media.app_id.clone();
         self.media.generation += 1;
         let generation = self.media.generation;
-        let sound = !self.media.muted && heronite_media::stream::sound_supported();
+        let sound = sound && heronite_media::stream::sound_supported();
         let (frame, playable, seconds) = match self.media.player.take() {
             Some(p) if p.video == video => (p.frame, p.playable, p.seconds),
             Some(p) => {

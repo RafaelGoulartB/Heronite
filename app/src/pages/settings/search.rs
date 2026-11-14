@@ -90,6 +90,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Panel widths",
             "Game sections",
             "Store media",
+            "Play trailers by themselves",
             "Video cache",
         ],
     ),

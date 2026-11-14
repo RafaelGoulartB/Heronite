@@ -1,6 +1,8 @@
 //! "Links" in the focus panel's side column and the grid's drawer: one
 //! icon per store page or site of the focused game
 //! (`heronite_data::game_links`), its name on hover, opened in the browser.
+//! Its title is a menu like Details' ("Add links…": the Websites of Game
+//! settings → Details), so a game without a link still shows the section.
 //! Off until turned on in Settings → Appearance → Game sections.
 
 use gpui_kit::prelude::*;
@@ -9,8 +11,11 @@ use heronite_data::appearance::Section;
 use heronite_data::game_links::{links, GameLink, LinkKind};
 use heronite_i18n::tr;
 
-use super::focus::h3;
+use std::rc::Rc;
+
+use super::focus::{hover_section, section_title, MenuEntry, TitleMenu};
 use super::CollectionView;
+use crate::dialogs::game_settings::Tab as GameTab;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::{icon, tooltip};
@@ -81,8 +86,8 @@ fn link_name(link: &GameLink) -> String {
 }
 
 impl CollectionView {
-    /// The section for the game `key`; `None` when it is off or the game
-    /// has no link.
+    /// The section for the game `key` (`None` when it is off); its title
+    /// opens "Add links…", the game's Websites in Game settings.
     pub(super) fn links_section(&self, key: &str, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !theme::appearance().sections.shown(Section::Links) {
             return None;
@@ -94,9 +99,7 @@ impl CollectionView {
             games[..=i].rotate_right(1);
         }
         let found = links(&games, cfg!(target_os = "linux"));
-        if found.is_empty() {
-            return None;
-        }
+        let empty = found.is_empty();
         let row = found.into_iter().enumerate().fold(div().flex().flex_wrap().gap(px(8.)), |row, (i, link)| {
             let url = link.url.clone();
             row.child(
@@ -118,6 +121,33 @@ impl CollectionView {
                     .on_click(cx.listener(move |this, _, _, cx| this.open_url(url.clone(), cx))),
             )
         });
-        Some(div().flex().flex_col().child(h3(tr!("Links"))).child(row).into_any_element())
+        let weak = cx.entity().downgrade();
+        let entries = vec![MenuEntry {
+            id: "add",
+            icon: Icon::Add,
+            label: tr!("Add links…").into(),
+            run: Rc::new(move |window: &mut Window, cx: &mut App| {
+                weak.update(cx, |this, cx| this.open_game_settings_tab(GameTab::Game, window, cx)).ok();
+            }),
+            separated: false,
+        }];
+        let on_title = self.on_title(cx);
+        let title = section_title(TitleMenu::Links, tr!("Links"), self.facts.titles, entries, &on_title);
+        let body = if empty {
+            div()
+                .text_size(px(13.))
+                .text_color(theme::text_muted())
+                .child(tr!("No links yet. Add the game's sites from its title."))
+                .into_any_element()
+        } else {
+            row.into_any_element()
+        };
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .child(hover_section("focus-links", TitleMenu::Links, &on_title).child(title).child(body))
+                .into_any_element(),
+        )
     }
 }

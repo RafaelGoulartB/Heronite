@@ -1369,7 +1369,9 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   title row says "6 videos · 8 screenshots" and has a "Steam ↗" link to the store page. A trailer shows its still and
   a 64px play button; playing (`heronite_media::stream`, ffmpeg at 480p and 30 fps, sound through PulseAudio /
   PipeWire on Linux only), its name and a bar (play / pause, time, seek bar, sound) fade in while the pointer is over
-  the stage; paused they stay. Arrows on the stage's sides step through the items. It stops when the game is no
+  the stage; paused they stay. Every trailer starts without sound (the sound button turns it on for that trailer);
+  "Play trailers by themselves" (a sub-row of Store media, `videoAutoplay`, off by default) starts the focused game's
+  first trailer once the section is drawn. Arrows on the stage's sides step through the items. It stops when the game is no
   longer focused, when the section is not drawn (another page, the drawer closed, the section off) and when a game
   starts. A failure says so on the stage with "Watch on the store page".
 - Only the lists (3 days) and the first 15 s of the first trailer of the installed games visited are kept, under
@@ -1379,7 +1381,8 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
 - "Links" (`collection/links.rs`, side column with Details) is a row of 38px icon buttons, one per store page or site
   (`heronite_data::game_links`: the game's own store page, its Steam app id, its metadata's websites, SteamDB,
   PCGamingWiki and, on Linux, ProtonDB); the hover names it (a site with no icon of its own by its host), a click
-  opens it in the browser.
+  opens it in the browser. Its title is a menu like Details' (chevron on hover): "Add links…" opens Game settings on
+  the tab with Websites; a game without links shows "No links yet." under it.
 - `HERONITE_DEBUG_MEDIA=play|paused|pick:<n>` plays the first trailer without sound (`paused`: pauses it after 5 s)
   or picks item `n` once the list is read.
 
