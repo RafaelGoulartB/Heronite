@@ -39,7 +39,7 @@ mod launch_problem;
 mod launch_progress;
 mod launchers;
 mod library_sync;
-mod links;
+pub(crate) mod links;
 mod list;
 mod list_heights;
 mod list_row;

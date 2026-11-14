@@ -1382,8 +1382,11 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
 - "Links" (`collection/links.rs`, side column with Details) is a row of 38px icon buttons, one per store page or site
   (`heronite_data::game_links`: the game's own store page, its Steam app id, its metadata's websites, SteamDB,
   PCGamingWiki and, on Linux, ProtonDB); the hover names it (a site with no icon of its own by its host), a click
-  opens it in the browser. Its title is a menu like Details' (chevron on hover): "Add links…" opens Game settings on
-  the tab with Websites; a game without links shows "No links yet." under it.
+  opens it in the browser. Its title is a menu like Details' (chevron on hover): "Add links…" opens "Links of <game>"
+  (`dialogs/game_links.rs`, `HERONITE_DEBUG_DIALOG=links`): a field for a web address (`https://` added when it has
+  none) with Add, then the game's own links (its metadata's websites) with a remove button and the ones found by
+  themselves with a "Found by itself" pill; each change is saved at once. A game without links shows "No links yet."
+  under the title.
 - `HERONITE_DEBUG_MEDIA=play|paused|pick:<n>` plays the first trailer without sound (`paused`: pauses it after 5 s)
   or picks item `n` once the list is read.
 

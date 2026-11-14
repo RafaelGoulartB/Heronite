@@ -1,8 +1,9 @@
 //! "Links" in the focus panel's side column and the grid's drawer: one
 //! icon per store page or site of the focused game
 //! (`heronite_data::game_links`), its name on hover, opened in the browser.
-//! Its title is a menu like Details' ("Add links…": the Websites of Game
-//! settings → Details), so a game without a link still shows the section.
+//! Its title is a menu like Details' ("Add links…" opens the game's links
+//! in `dialogs/game_links.rs`), so a game without a link still shows the
+//! section.
 //! Off until turned on in Settings → Appearance → Game sections.
 
 use gpui_kit::prelude::*;
@@ -15,12 +16,11 @@ use std::rc::Rc;
 
 use super::focus::{hover_section, section_title, MenuEntry, TitleMenu};
 use super::CollectionView;
-use crate::dialogs::game_settings::Tab as GameTab;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::{icon, tooltip};
 
-fn link_icon(kind: LinkKind) -> Icon {
+pub(crate) fn link_icon(kind: LinkKind) -> Icon {
     match kind {
         LinkKind::Steam => Icon::BrandSteam,
         LinkKind::Epic => Icon::BrandEpicGames,
@@ -52,7 +52,7 @@ fn link_icon(kind: LinkKind) -> Icon {
 }
 
 /// What the link's hover says: the store or site, by its own name.
-fn link_name(link: &GameLink) -> String {
+pub(crate) fn link_name(link: &GameLink) -> String {
     let name = match link.kind {
         LinkKind::Steam => "Steam",
         LinkKind::Epic => "Epic Games Store",
@@ -86,8 +86,22 @@ fn link_name(link: &GameLink) -> String {
 }
 
 impl CollectionView {
+    /// "Links of …": the game's links, to add and remove its own.
+    pub(super) fn open_game_links(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
+        let copies = self.with_copies(key);
+        let mut games: Vec<&heronite_data::CollectionGame> = copies.iter().map(|g| &**g).collect();
+        if let Some(i) = games.iter().position(|g| g.key == key) {
+            games[..=i].rotate_right(1);
+        }
+        let found = links(&games, cfg!(target_os = "linux"));
+        let service = crate::dialogs::metadata_wizard::hub(cx).read(cx).service.clone();
+        let view = cx.new(|cx| crate::dialogs::game_links::GameLinksDialog::new(&game, found, service, window, cx));
+        self.open_dialog(view, cx);
+    }
+
     /// The section for the game `key` (`None` when it is off); its title
-    /// opens "Add links…", the game's Websites in Game settings.
+    /// opens "Add links…".
     pub(super) fn links_section(&self, key: &str, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !theme::appearance().sections.shown(Section::Links) {
             return None;
@@ -126,8 +140,11 @@ impl CollectionView {
             id: "add",
             icon: Icon::Add,
             label: tr!("Add links…").into(),
-            run: Rc::new(move |window: &mut Window, cx: &mut App| {
-                weak.update(cx, |this, cx| this.open_game_settings_tab(GameTab::Game, window, cx)).ok();
+            run: Rc::new({
+                let key = key.to_string();
+                move |window: &mut Window, cx: &mut App| {
+                    weak.update(cx, |this, cx| this.open_game_links(&key, window, cx)).ok();
+                }
             }),
             separated: false,
         }];

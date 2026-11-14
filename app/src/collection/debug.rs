@@ -372,6 +372,11 @@ impl CollectionView {
                     self.open_achievements(&key, window, cx);
                 }
             }
+            "links" => {
+                if let Some(key) = self.selected.as_ref().map(|k| k.to_string()) {
+                    self.open_game_links(&key, window, cx);
+                }
+            }
             "viewlog" => {
                 if let Some(key) = self.selected.as_ref().map(|k| k.to_string()) {
                     self.open_game_log(&key, cx);

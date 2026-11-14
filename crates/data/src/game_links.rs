@@ -106,6 +106,33 @@ fn host_of(url: &str) -> Option<String> {
     (!host.is_empty() && host.contains('.')).then(|| host.to_owned())
 }
 
+/// A web address the user typed, made whole (`https://` when it has no
+/// scheme) and told by its host; `None` for anything that is not a web
+/// address with a host.
+pub fn classify(typed: &str) -> Option<GameLink> {
+    let typed = typed.trim();
+    if typed.is_empty() || typed.contains(char::is_whitespace) {
+        return None;
+    }
+    let lower = typed.to_ascii_lowercase();
+    let url = if lower.starts_with("http://") || lower.starts_with("https://") {
+        typed.to_owned()
+    } else if typed.contains("://") {
+        return None;
+    } else {
+        format!("https://{typed}")
+    };
+    let host = host_of(&url)?;
+    let kind = LinkKind::of_host(&host).unwrap_or(LinkKind::Website);
+    Some(GameLink { kind, url, host })
+}
+
+/// Whether Links shows `link`: social networks are left out, even typed
+/// by hand.
+pub fn is_shown(link: &GameLink) -> bool {
+    LinkKind::of_host(&link.host).is_some()
+}
+
 /// The links of a game, from all its `copies` (the card's own first): the
 /// stores, then the sites about it, then its communities. One per kind
 /// (the first found), but up to [`MAX_WEBSITES`] sites without an icon.
@@ -168,6 +195,20 @@ mod tests {
         assert_eq!(host_of("http://user@store.steampowered.com:443/app/1").as_deref(), Some("store.steampowered.com"));
         assert_eq!(host_of("file:///etc/passwd"), None);
         assert_eq!(host_of("https://localhost/"), None);
+    }
+
+    #[test]
+    fn typed_addresses_are_completed() {
+        let l = classify(" steamdb.info/app/620 ").unwrap();
+        assert_eq!((l.kind, l.url.as_str()), (LinkKind::SteamDb, "https://steamdb.info/app/620"));
+        assert_eq!(classify("http://Example.org/x").unwrap().host, "example.org");
+        let social = classify("https://facebook.com/x").unwrap();
+        assert_eq!(social.kind, LinkKind::Website);
+        assert!(!is_shown(&social));
+        assert!(is_shown(&l));
+        assert!(classify("ftp://x.org").is_none());
+        assert!(classify("not a link").is_none());
+        assert!(classify("localhost").is_none());
     }
 
     #[test]

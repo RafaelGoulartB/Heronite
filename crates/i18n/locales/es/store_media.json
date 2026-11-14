@@ -17,5 +17,13 @@
   "No links yet. Add the game's sites from its title.": "Aún no hay enlaces. Añade los sitios del juego desde su título.",
   "Both": "Ambos",
   "Videos": "Vídeos",
-  "The store's trailers, its screenshots, or both.": "Los tráileres de la tienda, sus capturas o ambos."
+  "The store's trailers, its screenshots, or both.": "Los tráileres de la tienda, sus capturas o ambos.",
+  "Type a web address, like https://example.com": "Escribe una dirección web, como https://example.com",
+  "This link is already there.": "Este enlace ya está en la lista.",
+  "Could not save the links: {err}": "No se pudieron guardar los enlaces: {err}",
+  "Found by itself": "Encontrado solo",
+  "No links yet.": "Aún no hay enlaces.",
+  "Store pages, wikis, guides, the official site: each shows as its icon in Links. The store pages and the sites of its Steam app id are found by themselves.": "Páginas de tiendas, wikis, guías, el sitio oficial: cada uno aparece como su icono en Enlaces. Las páginas de tienda y los sitios de su Steam app id se encuentran solos.",
+  "Links of {title}": "Enlaces de {title}",
+  "Not shown in Links": "No aparece en Enlaces"
 }
