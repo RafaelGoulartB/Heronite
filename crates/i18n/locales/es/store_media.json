@@ -25,5 +25,6 @@
   "Links of {title}": "Enlaces de {title}",
   "Not shown in Links": "No aparece en Enlaces",
   "Autoplay trailers": "Reproducir tráileres automáticamente",
-  "The selected game's first trailer starts on its own, muted. Trailers always start muted: turn the sound on from their controls.": "El primer tráiler del juego seleccionado empieza solo, sin sonido. Los tráileres siempre empiezan silenciados: activa el sonido desde sus controles."
+  "The selected game's first trailer starts on its own, muted. Trailers always start muted: turn the sound on from their controls.": "El primer tráiler del juego seleccionado empieza solo, sin sonido. Los tráileres siempre empiezan silenciados: activa el sonido desde sus controles.",
+  "A game keeps at most {n} links.": "Un juego guarda como máximo {n} enlaces."
 }

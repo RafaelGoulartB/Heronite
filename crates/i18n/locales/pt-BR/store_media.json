@@ -25,5 +25,6 @@
   "Links of {title}": "Links de {title}",
   "Not shown in Links": "Não aparece em Links",
   "Autoplay trailers": "Reproduzir trailers automaticamente",
-  "The selected game's first trailer starts on its own, muted. Trailers always start muted: turn the sound on from their controls.": "O primeiro trailer do jogo selecionado começa sozinho, sem som. Os trailers sempre começam mudos: ligue o som pelos controles."
+  "The selected game's first trailer starts on its own, muted. Trailers always start muted: turn the sound on from their controls.": "O primeiro trailer do jogo selecionado começa sozinho, sem som. Os trailers sempre começam mudos: ligue o som pelos controles.",
+  "A game keeps at most {n} links.": "Um jogo guarda no máximo {n} links."
 }

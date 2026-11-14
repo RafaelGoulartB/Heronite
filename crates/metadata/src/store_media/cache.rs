@@ -25,6 +25,8 @@ pub const PREFIX_SECS: f64 = 15.;
 /// 480p keeps the stream near 1.5 Mbit/s.
 pub const MAX_HEIGHT: u32 = 480;
 const USED: &str = ".used";
+/// How recent a change to an unfinished trailer means it is being kept now.
+const IN_PROGRESS: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// What the player opens for a trailer.
 #[derive(Debug, Clone, PartialEq)]
@@ -179,13 +181,19 @@ pub fn size(root: &Path) -> u64 {
 
 /// Deletes the least recently used trailers until they take at most
 /// `limit_bytes` (`last` goes only if it alone is too big). A trailer
-/// never finished (no `.used`) goes first.
+/// never finished (no `.used`) goes first, unless it changed in the last
+/// [`IN_PROGRESS`]: another keep may still be writing it.
 pub fn trim(root: &Path, limit_bytes: u64, last: Option<&Path>) {
     let Ok(entries) = fs::read_dir(videos_dir(root)) else { return };
     let mut dirs: Vec<(bool, SystemTime, u64, PathBuf)> = entries
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.is_dir())
+        .filter(|p| {
+            let unfinished = !p.join(USED).is_file();
+            let changed = fs::metadata(p).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok());
+            !(unfinished && changed.is_some_and(|age| age < IN_PROGRESS))
+        })
         .map(|p| {
             let used = fs::metadata(p.join(USED)).and_then(|m| m.modified()).ok();
             (Some(p.as_path()) == last, used.unwrap_or(SystemTime::UNIX_EPOCH), dir_size(&p), p)

@@ -127,8 +127,9 @@ pub(super) struct StoreMediaUi {
     generation: u64,
     /// Trailers whose start was kept (or asked) this session.
     kept: HashSet<String>,
-    /// Kept files of a section turned off were looked for.
-    swept: bool,
+    /// Whether the section was on at the last frame (`None` before the
+    /// first): turned off, what it kept is deleted.
+    was_shown: Option<bool>,
     /// What the list on screen keeps: videos, screenshots or both.
     kinds: StoreMediaKinds,
     /// When a frame first asked for a draw that has not happened yet.
@@ -214,18 +215,18 @@ impl CollectionView {
         for old in self.media.old_frames.drain(..) {
             let _ = window.drop_image(old);
         }
-        if !self.media.swept {
-            self.media.swept = true;
-            if !shown() {
-                let (app, images) = (self.app_paths.clone(), self.data_paths.images_cache_dir());
-                cx.background_spawn(async move { clear_kept(&app, &images) }).detach();
-            }
+        // Off (at start, or turned off from anywhere), nothing it kept stays.
+        let on = shown();
+        if self.media.was_shown.replace(on) != Some(on) && !on {
+            let (app, images) = (self.app_paths.clone(), self.data_paths.images_cache_dir());
+            cx.background_spawn(async move { clear_kept(&app, &images) }).detach();
         }
         let drawn = std::mem::take(&mut self.media.drawn);
         // A game that starts stops the trailer (one running already does not).
         let games = self.playing.len();
         let game_started = games > std::mem::replace(&mut self.media.games_running, games);
-        if self.media.player.as_ref().is_some_and(|p| p.stream.is_some()) && (!drawn || game_started) {
+        let running = self.media.player.as_ref().is_some_and(|p| p.stream.is_some() || p.state == PlayState::Loading);
+        if running && (!drawn || game_started) {
             self.media_pause(cx);
         }
         if drawn && std::mem::take(&mut self.media.autoplay) && self.media.pick == 0 && self.media.player.is_none() {
@@ -331,14 +332,22 @@ impl CollectionView {
                 return;
             }
             // A thread of its own: idle priority stays with it.
+            let (tx, rx) = futures::channel::oneshot::channel::<bool>();
+            let id = video.id.clone();
             let spawned = std::thread::Builder::new().name("trailer-keep".into()).spawn(move || {
                 heronite_data::proc::idle_priority();
-                if let Err(e) = cache::keep(&Http::new(Endpoints::default()), &dir, &video, u64::from(limit) << 20) {
+                let res = cache::keep(&Http::new(Endpoints::default()), &dir, &video, u64::from(limit) << 20);
+                if let Err(e) = &res {
                     log::info!("could not keep the start of {}: {e:#}", video.name);
                 }
+                let _ = tx.send(res.is_ok());
             });
             if let Err(e) = spawned {
                 log::warn!("trailer-keep thread: {e}");
+            }
+            // A failed attempt is tried again the next time the game is visited.
+            if !rx.await.unwrap_or(false) {
+                this.update(cx, |this, _| this.media.kept.remove(&id)).ok();
             }
         })
         .detach();
@@ -401,6 +410,9 @@ impl CollectionView {
             if p.stream.take().is_some() {
                 p.start = p.position();
                 p.count = Arc::default();
+                p.state = PlayState::Paused;
+            } else if p.state == PlayState::Loading {
+                // Still getting its playlists: it does not start once they come.
                 p.state = PlayState::Paused;
             }
         }
@@ -490,7 +502,10 @@ impl CollectionView {
                     Ok(playable) => {
                         p.seconds = playable.seconds;
                         p.playable = Some(playable.clone());
-                        this.media_stream(playable, at, sound, generation, cx);
+                        // Paused meanwhile: it waits for play with its playlists.
+                        if p.state == PlayState::Loading {
+                            this.media_stream(playable, at, sound, generation, cx);
+                        }
                     }
                     Err(e) => {
                         log::warn!("trailer: {e:#}");
@@ -548,7 +563,12 @@ impl CollectionView {
                         this.media.draw_asked.get_or_insert_with(Instant::now);
                         let Some(p) = this.media.player.as_mut().filter(|p| p.generation == generation) else { return false };
                         match ev {
-                            // Trailers loop: from the start again, with the sound as it was.
+                            // Trailers loop: from the start again, with the sound as it
+                            // was; one that ends within a second would only respawn ffmpeg.
+                            Some(StreamEvent::Ended) if p.count.load(Ordering::Relaxed) < u64::from(FPS) => {
+                                p.stream = None;
+                                p.state = PlayState::Failed(tr!("The trailer could not be played.").into());
+                            }
                             Some(StreamEvent::Ended) => {
                                 let (video, sound) = (p.video, p.sound);
                                 this.media_play(video, 0., sound, cx);

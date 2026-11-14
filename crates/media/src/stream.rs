@@ -237,7 +237,8 @@ fn run(
     let errors = errors.join().unwrap_or_default();
     match status {
         _ if stop.load(Ordering::SeqCst) => StreamEvent::Ended,
-        Some(s) if s.success() || frames > 0 => StreamEvent::Ended,
+        _ if frames > 0 => StreamEvent::Ended,
+        Some(s) if s.success() => StreamEvent::Failed("no picture".into()),
         _ => {
             let why = errors.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("ffmpeg stopped").trim().to_owned();
             log::warn!("video stream of {}: {errors}", spec.video);

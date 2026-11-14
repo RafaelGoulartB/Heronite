@@ -804,14 +804,10 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
                 )
                 .child(arrow("up", Icon::ArrowUpward, -1, i > 0))
                 .child(arrow("down", Icon::ArrowDownward, 1, i + 1 < order.len()))
-                .child(toggle(SharedString::from(format!("sec-{id}-shown")), shown, false).on_click(cx.listener(move |d, _, _, cx| {
-                    set_look(d, cx, |a| a.sections = a.sections.toggled(section));
-                    if section == Section::Media && shown {
-                        // Off, nothing it kept stays on this PC.
-                        let (app, images) = (d.ctx.app.clone(), d.ctx.data_paths.images_cache_dir());
-                        cx.background_spawn(async move { crate::collection::store_media::clear_kept(&app, &images) }).detach();
-                    }
-                })))
+                .child(
+                    toggle(SharedString::from(format!("sec-{id}-shown")), shown, false)
+                        .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.sections = a.sections.toggled(section)))),
+                )
                 .into_any_element(),
         );
         if section == Section::Media && shown {

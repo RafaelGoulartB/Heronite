@@ -72,6 +72,9 @@ impl GameLinksDialog {
     }
 
     fn add(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.saving {
+            return;
+        }
         let typed = self.input.read(cx).value().to_string();
         let Some(link) = classify(&typed) else {
             self.error = Some(tr!("Type a web address, like https://example.com").into());
@@ -91,6 +94,9 @@ impl GameLinksDialog {
     }
 
     fn remove(&mut self, i: usize, cx: &mut Context<Self>) {
+        if self.saving {
+            return;
+        }
         let mut next = self.websites.clone();
         if i < next.len() {
             next.remove(i);
@@ -109,12 +115,16 @@ impl GameLinksDialog {
             ..Default::default()
         };
         let service = self.service.clone();
+        let asked = websites.len();
         cx.spawn(async move |this, cx| {
             let res = cx.background_spawn(async move { service.update_game_details(&patch) }).await;
             this.update(cx, |this, cx| {
                 this.saving = false;
                 match res {
                     Ok(r) => {
+                        if r.metadata.websites.len() < asked {
+                            this.error = Some(tr!("A game keeps at most {n} links.", n = r.metadata.websites.len()).into());
+                        }
                         this.websites = r.metadata.websites;
                         cx.emit(DialogEvent::Changed);
                     }

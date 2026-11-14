@@ -25,5 +25,6 @@
   "Links of {title}": "Liens de {title}",
   "Not shown in Links": "Absent de Liens",
   "Autoplay trailers": "Lecture automatique des bandes-annonces",
-  "The selected game's first trailer starts on its own, muted. Trailers always start muted: turn the sound on from their controls.": "La première bande-annonce du jeu sélectionné démarre d'elle-même, sans le son. Elles démarrent toujours sans le son : activez-le depuis leurs commandes."
+  "The selected game's first trailer starts on its own, muted. Trailers always start muted: turn the sound on from their controls.": "La première bande-annonce du jeu sélectionné démarre d'elle-même, sans le son. Elles démarrent toujours sans le son : activez-le depuis leurs commandes.",
+  "A game keeps at most {n} links.": "Un jeu garde au plus {n} liens."
 }
