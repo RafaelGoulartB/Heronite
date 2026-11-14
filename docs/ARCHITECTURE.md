@@ -762,7 +762,28 @@ text size) and applies it.
   (`lockedFields`, kept by every update); the user's "in no source"
   (`noMatch`). Searchable sources (`SourceDescriptor::searchable`: IGDB,
   Steam, Lutris) implement `search` and `lookup_id`, so a pinned game is
-  looked up by its id. `service/attention` classifies a set of games from
+  looked up by its id (a pin is asked whatever the source's audience).
+  Steam is for games with a Steam id (`HasSteamId`), but `link_for`
+  (`SourceDescriptor`, Steam's is `Pc`: not emulated games) lets the user
+  link a game that is not on it to its Steam page by hand: `gather` says
+  `NotAsked::NotLinked` for it (the dialog keeps its row, "Link"), and the
+  pin is the record's `steamAppId` plus a pinned `sourceMatches.steam`
+  entry. That id is metadata only: the game's own Steam id (its overlay
+  entry, `CollectionGame::steam_app_id`: what launches, installs and
+  imports playtime) is never written. What reads the record's id is the
+  metadata side (Steam details, tags, ProtonDB, links, `tag_steam_id`) and
+  the join with a copy of the same game the user owns on Steam ("Also on
+  Steam", `steam_joins`: the record's id counts there as an IGDB-found one
+  does; nothing joins when the account does not own the app).
+  "Unlink" (a `None` pin of a `link_for` source on a game with no Steam id of
+  its own) clears the id and the match (`record::unlink`; `unlink_sources`
+  when no source found anything to save with it). Steam's option "Find games
+  not on Steam by name" (`byName`, off, `also_for` `Pc`) makes `lookup` of a
+  game with no id search the store by the exact title (`strict_steam_score`:
+  the same name, or with edition words after it) and take that game as
+  `ExactTitle`: nothing pinned, nothing taken when only alike, and an
+  unreachable Steam is `Unreachable`, never "in no source".
+  `service/attention` classifies a set of games from
   disk (waiting for review, no details, failed last time, no description,
   no cover; in no source apart; the games showing a cover family in use
   cropped are listed apart, per family, and are not a reason to need

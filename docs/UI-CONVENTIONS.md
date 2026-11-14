@@ -671,7 +671,10 @@ source…"), and again after a match is pinned and after "Search every source ag
   tooltip "Pinned: every update uses this game". A match the merge ignored because it is another game than the others
   found is amber and reads "(left out: another game)" (not while the game waits for review, where nothing is merged).
   A source asked only as a fallback (an extension such as VNDB or Wikipedia) that the others made unnecessary keeps
-  its row, "Not asked: the others found it", with "Search". The other sources not asked fold into one muted line per
+  its row, "Not asked: the others found it", with "Search". Steam, for a PC game that is not on it (a game added by hand,
+  a sideloaded one, one from another store; not an emulated game), keeps its row too: "Not linked" with "Link" (tooltip
+  "Pick this game's page to get its details from there."); once linked it reads like any match, with the pin and
+  "Change". The other sources not asked fold into one muted line per
   reason under the rows: "Not for this game: Lutris", "Off: …", "Needs a key: …", "Not asked: …". Above the rows: the offline line, the IGDB key hint with
   "Open Settings → Metadata" (closes the dialog), and, for a game that waits for review, "The sources are not sure which
   game this is: nothing is picked for you. Pick the values, or change a match." The refresh button below ("Search every
@@ -679,8 +682,13 @@ source…"), and again after a match is pinned and after "Search every source ag
 - **Change** replaces the column: a back arrow, "Which game of IGDB is it?", the hits of that source alone for the game's
   title (a search field, "Search this source", Enter searches again; a source may read a typed id or address as that
   entry, as the VNDB extension does with v17; each hit's year, its name in another script and platforms under it), the
-  one in use checked. A click pins that game and asks every source again; when the match is pinned, "Automatic" ("Let IGDB find the game by itself") comes first and
-  unpins it. A line says why there are no hits ("Nothing found for “zelda”.", "This source is off.", "This source needs a
+  one in use checked; a hit with a small cover shows it (30 × 40) at its left. A click pins that game and asks every source again; when the match is pinned, "Automatic" ("Let IGDB find the game by itself") comes first and
+  unpins it. For Steam on a game that is not on it, the search field says "Name, store address or app id": a store
+  address (`store.steampowered.com/app/620/…`, the community or SteamDB page) or an app id comes first as that game
+  (name, year, cover), then the games the Steam store finds by name (no year: the store search gives none); a pinned
+  link has "Unlink" ("Take away the link to Steam") first instead of "Automatic", which Apply saves even when no source
+  answered. The link is the record's, never the game's own Steam id: the game keeps launching, installing and counting
+  playtime as it did, and Steam's details, tags, ProtonDB and links read the record's id. A line says why there are no hits ("Nothing found for “zelda”.", "This source is off.", "This source needs a
   key: add it in Settings → Metadata.", "Could not reach this source. Check your connection and try again."). Esc closes
   Change, then an open select, then the dialog.
 - **The fields** (right), in one list that scrolls, as two captioned cards like Settings' (`ui::controls::caption`). First
@@ -716,10 +724,13 @@ source…"), and again after a match is pinned and after "Search every source ag
 `HERONITE_DEBUG_DIALOG=metadata:<state>` opens the selected game's "Metadata" over a made-up preview: `fake` (a pinned
 match, a match left out, a locked field, a field picked from another source, a fallback source not asked), `fallback` (as
 `fake`, with that source found by name; `novels`, a made-up extension id, shows by its id and cannot be searched),
-`emulated` (an emulated game: Steam not for it, LaunchBox found by the dump's name, its line with the platform: a source of emulated games says which platform it matched on; libretro-thumbnails gives box art and, a
+`link` (a game that is not on Steam: Steam "Not linked" with "Link"), `link-change` (the same with "Change" open on Steam, whose
+made-up hits have covers) and `linked` (Steam pinned for it; the debug game must have no Steam id of its own, as a game
+added by hand), `emulated` (an emulated game: Steam not for it, LaunchBox found by the dump's name, its line with the platform: a source of emulated games says which platform it matched on; libretro-thumbnails gives box art and, a
 pictures source, has no row there), `change` (the same with "Change" open),
 `none` (no source found the game), `offline`, `nokey` (no IGDB key), `covers` (as `fake`, scrolled to the cover rows);
-plain `metadata` asks the sources for real.
+plain `metadata` asks the sources for real, and `HERONITE_DEBUG_METADATA_CHANGE=<source id>` (with it) opens "Change" on
+that source with the real search.
 `HERONITE_DEBUG_DIALOG=covers[:<state>]` opens the selected game's "Covers" over made-up searches (pictures the
 Collection already has; nothing asked or written): no state opens on the family the desktop draws, `tall`, `square`,
 `wide`, `background` on that slot, `none` (nothing found), `busy` (searching), `saving` (a picture being
