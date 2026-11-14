@@ -229,6 +229,8 @@ pub(super) fn graceful_quit(cx: &mut App) {
     crate::services::replay::shutdown(cx);
     // A cloud upload stops; the next start sends what it had not.
     crate::services::sync::shutdown(cx);
+    // MangoHud's HUD shows again where the in-game overlay hid it (below).
+    let mangohud = crate::overlay::take_mangohud_record(cx);
     let hotkeys = [crate::overlay::take_hotkey(cx), crate::services::replay::take_hotkey(cx)];
     let downloads = crate::services::try_downloads(cx);
     if let Some(d) = &downloads {
@@ -246,6 +248,9 @@ pub(super) fn graceful_quit(cx: &mut App) {
         // Removes the overlay's and the replay's keyboard shortcuts from the desktop.
         if hotkeys.iter().any(Option::is_some) {
             cx.background_spawn(async move { drop(hotkeys) }).await;
+        }
+        if let Some(record) = mangohud {
+            cx.background_spawn(async move { heronite_overlay::mangohud::restore_recorded(&record) }).await;
         }
         let saved = cx.background_spawn(async move { runtime.checkpoint_all() }).await;
         if saved > 0 {

@@ -12,6 +12,7 @@ use heronite_media::{list_screenshots, GameQuery, Screenshot, ThumbnailCache};
 use heronite_overlay::audio::{self, AudioState};
 use heronite_overlay::controller::{self, Battery};
 use heronite_overlay::input::Controller;
+use heronite_overlay::mangohud::WatchedHud;
 
 use super::OverlayPanel;
 use crate::runtime::SessionInfo;
@@ -38,6 +39,9 @@ pub struct Data {
     /// The game has a window and another one has the focus (`false` where
     /// the desktop cannot say: see `heronite_overlay::game_window`).
     pub game_away: bool,
+    /// MangoHud's HUD in a game whose MangoHud config is the user's own (a
+    /// Steam game's, say): shown and hidden through that file.
+    pub watched_hud: Option<WatchedHud>,
 }
 
 struct Loaded {
@@ -91,6 +95,7 @@ impl OverlayPanel {
         self.load_audio(cx);
         self.load_batteries(cx);
         self.load_game_window(cx);
+        self.load_watched_hud(cx);
         // Play time, status and captures are the game's.
         let Some(game) = &self.game else { return };
         let app_name = game.game.app_name.clone();
@@ -120,6 +125,30 @@ impl OverlayPanel {
             let state = cx.background_spawn(async move { audio::read(pid) }).await;
             this.update(cx, |this, cx| {
                 this.data.audio = Some(state);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// MangoHud's HUD of a game Heronite did not set MangoHud up for (its
+    /// own limiter file has it otherwise).
+    fn load_watched_hud(&mut self, cx: &mut Context<Self>) {
+        let Some(game) = self.game.as_ref().filter(|g| g.fps.is_none()) else { return };
+        let Some(pid) = game.game.pid else { return };
+        // A Steam game runs apart from the pid Steam names (see `find`); only
+        // a game Steam runs (the metadata's id is on other stores' copies too).
+        let steam_app_id = game
+            .game
+            .app_name
+            .strip_prefix("steam_")
+            .map(String::from)
+            .or_else(|| game.info.as_ref().filter(|i| i.runner == "steam").and_then(|i| i.steam_app_id.clone()));
+        cx.spawn(async move |this, cx| {
+            let hud = cx.background_spawn(async move { heronite_overlay::mangohud::find(pid, steam_app_id.as_deref()) }).await;
+            this.update(cx, |this, cx| {
+                this.data.watched_hud = hud;
                 cx.notify();
             })
             .ok();
