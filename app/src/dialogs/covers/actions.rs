@@ -52,6 +52,8 @@ impl CoversDialog {
         // those still running stale: they must not replace what is shown.
         self.request += 1;
         self.note = None;
+        // Whatever the last search said is not about this one (nor about one shown from before).
+        self.error.clear();
         self.console_scroll.reset();
         self.selected = None;
         self.visible = found::PAGE;

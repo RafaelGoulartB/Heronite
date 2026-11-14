@@ -278,6 +278,12 @@ impl CoversDialog {
         let (tw, th) = (tile_w(slot), (tile_w(slot) / slot.aspect()).round());
         let at = self.console_at(&listed);
         let covered = self.layer.is_open();
+        // Whatever moved the focus (the d-pad, a source picked, a new search, a
+        // save) or the columns (a resize) brings the focused row into view.
+        if self.console_revealed != (at, cols) {
+            self.console_revealed = (at, cols);
+            self.console_scroll.go(Goal::Reveal { ix: at / cols, margin: GAP });
+        }
         // What a source gave no size of is read from the picture itself.
         if self.fake.is_none() {
             let urls: Vec<String> = {
@@ -409,9 +415,6 @@ impl PadTarget for CoversDialog {
                     self.selected = listed.get(to).copied();
                 }
                 self.note = None;
-                let (now, _) = self.console_listed();
-                let row = self.console_at(&now) / self.console_cols;
-                self.console_scroll.go(Goal::Reveal { ix: row, margin: GAP });
             }
             Pad::A if self.busy.is_some() => {}
             Pad::A if !kept => {

@@ -93,6 +93,8 @@ pub struct CoversDialog {
     console_scroll: crate::console::motion::Glide,
     layer: crate::console::Layer,
     console_cols: usize,
+    /// The focused picture and the columns the grid last revealed.
+    console_revealed: (usize, usize),
     note: Option<&'static str>,
 }
 
@@ -170,6 +172,7 @@ impl CoversDialog {
             console_scroll: crate::console::motion::Glide::new(crate::console::motion::Axis::Y),
             layer: Default::default(),
             console_cols: 1,
+            console_revealed: (usize::MAX, 0),
             note: None,
         };
         this.compute_slots();
