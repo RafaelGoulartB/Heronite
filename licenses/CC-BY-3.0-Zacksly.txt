@@ -1,14 +1,19 @@
 Xbox Series Button Icons and Controls
+PS5 Button Icons and Controls
+Switch Button Icons and Controls
 Author: Zacksly (https://zacksly.itch.io)
-Source: https://zacksly.itch.io/xbox-series-button-icons-and-controls
+Sources: https://zacksly.itch.io/xbox-series-button-icons-and-controls
+         https://zacksly.itch.io/ps5-button-icons-and-controls
+         https://zacksly.itch.io/switch-button-icons-and-controls
 
-Used in Heronite: the controller drawing of Settings → Controller
-(app/src/pages/settings/controls/pad.rs) takes the outlines of the body, the
-bumpers, the d-pad, the sticks and the buttons from "Controller Images/Outline"
-of this pack. Changes: the Xbox logo is left out, the triggers are added, and
-the parts are recoloured with the app's theme.
+Used in Heronite: the controllers drawn in Settings → Controller
+(app/src/pages/settings/controls/pad/model.rs: an Xbox Series controller, a
+DualSense and a Switch Pro Controller) take their outlines from the
+"Controller Images/Outline" drawings of these packs. Changes: the Xbox,
+PlayStation and Nintendo Switch logos are left out, the triggers are added,
+and the parts are recoloured with the app's theme.
 
-The author's licence note:
+The author's licence note (the same in the three packs):
 
 This work is licensed under the Creative Commons Attribution 3.0 Unported
 License. To view a copy of this license, visit
