@@ -1,0 +1,29 @@
+# DLsite as a metadata source, unofficially: doujin and indie games found by
+# their DLsite product code (RJ01234567) in the game's title or folder name.
+id = "dlsite"
+name = "DLsite"
+version = "1.0.0"
+api = 1
+author = "lurebat"
+homepage = "https://www.dlsite.com"
+kind = "details"
+description = "Unofficial, not affiliated with DLsite: reads the data behind its product pages, which may change or stop. Finds doujin and indie games by the DLsite product code (RJ01234567, VJ012345…) in their title or folder name. Pictures of products not rated for all ages are flagged adult."
+
+[provides]
+fields = ["description", "releaseDate", "developers", "genres", "themes", "series", "coverWide", "hero"]
+
+[applies]
+to = "all"
+asked = "fallback"
+
+[ids]
+# RJ/RE: doujin works, BJ: books and comics, VJ: commercial games.
+pattern = '\b(?:RJ|RE|BJ|VJ)[0-9]{6,8}\b'
+
+[network]
+hosts = ["www.dlsite.com"]
+# Covers and sample pictures.
+images = ["img.dlsite.jp"]
+# A scraper of a shop that offers no API: well under one request every
+# few seconds. A lookup is two requests (the hit, then its record).
+rate = "20/min"

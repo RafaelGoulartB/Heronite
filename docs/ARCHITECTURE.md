@@ -895,9 +895,9 @@ text size) and applies it.
   folders; `tests/lists.rs` fails when it is out of date. The app's
   screens are `app/src/dialogs/extensions/` (gallery and installer) and
   Settings → Metadata's `extension.rs` / `more.rs`. `examples/run.rs` runs an extension against a
-  title. The example extensions are in `extensions/metadata/` (Wikipedia, VNDB),
-  each tested against recorded answers (`tests/examples.rs`,
-  `tests/vndb.rs`).
+  title. The example extensions are in `extensions/metadata/` (Wikipedia, VNDB,
+  DLsite), each tested against recorded answers (`tests/examples.rs`,
+  `tests/vndb.rs`, `tests/dlsite.rs`).
 - **heronite-achievements:** every game's achievements, whatever its store.
   `target` says which sources a Collection game has (its store, its Steam
   twin, RetroAchievements for a ROM). `sources/` reads them: `steam` the
