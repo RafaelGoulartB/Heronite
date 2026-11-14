@@ -137,9 +137,14 @@ impl OverlayPanel {
     fn load_watched_hud(&mut self, cx: &mut Context<Self>) {
         let Some(game) = self.game.as_ref().filter(|g| g.fps.is_none()) else { return };
         let Some(pid) = game.game.pid else { return };
-        // A Steam game runs apart from the pid Steam names (see `find`).
-        let steam_app_id =
-            game.info.as_ref().and_then(|i| i.steam_app_id.clone()).or_else(|| game.game.app_name.strip_prefix("steam_").map(String::from));
+        // A Steam game runs apart from the pid Steam names (see `find`); only
+        // a game Steam runs (the metadata's id is on other stores' copies too).
+        let steam_app_id = game
+            .game
+            .app_name
+            .strip_prefix("steam_")
+            .map(String::from)
+            .or_else(|| game.info.as_ref().filter(|i| i.runner == "steam").and_then(|i| i.steam_app_id.clone()));
         cx.spawn(async move |this, cx| {
             let hud = cx.background_spawn(async move { heronite_overlay::mangohud::find(pid, steam_app_id.as_deref()) }).await;
             this.update(cx, |this, cx| {

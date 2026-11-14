@@ -64,13 +64,13 @@ pub fn find(game_pid: u32, steam_app_id: Option<&str>) -> Option<WatchedHud> {
         }
         seen += 1;
         let Ok(env) = std::fs::read(format!("/proc/{pid}/environ")) else {
-            log::info!("MangoHud toggle: game {game_pid}: the environment of {pid} cannot be read");
+            log::debug!("MangoHud toggle: game {game_pid}: the environment of {pid} cannot be read");
             return None;
         };
         let var = |key: &str| crate::procs::environ_value(&env, key);
         // Applied over the file on every reload, or the file is not read.
         if !file_counts(var("MANGOHUD_CONFIG").as_deref()) {
-            log::info!("MangoHud toggle: game {game_pid}: {pid}'s MANGOHUD_CONFIG decides the HUD");
+            log::debug!("MangoHud toggle: game {game_pid}: {pid}'s MANGOHUD_CONFIG decides the HUD");
             return None;
         }
         // MangoHud's watch waits for modifications; other inotify users of
@@ -78,14 +78,14 @@ pub fn find(game_pid: u32, steam_app_id: Option<&str>) -> Option<WatchedHud> {
         let watched: Vec<(u64, u64)> =
             inotify_watches(pid).into_iter().filter(|w| w.mask & IN_MODIFY != 0).map(|w| (w.ino, w.sdev)).collect();
         if watched.is_empty() {
-            log::info!("MangoHud toggle: game {game_pid}: {pid} loads MangoHud but watches no file");
+            log::debug!("MangoHud toggle: game {game_pid}: {pid} loads MangoHud but watches no file");
             continue;
         }
         let candidates = candidates(&var);
         // A process whose file cannot be placed (or used) keeps its HUD as it is.
         let Some(file) = candidates.iter().filter(|f| usable(f)).find(|f| kernel_id(f).is_some_and(|id| watched.contains(&id))).cloned()
         else {
-            log::info!(
+            log::debug!(
                 "MangoHud toggle: game {game_pid}: none of {candidates:?} is what {pid} watches ({watched:x?}; usable: {:?})",
                 candidates.iter().filter(|f| usable(f)).map(|f| (f, kernel_id(f))).collect::<Vec<_>>()
             );
