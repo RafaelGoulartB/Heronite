@@ -203,6 +203,11 @@ what the Cover aspect asks for and the Cover shapes card counts it) and "Review 
   shows it in Heronite, → lists its actions (its verbs and "Show X in Heronite"). An item that opens Heronite has a
   13px `OpenInNew` at the right of its row and "Opens Heronite" in the pane; the footer says what Enter does (play,
   stop, run, open in Heronite). It closes on Esc, after running something and when it loses the keyboard.
+  Settings → Quick launcher (`pages/settings/quick_launch.rs`, in App after Appearance) has a "How it works" card (the
+  shortcut's keys, Enter, Shift Enter and the ↗ mark, one line each) and an "Opening it" card: the keyboard shortcut
+  field (none unless set; refused with a line when the overlay, the screenshot or the replay has the keys, and the
+  replay's field refuses the launcher's), its registration status, the command to bind in the desktop's settings
+  (Linux, "Copy command") and "Open the quick launcher" to try it.
 
 ## Glass design system (menus, dialogs, pages, settings)
 

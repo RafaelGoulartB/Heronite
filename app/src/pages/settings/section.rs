@@ -10,6 +10,8 @@ use crate::icons::Icon;
 pub enum Section {
     General,
     Appearance,
+    /// The quick launcher's shortcut (`crate::quick_launch`).
+    QuickLauncher,
     /// Console mode's themes and options (also ☰ → Customize).
     ConsoleMode,
     Advanced,
@@ -51,7 +53,7 @@ pub enum Section {
 impl Section {
     /// Left navigation: caption + sections (the caption is translated when drawn).
     pub const GROUPS: [(&'static str, &'static [Section]); 6] = [
-        (n_!("App"), &[Section::General, Section::Appearance, Section::ConsoleMode, Section::Controls]),
+        (n_!("App"), &[Section::General, Section::Appearance, Section::QuickLauncher, Section::ConsoleMode, Section::Controls]),
         (n_!("Games"), &[Section::GameDefaults, Section::Downloads, Section::Launchers, Section::Integrations, Section::Mods]),
         (n_!("Collection"), &[Section::Library, Section::Metadata, Section::Achievements]),
         (n_!("While playing"), &[Section::Overlay, Section::Screenshots, Section::Replay]),
@@ -60,9 +62,10 @@ impl Section {
     ];
 
     /// Same order as [`Section::GROUPS`].
-    pub const ALL: [Section; 22] = [
+    pub const ALL: [Section; 23] = [
         Section::General,
         Section::Appearance,
+        Section::QuickLauncher,
         Section::ConsoleMode,
         Section::Controls,
         Section::GameDefaults,
@@ -108,6 +111,7 @@ impl Section {
         match self {
             Section::General => tr!("General"),
             Section::Appearance => tr!("Appearance"),
+            Section::QuickLauncher => tr!("Quick launcher"),
             Section::ConsoleMode => tr!("Console mode"),
             Section::Advanced => tr!("Advanced"),
             Section::GameDefaults => tr!("Game defaults"),
@@ -135,6 +139,7 @@ impl Section {
         match self {
             Section::General => Icon::Settings,
             Section::Appearance => Icon::Visibility,
+            Section::QuickLauncher => Icon::FaSearch,
             Section::ConsoleMode => Icon::Tv,
             Section::Advanced => Icon::Build,
             Section::GameDefaults => Icon::Tune,
@@ -163,6 +168,7 @@ impl Section {
         match self {
             Section::General => tr!("Language, folders, the tray, shortcuts and where Wine and Proton are looked for."),
             Section::Appearance => tr!("Profiles, the theme and its colours, menus and panels, the picture behind the Collection, covers, text and layout."),
+            Section::QuickLauncher => tr!("The command palette in a small window of its own: open it from anywhere with a key, type a few letters and press Enter to play, without opening Heronite."),
             Section::ConsoleMode => tr!("The controller-first TV mode: its themes, tabs and shelves, covers, background, interface and controls. Changes show at once; ☰ → Customize in console mode has the same options."),
             Section::Advanced => tr!("Logs, folders and cache."),
             Section::GameDefaults => tr!("What new games start with. To change a game you already have, open its own settings."),
@@ -194,6 +200,7 @@ impl Section {
         match self {
             Section::General => "general folders tray shortcuts wine proton language theme geral pastas bandeja atalhos idioma tema",
             Section::Appearance => "appearance background blur dim darkening saturation cover aspect grey uninstalled artwork glass opacity transparent transparency solid interface panels menus dialogs colour tint collection accent contrast zoom scale scaling size bigger smaller larger dpi hidpi 4k tv accessibility font density corners badges categories category tags ribbon strip bookmarks hover screenshot slideshow picture animations motion layout sections profile theme light dark mode system import export aparencia plano de fundo desfoque escurecer saturacao capa cinza nao instalados arte vidro opacidade transparente transparencia solido paineis cor colecao destaque contraste zoom escala tamanho maior menor ampliar aumentar diminuir acessibilidade fonte densidade cantos selos categorias categoria etiquetas fita faixa marcadores estrela animacoes movimento secoes perfil tema claro escuro modo sistema importar exportar imagem",
+            Section::QuickLauncher => "quick launcher launch run play search spotlight palette command global shortcut hotkey key anywhere tray lancador rapido iniciar jogar buscar paleta comando atalho global tecla",
             Section::ConsoleMode => "console mode tv couch controller gamepad theme themes tabs shelves layout covers background font scale clock accent colours glyphs hints menu startup customize export import preset modo console televisao sofa controle tema temas abas prateleiras capas fundo fonte tamanho relogio destaque cores botoes dicas menu personalizar exportar importar perfil",
             Section::Advanced => "advanced cache folders copy settings avancado pastas copiar configuracoes",
             Section::GameDefaults => "game defaults wine proton version prefix dxvk nvapi esync fsync sync wayland wow64 gpu performance fps gamescope launch options new games padroes dos jogos versao prefixo desempenho opcoes de inicializacao novos jogos",
@@ -230,6 +237,7 @@ impl Section {
         match s {
             "general" => Some(Section::General),
             "appearance" => Some(Section::Appearance),
+            "quick-launcher" | "quick-launch" => Some(Section::QuickLauncher),
             "console-mode" | "console" => Some(Section::ConsoleMode),
             "advanced" => Some(Section::Advanced),
             "defaults" => Some(Section::GameDefaults),

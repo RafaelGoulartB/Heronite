@@ -46,6 +46,7 @@ pub mod onboarding;
 pub mod organize;
 pub mod overlay_prefs;
 pub mod playtime;
+pub mod quick_launch_prefs;
 pub mod ratings;
 pub mod replay_prefs;
 pub mod screenshot_prefs;

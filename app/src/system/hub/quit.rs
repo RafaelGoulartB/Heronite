@@ -231,7 +231,7 @@ pub(super) fn graceful_quit(cx: &mut App) {
     crate::services::sync::shutdown(cx);
     // MangoHud's HUD shows again where the in-game overlay hid it (below).
     let mangohud = crate::overlay::take_mangohud_record(cx);
-    let hotkeys = [crate::overlay::take_hotkey(cx), crate::services::replay::take_hotkey(cx)];
+    let hotkeys = [crate::overlay::take_hotkey(cx), crate::services::replay::take_hotkey(cx), crate::quick_launch::take_hotkey(cx)];
     let downloads = crate::services::try_downloads(cx);
     if let Some(d) = &downloads {
         // Only asks (legendary gets SIGTERM); waited for below.

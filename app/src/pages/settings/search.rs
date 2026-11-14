@@ -246,6 +246,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Clear preview cache",
         ],
     ),
+    (Section::QuickLauncher, &["How it works", "Opening it", "Keyboard shortcut", "Open from a key of the desktop", "Try it"]),
     (
         Section::Replay,
         &[

@@ -156,6 +156,8 @@ pub fn init(
         crate::services::update::init(cx, heronite_data::AppPaths::for_data(&data_paths));
         crate::services::upkeep::init(cx, data_paths.clone());
         crate::services::sync::init(cx, data_paths.clone());
+        // Its keyboard shortcut works while the app runs, in the tray too.
+        crate::quick_launch::init(cx, &data_paths);
     }
     // Games still running from before the app restarted; after the services
     // above, which follow running games through the same events.

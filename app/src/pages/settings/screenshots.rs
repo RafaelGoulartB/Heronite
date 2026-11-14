@@ -85,11 +85,17 @@ impl State {
 
 /// `heronite-rs --screenshot` with this executable, as a shell takes it.
 fn capture_command(exe: &std::path::Path) -> String {
+    desktop_command(exe, "--screenshot")
+}
+
+/// `<exe> <flag>`, as a shell takes it: for a key bound in the desktop's
+/// settings.
+pub(super) fn desktop_command(exe: &std::path::Path, flag: &str) -> String {
     let exe = exe.to_string_lossy();
     if exe.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '-' | '_' | '+')) {
-        format!("{exe} --screenshot")
+        format!("{exe} {flag}")
     } else {
-        format!("'{}' --screenshot", exe.replace('\'', r"'\''"))
+        format!("'{}' {flag}", exe.replace('\'', r"'\''"))
     }
 }
 

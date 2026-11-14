@@ -1,10 +1,25 @@
 {
+  "Enter plays the game, or stops it while it runs.": "Enter startet das Spiel oder beendet es, solange es läuft.",
+  "How it works": "So funktioniert es",
+  "Items marked like this open Heronite and run there.": "So markierte Einträge öffnen Heronite und laufen dort.",
+  "Open from a key of the desktop": "Mit einer Taste des Desktops öffnen",
   "open in Heronite": "in Heronite öffnen",
+  "Open it and type a few letters of a game, a page or a setting.": "Öffne ihn und tippe ein paar Buchstaben eines Spiels, einer Seite oder einer Einstellung.",
+  "Open the quick launcher": "Schnellstarter öffnen",
+  "Opening it": "Öffnen",
   "Opens Heronite": "Öffnet Heronite",
+  "Opens it now, over this window.": "Öffnet ihn jetzt über diesem Fenster.",
+  "Opens the quick launcher from anywhere while Heronite runs, in the tray too; press it again to close it. Click the field and press the key combination; Backspace removes it.": "Öffnet den Schnellstarter von überall, solange Heronite läuft, auch im Infobereich; erneut drücken schließt ihn. Klicke auf das Feld und drücke die Tastenkombination; Rücktaste entfernt sie.",
   "play": "spielen",
+  "Quick launcher": "Schnellstarter",
   "Select it in the Collection": "Wählt es in der Sammlung aus",
+  "Shift Enter shows the game in Heronite; → lists its actions.": "Umschalt Enter zeigt das Spiel in Heronite; → listet seine Aktionen.",
   "Shortcut": "Tastenkürzel",
+  "Shortcut that opens the launcher from anywhere": "Tastenkürzel, das den Starter von überall öffnet",
   "show in Heronite": "in Heronite zeigen",
   "Show {title} in Heronite": "{title} in Heronite zeigen",
-  "stop": "beenden"
+  "stop": "beenden",
+  "The command palette in a small window of its own: open it from anywhere with a key, type a few letters and press Enter to play, without opening Heronite.": "Die Befehlspalette in einem eigenen kleinen Fenster: von überall mit einer Taste öffnen, ein paar Buchstaben tippen und Enter drücken, um zu spielen, ohne Heronite zu öffnen.",
+  "Where the desktop takes no shortcut from Heronite, bind a key to this command in its keyboard settings. It also starts Heronite when it is not running: {command}": "Wo der Desktop keine Tastenkürzel von Heronite annimmt, belege in seinen Tastatureinstellungen eine Taste mit diesem Befehl. Er startet Heronite auch, wenn es nicht läuft: {command}",
+  "{key} already opens the quick launcher.": "{key} öffnet bereits den Schnellstarter."
 }

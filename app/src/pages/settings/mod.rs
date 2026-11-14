@@ -29,7 +29,7 @@
 //!
 //! Debug: `HERONITE_DEBUG_SETTINGS_SEARCH=<text>` types it in the search (`<text>!`: and presses Enter),
 //! `HERONITE_DEBUG_SETTINGS_KEYS=down,down,enter` then presses those keys in it (`lang:pt-BR` switches the language);
-//! `HERONITE_DEBUG_PAGE=settings[:controls|general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|integrations|storage|mods|overlay|replay|metadata|screenshots|backups|cloud|logs|about]`.
+//! `HERONITE_DEBUG_PAGE=settings[:controls|general|appearance|quick-launcher|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|integrations|storage|mods|overlay|replay|metadata|screenshots|backups|cloud|logs|about]`.
 
 mod about;
 mod achievements;
@@ -49,6 +49,7 @@ mod mods;
 mod nav_keys;
 mod overlay;
 mod palette;
+mod quick_launch;
 mod replay;
 mod saves;
 mod saves_restore;
@@ -186,6 +187,7 @@ pub struct SettingsPage {
     integrations: integrations::State,
     overlay: overlay::State,
     replay: replay::State,
+    quick_launch: quick_launch::State,
     mods: mods::State,
     storage: storage::State,
     advanced: advanced::State,
@@ -290,6 +292,7 @@ impl SettingsPage {
             integrations: integrations::State::new(window, cx),
             overlay: overlay::State::new(&ctx, cx),
             replay: replay::State::new(&ctx, cx),
+            quick_launch: quick_launch::State::new(cx),
             mods: mods::State::new(window, cx),
             storage,
             advanced: advanced::State::default(),
@@ -904,6 +907,7 @@ impl SettingsPage {
             Section::Launchers => launchers::render(self, cx),
             Section::Integrations => integrations::render(self, window, cx),
             Section::Replay => replay::render(self, window, cx),
+            Section::QuickLauncher => quick_launch::render(self, window, cx),
             Section::Appearance => Self::collection_section(appearance::render(self, window, cx), self.error.clone()),
             Section::Metadata => Self::collection_section(metadata::render(self, window, cx), self.error.clone()),
             Section::Achievements => achievements::render(self, window, cx),

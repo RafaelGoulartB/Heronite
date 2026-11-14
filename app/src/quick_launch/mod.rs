@@ -8,19 +8,22 @@
 //! folder, quit; `collection::palette::launcher::Chosen`); anything else
 //! opens Heronite and runs there, marked ↗.
 //!
-//! Opened by `--quick-launch` and `heronite://quick-launch` (through
+//! Opened by its keyboard shortcut (`hotkey`, none unless set in Settings →
+//! Quick launcher), `--quick-launch` and `heronite://quick-launch` (through
 //! the running instance's socket; with none running, one starts without its
 //! window). The same request closes it when it is open; Esc, running
 //! something and leaving it close it too. In console mode in front, it brings
 //! console mode forward instead.
 //!
 //! Split: `window` (the surface on each desktop), `view` (its root view: the
-//! palette, the library, the keys) and `run` (carrying out a choice).
+//! palette, the library, the keys), `run` (carrying out a choice) and
+//! `hotkey` (the keyboard shortcut).
 //!
 //! Debug: `HERONITE_DEBUG_QUICK_LAUNCH=<query>` (`-` for none) opens it at
 //! start, alone, in a normal window (`scripts/shot.sh` captures it), and
 //! `HERONITE_DEBUG_QUICK_LAUNCH_KEYS=down,shift-enter,...` feeds it keys.
 
+mod hotkey;
 mod run;
 mod view;
 mod window;
@@ -29,6 +32,7 @@ use std::cell::RefCell;
 
 use gpui_kit::*;
 
+pub use hotkey::{get, init, take_hotkey};
 use view::QuickLauncher;
 
 struct Open {

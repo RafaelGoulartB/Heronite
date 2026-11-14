@@ -619,13 +619,15 @@ fn shown_accelerator(a: &str) -> String {
 }
 
 /// What else uses `accelerator` (the overlay's or the screenshot's shortcut).
-fn taken_by(d: &SettingsPage, accelerator: &str) -> Option<String> {
+fn taken_by(d: &SettingsPage, accelerator: &str, cx: &App) -> Option<String> {
     let o = &d.overlay.prefs;
     let s = &d.settings.screenshots;
     if o.enabled && o.keyboard_shortcut && o.keyboard_accelerator.eq_ignore_ascii_case(accelerator) {
         Some(tr!("{key} already opens the overlay.", key = shown_accelerator(accelerator)))
     } else if s.capture_enabled && s.capture_accelerator.eq_ignore_ascii_case(accelerator) {
         Some(tr!("{key} already takes a screenshot.", key = shown_accelerator(accelerator)))
+    } else if super::quick_launch::shown(cx).is_some_and(|q| q.eq_ignore_ascii_case(&shown_accelerator(accelerator))) {
+        Some(tr!("{key} already opens the quick launcher.", key = shown_accelerator(accelerator)))
     } else {
         None
     }
@@ -652,7 +654,7 @@ fn keyboard_row(d: &SettingsPage, p: &ReplayPrefs, window: &Window, cx: &mut Con
                 let Some(a) = accelerator_from_key(ev) else { return };
                 a
             };
-            d.replay.hotkey_taken = taken_by(d, &accelerator);
+            d.replay.hotkey_taken = taken_by(d, &accelerator, cx);
             if d.replay.hotkey_taken.is_none() {
                 update(d, cx, |p| p.keyboard_accelerator = accelerator);
             }
