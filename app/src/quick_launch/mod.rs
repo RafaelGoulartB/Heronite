@@ -76,8 +76,13 @@ fn open_with(cx: &mut App, query: &str, keys: Option<String>) {
         return;
     }
     let query = query.to_string();
+    // Windows: a topmost window over a game in exclusive fullscreen would
+    // minimise it or switch its display mode (as for the overlay).
+    if crate::overlay::window::exclusive_fullscreen() {
+        return;
+    }
     match window::open(cx, move |window, cx| cx.new(|cx| QuickLauncher::new(&query, keys.clone(), window, cx))) {
-        Ok((handle, _)) => {
+        Ok(handle) => {
             log::info!("quick launcher opened");
             watch_close(cx);
             OPEN.with(|o| *o.borrow_mut() = Some(Open { handle }));

@@ -12,7 +12,7 @@ use super::super::launcher;
 use super::super::rank::{Filter, ItemRef};
 use super::super::sources::Act;
 use super::preview::{PANE_W, THUMB_H, THUMB_W};
-use super::{Mode, PaletteEvent, PaletteView, CAPTION_H, FOOTER_H, INPUT_H, LAUNCHER_MARGIN, LIST_MAX_H, LIST_PAD, PANEL_W, ROW_H, TOP};
+use super::{launcher_margin, Mode, PaletteEvent, PaletteView, CAPTION_H, FOOTER_H, INPUT_H, LIST_MAX_H, LIST_PAD, PANEL_W, ROW_H, TOP};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::kbd;
@@ -346,7 +346,7 @@ impl Render for PaletteView {
                 .flex()
                 .flex_col()
                 .items_center()
-                .p(px(LAUNCHER_MARGIN))
+                .p(px(launcher_margin()))
                 .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| cx.emit(PaletteEvent::Close)))
                 .child(panel)
                 .into_any_element();

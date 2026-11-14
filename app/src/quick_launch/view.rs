@@ -23,6 +23,7 @@ pub(super) struct QuickLauncher {
     lib: Option<Arc<Library>>,
     /// Whether it ever had the keyboard: leaving it after that closes it.
     was_active: bool,
+    opened: std::time::Instant,
     _subs: Vec<Subscription>,
 }
 
@@ -80,7 +81,8 @@ impl QuickLauncher {
             }),
             keys_sub,
         ];
-        let this = Self { palette, data_paths: data_paths.clone(), lib: None, was_active: false, _subs: subs };
+        let this =
+            Self { palette, data_paths: data_paths.clone(), lib: None, was_active: false, opened: std::time::Instant::now(), _subs: subs };
         let include_hidden = ui.show_hidden;
         cx.spawn_in(window, async move |this, cx| {
             let loaded = cx.background_spawn(async move { load(&data_paths, include_hidden) }).await;
@@ -95,6 +97,7 @@ impl QuickLauncher {
     }
 
     fn apply_loaded(&mut self, l: Loaded, keys: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+        log::info!("quick launcher: {} games listed {:?} after opening", l.lib.games.len(), self.opened.elapsed());
         let running = crate::system::running_games(cx);
         let mut entries = global_entries(cx);
         entries.extend(library_entries(&l.lib, &|app_name| running.contains(app_name)));
@@ -111,7 +114,14 @@ impl QuickLauncher {
     fn feed_keys(&mut self, mut keys: std::collections::VecDeque<String>, window: &mut Window, cx: &mut Context<Self>) {
         let Some(k) = keys.pop_front() else { return };
         if let Ok(ks) = Keystroke::parse(&k) {
-            self.key(&ks, window, cx);
+            // What the palette does not take is typed, as a real key would be
+            // (outside this update: the keys come back through `key`).
+            if !self.key(&ks, window, cx) {
+                let handle = window.window_handle();
+                cx.defer(move |cx| {
+                    handle.update(cx, |_, window, cx| window.dispatch_keystroke(ks, cx)).ok();
+                });
+            }
         }
         cx.defer_in(window, move |this, window, cx| this.feed_keys(keys, window, cx));
     }

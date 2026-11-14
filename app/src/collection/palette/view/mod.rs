@@ -63,8 +63,15 @@ const LIST_MAX_H: f32 = 9. * ROW_H + CAPTION_H;
 const PANEL_W: f32 = 620.;
 const INPUT_H: f32 = 54.;
 const FOOTER_H: f32 = 42.;
-/// Room around the quick launcher's panel for its shadow.
-const LAUNCHER_MARGIN: f32 = 24.;
+/// Room around the quick launcher's panel for its shadow. None on X11: a
+/// window manager without a compositor draws a see-through window black.
+fn launcher_margin() -> f32 {
+    if cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_none() {
+        0.
+    } else {
+        24.
+    }
+}
 const TOP: f32 = 90.;
 fn root_placeholder() -> &'static str {
     tr!("Type a command, page or game\u{2026}")
@@ -270,7 +277,7 @@ impl PaletteView {
 
     /// The window the quick launcher needs for the palette (logical px).
     pub fn launcher_size() -> Size<Pixels> {
-        let m = 2. * LAUNCHER_MARGIN;
+        let m = 2. * launcher_margin();
         size(px(PANEL_W + preview::PANE_W + 2. + m), px(INPUT_H + LIST_MAX_H + FOOTER_H + 4. + m))
     }
 
