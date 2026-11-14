@@ -210,8 +210,8 @@ impl Repeater {
 }
 
 /// The press a controller button makes. With `swap_ab` the east button
-/// confirms and the south one goes back (`controls.swapAb` of the console
-/// theme).
+/// confirms and the south one goes back (the controller's confirm button,
+/// `look::confirm_east`).
 fn button_pad(b: PadButton, swap_ab: bool) -> Option<Pad> {
     use PadButton as B;
     Some(match b {
@@ -234,9 +234,9 @@ fn button_pad(b: PadButton, swap_ab: bool) -> Option<Pad> {
     })
 }
 
-/// The theme in use, read per press so a change applies at once.
+/// Read per press so a change applies at once.
 fn swap_ab() -> bool {
-    super::look::theme().controls.swap_ab
+    super::look::confirm_east()
 }
 
 fn is_direction(p: Pad) -> bool {

@@ -445,7 +445,7 @@ impl SettingsPage {
             Section::About => self.about.load(&self.ctx, cx),
             Section::Screenshots => self.screenshots.shown(cx),
             Section::Achievements => achievements::shown(self, cx),
-            Section::Controls => controls::shown(cx),
+            Section::Controls => controls::shown(self, cx),
             Section::Overlay => overlay::shown(cx),
             Section::Launchers => launchers::shown(self, cx),
             Section::Replay => replay::shown(self, cx),

@@ -46,6 +46,7 @@ pub fn shown(cx: &mut Context<SettingsPage>) {
     cx.spawn(async move |this, cx| {
         let list = cx.background_spawn(async { heronite_overlay::input::list_controllers() }).await;
         this.update(cx, |d, cx| {
+            crate::console::look::controllers_found(&list);
             d.overlay.controllers = Some(list);
             cx.notify();
         })
@@ -88,6 +89,11 @@ pub(super) fn turn_on(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
 /// The controllers found; `None` while they are looked for.
 pub(super) fn controllers(d: &SettingsPage) -> Option<&[Controller]> {
     d.overlay.controllers.as_deref()
+}
+
+/// The controllers found again (Settings → Controller looks every few seconds).
+pub(super) fn set_controllers(d: &mut SettingsPage, list: Vec<Controller>) {
+    d.overlay.controllers = Some(list);
 }
 
 fn controllers_text(list: Option<&Vec<Controller>>) -> String {

@@ -45,20 +45,27 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   `self.open_dialog(cx.new(|cx| V::new(ctx, window, cx)), cx)`.
   Emit `DialogEvent::Changed` after writing data, `Close` to close.
 - Settings: there is ONE place, the ☰ Settings page (`app/src/pages/settings/`, Ctrl ,). The left nav is grouped under captions
-  (`Section::GROUPS`): App (General, Appearance, Console mode), Games (Game defaults, Downloads, Other launchers),
-  Collection (Library, Metadata, Achievements), While playing (Controller, Overlay, Screenshots, Replay), Data (Storage, Saves,
-  Backups), System (Advanced, Logs, About). Controller (`controls/`, `Section::Controls`): the controller found and
-  how console mode draws its buttons (its theme's, read only), then one tab at a time (In a game, Outside games, Overlay
+  (`Section::GROUPS`): App (General, Appearance, Console mode, Controller), Games (Game defaults, Downloads, Other launchers),
+  Collection (Library, Metadata, Achievements), While playing (Overlay, Screenshots, Replay), Data (Storage, Saves,
+  Backups), System (Advanced, Logs, About). Controller (`controls/`, `Section::Controls`): the controller found (looked
+  for again every 3 s while the page shows) with the layout its name says, then "Buttons drawn as" and "Confirm button",
+  the controller's options (`ConsolePrefs::controller`, not a theme's: console mode, the overlay and this page follow
+  them; mirrored in `ui-state.json` so the overlay never reads `console.json`). Both are automatic by default: the
+  drawing follows the controller in use (`look::glyphs_for_controller`), and a Nintendo drawing confirms with the east
+  button (its A) and goes back with the south one, in console mode (`console::input`), the overlay (`panel::pad_of`)
+  and every hint (`kit::glyph`). Then one tab at a time (In a game, Outside games, Overlay
   open, Console mode): the drawn controller with the tab's buttons lit and a callout per button in a column on its side
   (Guide, View and Menu on top), joined by lines that never cross (`pad.rs`, tested; a click on a button or callout lights
-  it and its table row), then the tab's shortcuts in a table (`table.rs`: action, controller, keyboard). Every shortcut
+  it and its table row), then the tab's shortcuts in a table (`table.rs`: action, controller, keyboard). Every button is
+  drawn as the controller has it (✕ ○ □ △ and L1 / Options for PlayStation, B A Y X and ZL / + for Nintendo). Every shortcut
   that changes is a chip with a chevron whose popover (one at a time) picks the screenshot's button, the button held for
   console mode, records a key, or turns a fixed button's shortcut on or off; an off one is a dashed chip saying "Off".
-  Outside games Guide may both open the overlay (a tap) and enter console mode (a hold): one callout says both, no warning. Overlay open is read-only;
-  Console mode's rows come from its theme (read with `themes::read`, not `look::theme`, which is Classic outside console
-  mode): what A does on a cover (X does the other) and "Confirm with the east button" change there, the rest is fixed. `HERONITE_DEBUG_CONTROLS=<tab>[:<popover>]` opens a tab
+  Outside games Guide may both open the overlay (a tap) and enter console mode (a hold): one callout says both, no warning. In Overlay open
+  and Console mode the confirm and back rows open the confirm button's choice; Console mode's other rows come from its theme (read with
+  `themes::read`, not `look::theme`, which is Classic outside console mode): what A does on a cover (X does the other)
+  changes there, the rest is fixed. `HERONITE_DEBUG_CONTROLS=<tab>[:<popover>]` opens a tab
   (`ingame`, `outside`, `overlay`, `console`) and a popover (`shot`, `replay`, `moment`, `volume`, `anywhere`,
-  `console-button`, `key-overlay`, `key-shot`, `key-replay`, `console-a`, `console-swap`). A section =
+  `console-button`, `key-overlay`, `key-shot`, `key-replay`, `console-a`, `glyphs`, `confirm`). A section =
   title + lead (`Section::blurb`) +
   captioned cards of rows. The Collection sections live in `app/src/pages/settings/<section>.rs`
   (`appearance`, `metadata/`, `screenshots`, `saves` + `backup/` for Backups: settings, what goes in, then the restore list

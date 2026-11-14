@@ -191,6 +191,7 @@ const INDEX: &[(Section, &[&str])] = &[
         Section::Controls,
         &[
             "Buttons drawn as",
+            "Confirm button",
             "Open the overlay",
             "Take a screenshot",
             "Save the replay",
@@ -584,7 +585,7 @@ mod tests {
         assert_eq!(sections("apearance").first(), Some(&Section::Appearance));
         assert!(sections("proton").contains(&Section::GameDefaults));
         // The group caption brings its sections, ahead of a blurb that says the word.
-        assert_eq!(sections("while")[..4], [Section::Controls, Section::Overlay, Section::Screenshots, Section::Replay]);
+        assert_eq!(sections("while")[..3], [Section::Overlay, Section::Screenshots, Section::Replay]);
         assert!(search("zzqx").is_empty());
     }
 

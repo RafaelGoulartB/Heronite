@@ -270,16 +270,28 @@ pub(super) static OPTS: &[Opt] = &[
     colour!("colors.muted", n_!("Secondary text"), theme.colors.muted),
     colour!("colors.focus_text", n_!("Text on the focus colour"), theme.colors.focus_text),
     colour!("colors.on", n_!("“On” switches"), theme.colors.on),
-    sel!("controls.glyphs", Controls, n_!("Buttons drawn as"), "", &[], Glyphs, glyphs_name, theme.controls.glyphs),
-    sel!("controls.hints", Controls, n_!("Hint bar"), "", &[], Hints, hints_name, theme.controls.hints),
-    tgl!(
-        "controls.swap_ab",
+    // The controller's, not the theme's: the overlay and Settings follow them too.
+    sel!(
+        "controls.glyphs",
         Controls,
-        n_!("Confirm with the east button"),
-        n_!("The Nintendo way: east confirms, south goes back."),
+        n_!("Buttons drawn as"),
+        n_!("Everywhere: console mode, the overlay and Settings."),
         &[],
-        theme.controls.swap_ab
+        Glyphs,
+        glyphs_name,
+        controller.glyphs
     ),
+    sel!(
+        "controls.confirm",
+        Controls,
+        n_!("Confirm button"),
+        n_!("Automatic: east on Nintendo controllers (their A), south on the others."),
+        &[],
+        ConfirmButton,
+        confirm_name,
+        controller.confirm
+    ),
+    sel!("controls.hints", Controls, n_!("Hint bar"), "", &[], Hints, hints_name, theme.controls.hints),
     tgl!("controls.sounds", Controls, n_!("Navigation sounds"), "", &[], theme.controls.sounds),
     sel!("game_page", GamePage, n_!("Game page"), "", &[], GamePage, game_page_name, theme.game_page),
     sel!("menu.style", GamePage, n_!("Menu"), "", &[], MenuStyle, menu_style_name, theme.menu.style),

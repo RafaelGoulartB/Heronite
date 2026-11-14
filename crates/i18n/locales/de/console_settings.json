@@ -33,7 +33,6 @@
   "Clock": "Uhr",
   "Colour of the game": "Farbe des Spiels",
   "Colours": "Farben",
-  "Confirm with the east button": "Mit der rechten Taste bestätigen",
   "Controller, downloads and battery.": "Controller, Downloads und Akku.",
   "Controls": "Steuerung",
   "Covers per shelf": "Cover pro Regal",
@@ -181,7 +180,6 @@
   "The game's art": "Das Artwork des Spiels",
   "The game's screenshots": "Die Screenshots des Spiels",
   "The newest in the library": "Die neuesten der Bibliothek",
-  "The Nintendo way: east confirms, south goes back.": "Wie bei Nintendo: Rechts bestätigt, unten geht zurück.",
   "The one in use, with its changes": "Das aktive, mit seinen Änderungen",
   "The ones played last": "Die zuletzt gespielten",
   "The rows of covers. Leave a title empty to use the shelf's own name.": "Die Coverreihen. Lasse einen Titel leer, um den Namen des Regals zu verwenden.",
@@ -215,5 +213,10 @@
   "Back to {name}": "Zurück zu {name}",
   "shape|Tall": "Hochformat",
   "shape|Wide": "Breitbild",
-  "Download them in Settings → Metadata.": "Lade sie unter Einstellungen → Metadaten herunter."
+  "Download them in Settings → Metadata.": "Lade sie unter Einstellungen → Metadaten herunter.",
+  "Confirm button": "Bestätigungstaste",
+  "Automatic: east on Nintendo controllers (their A), south on the others.": "Automatisch: rechts bei Nintendo-Controllern (ihr A), unten bei den anderen.",
+  "East (Nintendo A)": "Rechts (Nintendos A)",
+  "South (Xbox A, PlayStation ✕)": "Unten (Xbox A, PlayStation ✕)",
+  "Everywhere: console mode, the overlay and Settings.": "Überall: Konsolenmodus, Overlay und Einstellungen."
 }

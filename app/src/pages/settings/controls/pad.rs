@@ -1,6 +1,7 @@
 //! The drawn controller of Settings → Controller: an Xbox-style pad (the
 //! body, bumpers and triggers painted with curves; sticks, face buttons,
-//! Guide, View and Menu as round boxes), the buttons the tab uses lit, and a
+//! Guide, View and Menu as round boxes) whose face buttons show what the
+//! controller prints on them (`look::pad_glyphs`), the buttons the tab uses lit, and a
 //! callout for each in a column on its side (Guide's on top) joined to the
 //! button's rim by an elbow line. A binding that is off has a dashed callout
 //! and line. A click on a button or a callout picks it here and in the
@@ -228,7 +229,7 @@ fn outside(d: &SettingsPage) -> Vec<Callout> {
     v
 }
 
-/// While the overlay is open: fixed.
+/// While the overlay is open: fixed but for which button confirms.
 fn overlay_open() -> Vec<Callout> {
     if !supported(Feature::Overlay) {
         return Vec::new();
@@ -240,14 +241,15 @@ fn overlay_open() -> Vec<Callout> {
     } else {
         callout(Part::Guide, "Guide", tr!("Close the overlay"))
     };
+    let (confirm, back) = super::table::confirm_parts();
     vec![
         close,
         callout(Part::LB, "LB", tr!("Previous tab")),
         callout(Part::RB, "RB", tr!("Next tab")),
         callout(Part::LStick, tr!("L stick"), tr!("Move")),
         callout(Part::DPad, tr!("D-pad"), tr!("Move")),
-        callout(Part::A, "A", tr!("Select")),
-        callout(Part::B, "B", tr!("Back · close")),
+        callout(confirm, confirm.cap(), tr!("Select")),
+        callout(back, back.cap(), tr!("Back · close")),
         callout(Part::Y, "Y", tr!("Mark a moment in Notes")),
     ]
 }
@@ -255,11 +257,10 @@ fn overlay_open() -> Vec<Callout> {
 /// In console mode, as its theme has it.
 fn console(d: &SettingsPage) -> Vec<Callout> {
     let theme = super::console_theme(d);
-    let swap = theme.controls.swap_ab;
     let details = theme.nav.a_button == AButton::Details;
     let (opens, other) = if details { (tr!("Open the game page"), tr!("Play")) } else { (tr!("Play"), tr!("Open the game page")) };
-    let (confirm, back) = if swap { (Part::B, Part::A) } else { (Part::A, Part::B) };
-    let name = |p: Part| if p == Part::A { "A" } else { "B" };
+    let (confirm, back) = super::table::confirm_parts();
+    let name = |p: Part| p.cap();
     vec![
         callout(Part::LT, "LT", tr!("Jump back by letter")),
         callout(Part::LB, "LB", tr!("Previous tab")),
@@ -271,7 +272,7 @@ fn console(d: &SettingsPage) -> Vec<Callout> {
         callout(Part::X, "X", other),
         callout(back, name(back), tr!("Back · sidebar")),
         callout(confirm, name(confirm), opens),
-        callout(Part::Menu, tr!("Menu"), tr!("Open the menu")),
+        callout(Part::Menu, "Menu", tr!("Open the menu")),
     ]
 }
 
@@ -696,17 +697,16 @@ pub(super) fn map(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
         let (l, t, wd, ht) = pad_box(cx0, cy0, 40., 40.);
         root = root.child(div().absolute().left(l).top(t).w(wd).h(ht).rounded_full().bg(tones.fill(look)).border(px(lw)).border_color(lc));
     }
+    let style = crate::console::look::pad_glyphs();
     for part in [Part::A, Part::B, Part::X, Part::Y] {
         let (cx0, cy0) = part.centre();
         let (l, t, wd, ht) = pad_box(cx0, cy0, 26., 26.);
         let look = look_of(part);
-        let face: Hsla = match part {
-            Part::A => theme::console_btn_a(),
-            Part::B => theme::console_btn_b(),
-            Part::X => theme::console_btn_x(),
-            _ => theme::console_btn_y(),
-        }
-        .into();
+        let f = part.face();
+        let (colour, letter) = super::face_look(style, f);
+        // A neutral face (PlayStation, Nintendo, Deck) lights like the other parts.
+        let lit = colour.unwrap_or(tones.used);
+        let on_lit: Hsla = if colour.is_some() { theme::console_on_focus().into() } else { theme::text_primary().into() };
         let b = div()
             .absolute()
             .left(l)
@@ -718,13 +718,24 @@ pub(super) fn map(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
             .items_center()
             .justify_center()
             .text_size(px(10.5))
-            .font_weight(theme::W_BOLD)
-            .child(part.cap());
-        root = root.child(match look {
+            .font_weight(theme::W_BOLD);
+        let b = match look {
             Look::Idle => b.bg(tones.part).border_1().border_color(tones.part_line).text_color(theme::text_dim()),
-            Look::Used => b.bg(face).text_color(theme::console_on_focus()),
-            Look::Picked => b.bg(face).border_2().border_color(tones.picked).text_color(theme::console_on_focus()),
-        });
+            Look::Used => b.bg(lit).when(colour.is_none(), |b| b.border_1().border_color(tones.used_line)).text_color(on_lit),
+            Look::Picked => b.bg(lit).border_2().border_color(tones.picked).text_color(on_lit),
+        };
+        let b = match letter {
+            Some(l) => b.child(l),
+            None => {
+                let shape: Hsla = if look == Look::Idle { theme::text_dim().into() } else { crate::console::kit::shape_color(f).into() };
+                b.child(
+                    canvas(|_, _, _| (), move |bounds, _, window, _| crate::console::kit::paint_shape(bounds, f, shape, window))
+                        .absolute()
+                        .inset_0(),
+                )
+            }
+        };
+        root = root.child(b);
     }
     for part in [Part::View, Part::Menu] {
         let (cx0, cy0) = part.centre();
@@ -785,7 +796,7 @@ pub(super) fn map(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     let callout_el = |i: usize, c: &Callout, cx: &mut Context<SettingsPage>| {
         let on = picked == Some(c.part);
         let part = c.part;
-        let full = format!("{} · {}", c.cap, c.title);
+        let full = format!("{} · {}", super::shown_name(&c.cap), c.title);
         let b = div()
             .id(SharedString::from(format!("controls-callout-{i}")))
             .flex()
@@ -831,14 +842,26 @@ pub(super) fn map(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
 }
 
 impl Part {
-    /// The letter on a face button.
-    fn cap(self) -> &'static str {
+    /// A face button's Xbox letter (by position: `glyph` draws it as the
+    /// controller has it).
+    pub(super) fn cap(self) -> &'static str {
         match self {
             Part::A => "A",
             Part::B => "B",
             Part::X => "X",
             Part::Y => "Y",
             _ => "",
+        }
+    }
+
+    /// A face button's position.
+    fn face(self) -> crate::console::kit::Face {
+        use crate::console::kit::Face;
+        match self {
+            Part::B => Face::East,
+            Part::X => Face::West,
+            Part::Y => Face::North,
+            _ => Face::South,
         }
     }
 }

@@ -33,7 +33,6 @@
   "Clock": "Horloge",
   "Colour of the game": "Couleur du jeu",
   "Colours": "Couleurs",
-  "Confirm with the east button": "Confirmer avec le bouton est",
   "Controller, downloads and battery.": "Manette, téléchargements et batterie.",
   "Controls": "Commandes",
   "Covers per shelf": "Jaquettes par étagère",
@@ -181,7 +180,6 @@
   "The game's art": "Illustration du jeu",
   "The game's screenshots": "Captures d’écran du jeu",
   "The newest in the library": "Les plus récents de la Bibliothèque",
-  "The Nintendo way: east confirms, south goes back.": "À la Nintendo : est pour confirmer, sud pour revenir.",
   "The one in use, with its changes": "Celui utilisé, avec ses modifications",
   "The ones played last": "Les derniers jeux joués",
   "The rows of covers. Leave a title empty to use the shelf's own name.": "Les rangées de jaquettes. Laissez un titre vide pour utiliser le nom de l’étagère.",
@@ -215,5 +213,10 @@
   "Back to {name}": "Retour à {name}",
   "shape|Tall": "Haut",
   "shape|Wide": "Large",
-  "Download them in Settings → Metadata.": "Téléchargez-les dans Paramètres → Métadonnées."
+  "Download them in Settings → Metadata.": "Téléchargez-les dans Paramètres → Métadonnées.",
+  "Confirm button": "Bouton de confirmation",
+  "Automatic: east on Nintendo controllers (their A), south on the others.": "Automatique : est sur les manettes Nintendo (leur A), sud sur les autres.",
+  "East (Nintendo A)": "Est (A de Nintendo)",
+  "South (Xbox A, PlayStation ✕)": "Sud (A de Xbox, ✕ de PlayStation)",
+  "Everywhere: console mode, the overlay and Settings.": "Partout : mode console, overlay et Paramètres."
 }

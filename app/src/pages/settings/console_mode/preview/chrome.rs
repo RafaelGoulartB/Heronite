@@ -139,13 +139,17 @@ impl Pic<'_, '_> {
         if c.hints == Hints::Off {
             return None;
         }
-        let (a, b): ((&'static str, Rgba), (&'static str, Rgba)) = match c.glyphs {
+        // The controller's buttons (not the theme's): south and east, the
+        // one that confirms first.
+        let (south, east): ((&'static str, Rgba), (&'static str, Rgba)) = match crate::console::look::glyphs() {
             Glyphs::Xbox | Glyphs::Auto => (("A", rgb(0x4f9f45)), ("B", rgb(0xc8453c))),
             Glyphs::PlayStation => (("\u{2715}", rgb(0x5a7bd6)), ("\u{25cb}", rgb(0xd0545f))),
-            Glyphs::Nintendo => (("A", rgb(0x4b4f58)), ("B", rgb(0x4b4f58))),
+            Glyphs::Nintendo => (("B", rgb(0x4b4f58)), ("A", rgb(0x4b4f58))),
             Glyphs::Deck => (("A", rgb(0x3a3f48)), ("B", rgb(0x3a3f48))),
             Glyphs::Keyboard => (("Enter", rgb(0x3a3f48)), ("Esc", rgb(0x3a3f48))),
         };
+        let keys = crate::console::look::glyphs() == Glyphs::Keyboard;
+        let (a, b) = if crate::console::look::confirm_east() && !keys { (east, south) } else { (south, east) };
         let floating = c.hints == Hints::Auto;
         let bottom = if self.t.interface.tab_bar == TabBar::Bottom { 38. } else { 9. };
         let hint = |g: (&'static str, Rgba), text: &'static str| {

@@ -216,7 +216,7 @@ pub(crate) enum Mark {
 }
 
 /// The button a hint stands for, by position: A confirms (south, or east when
-/// the theme swaps A and B), B goes back.
+/// the controller confirms with it), B goes back.
 pub(crate) fn face(btn: Btn, swap_ab: bool) -> Option<Face> {
     Some(match (btn, swap_ab) {
         (Btn::A, false) | (Btn::B, true) => Face::South,
@@ -261,15 +261,15 @@ pub(crate) fn mark(style: Glyphs, btn: Btn, swap_ab: bool) -> Mark {
     }
 }
 
-/// Controller glyph in the style the console theme asks for (`Auto` follows
-/// the connected controller): Xbox coloured letters, PlayStation symbols,
+/// Controller glyph in the style the controller's options ask for (`Auto`
+/// follows the connected controller): Xbox coloured letters, PlayStation symbols,
 /// Nintendo and Steam Deck letters, or the keyboard keys.
 pub fn glyph(btn: Btn) -> Div {
     let style = look::glyphs();
     if style == Glyphs::Keyboard {
         return key_glyph(btn);
     }
-    draw(mark(style, btn, look::theme().controls.swap_ab), style)
+    draw(mark(style, btn, look::confirm_east()), style)
 }
 
 fn draw(m: Mark, style: Glyphs) -> Div {
@@ -308,7 +308,7 @@ fn letter_button(text: &str, f: Face, style: Glyphs) -> Div {
 }
 
 /// PlayStation colours of the symbols.
-fn shape_color(f: Face) -> Rgba {
+pub(crate) fn shape_color(f: Face) -> Rgba {
     match f {
         Face::South => rgb(0x7aa8ff),
         Face::East => rgb(0xff6f7d),
@@ -327,7 +327,7 @@ fn shape_button(f: Face) -> Div {
         .child(canvas(|_, _, _| (), move |bounds, _, window, _| paint_shape(bounds, f, color, window)).absolute().inset_0())
 }
 
-fn paint_shape(bounds: Bounds<Pixels>, f: Face, color: Hsla, window: &mut Window) {
+pub(crate) fn paint_shape(bounds: Bounds<Pixels>, f: Face, color: Hsla, window: &mut Window) {
     let w = f32::from(bounds.size.width);
     let c = bounds.center();
     let at = |dx: f32, dy: f32| point(c.x + px(dx * w), c.y + px(dy * w));

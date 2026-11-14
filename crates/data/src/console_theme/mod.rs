@@ -8,7 +8,8 @@
 //!   an unknown enum value reads as that field's default.
 //! - [`ConsolePrefs`] (`AppPaths::console_prefs()`, `console.json`): the theme
 //!   in use on this machine plus the options that are not part of a theme
-//!   (what to do when a controller connects, how the app opens, idle).
+//!   (what to do when a controller connects, how the app opens, idle, how
+//!   the controller's buttons are drawn and which one confirms).
 //! - [`presets`]: the built-in themes; [`store`]: saved themes, export and
 //!   import.
 //!
@@ -188,7 +189,13 @@ str_enum! {
 }
 str_enum! {
     /// How the controller buttons are drawn (Auto follows the connected controller).
-    pub enum Glyphs { Auto = "auto", Xbox = "xbox", PlayStation = "playstation", Nintendo = "nintendo", Deck = "deck", Keyboard = "keyboard" } default Xbox
+    pub enum Glyphs { Auto = "auto", Xbox = "xbox", PlayStation = "playstation", Nintendo = "nintendo", Deck = "deck", Keyboard = "keyboard" } default Auto
+}
+str_enum! {
+    /// The face button that confirms (the other one of south and east goes
+    /// back). `Auto`: east on a Nintendo controller (its A), south on the
+    /// others (Xbox's A, PlayStation's cross).
+    pub enum ConfirmButton { Auto = "auto", South = "south", East = "east" } default Auto
 }
 str_enum! {
     pub enum Hints { Always = "always", Auto = "auto", Off = "off" } default Always
@@ -449,19 +456,43 @@ pub struct ColourOptions {
     pub on: String,
 }
 
+/// The theme's hints and sounds. How the buttons are drawn and which one
+/// confirms belong to the controller, not to a theme: [`ControllerPrefs`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ControlOptions {
-    pub glyphs: Glyphs,
     pub hints: Hints,
-    /// Confirm with the east button and go back with the south one.
-    pub swap_ab: bool,
     pub sounds: bool,
 }
 
 impl Default for ControlOptions {
     fn default() -> Self {
-        Self { glyphs: Glyphs::Xbox, hints: Hints::Always, swap_ab: false, sounds: false }
+        Self { hints: Hints::Always, sounds: false }
+    }
+}
+
+/// The controller's options, the same everywhere (console mode, the
+/// overlay, Settings): how its buttons are drawn and which one confirms.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ControllerPrefs {
+    pub glyphs: Glyphs,
+    pub confirm: ConfirmButton,
+}
+
+impl ControllerPrefs {
+    /// What a `console.json` from before [`ConsolePrefs::controller`] had in
+    /// its theme (`theme.controls`): "Confirm with the east button" stays
+    /// on; the drawing becomes automatic unless it was the keyboard's (the
+    /// themes chose Xbox or PlayStation for a look, not for a controller).
+    fn from_old_theme(value: &Value) -> Self {
+        let controls = value.get("theme").and_then(|t| t.get("controls"));
+        let glyphs = match controls.and_then(|c| c.get("glyphs")).and_then(Value::as_str).and_then(Glyphs::parse) {
+            Some(Glyphs::Keyboard) => Glyphs::Keyboard,
+            _ => Glyphs::Auto,
+        };
+        let east = controls.and_then(|c| c.get("swapAb")).and_then(Value::as_bool).unwrap_or(false);
+        Self { glyphs, confirm: if east { ConfirmButton::East } else { ConfirmButton::Auto } }
     }
 }
 
@@ -710,6 +741,9 @@ pub struct ConsolePrefs {
     pub last_tab: usize,
     /// The filter choices console mode starts with next time.
     pub kept_filters: KeptFilters,
+    /// How the controller's buttons are drawn and which one confirms,
+    /// everywhere (not only in console mode).
+    pub controller: ControllerPrefs,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -726,6 +760,7 @@ impl Default for ConsolePrefs {
             idle: Idle::Off,
             last_tab: 0,
             kept_filters: KeptFilters::default(),
+            controller: ControllerPrefs::default(),
             extra: Map::new(),
         }
     }
@@ -752,9 +787,13 @@ impl ConsolePrefs {
         if !value.is_object() {
             return Self::default();
         }
+        let old = value.get("controller").is_none().then(|| ControllerPrefs::from_old_theme(&value));
         match lenient::<ConsolePrefs>(value) {
             Some(mut p) => {
                 p.theme = p.theme.normalized();
+                if let Some(old) = old {
+                    p.controller = old;
+                }
                 p
             }
             None => {

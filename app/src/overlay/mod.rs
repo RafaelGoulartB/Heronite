@@ -467,6 +467,7 @@ impl OverlayService {
             Event::ConsoleCancelled => cx.defer(|cx| crate::console::summon::overlay_hold(None, cx)),
             Event::ConsoleMode => cx.defer(crate::console::summon::overlay_held),
             Event::Controllers(list) => {
+                crate::console::look::controllers_found(&list);
                 self.controllers = list;
                 if let Some(panel) = self.panel {
                     let list = self.controllers.clone();

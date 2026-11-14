@@ -123,6 +123,8 @@ pub fn init(cx: &mut App, data_paths: &DataPaths, runtime: Arc<GameRuntime>, inc
     let app = AppPaths::for_data(data_paths);
     // The mirror of console.json, read at every start anyway.
     let ui = ui_state::UiState::load(&app);
+    // How the buttons are drawn and which one confirms, for the overlay too.
+    super::look::set_controls(ui.controller);
     let debug = crate::env::value("HERONITE_DEBUG_SUMMON");
     let entity = cx.new(|_| ConsoleSummon {
         app,

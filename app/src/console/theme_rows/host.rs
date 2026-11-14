@@ -144,6 +144,8 @@ pub fn change<H: Host>(h: &mut H, cmd: &Command, cx: &mut Context<H>) -> bool {
             crate::console::summon::options_changed(cx);
             themes::prefs(&app)
         }
+        // The controller's, not the theme's: no Undo step.
+        "controls.glyphs" | "controls.confirm" => themes::update(&app, |p| p.controller = probe.controller),
         _ => {
             st.remember(cmd);
             let data = &st.data;

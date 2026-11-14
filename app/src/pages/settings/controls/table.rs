@@ -3,9 +3,10 @@
 //! change is a chip with a chevron; a click opens its popover under it (one
 //! at a time): the screenshot's button, the button held for console mode,
 //! a key recorded in place, or only the on/off of a fixed button. A shortcut
-//! that is off is a dashed chip that says so. The rows of "Overlay open" are
-//! fixed; "Console mode" changes what A does on a cover and which button
-//! confirms (its theme's), the rest is fixed.
+//! that is off is a dashed chip that says so. In "Overlay open" and
+//! "Console mode" the confirm and back rows pick which button confirms (the
+//! controller's option, as at the top of the page); "Console mode" also
+//! changes what A does on a cover (its theme's). The rest is fixed.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -46,8 +47,11 @@ pub(super) enum Edit {
     /// A row or its X row.
     ConsoleA,
     ConsoleX,
-    /// Console mode confirms with the east button.
-    ConsoleSwap,
+    /// How the buttons are drawn (the top of the page).
+    Glyphs,
+    /// Which button confirms, from the chip of that id (the top of the
+    /// page, a confirm or back row).
+    Confirm(&'static str),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -155,18 +159,18 @@ fn keys_or(keys: &[&str]) -> Div {
 
 /// How a chip looks.
 #[derive(Clone, Copy, Default)]
-struct ChipState {
+pub(super) struct ChipState {
     /// Its popover is open.
-    open: bool,
+    pub open: bool,
     /// The shortcut is off.
-    off: bool,
+    pub off: bool,
     /// It waits for something (the overlay): drawn faded.
-    waits: bool,
+    pub waits: bool,
 }
 
 /// A shortcut that can change: its buttons or keys, a chevron, and a click
 /// that opens `edit`'s popover (or closes it).
-fn chip(id: &'static str, content: Div, st: ChipState, edit: Edit, cx: &mut Context<SettingsPage>) -> Stateful<Div> {
+pub(super) fn chip(id: &'static str, content: Div, st: ChipState, edit: Edit, cx: &mut Context<SettingsPage>) -> Stateful<Div> {
     let base = div()
         .id(id)
         .flex()
@@ -209,7 +213,7 @@ fn open_edit(d: &mut SettingsPage, edit: Edit, window: &mut Window, cx: &mut Con
     cx.notify();
 }
 
-fn close_edit(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
+pub(super) fn close_edit(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     d.controls.edit = None;
     d.controls.key_error = None;
     cx.notify();
@@ -217,7 +221,7 @@ fn close_edit(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
 
 /// `chip` and, when it is open, its popover under it (kept in the window),
 /// with a catcher behind that closes it.
-fn with_popover(d: &SettingsPage, chip: Stateful<Div>, popover: Option<Div>, cx: &mut Context<SettingsPage>) -> AnyElement {
+pub(super) fn with_popover(d: &SettingsPage, chip: Stateful<Div>, popover: Option<Div>, cx: &mut Context<SettingsPage>) -> AnyElement {
     let Some(popover) = popover else { return chip.into_any_element() };
     let focus = d.controls.pop_focus.clone();
     let catcher = deferred(
@@ -252,7 +256,7 @@ fn with_popover(d: &SettingsPage, chip: Stateful<Div>, popover: Option<Div>, cx:
 }
 
 /// A popover's frame: the title, what it says, its body and a footer.
-fn popover(title: &str, lead: Option<String>) -> Div {
+pub(super) fn popover(title: &str, lead: Option<String>) -> Div {
     crate::ui::dropdown::menu_panel(POP_W)
         .w(px(POP_W))
         .p(px(14.))
@@ -838,8 +842,8 @@ fn pair(part: Part) -> Option<Part> {
     }
 }
 
-/// While the overlay is open: fixed.
-fn overlay_open(d: &SettingsPage) -> Vec<Line> {
+/// While the overlay is open: fixed but for which button confirms.
+fn overlay_open(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Vec<Line> {
     let read = |action: &'static str, part: Part, pad: Div, key: Option<Div>| {
         let mut l = Line::new(action, Some(part));
         l.also = pair(part);
@@ -849,21 +853,47 @@ fn overlay_open(d: &SettingsPage) -> Vec<Line> {
     };
     let p = &d.overlay.prefs;
     let close_key = p.keyboard_shortcut.then(|| key_caps(&p.keyboard_accelerator));
+    let (confirm, back) = confirm_parts();
+    let mut select = Line::new(tr!("Select"), Some(confirm));
+    select.pad = super::confirm_chip(d, "controls-overlay-confirm", false, cx);
+    select.key = key_cap("Enter").into_any_element();
+    let mut close = Line::new(tr!("Back · close"), Some(back));
+    close.pad = back_chip(d, "controls-overlay-back", cx);
+    close.key = key_cap("Esc").into_any_element();
     vec![
         read(tr!("Move"), Part::LStick, glyphs(&[tr!("L stick"), tr!("D-pad")]), Some(key_cap(tr!("Arrows")))),
-        read(tr!("Select"), Part::A, glyph("A"), Some(key_cap("Enter"))),
-        read(tr!("Back · close"), Part::B, glyph("B"), Some(key_cap("Esc"))),
+        select,
+        close,
         read(tr!("Previous / next tab"), Part::RB, glyphs(&["LB", "RB"]), Some(keys_or(&["Q", "E"]))),
         read(tr!("Mark a moment in Notes"), Part::Y, glyph("Y"), None),
         read(tr!("Close the overlay"), if cfg!(windows) { Part::View } else { Part::Guide }, chord(GUIDE), close_key),
     ]
 }
 
+/// The parts that confirm and go back (`look::confirm_east`).
+pub(super) fn confirm_parts() -> (Part, Part) {
+    if crate::console::look::confirm_east() {
+        (Part::B, Part::A)
+    } else {
+        (Part::A, Part::B)
+    }
+}
+
+/// The back button's chip: its glyph, and the confirm button's popover
+/// (picking one picks the other).
+fn back_chip(d: &SettingsPage, id: &'static str, cx: &mut Context<SettingsPage>) -> AnyElement {
+    let edit = Edit::Confirm(id);
+    let st = ChipState { open: d.controls.edit == Some(edit), ..Default::default() };
+    let back = if confirm_parts().1 == Part::A { "A" } else { "B" };
+    let c = chip(id, glyph(back), st, edit, cx);
+    let pop = st.open.then(|| super::confirm_menu(cx));
+    with_popover(d, c, pop, cx)
+}
+
 /// Console mode, as its theme has it: what A does on a cover (X does the
 /// other) and which button confirms change here, the rest is fixed.
 fn console(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Vec<Line> {
     let theme = super::console_theme(d);
-    let swap = theme.controls.swap_ab;
     let details = theme.nav.a_button == AButton::Details;
     let open = d.controls.edit;
     let read = |action: &'static str, part: Part, pad: Div, key: Option<Div>| {
@@ -876,25 +906,19 @@ fn console(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Vec<Line> {
     let theme_chip = |id: &'static str, glyph_name: &str, edit: Edit, cx: &mut Context<SettingsPage>| {
         let st = ChipState { open: open == Some(edit), ..Default::default() };
         let c = chip(id, glyph(glyph_name), st, edit, cx);
-        let pop = st.open.then(|| match edit {
-            Edit::ConsoleSwap => swap_popover(swap, cx),
-            _ => a_popover(details, cx),
-        });
+        let pop = st.open.then(|| a_popover(details, cx));
         with_popover(d, c, pop, cx)
     };
-    let (confirm, back) = if swap { (("B", Part::B), ("A", Part::A)) } else { (("A", Part::A), ("B", Part::B)) };
+    let (confirm, back) = confirm_parts();
     let (opens, other) = if details { (tr!("Open the game page"), tr!("Play")) } else { (tr!("Play"), tr!("Open the game page")) };
-    let mut first = Line::new(opens, Some(confirm.1));
-    first.pad = theme_chip("controls-console-a", confirm.0, Edit::ConsoleA, cx);
+    let mut first = Line::new(opens, Some(confirm));
+    first.pad = theme_chip("controls-console-a", if confirm == Part::A { "A" } else { "B" }, Edit::ConsoleA, cx);
     first.key = key_cap("Enter").into_any_element();
-    if swap {
-        first.note = Some(tr!("Confirm with the east button is on").to_string());
-    }
     let mut x = Line::new(other, Some(Part::X));
     x.pad = theme_chip("controls-console-x", "X", Edit::ConsoleX, cx);
     x.key = key_cap("X").into_any_element();
-    let mut back_line = Line::new(tr!("Back · sidebar"), Some(back.1));
-    back_line.pad = theme_chip("controls-console-back", back.0, Edit::ConsoleSwap, cx);
+    let mut back_line = Line::new(tr!("Back · sidebar"), Some(back));
+    back_line.pad = back_chip(d, "controls-console-back", cx);
     back_line.key = key_cap("Esc").into_any_element();
     vec![
         first,
@@ -903,7 +927,7 @@ fn console(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Vec<Line> {
         read(tr!("Search and filters"), Part::Y, glyph("Y"), Some(key_cap("Y"))),
         read(tr!("Previous / next tab"), Part::RB, glyphs(&["LB", "RB"]), Some(keys_or(&["Q", "E"]))),
         read(tr!("Jump by letter"), Part::RT, glyphs(&["LT", "RT"]), Some(keys_or(&["Page Up", "Page Down"]))),
-        read(tr!("Open the menu"), Part::Menu, glyph(tr!("Menu")), Some(key_cap("M"))),
+        read(tr!("Open the menu"), Part::Menu, glyph("Menu"), Some(key_cap("M"))),
         read(tr!("Move"), Part::LStick, glyphs(&[tr!("L stick"), tr!("D-pad")]), Some(key_cap(tr!("Arrows")))),
     ]
 }
@@ -927,21 +951,13 @@ fn a_popover(details: bool, cx: &mut Context<SettingsPage>) -> Div {
     popover(tr!("A on a cover"), Some(tr!("X does the other.").to_string())).child(list)
 }
 
-/// Whether console mode confirms with the east button.
-fn swap_popover(swap: bool, cx: &mut Context<SettingsPage>) -> Div {
-    popover(tr!("Confirm with the east button"), Some(tr!("The Nintendo way: east confirms, south goes back.").to_string())).child(footer(
-        None,
-        Some((swap, "controls-console-swap", |d, on, cx| super::change_console_theme(d, cx, |t| t.controls.swap_ab = on))),
-        cx,
-    ))
-}
-
 /// The tab that shows `label` (a row's action, translated), for the
 /// Settings search.
 pub(super) fn tab_of(label: &str) -> Option<Show> {
     const TABS: &[(Show, &[&str])] = &[
         (Show::InGame, &["Open the overlay", "Take a screenshot", "Save the replay", "Mark a moment", "Volume up / down"]),
         (Show::Outside, &["Enter console mode"]),
+        (Show::Overlay, &["Select", "Back · close", "Mark a moment in Notes", "Close the overlay"]),
         (Show::Console, &["Search and filters", "Jump by letter", "Open the game page", "Play", "Back · sidebar"]),
     ];
     TABS.iter().find(|(_, labels)| labels.iter().any(|l| translate(l) == label)).map(|(s, _)| *s)
@@ -986,7 +1002,7 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
             in_game(d, cx)
         }
         Show::Outside => outside(d, cx),
-        Show::Overlay => overlay_open(d),
+        Show::Overlay => overlay_open(d, cx),
         Show::Console => console(d, cx),
     };
     for (i, l) in lines.into_iter().enumerate() {
