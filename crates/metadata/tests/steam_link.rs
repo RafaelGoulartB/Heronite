@@ -416,7 +416,7 @@ fn the_search_by_name_is_remembered_and_a_found_game_is_not_searched_again() {
     let again = svc.preview_game_metadata(&args("other", None)).unwrap();
     assert_eq!(steam_state(&again), SourceAnswer::NotFound);
     assert_eq!(searches(&server), after_miss, "the second dialog asked no search");
-    assert!(paths.source_cache_dir("steam").join("titles.json").exists());
+    assert!(titles_cache(&paths).exists());
 
     // Saved, the game found is asked for by its id: no search even without the memory.
     svc.apply_game_metadata(&args("manual", None)).unwrap();
@@ -438,7 +438,7 @@ fn a_steam_that_throttles_or_fails_is_unreachable_and_nothing_is_remembered() {
         let (_dir, paths, _server, svc) = setup_with(server);
         let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
         assert_eq!(steam_state(&preview), SourceAnswer::Unreachable, "{status}");
-        assert!(!paths.source_cache_dir("steam").join("titles.json").exists(), "{status}: not read as 'not on Steam'");
+        assert!(!titles_cache(&paths).exists(), "{status}: not read as 'not on Steam'");
     }
 }
 
@@ -461,4 +461,149 @@ fn a_number_is_an_app_id_after_the_games_of_that_name_and_an_address_comes_first
     let titled = ids("2048");
     assert_eq!(titled.first().map(String::as_str), Some("3002"), "{titled:?}");
     assert_eq!(ids("https://store.steampowered.com/app/400/Portal/").first().map(String::as_str), Some("400"));
+}
+
+/// IGDB's Portal 2, as a game released in 1993.
+fn igdb_of_1993() -> Server {
+    mock_over(|req| {
+        (req.path() == "/igdb/v4/games").then(|| {
+            let body =
+                if req.body.starts_with("search") { fixture("igdb_search_portal2.json") } else { fixture("igdb_game_steam_620.json") };
+            Resp::raw_json(body.replace("1303084800", "735000000"))
+        })
+    })
+}
+
+fn only_search(community: impl Fn() -> Resp + Send + Sync + 'static, store: impl Fn() -> Resp + Send + Sync + 'static) -> Server {
+    mock_over(move |req| match req.path() {
+        p if p.starts_with("/community/actions/SearchApps/") => Some(community()),
+        "/steam/api/storesearch/" => Some(store()),
+        _ => None,
+    })
+}
+
+fn titles_cache(paths: &DataPaths) -> std::path::PathBuf {
+    paths.source_cache_dir("steam").join("titles")
+}
+
+/// A record of "manual" (Portal 2) with a match by name kept, the year of its date set.
+fn kept_match(paths: &DataPaths, release_date: &str) {
+    json_store::write(
+        &paths.metadata(),
+        &json!({"games": {"sideload:manual": {"appName": "manual", "runner": "sideload", "title": "Portal 2", "releaseDate": release_date,
+            "steamAppId": "620", "developers": [], "publishers": [], "genres": [], "themes": [], "gameModes": [], "platforms": [],
+            "features": [], "websites": [], "fieldSources": {},
+            "sourceMatches": {"steam": {"id": "620", "title": "Portal 2", "year": 2011, "matchedBy": "exactTitle"}}}}}),
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_match_by_name_kept_in_the_record_is_checked_again_and_dropped_when_it_is_another_game() {
+    let (_dir, paths, _server, svc) = setup();
+    // Still the game: asked for by its id.
+    kept_match(&paths, "2011-04-19");
+    let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    assert!(matches!(steam_state(&preview), SourceAnswer::Found { pinned: false, .. }));
+    assert_eq!(preview.proposed.steam_app_id.as_deref(), Some("620"));
+
+    // The record's year now says 1993 (IGDB filled it): it is not that game. Not asked for it,
+    // not found by name either, and the link goes, without a mark: a later search may find another.
+    kept_match(&paths, "1993-12-10");
+    let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    assert_eq!(steam_state(&preview), SourceAnswer::NotFound);
+    assert_eq!(preview.proposed.steam_app_id, None);
+    assert!(record::source_match(&preview.proposed, "steam").is_none() && !record::is_not_on(&preview.proposed, "steam"));
+
+    // Renamed: the game of the old title is not this one.
+    kept_match(&paths, "2011-04-19");
+    let mut renamed = args("manual", None);
+    renamed.title = "Portal 3".into();
+    let preview = svc.preview_game_metadata(&renamed).unwrap();
+    assert_eq!(steam_state(&preview), SourceAnswer::NotFound);
+    assert_eq!(preview.proposed.steam_app_id, None);
+
+    // A link the user pinned is theirs: never dropped by a check of names.
+    let mut md: Value = json_store::read_value(&paths.metadata()).unwrap();
+    md["games"]["sideload:manual"]["sourceMatches"]["steam"] = json!({"id": "620", "title": "Portal 2", "pinned": true});
+    json_store::write(&paths.metadata(), &md).unwrap();
+    let preview = svc.preview_game_metadata(&renamed).unwrap();
+    assert!(matches!(steam_state(&preview), SourceAnswer::Found { pinned: true, .. }));
+    assert_eq!(preview.proposed.steam_app_id.as_deref(), Some("620"));
+}
+
+#[test]
+fn a_game_found_by_name_of_another_year_than_a_sure_source_says_is_left_out() {
+    // IGDB's Portal 2 is from 1993 here; Steam's, found by name, from 2011.
+    let server = igdb_of_1993();
+    let (_dir, paths, _server, svc) = setup_with(server);
+    json_store::write(&paths.collection_settings(), &json!({"metadata": {"igdbClientId": "id", "igdbClientSecret": "secret"}})).unwrap();
+    let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    let igdb = preview.candidates.iter().find(|c| c.source == "igdb").expect("IGDB found it");
+    assert_eq!((igdb.match_year, igdb.matched_by), (Some(1993), Some(MatchedBy::ExactTitle)), "{:?}", igdb.metadata.release_date);
+    assert_eq!(steam_state(&preview), SourceAnswer::NotFound);
+    assert!(preview.candidates.iter().all(|c| c.source != "steam") && preview.proposed.steam_app_id.as_deref() != Some("620"));
+
+    // The same year: the same game.
+    let (_dir, paths, _server, svc) = setup();
+    json_store::write(&paths.collection_settings(), &json!({"metadata": {"igdbClientId": "id", "igdbClientSecret": "secret"}})).unwrap();
+    let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    assert!(matches!(steam_state(&preview), SourceAnswer::Found { .. }));
+
+    // A link the user made is theirs, whatever the year.
+    let server = igdb_of_1993();
+    let (_dir, paths, _server, svc) = setup_with(server);
+    json_store::write(&paths.collection_settings(), &json!({"metadata": {"igdbClientId": "id", "igdbClientSecret": "secret"}})).unwrap();
+    let preview = svc.preview_game_metadata(&args("manual", Some(Some("620")))).unwrap();
+    assert!(matches!(steam_state(&preview), SourceAnswer::Found { pinned: true, .. }));
+}
+
+#[test]
+fn a_no_is_remembered_only_when_every_request_answered() {
+    // The community search fails; the store answers with nothing.
+    let server = only_search(|| Resp::status(403), || Resp::json(json!({"items": []})));
+    let (_dir, paths, _server, svc) = setup_with(server);
+    let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    assert_eq!(steam_state(&preview), SourceAnswer::NotFound);
+    assert!(!titles_cache(&paths).exists(), "one request failed: Steam may know the game");
+
+    // A bad answer is not an answer either.
+    let server = only_search(|| Resp::raw_json("not json".into()), || Resp::json(json!({"items": []})));
+    let (_dir, paths, _server, svc) = setup_with(server);
+    svc.preview_game_metadata(&args("manual", None)).unwrap();
+    assert!(!titles_cache(&paths).exists());
+
+    // Both answer: no such game, and it is remembered.
+    let server = only_search(|| Resp::json(json!([])), || Resp::json(json!({"items": []})));
+    let (_dir, paths, _server, svc) = setup_with(server);
+    svc.preview_game_metadata(&args("manual", None)).unwrap();
+    assert!(titles_cache(&paths).exists());
+}
+
+#[test]
+fn a_steam_that_said_to_wait_is_left_alone_for_a_while() {
+    let server = only_search(|| Resp::status(429), || Resp::status(429));
+    let (_dir, _paths, server, svc) = setup_with(server);
+    let first = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    assert_eq!(steam_state(&first), SourceAnswer::Unreachable);
+    let asked = searches(&server);
+    assert!(asked > 0);
+    // Other games of a bulk run, and the dialog again: no request until the wait is over.
+    let other = svc.preview_game_metadata(&args("other", None)).unwrap();
+    assert_eq!(steam_state(&other), SourceAnswer::Unreachable);
+    svc.preview_game_metadata(&args("manual", None)).unwrap();
+    assert_eq!(searches(&server), asked);
+}
+
+#[test]
+fn an_edition_listed_first_does_not_stop_the_search_for_the_exact_name() {
+    // The community search lists only the edition; the store has the game itself.
+    let server = only_search(
+        || Resp::json(json!([{"appid": "777", "name": "Portal 2 - Deluxe Edition"}])),
+        || Resp::json(json!({"items": [{"type": "app", "name": "Portal 2", "id": 620}]})),
+    );
+    let (_dir, _paths, _server, svc) = setup_with(server);
+    let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    let SourceAnswer::Found { hit, .. } = steam_state(&preview) else { panic!("{:?}", steam_state(&preview)) };
+    assert_eq!(hit.id.as_deref(), Some("620"));
 }

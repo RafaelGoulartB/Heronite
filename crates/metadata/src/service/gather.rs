@@ -24,6 +24,7 @@ use indexmap::IndexMap;
 
 use super::fetch::{asks_details, is_picture_source};
 use super::MetadataService;
+use crate::confidence::YEAR_SLACK;
 use crate::record;
 use crate::sources::{is_on, GameKind, MetadataSource, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind, SourceRegistry};
 use crate::store::{as_runner, get_game_metadata};
@@ -213,6 +214,7 @@ impl MetadataService {
             .filter(|(source, _)| sources.get(source).is_some_and(SourceDescriptor::is_fallback) && !unpinned(source))
             .map(|(source, m)| (source, m.id))
             .collect();
+        let record_year = current.as_ref().and_then(|md| release_year(md.release_date.as_deref()));
         // The game of a source a search by name found (not pinned), kept in the record.
         let remembered: IndexMap<String, String> = current
             .as_ref()
@@ -224,6 +226,8 @@ impl MetadataService {
                     && m.matched_by == Some(MatchedBy::ExactTitle)
                     && sources.get(source).is_some_and(|d| d.link_for.is_some())
                     && !unpinned(source)
+                    // Not after a rename, or once a year says it is another game.
+                    && crate::steam_name::match_is_current(m, &game.title, record_year)
             })
             .map(|(source, m)| (source, m.id))
             .collect();
@@ -331,6 +335,26 @@ impl MetadataService {
                 (source.descriptor(), why, answer.unwrap_or(Lookup::Skipped))
             })
             .collect();
+        // A game found by name whose year is not the year of another sure candidate's is
+        // another game of the same title (Doom, 1993 and 2016): it is left out.
+        let year_of = |c: &MetadataCandidate| c.match_year.or_else(|| release_year(c.metadata.release_date.as_deref()));
+        let others: Vec<i32> = lookups_done
+            .iter()
+            .filter(|(d, _, _)| d.kind == SourceKind::Details && d.link_for.is_none())
+            .filter_map(|(_, _, l)| match l {
+                Lookup::Found(c) if c.matched_by.is_none_or(MatchedBy::is_sure) => year_of(c),
+                _ => None,
+            })
+            .collect();
+        for (d, _, lookup) in &mut lookups_done {
+            if d.link_for.is_none() || pins.contains_key(&d.id) {
+                continue;
+            }
+            let Lookup::Found(c) = lookup else { continue };
+            if c.matched_by != Some(MatchedBy::SteamId) && year_of(c).is_some_and(|y| others.iter().any(|o| (o - y).abs() > YEAR_SLACK)) {
+                *lookup = Lookup::NotFound;
+            }
+        }
         if !settings.allow_adult_covers {
             for (_, _, lookup) in &mut lookups_done {
                 if let Lookup::Found(c) = lookup {

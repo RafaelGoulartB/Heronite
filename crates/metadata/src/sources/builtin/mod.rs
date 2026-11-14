@@ -26,7 +26,7 @@ use crate::lutris::{fetch_lutris_metadata, search_lutris};
 use crate::providers::{fetch_playnite_metadata, metadata_from_store_game, PlayniteSource, StoreLibraries};
 use crate::steam::{self, SteamState};
 use crate::steam_name;
-use crate::types::{ArtKind, Lookup, MatchedBy, MetadataCandidate, SourceHit};
+use crate::types::{release_year, ArtKind, Lookup, MatchedBy, MetadataCandidate, SourceHit};
 pub(crate) use launchbox_source::box_regions;
 use launchbox_source::{region_label, LaunchBoxSource};
 use libretro_source::LibretroSource;
@@ -412,7 +412,12 @@ impl MetadataSource for SteamSource {
             None => match steam_name::app_id(ctx.paths, ctx.http, &game.title) {
                 Lookup::Found(id) => self.app(ctx, game, Some(&id), MatchedBy::ExactTitle).and_then(|c| {
                     let md = &c.metadata;
-                    if steam_name::is_the_game(&game.title, game.year, md.title.as_deref().unwrap_or(""), md.release_date.as_deref()) {
+                    if steam_name::is_the_game(
+                        &game.title,
+                        game.year,
+                        md.title.as_deref().unwrap_or(""),
+                        release_year(md.release_date.as_deref()),
+                    ) {
                         Lookup::Found(c)
                     } else {
                         Lookup::NotFound
@@ -462,7 +467,7 @@ impl SteamSource {
             thumb_url: steam::steam_cdn_cover(Some(id)),
             id: Some(id.to_owned()),
             title: Some(details.name.clone()).filter(|n| !n.is_empty()),
-            year: details.release_date.as_deref().and_then(steam::year_of_date),
+            year: release_year(details.release_date.as_deref()),
             platform: None,
             matched_by: None,
             alt_title: None,

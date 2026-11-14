@@ -1287,7 +1287,24 @@ mod tests {
     }
 
     #[test]
-    fn a_link_to_a_steam_page_never_joins_a_steam_copy_but_an_id_a_source_reports_does() {
+    fn a_link_to_a_steam_page_is_told_from_an_id_a_source_reports() {
+        let md = |id: &str, entry: serde_json::Value| -> CollectionGameMetadata {
+            serde_json::from_value(
+                serde_json::json!({"appName": "a", "runner": "sideload", "steamAppId": id, "sourceMatches": {"steam": entry}}),
+            )
+            .unwrap()
+        };
+        assert!(steam_id_is_a_link(&md("1", serde_json::json!({"id": "1", "pinned": true}))), "pinned by hand");
+        assert!(steam_id_is_a_link(&md("1", serde_json::json!({"id": "1", "matchedBy": "exactTitle"}))), "found by name");
+        assert!(!steam_id_is_a_link(&md("1", serde_json::json!({"id": "1", "matchedBy": "steamId"}))), "Steam's own game");
+        assert!(!steam_id_is_a_link(&md("1", serde_json::json!({"id": "2", "pinned": true}))), "a match of another id");
+        let bare: CollectionGameMetadata =
+            serde_json::from_value(serde_json::json!({"appName": "a", "runner": "sideload", "steamAppId": "1"})).unwrap();
+        assert!(!steam_id_is_a_link(&bare), "an id IGDB reports");
+    }
+
+    #[test]
+    fn a_link_to_a_steam_page_does_not_join_a_steam_copy_by_its_id_but_an_id_a_source_reports_does() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
         let w = |p: PathBuf, s: &str| {
@@ -1298,34 +1315,30 @@ mod tests {
             paths.sideload_library(),
             r#"{"games":[
               {"runner":"sideload","app_name":"enderal","title":"Enderal","is_installed":true,"install":{}},
-              {"runner":"sideload","app_name":"found","title":"Wyrmstone","is_installed":true,"install":{}},
               {"runner":"sideload","app_name":"igdb","title":"Cyber Heist","is_installed":true,"install":{}}]}"#,
         );
         w(
             paths.local_meta(),
             r#"{"games":{
               "enderal":{"appName":"enderal","runner":"sideload","source":"manual","launchKind":"executable"},
-              "found":{"appName":"found","runner":"sideload","source":"manual","launchKind":"executable"},
               "igdb":{"appName":"igdb","runner":"sideload","source":"manual","launchKind":"executable"}}}"#,
         );
-        // Enderal pinned to Skyrim's page (72850), Wyrmstone found there by its name, Cyber Heist
-        // given 72850 by IGDB: the account owns Skyrim.
+        // This isolates the id: the titles differ, so no join by title can hide it. Enderal is
+        // pinned to Skyrim's page (72850) and Cyber Heist is given 72850 by IGDB. The account owns
+        // Skyrim. (A game found by name has its page's own title, so a Steam copy of that title
+        // joins it by title, as it always did: `steam_twins_join_other_sources`.)
         w(
             paths.metadata(),
             r#"{"games":{
               "sideload:enderal":{"appName":"enderal","runner":"sideload","steamAppId":"72850",
                 "sourceMatches":{"steam":{"id":"72850","pinned":true}}},
-              "sideload:found":{"appName":"found","runner":"sideload","steamAppId":"72850",
-                "sourceMatches":{"steam":{"id":"72850","matchedBy":"exactTitle"}}},
               "sideload:igdb":{"appName":"igdb","runner":"sideload","steamAppId":"72850"}}}"#,
         );
         w(paths.steam_owned(), r#"{"games":[{"appId":"72850","name":"Skyrim"}],"updatedAt":"2026-10-13T00:00:00Z"}"#);
         let lib = Library::load(&paths).unwrap();
-        for key in ["sideload_enderal", "sideload_found"] {
-            let game = lib.get(key).unwrap();
-            assert!(game.steam_link.is_none() && game.steam_app_id.is_none() && !game.via_steam, "{key}");
-            assert_eq!(game.tag_steam_id(), Some("72850"), "the metadata still reads the page: {key}");
-        }
+        let enderal = lib.get("sideload_enderal").unwrap();
+        assert!(enderal.steam_link.is_none() && enderal.steam_app_id.is_none() && !enderal.via_steam);
+        assert_eq!(enderal.tag_steam_id(), Some("72850"), "the metadata still reads the page");
         // An id a source reports keeps joining the Steam copy, as before.
         assert_eq!(lib.get("sideload_igdb").unwrap().steam_link.as_ref().map(|l| l.app_id.as_str()), Some("72850"));
     }

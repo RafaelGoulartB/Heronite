@@ -336,19 +336,31 @@ impl MetadataService {
         record_matches(args, current, candidates, &mut proposed);
         // "Automatic" for a source the game is only linked to by hand takes
         // the link away: the source is not asked for it any more.
-        let own_steam = self.has_own_steam_id(sources, args);
+        // The library entry's own Steam id is read only when a link may have to go.
+        let own = std::cell::OnceCell::new();
+        let own_steam = || *own.get_or_init(|| self.has_own_steam_id(sources, args));
+        let linked = |source: &str| sources.get(source).is_some_and(|d| d.link_for.is_some());
         for (source, pin) in args.pins.iter().flatten() {
-            let linked = sources.get(source).is_some_and(|d| d.link_for.is_some());
-            if pin.is_none() && linked && !own_steam && !candidates.iter().any(|c| &c.source == source) {
+            if pin.is_none() && linked(source) && !candidates.iter().any(|c| &c.source == source) && !own_steam() {
                 record::unlink(&mut proposed, source);
             }
         }
         // A game not on a source has none of its ids: not the one another source (IGDB) reports.
-        if !own_steam {
-            for source in record::not_on(&proposed) {
-                if sources.get(&source).is_some_and(|d| d.link_for.is_some()) {
-                    record::unlink(&mut proposed, &source);
-                }
+        for source in record::not_on(&proposed) {
+            if linked(&source) && !own_steam() {
+                record::unlink(&mut proposed, &source);
+            }
+        }
+        // A game a search by name found, that is not the game of that title any more (renamed, or
+        // its year says so): the link goes, and the source may look again.
+        let year = release_year(proposed.release_date.as_deref());
+        for source in sources.lookups().map(|s| s.descriptor()).filter(|d| d.link_for.is_some()).map(|d| d.id.as_str()) {
+            let by_name = record::source_match(&proposed, source).filter(|m| !m.pinned && m.matched_by == Some(MatchedBy::ExactTitle));
+            if by_name.is_some_and(|m| !crate::steam_name::match_is_current(&m, &args.title, year))
+                && !candidates.iter().any(|c| c.source == source)
+                && !own_steam()
+            {
+                record::drop_link(&mut proposed, source);
             }
         }
         let asked = args.only_fields.as_deref();

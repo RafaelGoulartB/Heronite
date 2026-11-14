@@ -146,11 +146,17 @@ pub fn clear_source_match(md: &mut CollectionGameMetadata, source: &str) {
 /// record's). The game is then marked as not on `source` ([`is_not_on`]),
 /// until the user links it by hand again.
 pub fn unlink(md: &mut CollectionGameMetadata, source: &str) {
+    drop_link(md, source);
+    set_not_on(md, source, true);
+}
+
+/// Forgets the game of `source` the record was linked to (as [`unlink`]), without saying the
+/// game is not on it: the source may find it again.
+pub fn drop_link(md: &mut CollectionGameMetadata, source: &str) {
     if source == STEAM {
         md.steam_app_id = None;
     }
     clear_source_match(md, source);
-    set_not_on(md, source, true);
 }
 
 /// The sources the user said the game is not on (see [`unlink`]).

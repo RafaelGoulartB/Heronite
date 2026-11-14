@@ -93,10 +93,15 @@ impl MatchedBy {
     }
 }
 
-/// The year of a release date (`2011-04-18`, `2011`); `None` when unknown.
+/// The year of a release date (`2011-04-18`, `2011`, or as Steam writes it,
+/// `18 Apr, 2011`); `None` when unknown.
 pub fn release_year(date: Option<&str>) -> Option<i32> {
-    let head: String = date?.chars().take(4).collect();
-    head.trim().parse::<i32>().ok().filter(|y| *y != 0)
+    let date = date?;
+    let head: String = date.chars().take(4).collect();
+    match head.trim().parse::<i32>() {
+        Ok(year) => Some(year).filter(|y| *y != 0),
+        Err(_) => crate::steam::year_of_date(date),
+    }
 }
 
 /// `CollectionMetadataCandidate`.

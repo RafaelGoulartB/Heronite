@@ -786,17 +786,29 @@ text size) and applies it.
   name is the title once normalized, with no edition words, and whose year
   is within `YEAR_SLACK` of the record's when both are known) and take that
   game as `ExactTitle`: nothing pinned, nothing taken when only alike, none
-  for a game marked `notOn`. The search is remembered in
-  `store_cache/sources/steam/titles.json` (a game a month, none three days),
-  a game found and saved is later asked for by its id (`gather`'s
-  `remembered`), and a Steam that is throttling or failing (429, 5xx) is
-  `Unreachable`, never "in no source", and never remembered. A game marked
-  `notOn` keeps no Steam id in its record whatever a source (IGDB) reports
-  (`propose`), unless its library entry has one. Neither a link by hand nor a
-  match by name joins the game to a Steam copy the user owns
-  (`library::steam_id_is_a_link`, read in `steam_joins`; an id IGDB reports
-  still does), and "own Steam id" for unlinking is the library entry's
-  (`has_own_steam_id`), not a joined copy's.
+  for a game marked `notOn`. The search itself takes only an exact name
+  (an edition listed first does not stop it). It is remembered in
+  `store_cache/sources/steam/titles/<hash>.json`, one small file per title
+  (a game a month, none three days, and a "none" only when every request
+  answered with what it should; ProtonDB's own `titles.json` is another
+  cache, of a search that also accepts editions, in the app's cache folder,
+  which the service does not know). A Steam that said to wait (429, 5xx) is
+  left alone for what it asked, five minutes by default, per Steam address
+  (`Unreachable`: never "in no source", never remembered). A game found and
+  saved is later asked for by its id (`gather`'s `remembered`), checked
+  again each time against the record's title and year
+  (`steam_name::match_is_current`): after a rename, or once a year says it
+  is another game, the link is dropped (`record::drop_link`, no `notOn`) and
+  the search may find another. A game found by name is left out when its
+  year is not (beyond `YEAR_SLACK`) that of another sure candidate's (IGDB).
+  A game marked `notOn` keeps no Steam id in its record whatever a source
+  (IGDB) reports (`propose`), unless its library entry has one. Neither a
+  link by hand nor a match by name joins the game to a Steam copy the user
+  owns by id, or groups copies by id (`library::steam_id_is_a_link`, read in
+  `steam_joins` and `copies`; an id IGDB reports still does; a Steam copy of
+  the same title still joins by its title, as it always did), and "own Steam
+  id" for unlinking is the library entry's (`has_own_steam_id`, read only
+  when a link may go), not a joined copy's.
   `service/attention` classifies a set of games from
   disk (waiting for review, no details, failed last time, no description,
   no cover; in no source apart; the games showing a cover family in use
