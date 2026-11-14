@@ -406,10 +406,12 @@ impl OverlayPanel {
         let files = hud.files.clone();
         let edited = (app_name.clone(), files.clone());
         self.with_service(cx, move |s, _| s.hud_edited(&edited.0, edited.1));
+        // Straight to the service: the game's end may have closed the panel.
+        let service = self.service.clone();
         cx.spawn(async move |this, cx| {
             let res = cx.background_spawn(async move { heronite_overlay::mangohud::set_shown(&hud, shown, &record) }).await;
             // The game may have ended while it was written.
-            this.update(cx, |this, cx| this.with_service(cx, move |s, cx| s.hud_settled(&app_name, files, cx))).ok();
+            service.update(cx, |s, cx| s.hud_settled(&app_name, files, cx)).ok();
             if let Err(e) = res {
                 log::warn!("overlay: MangoHud HUD {shown}: {e}");
                 this.update(cx, |this, cx| {
