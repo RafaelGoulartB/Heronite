@@ -17,7 +17,7 @@ use super::{
     SourceTest,
 };
 use crate::covers::{
-    find_steamgrid_game, lookup_steam_app_id_exact, search_steam, steam_id_in, steamgrid_api_key, steamgrid_pictures, strict_steam_score,
+    find_steamgrid_game, search_steam, steam_id_alone, steam_id_in, steamgrid_api_key, steamgrid_pictures, strict_steam_score,
 };
 use crate::igdb::{Igdb, IgdbCredentials};
 use crate::launchbox::{self, map as lb_map, LaunchBox};
@@ -25,6 +25,7 @@ use crate::libretro;
 use crate::lutris::{fetch_lutris_metadata, search_lutris};
 use crate::providers::{fetch_playnite_metadata, metadata_from_store_game, PlayniteSource, StoreLibraries};
 use crate::steam::{self, SteamState};
+use crate::steam_name;
 use crate::types::{ArtKind, Lookup, MatchedBy, MetadataCandidate, SourceHit};
 pub(crate) use launchbox_source::box_regions;
 use launchbox_source::{region_label, LaunchBoxSource};
@@ -406,10 +407,17 @@ impl MetadataSource for SteamSource {
     fn lookup(&self, ctx: &SourceContext<'_>, game: &SourceGame) -> Lookup<MetadataCandidate> {
         match game.steam_app_id.as_deref() {
             Some(id) => self.app(ctx, game, Some(id), MatchedBy::SteamId),
-            // Only asked for a game with no id when the user turned the
-            // search by name on: the same title, never one that is alike.
-            None => match lookup_steam_app_id_exact(ctx.http, &game.title) {
-                Lookup::Found(id) => self.app(ctx, game, Some(&id), MatchedBy::ExactTitle),
+            // A game with no id is asked for only while the search by name is on (the
+            // audience): the game of that exact title, never one that is alike.
+            None => match steam_name::app_id(ctx.paths, ctx.http, &game.title) {
+                Lookup::Found(id) => self.app(ctx, game, Some(&id), MatchedBy::ExactTitle).and_then(|c| {
+                    let md = &c.metadata;
+                    if steam_name::is_the_game(&game.title, game.year, md.title.as_deref().unwrap_or(""), md.release_date.as_deref()) {
+                        Lookup::Found(c)
+                    } else {
+                        Lookup::NotFound
+                    }
+                }),
                 Lookup::NotFound => Lookup::NotFound,
                 Lookup::Unreachable => Lookup::Unreachable,
                 Lookup::Skipped => Lookup::Skipped,
@@ -422,22 +430,25 @@ impl MetadataSource for SteamSource {
     }
 
     fn search(&self, ctx: &SourceContext<'_>, query: &str) -> Lookup<Vec<SourceHit>> {
-        // A store address or an app id names its game: it comes first.
-        let named = steam_id_in(query).and_then(|id| self.hit_of(ctx, &id));
-        // The games named as typed come before the others (the store lists a sequel first).
-        let by_name = search_steam(ctx.http, query).map(|mut hits| {
-            hits.sort_by_key(|h| std::cmp::Reverse(h.title.as_deref().map_or(0, |t| strict_steam_score(query, t))));
-            hits
-        });
-        match (named, by_name) {
-            (Some(hit), Lookup::Found(mut hits)) => {
-                hits.retain(|h| h.id != hit.id);
-                hits.insert(0, hit);
-                Lookup::Found(hits)
+        // A store address names its game: it comes first. A number alone may be an
+        // app id or a title ("2048"): it comes after the games of that name.
+        let from_address = steam_id_in(query).and_then(|id| self.hit_of(ctx, &id));
+        let from_number = steam_id_alone(query).and_then(|id| self.hit_of(ctx, &id));
+        let by_name = search_steam(ctx.http, query);
+        let mut ranked: Vec<(i32, SourceHit)> = match by_name {
+            Lookup::Found(hits) => hits.into_iter().map(|h| (h.title.as_deref().map_or(0, |t| strict_steam_score(query, t)), h)).collect(),
+            other if from_address.is_none() && from_number.is_none() => return other,
+            _ => Vec::new(),
+        };
+        for (score, hit) in [(1000, from_address), (99, from_number)] {
+            if let Some(hit) = hit {
+                ranked.retain(|(_, h)| h.id != hit.id);
+                ranked.push((score, hit));
             }
-            (Some(hit), _) => Lookup::Found(vec![hit]),
-            (None, found) => found,
         }
+        // Stable: the store's own order among equals (it lists a sequel first).
+        ranked.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
+        Lookup::Found(ranked.into_iter().map(|(_, h)| h).collect())
     }
 }
 

@@ -93,7 +93,8 @@ impl MetadataDialog {
     /// source is not for it (Steam, for a PC game with no Steam id of its own).
     pub(super) fn linked_by_hand(&self, source: &str) -> bool {
         let sources = self.service.sources();
-        let not_steam = self.game.steam_app_id.as_deref().is_none_or(str::is_empty);
+        // The library entry's own Steam id: the id of a Steam copy the game joined is not it.
+        let not_steam = self.game.meta.as_deref().and_then(|m| m.steam_app_id.as_deref()).is_none_or(str::is_empty);
         let emulated = self.game.launch_kind.as_deref() == Some("emulator");
         not_steam && !emulated && sources.get(source).is_some_and(|d| d.link_for.is_some())
     }

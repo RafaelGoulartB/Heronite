@@ -562,6 +562,16 @@ struct SteamJoins {
     gone: HashSet<String>,
 }
 
+/// Whether the record's Steam id is a link to a Steam page: pinned by the user, or found by the
+/// exact title (`sourceMatches.steam`, written by the metadata service), as opposed to an id a
+/// source such as IGDB reports for the game.
+pub fn steam_id_is_a_link(md: &CollectionGameMetadata) -> bool {
+    let Some(id) = md.steam_app_id.as_deref().filter(|s| !s.is_empty()) else { return false };
+    let Some(m) = md.extra.get("sourceMatches").and_then(|v| v.get("steam")) else { return false };
+    m.get("id").and_then(|v| v.as_str()) == Some(id)
+        && (m.get("pinned").and_then(|v| v.as_bool()) == Some(true) || m.get("matchedBy").and_then(|v| v.as_str()) == Some("exactTitle"))
+}
+
 /// The Steam app id a Steam entry (`steam-uri`) launches.
 fn steam_entry_id<'a>(game: &'a GameInfo, meta: Option<&'a LocalGameMeta>) -> Option<&'a str> {
     let meta = meta.filter(|m| m.launch_kind == "steam-uri")?;
@@ -592,11 +602,11 @@ fn steam_joins(
         .map(|(i, g)| {
             let meta = metas.get(&g.app_name).map(|m| &**m);
             let metadata = metadatas.get(&metadata_key(&g.runner, &g.app_name));
-            let steam_ids = [meta.and_then(|m| m.steam_app_id.as_deref()), metadata.and_then(|m| m.steam_app_id.as_deref())]
-                .into_iter()
-                .flatten()
-                .filter(|s| !s.is_empty())
-                .collect();
+            // A link the user made by hand, or a search by name made, is metadata: it never joins
+            // the game to a Steam copy (a hand-added Enderal linked to Skyrim's page is not Skyrim).
+            let record_id = metadata.filter(|m| !steam_id_is_a_link(m)).and_then(|m| m.steam_app_id.as_deref());
+            let steam_ids =
+                [meta.and_then(|m| m.steam_app_id.as_deref()), record_id].into_iter().flatten().filter(|s| !s.is_empty()).collect();
             let browser = g.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("browser"));
             Candidate {
                 key: &keys[i],
@@ -1274,6 +1284,50 @@ mod tests {
         assert_eq!(game.tag_steam_id(), Some("1145360"));
         let stores = &game.facets[crate::collection::FacetKind::Store.index()];
         assert_eq!(stores.iter().map(|i| i.value.as_str()).collect::<Vec<_>>(), ["Added manually"]);
+    }
+
+    #[test]
+    fn a_link_to_a_steam_page_never_joins_a_steam_copy_but_an_id_a_source_reports_does() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let w = |p: PathBuf, s: &str| {
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, s).unwrap();
+        };
+        w(
+            paths.sideload_library(),
+            r#"{"games":[
+              {"runner":"sideload","app_name":"enderal","title":"Enderal","is_installed":true,"install":{}},
+              {"runner":"sideload","app_name":"found","title":"Wyrmstone","is_installed":true,"install":{}},
+              {"runner":"sideload","app_name":"igdb","title":"Cyber Heist","is_installed":true,"install":{}}]}"#,
+        );
+        w(
+            paths.local_meta(),
+            r#"{"games":{
+              "enderal":{"appName":"enderal","runner":"sideload","source":"manual","launchKind":"executable"},
+              "found":{"appName":"found","runner":"sideload","source":"manual","launchKind":"executable"},
+              "igdb":{"appName":"igdb","runner":"sideload","source":"manual","launchKind":"executable"}}}"#,
+        );
+        // Enderal pinned to Skyrim's page (72850), Wyrmstone found there by its name, Cyber Heist
+        // given 72850 by IGDB: the account owns Skyrim.
+        w(
+            paths.metadata(),
+            r#"{"games":{
+              "sideload:enderal":{"appName":"enderal","runner":"sideload","steamAppId":"72850",
+                "sourceMatches":{"steam":{"id":"72850","pinned":true}}},
+              "sideload:found":{"appName":"found","runner":"sideload","steamAppId":"72850",
+                "sourceMatches":{"steam":{"id":"72850","matchedBy":"exactTitle"}}},
+              "sideload:igdb":{"appName":"igdb","runner":"sideload","steamAppId":"72850"}}}"#,
+        );
+        w(paths.steam_owned(), r#"{"games":[{"appId":"72850","name":"Skyrim"}],"updatedAt":"2026-10-13T00:00:00Z"}"#);
+        let lib = Library::load(&paths).unwrap();
+        for key in ["sideload_enderal", "sideload_found"] {
+            let game = lib.get(key).unwrap();
+            assert!(game.steam_link.is_none() && game.steam_app_id.is_none() && !game.via_steam, "{key}");
+            assert_eq!(game.tag_steam_id(), Some("72850"), "the metadata still reads the page: {key}");
+        }
+        // An id a source reports keeps joining the Steam copy, as before.
+        assert_eq!(lib.get("sideload_igdb").unwrap().steam_link.as_ref().map(|l| l.app_id.as_str()), Some("72850"));
     }
 
     #[test]

@@ -782,10 +782,21 @@ text size) and applies it.
   searched on that source by name again; linking it by hand clears the mark.
   Steam's option "Find games not on Steam by name" (`byName`, on by default,
   `also_for` `Pc`) makes `lookup` of a game with no id search the store by
-  the exact title (`strict_steam_score`: the same name, or with edition
-  words after it) and take that game as `ExactTitle`: nothing pinned,
-  nothing taken when only alike, none for a game marked `notOn`, and an
-  unreachable Steam is `Unreachable`, never "in no source".
+  the exact title (`steam_name`: the strict search, then only a game whose
+  name is the title once normalized, with no edition words, and whose year
+  is within `YEAR_SLACK` of the record's when both are known) and take that
+  game as `ExactTitle`: nothing pinned, nothing taken when only alike, none
+  for a game marked `notOn`. The search is remembered in
+  `store_cache/sources/steam/titles.json` (a game a month, none three days),
+  a game found and saved is later asked for by its id (`gather`'s
+  `remembered`), and a Steam that is throttling or failing (429, 5xx) is
+  `Unreachable`, never "in no source", and never remembered. A game marked
+  `notOn` keeps no Steam id in its record whatever a source (IGDB) reports
+  (`propose`), unless its library entry has one. Neither a link by hand nor a
+  match by name joins the game to a Steam copy the user owns
+  (`library::steam_id_is_a_link`, read in `steam_joins`; an id IGDB reports
+  still does), and "own Steam id" for unlinking is the library entry's
+  (`has_own_steam_id`), not a joined copy's.
   `service/attention` classifies a set of games from
   disk (waiting for review, no details, failed last time, no description,
   no cover; in no source apart; the games showing a cover family in use

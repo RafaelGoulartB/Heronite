@@ -336,11 +336,19 @@ impl MetadataService {
         record_matches(args, current, candidates, &mut proposed);
         // "Automatic" for a source the game is only linked to by hand takes
         // the link away: the source is not asked for it any more.
-        let own_steam = self.source_game(sources, args, current).steam_app_id.is_some();
+        let own_steam = self.has_own_steam_id(sources, args);
         for (source, pin) in args.pins.iter().flatten() {
             let linked = sources.get(source).is_some_and(|d| d.link_for.is_some());
             if pin.is_none() && linked && !own_steam && !candidates.iter().any(|c| &c.source == source) {
                 record::unlink(&mut proposed, source);
+            }
+        }
+        // A game not on a source has none of its ids: not the one another source (IGDB) reports.
+        if !own_steam {
+            for source in record::not_on(&proposed) {
+                if sources.get(&source).is_some_and(|d| d.link_for.is_some()) {
+                    record::unlink(&mut proposed, &source);
+                }
             }
         }
         let asked = args.only_fields.as_deref();

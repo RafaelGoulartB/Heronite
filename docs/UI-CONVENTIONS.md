@@ -684,8 +684,8 @@ source…"), and again after a match is pinned and after "Search every source ag
   entry, as the VNDB extension does with v17; each hit's year, its name in another script and platforms under it), the
   one in use checked; a hit with a small cover shows it (30 × 40) at its left. A click pins that game and asks every source again; when the match is pinned, "Automatic" ("Let IGDB find the game by itself") comes first and
   unpins it. For Steam on a game that is not on it, the search field says "Name, store address or app id": a store
-  address (`store.steampowered.com/app/620/…`, the community or SteamDB page) or an app id comes first as that game
-  (name, year, cover), then the games the Steam store finds by name (no year: the store search gives none); a link
+  address (`store.steampowered.com/app/620/…`, the community or SteamDB page) comes first as that game
+  (name, year, cover; a number alone is an app id too, listed after the games titled with it, as "2048" would be), then the games the Steam store finds by name (no year: the store search gives none); a link
   pinned by hand, or a game Steam found by its exact name (the setting "Find games not on Steam by name", on by default;
   its row reads like any match by name, with "Change"), has "Unlink" ("Take away the link to Steam") first instead of
   "Automatic". Unlink means "this game is not on Steam": the row goes back to "Not linked" with "Link", and no later

@@ -38,6 +38,7 @@ pub mod rom_names;
 pub mod service;
 pub mod sources;
 pub mod steam;
+pub mod steam_name;
 pub mod steam_tags;
 pub mod store;
 pub mod store_media;

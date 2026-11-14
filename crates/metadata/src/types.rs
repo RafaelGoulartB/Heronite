@@ -37,6 +37,16 @@ impl<T> Lookup<T> {
         }
     }
 
+    /// [`map`](Self::map) with a function that may find nothing.
+    pub fn and_then<U>(self, f: impl FnOnce(T) -> Lookup<U>) -> Lookup<U> {
+        match self {
+            Self::Found(v) => f(v),
+            Self::NotFound => Lookup::NotFound,
+            Self::Unreachable => Lookup::Unreachable,
+            Self::Skipped => Lookup::Skipped,
+        }
+    }
+
     /// A provider failure: transport errors are `Unreachable`, the rest
     /// (bad status, bad JSON) count as an answer without data.
     pub fn from_error(err: &anyhow::Error) -> Self {

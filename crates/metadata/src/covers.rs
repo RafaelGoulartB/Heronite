@@ -199,10 +199,14 @@ pub fn lookup_steam_app_id_exact(http: &Http, title: &str) -> Lookup<String> {
 
 fn lookup_steam_app_id(http: &Http, title: &str, strict: bool) -> Lookup<String> {
     let mut best = BestApp(None, strict);
-    let (mut answered, mut failed) = (false, None);
+    let (mut answered, mut failed, mut busy) = (false, None, false);
     let mut note = |r: &Result<Value>, answered: &mut bool| match r {
         Ok(_) => *answered = true,
-        Err(e) => failed = Some(Lookup::<String>::from_error(e)),
+        Err(e) => {
+            // A Steam that throttles or fails could not say, whatever it answered before.
+            busy |= crate::http::is_busy(e);
+            failed = Some(Lookup::<String>::from_error(e));
+        }
     };
     for query in title_queries(title) {
         let community = http
@@ -235,28 +239,35 @@ fn lookup_steam_app_id(http: &Http, title: &str, strict: bool) -> Lookup<String>
     }
     match (best.0, answered, failed) {
         (Some((id, _)), ..) => Lookup::Found(id),
+        (None, ..) if busy => Lookup::Unreachable,
         (None, false, Some(failure)) => failure,
         _ => Lookup::NotFound,
     }
 }
 
-/// The Steam app a typed address or number names: a store or community
-/// page (`https://store.steampowered.com/app/620/Portal_2/`,
-/// `steamcommunity.com/app/620`), a SteamDB one, or the app id alone.
+/// The Steam app a typed store or community page names
+/// (`https://store.steampowered.com/app/620/Portal_2/`,
+/// `steamcommunity.com/app/620`), or a SteamDB one.
 pub fn steam_id_in(query: &str) -> Option<String> {
-    let query = query.trim();
-    let digits = |s: &str| s.bytes().all(|b| b.is_ascii_digit()) && !s.is_empty() && s.len() <= 10;
-    if digits(query) {
-        return Some(query.to_owned());
-    }
-    let lower = query.to_ascii_lowercase();
+    let lower = query.trim().to_ascii_lowercase();
     let from_host = ["store.steampowered.com", "steamcommunity.com", "steamdb.info"].iter().any(|h| lower.contains(h));
     if !from_host {
         return None;
     }
     let after = lower.split("/app/").nth(1)?;
     let id: String = after.chars().take_while(char::is_ascii_digit).collect();
-    digits(&id).then_some(id)
+    app_id_digits(&id).then_some(id)
+}
+
+/// The Steam app id a typed number is, when the query is one (a title such
+/// as "2048" is one too: it does not outrank the games of that name).
+pub fn steam_id_alone(query: &str) -> Option<String> {
+    let query = query.trim();
+    app_id_digits(query).then(|| query.to_owned())
+}
+
+fn app_id_digits(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 10 && s.bytes().all(|b| b.is_ascii_digit())
 }
 
 fn best_from_search_apps(best: &mut BestApp, hits: &[Value], title: &str) {
@@ -675,8 +686,6 @@ mod tests {
     #[test]
     fn a_typed_address_or_number_names_a_steam_app() {
         for typed in [
-            "620",
-            " 620 ",
             "https://store.steampowered.com/app/620/Portal_2/",
             "http://store.steampowered.com/app/620",
             "store.steampowered.com/app/620/",

@@ -45,30 +45,52 @@ fn make_root(dir: &Path) -> DataPaths {
     paths
 }
 
+/// The app details of `appids`: the recorded Portal (400), and as Portal 2 for 620.
 fn steam_body(req: &Req) -> Resp {
     let id = req.query("appids").unwrap_or_default();
     let all: Value = serde_json::from_str(&fixture("steam_appdetails_400.json")).unwrap();
-    Resp::json(json!({ id: all["400"].clone() }))
+    let mut app = all["400"].clone();
+    if id == "620" {
+        app["data"]["name"] = json!("Portal 2");
+        app["data"]["release_date"]["date"] = json!("18 Apr, 2011");
+    }
+    Resp::json(json!({ id: app }))
 }
 
-/// Steam's store and community search, its app details and Lutris.
-fn mock() -> Server {
-    Server::start(|req| match req.path() {
-        p if p.starts_with("/community/actions/SearchApps/") => Resp::raw_json(fixture("steam_searchapps_portal.json")),
-        "/steam/api/storesearch/" => Resp::raw_json(fixture("steam_storesearch_portal.json")),
-        "/steam/api/appdetails" => steam_body(req),
-        "/lutris/api/games" => Resp::raw_json(fixture("lutris_search_portal.json")),
-        "/lutris/api/games/portal" => Resp::raw_json(fixture("lutris_detail_portal.json")),
-        _ => Resp::status(404),
+/// Steam's store and community search, its app details, IGDB and Lutris;
+/// `over` answers first (a request it takes is not the usual one).
+fn mock_over(over: impl Fn(&Req) -> Option<Resp> + Send + Sync + 'static) -> Server {
+    Server::start(move |req| {
+        if let Some(r) = over(req) {
+            return r;
+        }
+        match req.path() {
+            p if p.starts_with("/community/actions/SearchApps/") => Resp::raw_json(fixture("steam_searchapps_portal.json")),
+            "/steam/api/storesearch/" => Resp::raw_json(fixture("steam_storesearch_portal.json")),
+            "/steam/api/appdetails" => steam_body(req),
+            "/twitch/oauth2/token" => Resp::json(json!({"access_token": "tok", "expires_in": 3600, "token_type": "bearer"})),
+            "/igdb/v4/games" if req.body.starts_with("search") => Resp::raw_json(fixture("igdb_search_portal2.json")),
+            "/igdb/v4/games" => Resp::raw_json(fixture("igdb_game_steam_620.json")),
+            "/lutris/api/games" => Resp::raw_json(fixture("lutris_search_portal.json")),
+            "/lutris/api/games/portal" => Resp::raw_json(fixture("lutris_detail_portal.json")),
+            _ => Resp::status(404),
+        }
     })
 }
 
-fn setup() -> (tempfile::TempDir, DataPaths, Server, MetadataService) {
+fn mock() -> Server {
+    mock_over(|_| None)
+}
+
+fn setup_with(server: Server) -> (tempfile::TempDir, DataPaths, Server, MetadataService) {
     let dir = tempfile::tempdir().unwrap();
     let paths = make_root(dir.path());
-    let server = mock();
     let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());
     (dir, paths, server, svc)
+}
+
+fn setup() -> (tempfile::TempDir, DataPaths, Server, MetadataService) {
+    setup_with(mock())
 }
 
 /// The service with the search by name turned off.
@@ -282,4 +304,161 @@ fn a_steam_that_cannot_be_reached_is_not_a_game_found_in_no_source() {
     let svc = MetadataService::with_endpoints(paths, endpoints);
     let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
     assert_eq!(steam_state(&preview), SourceAnswer::Unreachable);
+}
+
+fn searches(server: &Server) -> usize {
+    server.count(|r| r.path().contains("SearchApps") || r.path().contains("storesearch"))
+}
+
+#[test]
+fn a_link_to_a_page_the_account_owns_stays_a_link_and_can_be_taken_away() {
+    let (_dir, paths, _server, svc) = setup();
+    // The account owns Portal (400), the page the hand-added game is linked to.
+    json_store::write(
+        &paths.steam_owned(),
+        &json!({"games": [{"appId": "400", "name": "Portal Classic"}], "updatedAt": "2026-10-13T00:00:00Z"}),
+    )
+    .unwrap();
+    let link = args("other", Some(Some("400")));
+    let preview = svc.preview_game_metadata(&link).unwrap();
+    svc.apply_preview(&preview, &link).unwrap();
+    let lib = Library::load(&paths).unwrap();
+    let game = lib.get("sideload_other").unwrap();
+    assert!(game.steam_link.is_none() && game.steam_app_id.is_none() && !game.via_steam, "not joined to the copy it is linked to");
+    assert_eq!(game.tag_steam_id(), Some("400"));
+
+    // Were the id of a joined copy the game's, "Unlink" would be refused: it is not, whatever the
+    // dialog passes as the game's id.
+    let mut unlink = args("other", Some(None));
+    unlink.steam_app_id = Some("400".into());
+    let preview = svc.preview_game_metadata(&unlink).unwrap();
+    assert_eq!(steam_state(&preview), SourceAnswer::NotAsked { why: NotAsked::NotLinked });
+    let saved = svc.apply_preview(&preview, &unlink).unwrap();
+    assert!(saved.steam_app_id.is_none() && record::is_not_on(&saved, "steam"));
+}
+
+#[test]
+fn an_id_igdb_reports_does_not_bring_back_a_link_that_was_taken_away() {
+    let (_dir, paths, _server, svc) = setup();
+    json_store::write(&paths.collection_settings(), &json!({"metadata": {"igdbClientId": "id", "igdbClientSecret": "secret"}})).unwrap();
+    let link = args("manual", Some(Some("400")));
+    let preview = svc.preview_game_metadata(&link).unwrap();
+    svc.apply_preview(&preview, &link).unwrap();
+    let unlink = args("manual", Some(None));
+    let preview = svc.preview_game_metadata(&unlink).unwrap();
+    assert!(
+        preview.candidates.iter().any(|c| c.source == "igdb" && c.metadata.steam_app_id.as_deref() == Some("620")),
+        "IGDB reports a Steam id"
+    );
+    let saved = svc.apply_preview(&preview, &unlink).unwrap();
+    assert_eq!(saved.steam_app_id, None);
+
+    // Later updates, one game or many, and a plain Apply do not write it back.
+    let _ = svc.apply_game_metadata(&args("manual", None));
+    assert_eq!(steam_id_of(&svc, "manual"), None);
+    svc.run_bulk_metadata(&BulkArgs::update(vec![item("manual", "Portal 2")], UpdateMode::Refresh, None, None), &|_| {});
+    assert_eq!(steam_id_of(&svc, "manual"), None);
+    let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    assert!(preview.proposed.steam_app_id.is_none());
+    let saved = svc.apply_preview(&preview, &args("manual", None)).unwrap();
+    assert!(saved.steam_app_id.is_none() && record::is_not_on(&saved, "steam"));
+    assert!(saved.igdb_id.is_some(), "IGDB's own match is kept");
+
+    // Linking by hand again is the user's word: the id comes back.
+    let relink = args("manual", Some(Some("400")));
+    let preview = svc.preview_game_metadata(&relink).unwrap();
+    assert_eq!(svc.apply_preview(&preview, &relink).unwrap().steam_app_id.as_deref(), Some("400"));
+}
+
+#[test]
+fn a_game_of_the_same_title_from_another_time_is_not_taken() {
+    let (_dir, paths, _server, svc) = setup();
+    // The record says 1993; Steam's "Portal 2" is 2011.
+    json_store::write(
+        &paths.metadata(),
+        &json!({"games": {"sideload:manual": {"appName": "manual", "runner": "sideload", "title": "Portal 2", "releaseDate": "1993-12-10",
+            "developers": [], "publishers": [], "genres": [], "themes": [], "gameModes": [], "platforms": [], "features": [],
+            "websites": [], "fieldSources": {}}}}),
+    )
+    .unwrap();
+    let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    assert_eq!(steam_state(&preview), SourceAnswer::NotFound);
+    // The same year (or none) is the same game.
+    json_store::write(&paths.metadata(), &json!({"games": {}})).unwrap();
+    let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    assert!(matches!(steam_state(&preview), SourceAnswer::Found { .. }));
+}
+
+#[test]
+fn an_edition_of_the_title_is_not_the_exact_title() {
+    let server = mock_over(|req| match req.path() {
+        p if p.starts_with("/community/actions/SearchApps/") => Some(Resp::json(json!([]))),
+        "/steam/api/storesearch/" => Some(Resp::json(json!({"items": [{"type": "app", "name": "Portal 2 - Deluxe Edition", "id": 777}]}))),
+        _ => None,
+    });
+    let (_dir, _paths, _server, svc) = setup_with(server);
+    let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    assert_eq!(steam_state(&preview), SourceAnswer::NotFound, "the strict search finds the edition; it is not taken");
+}
+
+#[test]
+fn the_search_by_name_is_remembered_and_a_found_game_is_not_searched_again() {
+    let (_dir, paths, server, svc) = setup();
+    let first = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    assert!(matches!(steam_state(&first), SourceAnswer::Found { .. }));
+    let after_first = searches(&server);
+    assert!(after_first > 0);
+    // A title Steam has no game for is remembered too.
+    let miss = svc.preview_game_metadata(&args("other", None)).unwrap();
+    assert_eq!(steam_state(&miss), SourceAnswer::NotFound);
+    let after_miss = searches(&server);
+    svc.preview_game_metadata(&args("manual", None)).unwrap();
+    let again = svc.preview_game_metadata(&args("other", None)).unwrap();
+    assert_eq!(steam_state(&again), SourceAnswer::NotFound);
+    assert_eq!(searches(&server), after_miss, "the second dialog asked no search");
+    assert!(paths.source_cache_dir("steam").join("titles.json").exists());
+
+    // Saved, the game found is asked for by its id: no search even without the memory.
+    svc.apply_game_metadata(&args("manual", None)).unwrap();
+    std::fs::remove_dir_all(paths.source_cache_dir("steam")).unwrap();
+    let before = searches(&server);
+    let kept = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    let SourceAnswer::Found { hit, pinned, .. } = steam_state(&kept) else { panic!("{:?}", steam_state(&kept)) };
+    assert_eq!((hit.id.as_deref(), pinned), (Some("620"), false));
+    assert_eq!(searches(&server), before, "no search for a game found before");
+    let saved = svc.apply_game_metadata(&args("manual", None)).unwrap();
+    assert_eq!(record::source_match(&saved, "steam").unwrap().matched_by, Some(MatchedBy::ExactTitle), "still a match by name, not pinned");
+}
+
+#[test]
+fn a_steam_that_throttles_or_fails_is_unreachable_and_nothing_is_remembered() {
+    for status in [429, 503] {
+        let server =
+            mock_over(move |req| (req.path().contains("SearchApps") || req.path().contains("storesearch")).then(|| Resp::status(status)));
+        let (_dir, paths, _server, svc) = setup_with(server);
+        let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
+        assert_eq!(steam_state(&preview), SourceAnswer::Unreachable, "{status}");
+        assert!(!paths.source_cache_dir("steam").join("titles.json").exists(), "{status}: not read as 'not on Steam'");
+    }
+}
+
+#[test]
+fn a_number_is_an_app_id_after_the_games_of_that_name_and_an_address_comes_first() {
+    let server = mock_over(|req| match req.path() {
+        p if p.starts_with("/community/actions/SearchApps/") => Some(Resp::json(json!([]))),
+        "/steam/api/storesearch/" => Some(Resp::json(json!({"items": [
+            {"type": "app", "name": "2048 Hexagonal", "id": 3001}, {"type": "app", "name": "2048", "id": 3002}]}))),
+        _ => None,
+    });
+    let (_dir, _paths, _server, svc) = setup_with(server);
+    let steam = ["steam".to_owned()];
+    let ids = |q: &str| -> Vec<String> {
+        svc.search_sources(q, Some(&steam)).choices.into_iter().flat_map(|c| c.hits).filter_map(|h| h.id).collect()
+    };
+    // App 2048 does not exist here, 400 does: a game titled "2048" is first, the number after it.
+    let by_number = ids("400");
+    assert_eq!(by_number.first().map(String::as_str), Some("400"));
+    let titled = ids("2048");
+    assert_eq!(titled.first().map(String::as_str), Some("3002"), "{titled:?}");
+    assert_eq!(ids("https://store.steampowered.com/app/400/Portal/").first().map(String::as_str), Some("400"));
 }

@@ -138,6 +138,15 @@ impl MetadataService {
         game
     }
 
+    /// Whether the game has a Steam id of its own: its library entry's, or the arguments' that
+    /// are not the one of a Steam copy it joined (a link made by hand to a game the user also
+    /// owns on Steam must stay unlinkable).
+    pub(super) fn has_own_steam_id(&self, sources: &SourceRegistry, args: &MetadataApplyArgs) -> bool {
+        let mut bare = args.clone();
+        bare.steam_app_id = None;
+        self.source_game(sources, &bare, None).steam_app_id.is_some()
+    }
+
     /// `gatherCandidates`: asks every provider that is on and applies to the
     /// game at once (IGDB calls queue among themselves) and keeps those that
     /// answered, in provider order.
@@ -204,6 +213,21 @@ impl MetadataService {
             .filter(|(source, _)| sources.get(source).is_some_and(SourceDescriptor::is_fallback) && !unpinned(source))
             .map(|(source, m)| (source, m.id))
             .collect();
+        // The game of a source a search by name found (not pinned), kept in the record.
+        let remembered: IndexMap<String, String> = current
+            .as_ref()
+            .map(record::source_matches)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(source, m)| {
+                !m.pinned
+                    && m.matched_by == Some(MatchedBy::ExactTitle)
+                    && sources.get(source).is_some_and(|d| d.link_for.is_some())
+                    && !unpinned(source)
+            })
+            .map(|(source, m)| (source, m.id))
+            .collect();
+        let own_steam = std::cell::OnceCell::new();
         let mut steam_tags: Option<Vec<String>> = None;
         let plans: Vec<Plan<'_>> = sources
             .lookups()
@@ -223,16 +247,21 @@ impl MetadataService {
                 }
                 let linkable = d.searchable && d.link_for.as_ref().is_some_and(|a| a.matches(game_view));
                 // Unlinked by hand (or being unlinked now): the game is not on this source, so a
-                // search by name does not find it again.
+                // search by name does not find it again. A Steam copy the game joined is not
+                // its own Steam id: only the library entry's is.
                 let not_on = linkable
-                    && game_view.steam_app_id.is_none()
-                    && (unpinned(&d.id) || current.as_ref().is_some_and(|md| record::is_not_on(md, &d.id)));
+                    && (unpinned(&d.id) || current.as_ref().is_some_and(|md| record::is_not_on(md, &d.id)))
+                    && !*own_steam.get_or_init(|| self.has_own_steam_id(sources, game));
                 if pin.is_none() && (not_on || !sources.applies(&self.paths, settings, d, game_view)) {
                     return Plan::Not(if linkable { NotAsked::NotLinked } else { NotAsked::NotForThisGame });
                 }
                 // Never asked, not even for a pinned game, before the user downloads its database.
                 if !sources.downloaded(&self.paths, &d.id) {
                     return Plan::Not(NotAsked::NeedsDownload);
+                }
+                // Found by its name before: asked for that game again, not searched again.
+                if let Some(id) = remembered.get(&d.id).filter(|_| pin.is_none() && linkable && game_view.steam_app_id.is_none()) {
+                    return Plan::Ask(Some(id));
                 }
                 if !d.is_fallback() || pin.is_some() {
                     return Plan::Ask(pin);
