@@ -196,6 +196,13 @@ what the Cover aspect asks for and the Cover shapes card counts it) and "Review 
   (Played, Last played, Status); a page, a Settings section or an action its icon, what it does, why it is dimmed and
   its shortcut. With the pane the list keeps its full height, so the panel does not change size while you type or
   move.
+  The quick launcher (`app/src/quick_launch/`) is the same palette in a window of its own (`Mode::Launcher`): the
+  panel at its full size with the pane, no backdrop, a 24px margin for its shadow (a click there closes it). Its list
+  is the pages, Settings sections, global actions and games (no View menu, page commands or random pick: they are the
+  Collection's). Enter on a game plays it (stops it while it runs; one to install is shown in Heronite), Shift Enter
+  shows it in Heronite, → lists its actions (its verbs and "Show X in Heronite"). An item that opens Heronite has a
+  13px `OpenInNew` at the right of its row and "Opens Heronite" in the pane; the footer says what Enter does (play,
+  stop, run, open in Heronite). It closes on Esc, after running something and when it loses the keyboard.
 
 ## Glass design system (menus, dialogs, pages, settings)
 

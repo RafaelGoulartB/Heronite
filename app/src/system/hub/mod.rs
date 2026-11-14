@@ -44,7 +44,8 @@ use super::tray::TrayHandle;
 use crate::collection::CollectionView;
 use crate::runtime::GameRuntime;
 
-pub use launch::candidate_keys;
+pub use events::stop_running;
+pub use launch::{candidate_keys, play_game};
 pub use quit::{
     keep_in_tray, post_game_idle, quit_anyway, relaunch_if_requested, request_quit, restart_blocker, restart_into, restart_now,
 };
@@ -126,6 +127,31 @@ impl Global for Hub {}
 
 fn hub(cx: &App) -> Hub {
     cx.global::<Hub>().clone()
+}
+
+/// The games started by this process that still run (their app names).
+pub fn running_games(cx: &App) -> std::collections::HashSet<String> {
+    cx.try_global::<Hub>().map(|h| h.0.borrow().running.keys().cloned().collect()).unwrap_or_default()
+}
+
+/// The open window's Collection, without bringing the window up.
+pub fn main_view(cx: &App) -> Option<WeakEntity<CollectionView>> {
+    cx.try_global::<Hub>().and_then(|h| h.0.borrow().window.as_ref().map(|w| w.view.clone()))
+}
+
+/// Runs `f` on the open window's Collection, with its window, without
+/// bringing it up. `None` when no window is open.
+pub fn update_main<R>(cx: &mut App, f: impl FnOnce(&mut CollectionView, &mut Window, &mut Context<CollectionView>) -> R) -> Option<R> {
+    let (handle, view) = cx.try_global::<Hub>().and_then(|h| h.0.borrow().window.as_ref().map(|w| (w.handle, w.view.clone())))?;
+    handle.update(cx, |_, window, cx| view.update(cx, |v, cx| f(v, window, cx)).ok()).ok().flatten()
+}
+
+/// Quits if the app was started only for something that is over (a launch
+/// without a window, the quick launcher with no tray to stay in).
+pub fn exit_if_idle(cx: &mut App) {
+    if cx.has_global::<Hub>() {
+        quit::maybe_exit_idle(cx);
+    }
 }
 
 /// Rebuilds the tray menu (its labels follow the interface language).

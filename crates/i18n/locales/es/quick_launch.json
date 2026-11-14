@@ -1,3 +1,10 @@
 {
-  "Shortcut": "Atajo"
+  "open in Heronite": "abrir en Heronite",
+  "Opens Heronite": "Abre Heronite",
+  "play": "jugar",
+  "Select it in the Collection": "Lo selecciona en la Colección",
+  "Shortcut": "Atajo",
+  "show in Heronite": "mostrar en Heronite",
+  "Show {title} in Heronite": "Mostrar {title} en Heronite",
+  "stop": "detener"
 }

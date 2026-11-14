@@ -69,13 +69,15 @@ pub fn init(
 
     let debug_hidden = crate::env::flag("HERONITE_DEBUG_START_HIDDEN");
     let hide = cli.hide_window(settings.hide_window_on_protocol_launch);
+    let quick_launch = cli.quick_launch || crate::quick_launch::debug_requested();
     // "Start minimized" only for the start that comes with the session.
     let start_in_tray = (cli.autostart && settings.start_in_tray && tray_alive) || debug_hidden;
     // `--console` / `--fullscreen` show the window even when it would start in the tray.
-    let want_window = !hide && (cli.wants_window() || !start_in_tray);
+    // `--quick-launch` with no instance running opens only the launcher.
+    let want_window = !hide && !quick_launch && (cli.wants_window() || !start_in_tray);
     // Nothing would keep the app reachable: show the window after all.
     let one_shot = cli.launch.is_some() || cli.open_client.is_some();
-    let unreachable = !want_window && !tray_alive && !one_shot && !debug_hidden;
+    let unreachable = !want_window && !tray_alive && !one_shot && !debug_hidden && !quick_launch;
 
     cx.set_global(Hub(Rc::new(RefCell::new(State {
         data_paths: data_paths.clone(),
@@ -86,7 +88,9 @@ pub fn init(
         steps: HashMap::new(),
         tray,
         fake_tray,
-        exit_when_idle: one_shot && !want_window && !start_in_tray,
+        // Without a tray the quick launcher's start ends with it (or with the
+        // game it started).
+        exit_when_idle: (one_shot || (quick_launch && !tray_alive)) && !want_window && !start_in_tray,
         clients_followed: 0,
         hiding: false,
         hidden_for_game: false,
@@ -186,6 +190,9 @@ pub fn init(
     }
     if let Some(client) = cli.open_client {
         open_client(cx, client, true);
+    }
+    if quick_launch {
+        crate::quick_launch::open_at_start(cx);
     }
     debug_hooks(cx, tray_tx);
 }

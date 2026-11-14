@@ -8,10 +8,11 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::tr;
 
+use super::super::launcher;
 use super::super::rank::{Filter, ItemRef};
 use super::super::sources::Act;
 use super::preview::{PANE_W, THUMB_H, THUMB_W};
-use super::{PaletteEvent, PaletteView, CAPTION_H, LIST_MAX_H, LIST_PAD, PANEL_W, ROW_H, TOP};
+use super::{Mode, PaletteEvent, PaletteView, CAPTION_H, FOOTER_H, INPUT_H, LAUNCHER_MARGIN, LIST_MAX_H, LIST_PAD, PANEL_W, ROW_H, TOP};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::kbd;
@@ -22,7 +23,26 @@ impl PaletteView {
     /// Whether the preview pane fits beside the list (a narrow window keeps
     /// the list alone).
     fn shows_pane(&self, window: &Window) -> bool {
-        f32::from(crate::ui::content_bounds(window).size.width) >= PANEL_W + PANE_W + 48.
+        self.mode == Mode::Launcher || f32::from(crate::ui::content_bounds(window).size.width) >= PANEL_W + PANE_W + 48.
+    }
+
+    /// What Enter does on the selected item, for the footer.
+    fn enter_label(&self) -> &'static str {
+        let Some(e) = self.selected_entry() else { return tr!("open") };
+        if self.game.is_some() && self.mode == Mode::InApp {
+            return tr!("run");
+        }
+        if self.mode == Mode::InApp {
+            return tr!("open");
+        }
+        match (&e.act, &e.game) {
+            (Act::SelectGame(_), Some(b)) if b.playing => tr!("stop"),
+            (Act::SelectGame(_), Some(b)) if b.installed => tr!("play"),
+            (Act::SelectGame(_), _) => tr!("show in Heronite"),
+            (Act::GameActions(_), _) => tr!("open"),
+            _ if !launcher::runs_alone(e) => tr!("open in Heronite"),
+            _ => tr!("run"),
+        }
     }
 
     fn row(&mut self, n: usize, item: ItemRef, window: &Window, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -125,6 +145,7 @@ impl PaletteView {
                     .text_color(if off { theme::text_muted() } else { theme::text_dim() })
                     .child(e.disabled.clone().unwrap_or_else(|| e.subtitle.clone())),
             )
+            .when(self.mode == Mode::Launcher && !launcher::runs_alone(e), |d| d.child(icon(Icon::OpenInNew, px(13.), theme::text_dim())))
             .children(e.shortcut.map(kbd))
             .children(chevron)
     }
@@ -239,7 +260,7 @@ impl Render for PaletteView {
             .flex_none()
             .items_center()
             .gap(px(10.))
-            .h(px(54.))
+            .h(px(INPUT_H))
             .px(px(18.))
             .border_b_1()
             .border_color(theme::ink_a(0.08))
@@ -262,13 +283,17 @@ impl Render for PaletteView {
             .items_center()
             .gap(px(18.))
             .px(px(16.))
-            .py(px(9.))
+            .h(px(FOOTER_H))
             .border_t_1()
             .border_color(theme::ink_a(0.08))
             .text_size(px(12.))
             .text_color(theme::text_dim())
             .child(hint(vec!["\u{2191}", "\u{2193}"], tr!("move")))
-            .child(hint(vec!["\u{21b5}"], if self.game.is_some() { tr!("run") } else { tr!("open") }));
+            .child(hint(vec!["\u{21b5}"], self.enter_label()))
+            .when(
+                self.mode == Mode::Launcher && self.selected_entry().is_some_and(|e| e.game_key().is_some() && launcher::runs_alone(e)),
+                |f| f.child(hint(vec!["\u{21e7}", "\u{21b5}"], tr!("show in Heronite"))),
+            );
         footer = if self.game.is_some() {
             footer.child(hint(vec!["Esc"], tr!("back"))).child(div().flex_1())
         } else {
@@ -286,7 +311,8 @@ impl Render for PaletteView {
             .flex()
             .flex_col()
             .w(px(if pane { PANEL_W + PANE_W } else { PANEL_W }))
-            .max_h(relative(0.9))
+            .when(self.mode == Mode::InApp, |d| d.max_h(relative(0.9)))
+            .when(self.mode == Mode::Launcher, |d| d.h(px(INPUT_H + LIST_MAX_H + FOOTER_H + 2.)))
             .font_family(theme::font_body())
             .text_color(theme::text_primary())
             // Clicks on the panel keep the input focused and do not close it.
@@ -311,6 +337,20 @@ impl Render for PaletteView {
             panel.into_any_element()
         };
 
+        if self.mode == Mode::Launcher {
+            // The window is the panel's size plus room for its shadow; a click
+            // in that margin closes it like one outside the panel.
+            return div()
+                .id("palette-backdrop")
+                .size_full()
+                .flex()
+                .flex_col()
+                .items_center()
+                .p(px(LAUNCHER_MARGIN))
+                .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| cx.emit(PaletteEvent::Close)))
+                .child(panel)
+                .into_any_element();
+        }
         deferred(
             div()
                 .id("palette-backdrop")
@@ -326,5 +366,6 @@ impl Render for PaletteView {
                 .child(panel),
         )
         .with_priority(40)
+        .into_any_element()
     }
 }

@@ -79,7 +79,7 @@ struct Way {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum WayKind {
+pub(crate) enum WayKind {
     Store,
     EpicImport,
     Steam,

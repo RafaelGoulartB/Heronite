@@ -28,7 +28,7 @@ pub enum Kind {
 
 /// What choosing an entry does (the Collection runs it, see `palette/mod.rs`).
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub(super) enum Act {
+pub(crate) enum Act {
     Go(Page),
     /// Settings, opened on this section.
     Section(Section),
@@ -76,9 +76,19 @@ pub(super) enum Act {
     GameActions(String),
 }
 
+impl Act {
+    /// The game it is about (a game or one of its actions).
+    pub(crate) fn game(&self) -> Option<&str> {
+        match self {
+            Act::SelectGame(k) | Act::Game(k, _) | Act::GameActions(k) => Some(k),
+            _ => None,
+        }
+    }
+}
+
 /// The Collection's View menu, as commands.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub(super) enum ViewCmd {
+pub(crate) enum ViewCmd {
     Sort(SortMode),
     Show(InstallFilter),
     Group(GroupBy),
@@ -132,7 +142,7 @@ pub(crate) struct GameBits {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct Entry {
+pub(crate) struct Entry {
     pub kind: Kind,
     pub act: Act,
     /// Stable id, kept in the palette's history.
@@ -193,11 +203,8 @@ impl Entry {
     }
 
     /// The game this entry is about (a game or one of its actions).
-    pub(super) fn game_key(&self) -> Option<&str> {
-        match &self.act {
-            Act::SelectGame(k) | Act::Game(k, _) | Act::GameActions(k) => Some(k),
-            _ => None,
-        }
+    pub(crate) fn game_key(&self) -> Option<&str> {
+        self.act.game()
     }
 }
 
@@ -831,6 +838,20 @@ pub(super) fn game_verbs(title: &str, bits: &GameBits) -> Vec<Entry> {
     all.game = Some(bits.clone());
     v.push(all);
     v
+}
+
+/// "Show X in Heronite": the game selected in the Collection (the quick
+/// launcher's Shift Enter). Without the game's bits, so it is never played.
+pub(super) fn show_in_app_entry(title: &str, bits: &GameBits) -> Entry {
+    Entry::new(
+        Kind::Game,
+        Act::SelectGame(bits.key.clone()),
+        format!("game:{}:show", bits.key),
+        &tr!("Show {title} in Heronite", title),
+        tr!("Select it in the Collection"),
+        Icon::OpenInNew,
+        "",
+    )
 }
 
 /// The verbs listed under the best game match (the rest are reached by

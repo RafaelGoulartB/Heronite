@@ -1,3 +1,10 @@
 {
-  "Shortcut": "Tastenkürzel"
+  "open in Heronite": "in Heronite öffnen",
+  "Opens Heronite": "Öffnet Heronite",
+  "play": "spielen",
+  "Select it in the Collection": "Wählt es in der Sammlung aus",
+  "Shortcut": "Tastenkürzel",
+  "show in Heronite": "in Heronite zeigen",
+  "Show {title} in Heronite": "{title} in Heronite zeigen",
+  "stop": "beenden"
 }

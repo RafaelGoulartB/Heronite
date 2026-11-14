@@ -22,6 +22,7 @@
 //! filter, and `HERONITE_DEBUG_PALETTE_KEYS=down,right,...` feeds it keys.
 
 mod games;
+pub(crate) mod launcher;
 mod random;
 mod rank;
 mod sources;
@@ -36,13 +37,40 @@ use heronite_data::collection::collect_facet_options;
 use heronite_data::fuzzy as matching;
 use heronite_i18n::tr;
 
-use self::sources::{Act, ViewCmd};
-use self::view::{PaletteEvent, PaletteView};
+pub(crate) use self::games::library_entries;
+use self::sources::ViewCmd;
+pub(crate) use self::sources::{Act, Entry, GameBits};
+pub(crate) use self::view::{Mode, PaletteEvent, PaletteView, Setup};
 use super::CollectionView;
 use crate::pages::Page;
 
 /// Items kept in the palette's history.
 const HISTORY: usize = 20;
+
+/// Puts `id` first in a palette history (ids, most recent first).
+pub(crate) fn remember(recent: &mut Vec<String>, id: &str) {
+    recent.retain(|r| r != id);
+    recent.insert(0, id.to_string());
+    recent.truncate(HISTORY);
+}
+
+/// The pages, the Settings sections and the global actions, dimmed when they
+/// cannot run now.
+pub(crate) fn global_entries(cx: &App) -> Vec<Entry> {
+    let mut v = sources::static_entries();
+    let signed_in = crate::services::downloads_started(cx).map(|s| s.read(cx).account().logged_in);
+    if let Some(e) = v.iter_mut().find(|e| e.act == Act::EpicUpdates) {
+        if signed_in == Some(false) {
+            e.disable(tr!("Sign in to Epic Games first"));
+        }
+    }
+    let waiting = cx.has_global::<crate::dialogs::metadata_wizard::HubGlobal>()
+        && !crate::dialogs::metadata_wizard::hub(cx).read(cx).queue.is_empty();
+    if let Some(e) = v.iter_mut().find(|e| e.act == Act::ReviewMatches).filter(|_| !waiting) {
+        e.disable(tr!("No game waits for review"));
+    }
+    v
+}
 
 /// Palette state of the Collection.
 #[derive(Default)]
@@ -98,9 +126,9 @@ impl CollectionView {
         self.context_menu = None;
         let entries = Rc::new(self.palette_entries(cx));
         let recent = Rc::new(self.ui.palette_recent.clone());
-        let covers = Rc::new(self.cover_chains.clone());
-        let data_paths = self.data_paths.clone();
-        let view = cx.new(|cx| PaletteView::new(entries, recent, covers, data_paths, query, window, cx));
+        let setup =
+            Setup { entries, recent, covers: Rc::new(self.cover_chains.clone()), data_paths: self.data_paths.clone(), mode: Mode::InApp };
+        let view = cx.new(|cx| PaletteView::new(setup, query, window, cx));
         self.palette.sub = Some(cx.subscribe_in(&view, window, Self::on_palette_event));
         self.palette.view = Some(view.clone());
         cx.notify();
@@ -142,29 +170,51 @@ impl CollectionView {
 
     /// Puts `id` first in the history (saved with the UI state).
     fn remember_palette_item(&mut self, id: &str) {
-        let recent = &mut self.ui.palette_recent;
-        recent.retain(|r| r != id);
-        recent.insert(0, id.to_string());
-        recent.truncate(HISTORY);
+        remember(&mut self.ui.palette_recent, id);
         self.save_ui();
+    }
+
+    /// An item chosen in the quick launcher that runs here: kept in the
+    /// history and run as if chosen in Ctrl K.
+    /// A window that has just opened runs it once its library is loaded.
+    pub(crate) fn run_from_launcher(&mut self, act: Act, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.remember_palette_item(id);
+        if self.lib.is_some() {
+            self.close_palette(window, cx);
+            self.run_palette_act(act, window, cx);
+            return;
+        }
+        cx.spawn_in(window, async move |this, cx| {
+            for _ in 0..200 {
+                if this.update(cx, |this, _| this.lib.is_some()).unwrap_or(true) {
+                    break;
+                }
+                cx.background_executor().timer(std::time::Duration::from_millis(50)).await;
+            }
+            this.update_in(cx, |this, window, cx| {
+                this.close_palette(window, cx);
+                this.run_palette_act(act, window, cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// An item the quick launcher ran by itself, kept in the history.
+    pub(crate) fn remember_launcher_item(&mut self, id: &str) {
+        self.remember_palette_item(id);
+    }
+
+    /// Ids run lately in the palette, most recent first.
+    pub(crate) fn palette_history(&self) -> Vec<String> {
+        self.ui.palette_recent.clone()
     }
 
     /// Everything the palette offers now: pages and global actions, the
     /// selected game's actions, the View menu, the pages' commands and the
     /// games of the library.
     fn palette_entries(&mut self, cx: &mut Context<Self>) -> Vec<sources::Entry> {
-        let mut v = sources::static_entries();
-        let signed_in = crate::services::downloads_started(cx).map(|s| s.read(cx).account().logged_in);
-        if let Some(e) = v.iter_mut().find(|e| e.act == Act::EpicUpdates) {
-            if signed_in == Some(false) {
-                e.disable(tr!("Sign in to Epic Games first"));
-            }
-        }
-        let waiting = cx.has_global::<crate::dialogs::metadata_wizard::HubGlobal>()
-            && !crate::dialogs::metadata_wizard::hub(cx).read(cx).queue.is_empty();
-        if let Some(e) = v.iter_mut().find(|e| e.act == Act::ReviewMatches).filter(|_| !waiting) {
-            e.disable(tr!("No game waits for review"));
-        }
+        let mut v = global_entries(cx);
         // The game selected in the Collection: its actions, by name (those
         // of the copy its card acts on, as its context menu).
         let selected = self.selected.clone().filter(|_| self.page == Page::Collection);

@@ -20,8 +20,30 @@ use heronite_images::ImageRef;
 use super::rank::{actions_list, search, Filter, ItemRef, Results};
 use super::sources::{Act, Entry};
 
+/// Where the palette is drawn.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Mode {
+    /// Over the main window (Ctrl K).
+    InApp,
+    /// The quick launcher's own window (`crate::quick_launch`): it fills the
+    /// window, Enter plays a game, and what opens Heronite is marked ↗.
+    Launcher,
+}
+
+/// What a palette opens with.
+pub(crate) struct Setup {
+    pub entries: Rc<Vec<Entry>>,
+    /// Ids run lately, most recent first.
+    pub recent: Rc<Vec<String>>,
+    /// Each game's cover chain, by key.
+    pub covers: Rc<HashMap<SharedString, Vec<ImageRef>>>,
+    /// Where the image cache is.
+    pub data_paths: DataPaths,
+    pub mode: Mode,
+}
+
 #[derive(Clone, Debug)]
-pub(super) enum PaletteEvent {
+pub(crate) enum PaletteEvent {
     /// Run `act`; `id` goes to the history.
     Run {
         act: Act,
@@ -39,6 +61,10 @@ const LIST_PAD: f32 = 6.;
 /// Room for about nine rows (and a caption); the rest scrolls.
 const LIST_MAX_H: f32 = 9. * ROW_H + CAPTION_H;
 const PANEL_W: f32 = 620.;
+const INPUT_H: f32 = 54.;
+const FOOTER_H: f32 = 42.;
+/// Room around the quick launcher's panel for its shadow.
+const LAUNCHER_MARGIN: f32 = 24.;
 const TOP: f32 = 90.;
 fn root_placeholder() -> &'static str {
     tr!("Type a command, page or game\u{2026}")
@@ -53,7 +79,8 @@ struct GameLevel {
     root_selected: usize,
 }
 
-pub(super) struct PaletteView {
+pub(crate) struct PaletteView {
+    mode: Mode,
     entries: Rc<Vec<Entry>>,
     /// Ids run lately, most recent first.
     recent: Rc<Vec<String>>,
@@ -71,17 +98,8 @@ pub(super) struct PaletteView {
 impl EventEmitter<PaletteEvent> for PaletteView {}
 
 impl PaletteView {
-    /// `covers`: each game's cover chain, by key; `data_paths`: where the
-    /// image cache is.
-    pub fn new(
-        entries: Rc<Vec<Entry>>,
-        recent: Rc<Vec<String>>,
-        covers: Rc<HashMap<SharedString, Vec<ImageRef>>>,
-        data_paths: DataPaths,
-        query: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(setup: Setup, query: &str, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let Setup { entries, recent, covers, data_paths, mode } = setup;
         let input = cx.new(|cx| {
             let mut s = InputState::new(window, cx);
             s.set_placeholder(root_placeholder(), window, cx);
@@ -99,6 +117,7 @@ impl PaletteView {
         });
         input.update(cx, |s, cx| s.focus(window, cx));
         let mut this = Self {
+            mode,
             entries,
             recent,
             game: None,
@@ -210,16 +229,49 @@ impl PaletteView {
     }
 
     /// Runs the selected item. A disabled one only tells why (it is shown).
+    /// In the quick launcher a game of the list is played (or stopped).
     pub fn activate(&mut self, cx: &mut Context<Self>) {
         let Some(e) = self.selected_entry() else { return };
         if e.disabled.is_some() {
             return;
         }
-        let ev = match &e.act {
-            Act::GameActions(key) => PaletteEvent::OpenGame(key.clone()),
-            act => PaletteEvent::Run { act: act.clone(), id: e.id.clone() },
+        let act = match self.mode {
+            Mode::InApp => e.act.clone(),
+            Mode::Launcher => super::launcher::enter_act(e),
+        };
+        let ev = match act {
+            Act::GameActions(key) => PaletteEvent::OpenGame(key),
+            act => PaletteEvent::Run { act, id: e.id.clone() },
         };
         cx.emit(ev);
+    }
+
+    /// Shift Enter in the quick launcher: the selected game (or the game the
+    /// selected action is about) shown in Heronite.
+    fn show_in_app(&mut self, cx: &mut Context<Self>) {
+        let Some(key) = self.selected_entry().and_then(|e| e.game_key()).map(str::to_string) else { return };
+        cx.emit(PaletteEvent::Run { act: Act::SelectGame(key.clone()), id: format!("game:{key}").into() });
+    }
+
+    /// The main list's entries changed (the quick launcher's games came in);
+    /// the text typed and the filter stay.
+    pub fn set_entries(&mut self, entries: Rc<Vec<Entry>>, covers: Rc<HashMap<SharedString, Vec<ImageRef>>>, cx: &mut Context<Self>) {
+        self.entries = entries;
+        self.covers.set_chains(covers);
+        if self.game.is_none() {
+            self.recompute(cx);
+        }
+    }
+
+    /// What the main list knows of the game under `key`.
+    pub fn game_bits_of(&self, key: &str) -> Option<super::sources::GameBits> {
+        self.entries.iter().find(|e| matches!(&e.act, Act::SelectGame(k) if k == key)).and_then(|e| e.game.clone())
+    }
+
+    /// The window the quick launcher needs for the palette (logical px).
+    pub fn launcher_size() -> Size<Pixels> {
+        let m = 2. * LAUNCHER_MARGIN;
+        size(px(PANEL_W + preview::PANE_W + 2. + m), px(INPUT_H + LIST_MAX_H + FOOTER_H + 4. + m))
     }
 
     /// Asks for the actions of the selected game (or of the game the
@@ -296,6 +348,7 @@ impl PaletteView {
             "pageup" => self.move_selection(-8, cx),
             "pagedown" => self.move_selection(8, cx),
             "tab" => self.cycle_filter(m.shift, cx),
+            "enter" if m.shift && self.mode == Mode::Launcher => self.show_in_app(cx),
             "enter" => self.activate(cx),
             _ => return false,
         }

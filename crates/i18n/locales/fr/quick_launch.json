@@ -1,3 +1,10 @@
 {
-  "Shortcut": "Raccourci"
+  "open in Heronite": "ouvrir dans Heronite",
+  "Opens Heronite": "Ouvre Heronite",
+  "play": "jouer",
+  "Select it in the Collection": "Le sélectionne dans la Collection",
+  "Shortcut": "Raccourci",
+  "show in Heronite": "afficher dans Heronite",
+  "Show {title} in Heronite": "Afficher {title} dans Heronite",
+  "stop": "arrêter"
 }

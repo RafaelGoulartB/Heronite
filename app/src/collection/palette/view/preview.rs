@@ -13,8 +13,9 @@ use heronite_data::{AppPaths, DataPaths};
 use heronite_i18n::tr;
 use heronite_images::{ImageRef, Variant};
 
+use super::super::launcher;
 use super::super::sources::{Entry, GameBits, GameCard, Kind};
-use super::PaletteView;
+use super::{Mode, PaletteView};
 use crate::icons::Icon;
 use crate::images::ImageStore;
 use crate::theme;
@@ -41,6 +42,10 @@ pub(super) struct Covers {
 impl Covers {
     pub fn new(chains: Rc<HashMap<SharedString, Vec<ImageRef>>>, data_paths: DataPaths) -> Self {
         Self { chains, data_paths, store: None }
+    }
+
+    pub fn set_chains(&mut self, chains: Rc<HashMap<SharedString, Vec<ImageRef>>>) {
+        self.chains = chains;
     }
 }
 
@@ -232,6 +237,19 @@ impl PaletteView {
                         .line_height(px(18.))
                         .text_color(theme::text_muted())
                         .child(e.subtitle.clone()),
+                )
+            })
+            .when(self.mode == Mode::Launcher && !launcher::runs_alone(e), |d| {
+                d.child(
+                    div()
+                        .mt(px(10.))
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .text_size(px(12.))
+                        .text_color(theme::text_dim())
+                        .child(icon(Icon::OpenInNew, px(13.), theme::text_dim()))
+                        .child(tr!("Opens Heronite")),
                 )
             })
             .children(
