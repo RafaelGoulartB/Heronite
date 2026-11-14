@@ -126,6 +126,24 @@ pub(super) fn section_label(s: Section) -> &'static str {
 /// Sizes offered for the store videos kept on this PC, in MB (0 = none).
 const VIDEO_CACHE_SIZES: [u32; 5] = [0, 25, 50, 100, 250];
 
+/// Under "Store media": videos, screenshots or both.
+fn media_kinds_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    use heronite_data::settings::StoreMediaKinds;
+    let items = [
+        (StoreMediaKinds::Both, tr!("Both")),
+        (StoreMediaKinds::Videos, tr!("Videos")),
+        (StoreMediaKinds::Screenshots, tr!("Screenshots")),
+    ];
+    let this = cx.entity();
+    let pick = tabs("store-media-kinds", &items, d.settings.store_media_kinds, move |kinds, _, cx| {
+        this.update(cx, |d, cx| {
+            let res = heronite_data::settings::save_store_media_kinds(&d.ctx.data_paths, kinds);
+            d.saved(res, cx);
+        })
+    });
+    div().pl(px(20.)).child(row(tr!("Show"), Some(tr!("The store's trailers, its screenshots, or both.")), pick)).into_any_element()
+}
+
 /// Under "Store media": whether the first trailer plays by itself.
 fn autoplay_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
     let on = d.settings.video_autoplay;
@@ -797,8 +815,11 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
                 .into_any_element(),
         );
         if section == Section::Media && shown {
-            rows.push(autoplay_row(d, cx));
-            rows.push(video_cache_row(d, cx));
+            rows.push(media_kinds_row(d, cx));
+            if d.settings.store_media_kinds.videos() {
+                rows.push(autoplay_row(d, cx));
+                rows.push(video_cache_row(d, cx));
+            }
         }
     }
     card([toolbar, start, with_game, with_sub_rows(switch, width), widths, with_sub_rows(sections_row, rows)])

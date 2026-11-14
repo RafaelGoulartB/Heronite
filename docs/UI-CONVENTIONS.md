@@ -1364,13 +1364,14 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
 ## Store media and Links
 - Two game sections off until turned on in Settings → Appearance → Game sections (`Sections::DEFAULT` hides them,
   and a stored order without them keeps them hidden). "Store media" (`collection/store_media/`, main column, under
-  Screenshots) is the store's trailers and screenshots of a game with a Steam app id: a 16:9 stage, at most 1100px
+  Overview) is the store's trailers and screenshots of a game with a Steam app id: a 16:9 stage, at most 1100px
   wide, with the picked item, and a strip of 128x72 thumbnails under it, the trailers first with a play mark; the
   title row says "6 videos · 8 screenshots" and has a "Steam ↗" link to the store page. A trailer shows its still and
   a 64px play button; playing (`heronite_media::stream`, ffmpeg at 480p and 30 fps, sound through PulseAudio /
   PipeWire on Linux only), its name and a bar (play / pause, time, seek bar, sound) fade in while the pointer is over
   the stage; paused they stay. Every trailer starts without sound (the sound button turns it on for that trailer);
-  "Play trailers by themselves" (a sub-row of Store media, `videoAutoplay`, off by default) starts the focused game's
+  "Show" (a sub-row of Store media, `storeMediaKinds`: Both, Videos or Screenshots) keeps one kind; with
+  Screenshots only, the rows about trailers are left out. "Play trailers by themselves" (a sub-row of Store media, `videoAutoplay`, off by default) starts the focused game's
   first trailer once the section is drawn. Arrows on the stage's sides step through the items. It stops when the game is no
   longer focused, when the section is not drawn (another page, the drawer closed, the section off) and when a game
   starts. A failure says so on the stage with "Watch on the store page".

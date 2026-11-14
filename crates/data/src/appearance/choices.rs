@@ -276,7 +276,7 @@ const SECTION_COUNT: usize = 8;
 
 /// Sections newer than a stored order, and the one each joins it right after.
 const NEWER: [(Section, Section); 3] =
-    [(Section::Achievements, Section::Details), (Section::Media, Section::Screenshots), (Section::Links, Section::Details)];
+    [(Section::Achievements, Section::Details), (Section::Media, Section::Overview), (Section::Links, Section::Details)];
 
 /// Sections that start hidden: they fetch from the internet (the store's
 /// videos) or add to a page that already worked without them.
@@ -286,8 +286,8 @@ impl Sections {
     pub const DEFAULT: Sections = Sections {
         order: [
             Section::Screenshots,
-            Section::Media,
             Section::Overview,
+            Section::Media,
             Section::Details,
             Section::Links,
             Section::Achievements,
@@ -405,7 +405,7 @@ mod tests {
         assert_eq!(s.order()[0], Section::Related);
         assert_eq!(s.order()[1], Section::Screenshots);
         let s = s.moved(Section::Related, 2);
-        assert_eq!(s.order()[..3], [Section::Screenshots, Section::Media, Section::Related]);
+        assert_eq!(s.order()[..3], [Section::Screenshots, Section::Overview, Section::Related]);
         let s = s.toggled(Section::Timeline);
         assert!(!s.shown(Section::Timeline));
         assert_eq!(s.visible().count(), 5);
@@ -432,8 +432,8 @@ mod tests {
             [
                 Section::Related,
                 Section::Overview,
-                Section::Screenshots,
                 Section::Media,
+                Section::Screenshots,
                 Section::Details,
                 Section::Links,
                 Section::Achievements,
@@ -456,8 +456,8 @@ mod tests {
                 Section::Links,
                 Section::Achievements,
                 Section::Screenshots,
-                Section::Media,
                 Section::Overview,
+                Section::Media,
                 Section::Related
             ]
         );

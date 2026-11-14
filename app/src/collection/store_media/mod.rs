@@ -25,6 +25,7 @@ use futures::channel::mpsc::unbounded;
 use futures::StreamExt;
 use gpui_kit::*;
 use heronite_data::appearance::Section;
+use heronite_data::settings::StoreMediaKinds;
 use heronite_i18n::tr;
 use heronite_images::Decoded;
 use heronite_media::stream::{Stream, StreamEvent, StreamSpec};
@@ -114,6 +115,8 @@ pub(super) struct StoreMediaUi {
     kept: HashSet<String>,
     /// Kept files of a section turned off were looked for.
     swept: bool,
+    /// What the list on screen keeps: videos, screenshots or both.
+    kinds: StoreMediaKinds,
     /// Games running at the last frame.
     games_running: usize,
     /// Where the seek bar is, for its clicks.
@@ -196,9 +199,11 @@ impl CollectionView {
             }
             return;
         }
-        if self.media.game != self.selected {
+        let kinds = self.lib.as_ref().map(|l| l.settings.store_media_kinds).unwrap_or_default();
+        if self.media.game != self.selected || self.media.kinds != kinds {
             self.media.reset();
             self.media.game = self.selected.clone();
+            self.media.kinds = kinds;
             self.load_store_media(cx);
         }
     }
@@ -227,8 +232,21 @@ impl CollectionView {
                 if this.media.game.as_ref() != Some(&key) {
                     return;
                 }
+                let kinds = this.media.kinds;
                 this.media.list = match found {
-                    Lookup::Found(m) if !m.is_empty() => List::Ready(Arc::new(m)),
+                    Lookup::Found(mut m) => {
+                        if !kinds.videos() {
+                            m.videos.clear();
+                        }
+                        if !kinds.screenshots() {
+                            m.screenshots.clear();
+                        }
+                        if m.is_empty() {
+                            List::Missing
+                        } else {
+                            List::Ready(Arc::new(m))
+                        }
+                    }
                     _ => List::Missing,
                 };
                 if installed {

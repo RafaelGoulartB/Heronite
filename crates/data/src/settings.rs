@@ -176,6 +176,7 @@ pub struct EffectiveSettings {
     /// The focused game's first trailer plays by itself, without sound (off
     /// by default).
     pub video_autoplay: bool,
+    pub store_media_kinds: StoreMediaKinds,
     /// Heroic `store/config.json` `theme` (default `midnightMirage`).
     pub theme: String,
     /// The interface language (`heronite_i18n`), which also picks the Steam
@@ -248,6 +249,7 @@ impl EffectiveSettings {
             image_cache_limit_mb: file.image_cache_limit_mb.unwrap_or(DEFAULT_IMAGE_CACHE_LIMIT_MB),
             video_cache_limit_mb: file.video_cache_limit_mb.map_or(DEFAULT_VIDEO_CACHE_LIMIT_MB, |mb| mb.min(MAX_VIDEO_CACHE_LIMIT_MB)),
             video_autoplay: file.video_autoplay == Some(true),
+            store_media_kinds: file.store_media_kinds.as_deref().map(StoreMediaKinds::parse).unwrap_or_default(),
             theme: config.theme.clone().unwrap_or_else(|| DEFAULT_THEME.to_owned()),
             language: heronite_i18n::current().code().to_owned(),
             all_tiles_in_color: config.all_tiles_in_color.unwrap_or(false),
@@ -571,6 +573,48 @@ pub fn save_video_cache_limit(paths: &DataPaths, limit_mb: u32) -> Result<Effect
     load(paths)
 }
 
+/// What the "Store media" section shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StoreMediaKinds {
+    #[default]
+    Both,
+    Videos,
+    Screenshots,
+}
+
+impl StoreMediaKinds {
+    pub const ALL: [StoreMediaKinds; 3] = [Self::Both, Self::Videos, Self::Screenshots];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Both => "both",
+            Self::Videos => "videos",
+            Self::Screenshots => "screenshots",
+        }
+    }
+
+    /// An unknown name shows both.
+    pub fn parse(s: &str) -> Self {
+        Self::ALL.into_iter().find(|k| k.as_str() == s).unwrap_or_default()
+    }
+
+    pub fn videos(self) -> bool {
+        self != Self::Screenshots
+    }
+
+    pub fn screenshots(self) -> bool {
+        self != Self::Videos
+    }
+}
+
+pub fn save_store_media_kinds(paths: &DataPaths, kinds: StoreMediaKinds) -> Result<EffectiveSettings> {
+    json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |file| {
+        file.store_media_kinds = Some(kinds.as_str().to_owned());
+        Ok(())
+    })?;
+    load(paths)
+}
+
 pub fn save_video_autoplay(paths: &DataPaths, on: bool) -> Result<EffectiveSettings> {
     json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |file| {
         file.video_autoplay = Some(on);
@@ -761,6 +805,9 @@ mod tests {
         assert_eq!(save_video_cache_limit(&paths, 1 << 20).unwrap().video_cache_limit_mb, MAX_VIDEO_CACHE_LIMIT_MB);
         assert!(!s.video_autoplay);
         assert!(save_video_autoplay(&paths, true).unwrap().video_autoplay);
+        assert_eq!(s.store_media_kinds, StoreMediaKinds::Both);
+        assert_eq!(save_store_media_kinds(&paths, StoreMediaKinds::Videos).unwrap().store_media_kinds, StoreMediaKinds::Videos);
+        assert_eq!(StoreMediaKinds::parse("bogus"), StoreMediaKinds::Both);
         let mut md = MetadataSettings { igdb_client_id: " id ".into(), cover_aspect: "dvd".into(), ..Default::default() };
         md.field_priority.insert("cover".into(), vec!["steam".into(), "bogus".into()]);
         let s = save_metadata(&paths, &md).unwrap();

@@ -30,6 +30,9 @@ pub struct CollectionSettingsFile {
     /// The focused game's first trailer plays by itself, without sound.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub video_autoplay: Option<bool>,
+    /// What "Store media" shows: `"both"`, `"videos"` or `"screenshots"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub store_media_kinds: Option<String>,
     #[serde(flatten)]
     pub extra: Extra,
 }
