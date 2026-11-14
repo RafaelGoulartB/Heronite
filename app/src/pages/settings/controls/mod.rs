@@ -114,6 +114,12 @@ fn console_button(d: &SettingsPage) -> ConsoleButton {
     crate::console::themes::prefs(&d.ctx.app).console_button.resolved()
 }
 
+/// Console mode's theme as saved (console mode's own copy, `look::theme`,
+/// is Classic while it is not running).
+fn console_theme(d: &SettingsPage) -> heronite_data::console_theme::ConsoleTheme {
+    crate::console::themes::read(&d.ctx.app, |p| p.theme.clone())
+}
+
 /// The overlay's button (Guide, Back + Start on Windows) is also the one
 /// held to enter console mode.
 fn shares_guide(d: &SettingsPage) -> bool {
@@ -216,7 +222,7 @@ fn device_bar(d: &SettingsPage) -> Div {
                 .items_baseline()
                 .gap(px(6.))
                 .child(div().text_size(px(12.5)).text_color(theme::text_muted()).child(tr!("Buttons drawn as")))
-                .child(div().text_size(px(13.)).text_color(theme::text_primary()).child(glyphs_name())),
+                .child(div().text_size(px(13.)).text_color(theme::text_primary()).child(glyphs_name(&d.ctx.app))),
         )
         .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(tr!("Set by console mode's theme")));
     crate::ui::controls::card_box().py(px(12.)).child(
@@ -241,7 +247,7 @@ fn device_bar(d: &SettingsPage) -> Div {
 }
 
 /// Console mode's "Buttons drawn as", `Auto` with what it resolves to.
-fn glyphs_name() -> String {
+fn glyphs_name(app: &heronite_data::paths::AppPaths) -> String {
     use heronite_data::console_theme::Glyphs;
     let name = |g: Glyphs| match g {
         Glyphs::Auto => tr!("Automatic (the controller's)"),
@@ -251,7 +257,7 @@ fn glyphs_name() -> String {
         Glyphs::Deck => tr!("Steam Deck"),
         Glyphs::Keyboard => tr!("Keyboard"),
     };
-    match crate::console::look::theme().controls.glyphs {
+    match crate::console::themes::read(app, |p| p.theme.controls.glyphs) {
         Glyphs::Auto => tr!("Auto ({glyphs})", glyphs = name(crate::console::look::glyphs())),
         g => name(g).to_string(),
     }
@@ -286,7 +292,7 @@ fn show_bar(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
         Show::Outside => tr!("On this PC, while no game runs. Click a shortcut to change it.").to_string(),
         Show::Overlay => tr!("While the overlay is on screen. These buttons are fixed.").to_string(),
         Show::Console => {
-            let name = crate::console::look::theme().name.clone();
+            let name = console_theme(d).name;
             if name.trim().is_empty() {
                 tr!("Set by console mode's theme: read-only here.").to_string()
             } else {

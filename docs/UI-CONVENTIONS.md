@@ -55,7 +55,8 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   that changes is a chip with a chevron whose popover (one at a time) picks the screenshot's button, the button held for
   console mode, records a key, or turns a fixed button's shortcut on or off; an off one is a dashed chip saying "Off".
   Outside games Guide may both open the overlay (a tap) and enter console mode (a hold): one callout says both, no warning. Overlay open and Console mode
-  are read-only (console mode's rows come from its theme). `HERONITE_DEBUG_CONTROLS=<tab>[:<popover>]` opens a tab
+  are read-only (console mode's rows come from its saved theme, `themes::read`: `look::theme` is Classic outside console
+  mode). `HERONITE_DEBUG_CONTROLS=<tab>[:<popover>]` opens a tab
   (`ingame`, `outside`, `overlay`, `console`) and a popover (`shot`, `replay`, `moment`, `volume`, `anywhere`,
   `console-button`, `key-overlay`, `key-shot`, `key-replay`). A section =
   title + lead (`Section::blurb`) +

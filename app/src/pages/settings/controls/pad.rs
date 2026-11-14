@@ -253,8 +253,8 @@ fn overlay_open() -> Vec<Callout> {
 }
 
 /// In console mode, as its theme has it.
-fn console() -> Vec<Callout> {
-    let theme = crate::console::look::theme();
+fn console(d: &SettingsPage) -> Vec<Callout> {
+    let theme = super::console_theme(d);
     let swap = theme.controls.swap_ab;
     let details = theme.nav.a_button == AButton::Details;
     let (opens, other) = if details { (tr!("Open the game page"), tr!("Play")) } else { (tr!("Play"), tr!("Open the game page")) };
@@ -281,7 +281,7 @@ pub(super) fn callouts(d: &SettingsPage, show: Show) -> Vec<Callout> {
         Show::InGame => in_game(d),
         Show::Outside => outside(d),
         Show::Overlay => overlay_open(),
-        Show::Console => console(),
+        Show::Console => console(d),
     }
 }
 

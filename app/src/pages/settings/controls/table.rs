@@ -853,8 +853,8 @@ fn overlay_open(d: &SettingsPage) -> Vec<Line> {
 }
 
 /// Console mode, as its theme has it (read-only here).
-fn console() -> Vec<Line> {
-    let theme = crate::console::look::theme();
+fn console(d: &SettingsPage) -> Vec<Line> {
+    let theme = super::console_theme(d);
     let swap = theme.controls.swap_ab;
     let details = theme.nav.a_button == AButton::Details;
     let read = |action: &'static str, part: Part, pad: Div, key: Option<Div>| {
@@ -933,7 +933,7 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
         }
         Show::Outside => outside(d, cx),
         Show::Overlay => overlay_open(d),
-        Show::Console => console(),
+        Show::Console => console(d),
     };
     for (i, l) in lines.into_iter().enumerate() {
         table = table.child(line_el(i, l, picked, cx));
