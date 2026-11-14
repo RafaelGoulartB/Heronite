@@ -168,7 +168,8 @@ impl MetadataDialog {
             }))
             .child(icon(Icon::ChevronLeft, px(16.), theme::text_primary()));
         let mut list = div().id("md-hits").flex().flex_col().gap(px(2.)).flex_1().min_h_0().overflow_y_scroll();
-        if pinned {
+        // A game linked by hand, or found on the source by its name, can be unlinked.
+        if pinned || (unlink && current.is_some()) {
             let auto = source.clone();
             list = list.child(
                 div()

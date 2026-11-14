@@ -221,8 +221,13 @@ impl MetadataService {
                 if !Self::wanted(d, game, game_view) {
                     return Plan::Not(NotAsked::NotChosen);
                 }
-                if pin.is_none() && !sources.applies(&self.paths, settings, d, game_view) {
-                    let linkable = d.searchable && d.link_for.as_ref().is_some_and(|a| a.matches(game_view));
+                let linkable = d.searchable && d.link_for.as_ref().is_some_and(|a| a.matches(game_view));
+                // Unlinked by hand (or being unlinked now): the game is not on this source, so a
+                // search by name does not find it again.
+                let not_on = linkable
+                    && game_view.steam_app_id.is_none()
+                    && (unpinned(&d.id) || current.as_ref().is_some_and(|md| record::is_not_on(md, &d.id)));
+                if pin.is_none() && (not_on || !sources.applies(&self.paths, settings, d, game_view)) {
                     return Plan::Not(if linkable { NotAsked::NotLinked } else { NotAsked::NotForThisGame });
                 }
                 // Never asked, not even for a pinned game, before the user downloads its database.

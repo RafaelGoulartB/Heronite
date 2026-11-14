@@ -776,12 +776,15 @@ text size) and applies it.
   Steam", `steam_joins`: the record's id counts there as an IGDB-found one
   does; nothing joins when the account does not own the app).
   "Unlink" (a `None` pin of a `link_for` source on a game with no Steam id of
-  its own) clears the id and the match (`record::unlink`; `unlink_sources`
-  when no source found anything to save with it). Steam's option "Find games
-  not on Steam by name" (`byName`, off, `also_for` `Pc`) makes `lookup` of a
-  game with no id search the store by the exact title (`strict_steam_score`:
-  the same name, or with edition words after it) and take that game as
-  `ExactTitle`: nothing pinned, nothing taken when only alike, and an
+  its own) clears the id and the match and marks the game as not on that
+  source (`record::unlink`, the record's `notOn` list; `unlink_sources` when
+  no source found anything to save with it). A game so marked is not
+  searched on that source by name again; linking it by hand clears the mark.
+  Steam's option "Find games not on Steam by name" (`byName`, on by default,
+  `also_for` `Pc`) makes `lookup` of a game with no id search the store by
+  the exact title (`strict_steam_score`: the same name, or with edition
+  words after it) and take that game as `ExactTitle`: nothing pinned,
+  nothing taken when only alike, none for a game marked `notOn`, and an
   unreachable Steam is `Unreachable`, never "in no source".
   `service/attention` classifies a set of games from
   disk (waiting for review, no details, failed last time, no description,

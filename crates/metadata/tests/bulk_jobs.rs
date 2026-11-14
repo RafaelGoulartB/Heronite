@@ -147,6 +147,9 @@ fn setup_with(delay: Duration) -> Setup {
     let server = mock(delay);
     let paths = make_root(dir.path(), &server.base);
     let svc = Arc::new(MetadataService::with_endpoints(paths.clone(), server.endpoints()));
+    // These jobs count what is asked of each source for the games with a Steam id; the search by name
+    // of the games with none is tested in `steam_link`.
+    svc.set_source_option("steam", "byName", heronite_metadata::sources::OptionValue::Switch(false)).unwrap();
     Setup { _dir: dir, paths, server, svc }
 }
 
@@ -289,6 +292,7 @@ fn dead_endpoints() -> Endpoints {
         twitch_token: format!("{base}/twitch/oauth2/token"),
         igdb: format!("{base}/igdb/v4"),
         steam_store: format!("{base}/steam"),
+        steam_community: format!("{base}/community"),
         lutris: format!("{base}/lutris"),
         ..Endpoints::default()
     }

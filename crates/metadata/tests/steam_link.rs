@@ -71,6 +71,17 @@ fn setup() -> (tempfile::TempDir, DataPaths, Server, MetadataService) {
     (dir, paths, server, svc)
 }
 
+/// The service with the search by name turned off.
+fn setup_off() -> (tempfile::TempDir, DataPaths, Server, MetadataService) {
+    let s = setup();
+    s.3.set_source_option("steam", "byName", OptionValue::Switch(false)).unwrap();
+    s
+}
+
+fn steam_id_of(svc: &MetadataService, app: &str) -> Option<String> {
+    svc.get_game_metadata("sideload", app).unwrap().and_then(|md| md.steam_app_id)
+}
+
 fn args(app: &str, pin: Option<Option<&str>>) -> MetadataApplyArgs {
     let title = if app == "other" { "Portal 2 Remake" } else { "Portal 2" };
     MetadataApplyArgs {
@@ -84,6 +95,10 @@ fn args(app: &str, pin: Option<Option<&str>>) -> MetadataApplyArgs {
     }
 }
 
+fn item(app: &str, title: &str) -> BulkItem {
+    BulkItem { app_name: app.into(), runner: "sideload".into(), title: title.into(), steam_app_id: None }
+}
+
 fn steam_state(preview: &MetadataPreview) -> SourceAnswer {
     preview.sources.iter().find(|s| s.source == "steam").map(|s| s.answer.clone()).unwrap()
 }
@@ -93,8 +108,8 @@ fn appdetails(server: &Server) -> usize {
 }
 
 #[test]
-fn a_game_not_on_steam_can_be_linked_but_asks_nothing_of_steam_by_itself() {
-    let (_dir, _paths, server, svc) = setup();
+fn with_the_search_by_name_off_a_game_not_on_steam_asks_nothing_of_steam() {
+    let (_dir, _paths, server, svc) = setup_off();
     let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
     assert_eq!(steam_state(&preview), SourceAnswer::NotAsked { why: NotAsked::NotLinked });
     assert!(preview.candidates.iter().all(|c| c.source != "steam"));
@@ -105,6 +120,101 @@ fn a_game_not_on_steam_can_be_linked_but_asks_nothing_of_steam_by_itself() {
     assert_eq!(steam_state(&emulated), SourceAnswer::NotAsked { why: NotAsked::NotForThisGame });
     let steam = svc.preview_game_metadata(&args("steam_620", None)).unwrap();
     assert!(matches!(steam_state(&steam), SourceAnswer::Found { pinned: false, .. }));
+
+    // Still linked by hand: the pin is asked whatever the setting.
+    let linked = svc.preview_game_metadata(&args("manual", Some(Some("400")))).unwrap();
+    assert!(matches!(steam_state(&linked), SourceAnswer::Found { pinned: true, .. }));
+}
+
+#[test]
+fn by_default_a_game_is_found_on_steam_by_its_exact_name_and_never_by_a_like_one() {
+    let (_dir, paths, server, svc) = setup();
+    let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    let SourceAnswer::Found { hit, pinned, .. } = steam_state(&preview) else { panic!("{:?}", steam_state(&preview)) };
+    assert_eq!((hit.id.as_deref(), hit.matched_by, pinned), (Some("620"), Some(MatchedBy::ExactTitle), false));
+    assert!(appdetails(&server) > 0);
+
+    // A title that is only alike is never taken.
+    let alike = svc.preview_game_metadata(&args("other", None)).unwrap();
+    assert_eq!(steam_state(&alike), SourceAnswer::NotFound);
+    assert!(alike.candidates.iter().all(|c| c.source != "steam"));
+
+    // Still not for an emulated game.
+    let emulated = svc.preview_game_metadata(&args("emulated", None)).unwrap();
+    assert_eq!(steam_state(&emulated), SourceAnswer::NotAsked { why: NotAsked::NotForThisGame });
+
+    // Saved, the match is the record's, not the game's own, and not pinned.
+    let saved = svc.apply_game_metadata(&args("manual", None)).unwrap();
+    assert_eq!(saved.steam_app_id.as_deref(), Some("620"));
+    assert!(!record::source_match(&saved, "steam").unwrap().pinned);
+    let overlay = json_store::read_value(&paths.local_meta()).unwrap();
+    assert!(overlay["games"]["manual"].get("steamAppId").is_none());
+    let game = Library::load(&paths).unwrap();
+    let game = game.get("sideload_manual").unwrap();
+    assert_eq!((game.steam_app_id.as_deref(), game.steam_launch_id.as_deref()), (None, None));
+    assert_eq!(game.launch_kind.as_deref(), Some("executable"));
+
+    // The bulk and idle fills go through the same search.
+    let fill = svc.run_bulk_metadata(&BulkArgs::fill_missing(vec![item("other", "Portal 2 Remake")]), &|_| {});
+    assert_eq!(steam_id_of(&svc, "other"), None, "{fill:?}");
+}
+
+#[test]
+fn unlinking_means_not_on_steam_and_sticks_for_every_later_update() {
+    let (_dir, _paths, _server, svc) = setup();
+    // Found by its name, unpinned.
+    svc.apply_game_metadata(&args("manual", None)).unwrap();
+    assert_eq!(steam_id_of(&svc, "manual").as_deref(), Some("620"));
+
+    // Unlink: the preview already shows it, and Apply saves the mark with the other fields.
+    let unlink = args("manual", Some(None));
+    let preview = svc.preview_game_metadata(&unlink).unwrap();
+    assert_eq!(steam_state(&preview), SourceAnswer::NotAsked { why: NotAsked::NotLinked });
+    let saved = svc.apply_preview(&preview, &unlink).unwrap();
+    assert_eq!(saved.steam_app_id, None);
+    assert!(record::source_match(&saved, "steam").is_none() && record::is_not_on(&saved, "steam"));
+    assert!(saved.description.is_some(), "the fields stay");
+
+    // Nothing finds it again: the dialog, a one-game update, a bulk fill.
+    let after = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    assert_eq!(steam_state(&after), SourceAnswer::NotAsked { why: NotAsked::NotLinked });
+    let _ = svc.apply_game_metadata(&args("manual", None));
+    let fill = svc.run_bulk_metadata(&BulkArgs::fill_missing(vec![item("manual", "Portal 2")]), &|_| {});
+    let refresh = svc.run_bulk_metadata(&BulkArgs::update(vec![item("manual", "Portal 2")], UpdateMode::Refresh, None, None), &|_| {});
+    assert_eq!(steam_id_of(&svc, "manual"), None, "{fill:?} {refresh:?}");
+
+    // Linking by hand again clears the mark.
+    let link = args("manual", Some(Some("400")));
+    let preview = svc.preview_game_metadata(&link).unwrap();
+    assert!(matches!(steam_state(&preview), SourceAnswer::Found { pinned: true, .. }));
+    let saved = svc.apply_preview(&preview, &link).unwrap();
+    assert_eq!(saved.steam_app_id.as_deref(), Some("400"));
+    assert!(!record::is_not_on(&saved, "steam"));
+}
+
+#[test]
+fn unlinking_a_hand_made_link_without_other_sources_only_marks_the_game() {
+    let (_dir, _paths, _server, svc) = setup_off();
+    let link = args("manual", Some(Some("400")));
+    let preview = svc.preview_game_metadata(&link).unwrap();
+    svc.apply_preview(&preview, &link).unwrap();
+
+    let saved = svc.unlink_sources("sideload", "manual", &["steam".to_owned()]).unwrap().unwrap();
+    assert_eq!(saved.steam_app_id, None);
+    assert!(record::source_match(&saved, "steam").is_none() && record::is_not_on(&saved, "steam"));
+    assert!(saved.description.is_some());
+    let after = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    assert_eq!(steam_state(&after), SourceAnswer::NotAsked { why: NotAsked::NotLinked });
+}
+
+#[test]
+fn a_game_with_a_steam_id_of_its_own_is_never_marked_not_on_steam() {
+    let (_dir, _paths, _server, svc) = setup();
+    // "Automatic" on a Steam game lets Steam find it by its id again.
+    let preview = svc.preview_game_metadata(&args("steam_620", Some(None))).unwrap();
+    assert!(matches!(steam_state(&preview), SourceAnswer::Found { pinned: false, .. }));
+    let saved = svc.apply_preview(&preview, &args("steam_620", Some(None))).unwrap();
+    assert!(!record::is_not_on(&saved, "steam"));
 }
 
 #[test]
@@ -162,65 +272,6 @@ fn a_linked_game_keeps_the_page_in_its_record_and_stays_a_game_of_its_own() {
 }
 
 #[test]
-fn unlinking_takes_the_page_away_but_keeps_what_it_filled() {
-    let (_dir, _paths, _server, svc) = setup();
-    let link = args("manual", Some(Some("400")));
-    let preview = svc.preview_game_metadata(&link).unwrap();
-    svc.apply_preview(&preview, &link).unwrap();
-
-    // With other sources found, the update that unlinks drops the link.
-    let unlink = args("manual", Some(None));
-    let preview = svc.preview_game_metadata(&unlink).unwrap();
-    assert_eq!(steam_state(&preview), SourceAnswer::NotAsked { why: NotAsked::NotLinked });
-    let saved = svc.apply_preview(&preview, &unlink).unwrap();
-    assert_eq!(saved.steam_app_id, None);
-    assert!(record::source_match(&saved, "steam").is_none());
-    assert!(saved.description.is_some(), "the fields stay");
-
-    // Without any, only the link goes.
-    let preview = svc.preview_game_metadata(&link).unwrap();
-    svc.apply_preview(&preview, &link).unwrap();
-    let saved = svc.unlink_sources("sideload", "manual", &["steam".to_owned()]).unwrap().unwrap();
-    assert_eq!(saved.steam_app_id, None);
-    assert!(record::source_match(&saved, "steam").is_none());
-    assert!(saved.description.is_some());
-    let after = svc.preview_game_metadata(&args("manual", None)).unwrap();
-    assert_eq!(steam_state(&after), SourceAnswer::NotAsked { why: NotAsked::NotLinked });
-}
-
-#[test]
-fn finding_a_game_on_steam_by_name_is_an_option_and_takes_only_the_same_title() {
-    let (_dir, paths, server, svc) = setup();
-    svc.set_source_option("steam", "byName", OptionValue::Switch(true)).unwrap();
-
-    let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
-    let SourceAnswer::Found { hit, pinned, .. } = steam_state(&preview) else { panic!("{:?}", steam_state(&preview)) };
-    assert_eq!((hit.id.as_deref(), hit.matched_by, pinned), (Some("620"), Some(MatchedBy::ExactTitle), false));
-    assert!(appdetails(&server) > 0);
-
-    // A title that is only alike is never taken.
-    let alike = svc.preview_game_metadata(&args("other", None)).unwrap();
-    assert_eq!(steam_state(&alike), SourceAnswer::NotFound);
-    assert!(alike.candidates.iter().all(|c| c.source != "steam"));
-
-    // Still not for an emulated game.
-    let emulated = svc.preview_game_metadata(&args("emulated", None)).unwrap();
-    assert_eq!(steam_state(&emulated), SourceAnswer::NotAsked { why: NotAsked::NotForThisGame });
-
-    // Saved, the match is the record's, not the game's own.
-    let saved = svc.apply_game_metadata(&args("manual", None)).unwrap();
-    assert_eq!(saved.steam_app_id.as_deref(), Some("620"));
-    assert!(!record::source_match(&saved, "steam").unwrap().pinned);
-    let overlay = json_store::read_value(&paths.local_meta()).unwrap();
-    assert!(overlay["games"]["manual"].get("steamAppId").is_none());
-
-    // Off again: back to a link to pick.
-    svc.set_source_option("steam", "byName", OptionValue::Switch(false)).unwrap();
-    let off = svc.preview_game_metadata(&args("other", None)).unwrap();
-    assert_eq!(steam_state(&off), SourceAnswer::NotAsked { why: NotAsked::NotLinked });
-}
-
-#[test]
 fn a_steam_that_cannot_be_reached_is_not_a_game_found_in_no_source() {
     let dir = tempfile::tempdir().unwrap();
     let paths = make_root(dir.path());
@@ -229,7 +280,6 @@ fn a_steam_that_cannot_be_reached_is_not_a_game_found_in_no_source() {
     endpoints.steam_store = "http://127.0.0.1:9/steam".into();
     endpoints.steam_community = "http://127.0.0.1:9/community".into();
     let svc = MetadataService::with_endpoints(paths, endpoints);
-    svc.set_source_option("steam", "byName", OptionValue::Switch(true)).unwrap();
     let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
     assert_eq!(steam_state(&preview), SourceAnswer::Unreachable);
 }

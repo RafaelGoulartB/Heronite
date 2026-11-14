@@ -685,9 +685,12 @@ source…"), and again after a match is pinned and after "Search every source ag
   one in use checked; a hit with a small cover shows it (30 × 40) at its left. A click pins that game and asks every source again; when the match is pinned, "Automatic" ("Let IGDB find the game by itself") comes first and
   unpins it. For Steam on a game that is not on it, the search field says "Name, store address or app id": a store
   address (`store.steampowered.com/app/620/…`, the community or SteamDB page) or an app id comes first as that game
-  (name, year, cover), then the games the Steam store finds by name (no year: the store search gives none); a pinned
-  link has "Unlink" ("Take away the link to Steam") first instead of "Automatic", which Apply saves even when no source
-  answered. The link is the record's, never the game's own Steam id: the game keeps launching, installing and counting
+  (name, year, cover), then the games the Steam store finds by name (no year: the store search gives none); a link
+  pinned by hand, or a game Steam found by its exact name (the setting "Find games not on Steam by name", on by default;
+  its row reads like any match by name, with "Change"), has "Unlink" ("Take away the link to Steam") first instead of
+  "Automatic". Unlink means "this game is not on Steam": the row goes back to "Not linked" with "Link", and no later
+  update, the bulk and idle fills included, finds the game on Steam by name again until it is linked by hand. Apply
+  saves it even when no source answered. The link is the record's, never the game's own Steam id: the game keeps launching, installing and counting
   playtime as it did, and Steam's details, tags, ProtonDB and links read the record's id. A line says why there are no hits ("Nothing found for “zelda”.", "This source is off.", "This source needs a
   key: add it in Settings → Metadata.", "Could not reach this source. Check your connection and try again."). Esc closes
   Change, then an open select, then the dialog.
