@@ -53,7 +53,7 @@ pub enum Section {
 impl Section {
     /// Left navigation: caption + sections (the caption is translated when drawn).
     pub const GROUPS: [(&'static str, &'static [Section]); 6] = [
-        (n_!("App"), &[Section::General, Section::Appearance, Section::QuickLauncher, Section::ConsoleMode, Section::Controls]),
+        (n_!("App"), &[Section::General, Section::Appearance, Section::ConsoleMode, Section::Controls, Section::QuickLauncher]),
         (n_!("Games"), &[Section::GameDefaults, Section::Downloads, Section::Launchers, Section::Integrations, Section::Mods]),
         (n_!("Collection"), &[Section::Library, Section::Metadata, Section::Achievements]),
         (n_!("While playing"), &[Section::Overlay, Section::Screenshots, Section::Replay]),
@@ -65,9 +65,9 @@ impl Section {
     pub const ALL: [Section; 23] = [
         Section::General,
         Section::Appearance,
-        Section::QuickLauncher,
         Section::ConsoleMode,
         Section::Controls,
+        Section::QuickLauncher,
         Section::GameDefaults,
         Section::Downloads,
         Section::Launchers,
