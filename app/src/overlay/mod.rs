@@ -148,6 +148,9 @@ pub struct OverlayService {
     debug_live_fps: Option<LiveFps>,
     /// FPS limits (and MangoHud's HUD) set from the panel, by game, while it runs.
     live_changes: HashMap<String, LiveChange>,
+    /// MangoHud config files of the user's the panel showed or hid the HUD
+    /// in, by game (see `heronite_overlay::mangohud`): restored when it ends.
+    hud_files: HashMap<String, Vec<std::path::PathBuf>>,
     /// The keyboard shortcut registered (and its accelerator) while a game runs.
     hotkey: Option<(String, GlobalHotkey)>,
     hotkey_state: HotkeyState,
@@ -165,6 +168,9 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
     }
     // A tiny file in the app's config folder.
     let prefs = OverlayPrefs::load(&AppPaths::for_data(&data_paths));
+    // A HUD hidden before the app crashed shows again in every game.
+    let record = mangohud_record(&data_paths);
+    cx.background_spawn(async move { heronite_overlay::mangohud::restore_recorded(&record) }).detach();
     let entity = cx.new(|_| OverlayService {
         data_paths,
         runtime,
@@ -182,6 +188,7 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
         debug_window: false,
         debug_live_fps: None,
         live_changes: HashMap::new(),
+        hud_files: HashMap::new(),
         hotkey: None,
         hotkey_state: HotkeyState::Idle,
         hotkey_epoch: 0,
@@ -206,6 +213,22 @@ pub fn desktop_status() -> (String, bool) {
         return (tr!("GNOME cannot draw over games (it lacks the layer-shell protocol).").into(), false);
     }
     (tr!("Supported (Wayland with layer-shell, like Hyprland, KDE Plasma and Sway).").into(), true)
+}
+
+/// The list of MangoHud config files of the user's that hold a block of ours.
+pub fn mangohud_record(data_paths: &DataPaths) -> std::path::PathBuf {
+    AppPaths::for_data(data_paths).config.join("mangohud-overlay-files")
+}
+
+/// The app is quitting: the HUD shows again wherever the panel hid it
+/// (blocking: small files).
+pub fn restore_mangohud(cx: &mut App) {
+    let Some(service) = get(cx) else { return };
+    let record = service.update(cx, |s, _| {
+        s.hud_files.clear();
+        mangohud_record(&s.data_paths)
+    });
+    heronite_overlay::mangohud::restore_recorded(&record);
 }
 
 pub fn get(cx: &App) -> Option<Entity<OverlayService>> {
@@ -258,6 +281,10 @@ impl OverlayService {
             LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => {
                 self.games.retain(|g| &g.app_name != app_name);
                 self.live_changes.remove(app_name);
+                if let Some(files) = self.hud_files.remove(app_name) {
+                    let record = mangohud_record(&self.data_paths);
+                    cx.background_spawn(async move { heronite_overlay::mangohud::restore_files(&files, &record) }).detach();
+                }
                 if self.games.is_empty() {
                     self.close_panel(cx);
                 }
@@ -280,6 +307,17 @@ impl OverlayService {
             None => LiveNow { limit: l.limit(), hud: l.hud(), live: l },
         });
         Some(GameNow { game, info, fps })
+    }
+
+    /// The panel showed or hid MangoHud's HUD through the user's config
+    /// `files` (restored when the game ends).
+    pub fn hud_edited(&mut self, app_name: &str, files: Vec<std::path::PathBuf>) {
+        let list = self.hud_files.entry(app_name.to_string()).or_default();
+        for f in files {
+            if !list.contains(&f) {
+                list.push(f);
+            }
+        }
     }
 
     /// The panel changed the running game's FPS limit or MangoHud's HUD

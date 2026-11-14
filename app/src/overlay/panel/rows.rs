@@ -106,17 +106,14 @@ impl OverlayPanel {
                 None => tr!("Changes now (gamescope)"),
             };
             if let Some(hud) = now.hud {
-                let (ic, line) = if hud {
-                    (Icon::Visibility, tr!("Shown over the game"))
-                } else {
-                    (Icon::VisibilityOff, tr!("Hidden. The FPS limit still applies."))
-                };
-                rows.push(Row::toggle(MANGOHUD, tr!("Show MangoHud"), hud).icon(ic).desc(line));
+                rows.push(hud_row(hud, true));
             }
             // DXVK / VKD3D-Proton hold it: only MangoHud's HUD changes.
             if now.live.changes_limit() {
                 rows.push(Row::choice(FPS, tr!("FPS limit"), options, index).icon(Icon::Tune).desc(desc).compact());
             }
+        } else if let Some(hud) = &self.data.watched_hud {
+            rows.push(hud_row(hud.shown, false));
         }
         if let Some(id) = &self.data.status_id {
             let options: Vec<SharedString> = self.data.statuses.iter().map(|s| status::status_label(&s.name).to_string().into()).collect();
@@ -362,13 +359,15 @@ impl OverlayPanel {
                     self.set_live(LiveChange { limit, hud }, cx);
                 }
             }
-            (MANGOHUD, Value::Toggle(on)) => {
-                let Some(now) = self.game.as_ref().and_then(|g| g.fps.as_ref()) else { return };
-                if now.hud.is_some() {
-                    let limit = now.limit;
-                    self.set_live(LiveChange { limit, hud: Some(on) }, cx);
+            (MANGOHUD, Value::Toggle(on)) => match self.game.as_ref().and_then(|g| g.fps.as_ref()) {
+                Some(now) => {
+                    if now.hud.is_some() {
+                        let limit = now.limit;
+                        self.set_live(LiveChange { limit, hud: Some(on) }, cx);
+                    }
                 }
-            }
+                None => self.set_watched_hud(on, cx),
+            },
             _ => {}
         }
     }
@@ -389,6 +388,38 @@ impl OverlayPanel {
             return;
         }
         cx.background_spawn(async move { f() }).detach();
+    }
+
+    /// Shows or hides MangoHud's HUD through the user's own config file (a
+    /// Steam game's, say: see `heronite_overlay::mangohud`).
+    fn set_watched_hud(&mut self, shown: bool, cx: &mut Context<Self>) {
+        let Some(hud) = &mut self.data.watched_hud else { return };
+        let Some(app_name) = self.game.as_ref().map(|g| g.game.app_name.clone()) else { return };
+        let before = hud.shown;
+        hud.shown = shown;
+        let hud = hud.clone();
+        if crate::env::value("HERONITE_DEBUG_OVERLAY").is_some() {
+            log::info!("overlay debug: MangoHud change skipped");
+            return;
+        }
+        let record = crate::overlay::mangohud_record(&self.paths);
+        let files = hud.files.clone();
+        self.with_service(cx, move |s, _| s.hud_edited(&app_name, files));
+        cx.spawn(async move |this, cx| {
+            let res = cx.background_spawn(async move { heronite_overlay::mangohud::set_shown(&hud, shown, &record) }).await;
+            if let Err(e) = res {
+                log::warn!("overlay: MangoHud HUD {shown}: {e}");
+                this.update(cx, |this, cx| {
+                    if let Some(h) = &mut this.data.watched_hud {
+                        h.shown = before;
+                    }
+                    this.error = Some(tr!("Could not show or hide MangoHud: {err}", err = e).into());
+                    cx.notify();
+                })
+                .ok();
+            }
+        })
+        .detach();
     }
 
     /// Applies a new FPS limit (`0` = none) or shows / hides MangoHud's HUD
@@ -505,4 +536,15 @@ fn fps_steps(current: u32) -> Vec<u32> {
         steps.sort_unstable();
     }
     steps
+}
+
+/// Home's "Show MangoHud" row. `limits`: MangoHud (or DXVK) still limits the
+/// game while it is hidden, as the launch set it up.
+fn hud_row(shown: bool, limits: bool) -> Row {
+    let (ic, line) = match (shown, limits) {
+        (true, _) => (Icon::Visibility, tr!("Shown over the game")),
+        (false, true) => (Icon::VisibilityOff, tr!("Hidden. The FPS limit still applies.")),
+        (false, false) => (Icon::VisibilityOff, tr!("Hidden until you show it again or the game ends")),
+    };
+    Row::toggle(MANGOHUD, tr!("Show MangoHud"), shown).icon(ic).desc(line)
 }

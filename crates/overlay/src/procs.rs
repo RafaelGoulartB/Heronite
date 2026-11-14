@@ -48,7 +48,7 @@ pub(crate) fn env_of(pid: u32, key: &str) -> Option<String> {
     environ_value(&raw, key)
 }
 
-fn environ_value(raw: &[u8], key: &str) -> Option<String> {
+pub(crate) fn environ_value(raw: &[u8], key: &str) -> Option<String> {
     raw.split(|b| *b == 0).find_map(|entry| {
         let entry = std::str::from_utf8(entry).ok()?;
         entry.strip_prefix(key)?.strip_prefix('=').map(str::to_string)

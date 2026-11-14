@@ -229,6 +229,8 @@ pub(super) fn graceful_quit(cx: &mut App) {
     crate::services::replay::shutdown(cx);
     // A cloud upload stops; the next start sends what it had not.
     crate::services::sync::shutdown(cx);
+    // MangoHud's HUD shows again where the in-game overlay hid it.
+    crate::overlay::restore_mangohud(cx);
     let hotkeys = [crate::overlay::take_hotkey(cx), crate::services::replay::take_hotkey(cx)];
     let downloads = crate::services::try_downloads(cx);
     if let Some(d) = &downloads {
