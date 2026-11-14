@@ -190,6 +190,12 @@ what the Cover aspect asks for and the Cover shapes card counts it) and "Review 
   none. The pick is focused in the Collection and the palette stays on it: "Pick another" first (Enter rolls again
   from the same games), then the game's actions; Esc goes back to the main list. The last eight picks wait while
   other games remain.
+  Game rows show the game's cover (22×30) where the other rows have an icon. Beside the list, when the window is
+  wide enough (the list and the pane, plus 48px), a 268px pane shows the selected item (`palette/view/preview.rs`): a
+  game (or one of its verbs) its cover, title, store and state (Installed, Not installed, Playing now) and its facts
+  (Played, Last played, Status); a page, a Settings section or an action its icon, what it does, why it is dimmed and
+  its shortcut. With the pane the list keeps its full height, so the panel does not change size while you type or
+  move.
 
 ## Glass design system (menus, dialogs, pages, settings)
 

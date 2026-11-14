@@ -101,9 +101,23 @@ pub(super) enum ViewCmd {
     NewSmartCategory,
 }
 
+/// What the preview pane shows of a game, besides [`GameBits`].
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct GameCard {
+    pub title: SharedString,
+    /// The store or source ("Steam", "GOG").
+    pub source: SharedString,
+    /// "84h", or "Not Played".
+    pub playtime: SharedString,
+    /// "3 days ago"; `None` = never played.
+    pub last_played: Option<SharedString>,
+    /// The status shown (its name) and its slug (its colour).
+    pub status: Option<(SharedString, String)>,
+}
+
 /// What a game entry can do besides being selected.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(super) struct GameBits {
+pub(crate) struct GameBits {
     pub key: String,
     pub installed: bool,
     pub has_folder: bool,
@@ -113,6 +127,8 @@ pub(super) struct GameBits {
     pub hidden: bool,
     /// ISO timestamp (sorts as text); `None` = never played.
     pub last_played: Option<String>,
+    /// The preview pane's facts (`None` in tests).
+    pub card: Option<std::rc::Rc<GameCard>>,
 }
 
 #[derive(Clone, Debug)]
@@ -758,6 +774,7 @@ pub(super) fn game_entry(g: &GameRow) -> Entry {
         favourite: g.favourite,
         hidden: g.hidden,
         last_played: g.last_played.map(str::to_string),
+        card: None,
     });
     e
 }

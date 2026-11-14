@@ -10,6 +10,7 @@ use heronite_i18n::tr;
 
 use super::super::rank::{Filter, ItemRef};
 use super::super::sources::Act;
+use super::preview::{PANE_W, THUMB_H, THUMB_W};
 use super::{PaletteEvent, PaletteView, CAPTION_H, LIST_MAX_H, LIST_PAD, PANEL_W, ROW_H, TOP};
 use crate::icons::Icon;
 use crate::theme;
@@ -18,7 +19,22 @@ use crate::ui::glass::glass_panel;
 use crate::ui::icon;
 
 impl PaletteView {
-    fn row(&self, n: usize, item: ItemRef, cx: &mut Context<Self>) -> Stateful<Div> {
+    /// Whether the preview pane fits beside the list (a narrow window keeps
+    /// the list alone).
+    fn shows_pane(&self, window: &Window) -> bool {
+        f32::from(crate::ui::content_bounds(window).size.width) >= PANEL_W + PANE_W + 48.
+    }
+
+    fn row(&mut self, n: usize, item: ItemRef, window: &Window, cx: &mut Context<Self>) -> Stateful<Div> {
+        // A game of the list shows its cover where the others have an icon.
+        let cover_key = match &self.entry(item) {
+            e if e.game.is_some() => match &e.act {
+                Act::SelectGame(k) => Some(k.clone()),
+                _ => None,
+            },
+            _ => None,
+        };
+        let thumb = cover_key.map(|k| self.cover(&k, THUMB_W, THUMB_H, window.scale_factor(), 100, cx));
         let e = self.entry(item);
         let sel = n == self.selected;
         let off = e.disabled.is_some();
@@ -74,7 +90,23 @@ impl PaletteView {
             .when(sel && !off, |d| {
                 d.child(div().absolute().left(px(0.)).top(px(8.)).bottom(px(8.)).w(px(2.)).rounded_full().bg(theme::accent()))
             })
-            .child(icon(e.icon, px(16.), icon_color))
+            .child(match thumb {
+                Some(src) => div()
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .w(px(THUMB_W))
+                    .h(px(THUMB_H))
+                    .my(px(-6.))
+                    .rounded(px(4.))
+                    .overflow_hidden()
+                    .bg(theme::ink_a(0.08))
+                    .when(src.is_none(), |d| d.child(icon(e.icon, px(13.), icon_color)))
+                    .children(src.map(|src| img(src).size_full().object_fit(ObjectFit::Cover)))
+                    .into_any_element(),
+                None => icon(e.icon, px(16.), icon_color).into_any_element(),
+            })
             .child(
                 div()
                     .flex_none()
@@ -153,16 +185,22 @@ fn hint(keys: Vec<&'static str>, label: &'static str) -> Div {
 }
 
 impl Render for PaletteView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.drop_evicted_covers(window);
+        let pane = self.shows_pane(window);
         let mut list = div()
             .id("palette-list")
             .flex()
             .flex_col()
+            .flex_none()
+            .w(px(PANEL_W))
             .px(px(8.))
             .py(px(LIST_PAD))
-            .max_h(px(LIST_MAX_H))
             .overflow_y_scroll()
             .track_scroll(&self.scroll);
+        // Beside the pane the list keeps its height, so the panel does not
+        // change size as the results do.
+        list = if pane { list.h(px(LIST_MAX_H)) } else { list.max_h(px(LIST_MAX_H)) };
         if self.results.count() == 0 {
             list = list.child(
                 div()
@@ -191,7 +229,7 @@ impl Render for PaletteView {
                     .child(caption),
             );
             for item in items {
-                list = list.child(self.row(n, item, cx));
+                list = list.child(self.row(n, item, window, cx));
                 n += 1;
             }
         }
@@ -241,12 +279,13 @@ impl Render for PaletteView {
                 .child(self.filter_pills(cx))
         };
 
+        let preview = if pane { self.preview(window, cx) } else { div() };
         let panel = glass_panel(theme::R_POPOVER)
             .id("palette")
             .occlude()
             .flex()
             .flex_col()
-            .w(px(PANEL_W))
+            .w(px(if pane { PANEL_W + PANE_W } else { PANEL_W }))
             .max_h(relative(0.9))
             .font_family(theme::font_body())
             .text_color(theme::text_primary())
@@ -259,7 +298,7 @@ impl Render for PaletteView {
                 }),
             )
             .child(input_row)
-            .child(list)
+            .child(div().flex().flex_none().min_h_0().child(list).when(pane, |d| d.child(preview)))
             .child(footer);
 
         let panel = if theme::animations() {

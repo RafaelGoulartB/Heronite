@@ -4,14 +4,18 @@
 //! on a game, its chevron, or "All actions"). Esc, or Backspace in the empty
 //! box, goes back to the main list with its text as it was.
 
+mod preview;
 mod render;
 
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::DataPaths;
 use heronite_i18n::tr;
+use heronite_images::ImageRef;
 
 use super::rank::{actions_list, search, Filter, ItemRef, Results};
 use super::sources::{Act, Entry};
@@ -60,13 +64,24 @@ pub(super) struct PaletteView {
     results: Results,
     selected: usize,
     scroll: ScrollHandle,
+    covers: preview::Covers,
     _sub: Subscription,
 }
 
 impl EventEmitter<PaletteEvent> for PaletteView {}
 
 impl PaletteView {
-    pub fn new(entries: Rc<Vec<Entry>>, recent: Rc<Vec<String>>, query: &str, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    /// `covers`: each game's cover chain, by key; `data_paths`: where the
+    /// image cache is.
+    pub fn new(
+        entries: Rc<Vec<Entry>>,
+        recent: Rc<Vec<String>>,
+        covers: Rc<HashMap<SharedString, Vec<ImageRef>>>,
+        data_paths: DataPaths,
+        query: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let input = cx.new(|cx| {
             let mut s = InputState::new(window, cx);
             s.set_placeholder(root_placeholder(), window, cx);
@@ -93,6 +108,7 @@ impl PaletteView {
             results: Results::default(),
             selected: 0,
             scroll: ScrollHandle::new(),
+            covers: preview::Covers::new(covers, data_paths),
             _sub: sub,
         };
         this.results = this.rank();

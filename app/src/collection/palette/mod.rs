@@ -21,6 +21,7 @@
 //! none); `HERONITE_DEBUG_PALETTE=<query>@pages|actions|games` also picks the
 //! filter, and `HERONITE_DEBUG_PALETTE_KEYS=down,right,...` feeds it keys.
 
+mod games;
 mod random;
 mod rank;
 mod sources;
@@ -35,7 +36,7 @@ use heronite_data::collection::collect_facet_options;
 use heronite_data::fuzzy as matching;
 use heronite_i18n::tr;
 
-use self::sources::{Act, GameRow, ViewCmd};
+use self::sources::{Act, ViewCmd};
 use self::view::{PaletteEvent, PaletteView};
 use super::CollectionView;
 use crate::pages::Page;
@@ -97,7 +98,9 @@ impl CollectionView {
         self.context_menu = None;
         let entries = Rc::new(self.palette_entries(cx));
         let recent = Rc::new(self.ui.palette_recent.clone());
-        let view = cx.new(|cx| PaletteView::new(entries, recent, query, window, cx));
+        let covers = Rc::new(self.cover_chains.clone());
+        let data_paths = self.data_paths.clone();
+        let view = cx.new(|cx| PaletteView::new(entries, recent, covers, data_paths, query, window, cx));
         self.palette.sub = Some(cx.subscribe_in(&view, window, Self::on_palette_event));
         self.palette.view = Some(view.clone());
         cx.notify();
@@ -174,25 +177,8 @@ impl CollectionView {
         v.extend(self.random_entries());
         let smart: Vec<(String, String)> = self.smart_groups.groups.iter().map(|g| (g.id.clone(), g.name.clone())).collect();
         v.extend(sources::view_entries(&self.ui, &collect_facet_options(&lib.games), &self.categories, &smart));
-        let mut games: Vec<_> = lib.games.iter().collect();
-        games.sort_by(|a, b| a.title_lower.cmp(&b.title_lower).then(a.key.cmp(&b.key)));
-        v.reserve(games.len());
-        for g in games {
-            let playtime = heronite_data::collection::playtime_label(g.playtime_minutes);
-            v.push(sources::game_entry(&GameRow {
-                key: &g.key,
-                title: &g.title,
-                store_title: &g.game.title,
-                source: g.source_label,
-                playtime: &playtime,
-                installed: g.installed,
-                has_folder: g.details.install_path.is_some(),
-                playing: self.playing.contains_key(&g.app_name),
-                favourite: g.favourite,
-                hidden: g.hidden,
-                last_played: g.last_played.as_deref(),
-            }));
-        }
+        let playing = &self.playing;
+        v.extend(games::library_entries(&lib, &|app_name| playing.contains_key(app_name)));
         v
     }
 
