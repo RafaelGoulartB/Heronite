@@ -1379,7 +1379,7 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   `<cache>/store-media`, within "Video cache" (a sub-row of Store media: None, 25, 50 (default), 100 or 250 MB;
   `videoCacheLimitMb` in `settings.json`), the least recently played going first. Turning the section off deletes
   the folder and the copies of its pictures in the image cache (`store_media::clear_kept`, also at start while off).
-- "Links" (`collection/links.rs`, side column with Details) is a row of 38px icon buttons, one per store page or site
+- "Links" (`collection/links.rs`, side column with Details) is a row of bare icons (18px, dimmed, a faint round hover that brightens them), one per store page or site
   (`heronite_data::game_links`: the game's own store page, its Steam app id, its metadata's websites, SteamDB,
   PCGamingWiki and, on Linux, ProtonDB); the hover names it (a site with no icon of its own by its host), a click
   opens it in the browser. Its title is a menu like Details' (chevron on hover): "Add links…" opens "Links of <game>"

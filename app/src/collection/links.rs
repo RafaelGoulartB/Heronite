@@ -114,24 +114,27 @@ impl CollectionView {
         }
         let found = links(&games, cfg!(target_os = "linux"));
         let empty = found.is_empty();
-        let row = found.into_iter().enumerate().fold(div().flex().flex_wrap().gap(px(8.)), |row, (i, link)| {
+        // Bare icons, dimmed until pointed at: the row reads as a footnote of
+        // the page, not as a set of buttons.
+        let row = found.into_iter().enumerate().fold(div().flex().flex_wrap().gap(px(4.)).ml(px(-6.)), |row, (i, link)| {
             let url = link.url.clone();
+            let group = SharedString::from(format!("game-link-{i}"));
             row.child(
                 div()
                     .id(("game-link", i))
+                    .group(group.clone())
                     .flex()
                     .flex_none()
                     .items_center()
                     .justify_center()
-                    .size(px(38.))
-                    .rounded(px(10.))
+                    .size(px(32.))
+                    .rounded_full()
                     .cursor_pointer()
-                    .bg(theme::focus_card_fill(true))
-                    .border_1()
-                    .border_color(theme::ink_a(0.1))
-                    .hover(|s| s.bg(theme::ink_a(0.12)).border_color(theme::ink_a(0.2)))
+                    .hover(|s| s.bg(theme::ink_a(0.08)))
                     .tooltip(tooltip(link_name(&link)))
-                    .child(icon(link_icon(link.kind), px(19.), theme::text_primary()))
+                    .child(
+                        icon(link_icon(link.kind), px(18.), theme::ink_a(0.55)).group_hover(group, |s| s.text_color(theme::text_bright())),
+                    )
                     .on_click(cx.listener(move |this, _, _, cx| this.open_url(url.clone(), cx))),
             )
         });
