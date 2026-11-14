@@ -12,6 +12,7 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -196,14 +197,26 @@ impl Player {
         }
         *last = Some(now);
         self.tx.send((sound, settings)).ok();
+        *LAST_SENT.lock().unwrap_or_else(|e| e.into_inner()) = Some(now);
     }
 }
+
+/// When any player last sent a sound, for [`preview`].
+static LAST_SENT: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// A sound this recent comes from the press that made the change.
+const PRESS_WINDOW: Duration = Duration::from_millis(60);
 
 static PREVIEW: Mutex<Option<Player>> = Mutex::new(None);
 
 /// Plays `sound` as `settings` make it, for Settings to let the user hear a
-/// change (console mode's own player is not running there).
+/// change. Console mode's own player already sounds for the press that made
+/// it: then this stays silent (the next press has the new sound).
 pub fn preview(dir: &Path, sound: Sound, settings: Settings) {
+    let pressed = LAST_SENT.lock().unwrap_or_else(|e| e.into_inner()).is_some_and(|t| t.elapsed() < PRESS_WINDOW);
+    if pressed {
+        return;
+    }
     let mut p = PREVIEW.lock().unwrap_or_else(|e| e.into_inner());
     p.get_or_insert_with(|| Player::new(dir.to_path_buf())).play(sound, settings);
 }
@@ -262,28 +275,37 @@ fn work(dir: &Path, rx: Receiver<(Sound, Settings)>) {
     }
 }
 
-/// Writes the four files of `settings` that are not there yet.
+/// Writes the four files of `settings` that are not there yet, or are not
+/// whole (a crash can cut one short). Each goes to a temporary name first and
+/// is renamed into place, so a player never reads half a file.
 fn write_files(dir: &Path, settings: Settings) -> std::io::Result<()> {
+    static TEMPS: AtomicU32 = AtomicU32::new(0);
     std::fs::create_dir_all(dir)?;
     for s in Sound::ALL {
         let file = dir.join(settings.file(s));
-        if !file.is_file() {
-            let (tones, level) = s.tones(settings.style);
-            std::fs::write(file, wav(tones, level * settings.gain(), &Voice::of(settings.style)))?;
+        let (tones, level) = s.tones(settings.style);
+        let bytes = wav(tones, level * settings.gain(), &Voice::of(settings.style));
+        if std::fs::metadata(&file).is_ok_and(|m| m.is_file() && m.len() == bytes.len() as u64) {
+            continue;
         }
+        let tmp = dir.join(format!("{}.{}-{}.tmp", settings.file(s), std::process::id(), TEMPS.fetch_add(1, Ordering::Relaxed)));
+        std::fs::write(&tmp, bytes)?;
+        std::fs::rename(&tmp, &file).inspect_err(|_| {
+            std::fs::remove_file(&tmp).ok();
+        })?;
     }
     Ok(())
 }
 
 /// Deletes the files of another [`VERSION`] (and of the first version, which
-/// had no number in its names).
+/// had no number in its names), and temporary files a crash left.
 fn remove_stale(dir: &Path) -> std::io::Result<()> {
     let Ok(entries) = std::fs::read_dir(dir) else { return Ok(()) };
     let keep = format!("v{VERSION}-");
     for e in entries.flatten() {
         let name = e.file_name();
         let name = name.to_string_lossy();
-        if name.ends_with(".wav") && !name.starts_with(&keep) {
+        if name.ends_with(".tmp") || (name.ends_with(".wav") && !name.starts_with(&keep)) {
             std::fs::remove_file(e.path())?;
         }
     }
@@ -401,7 +423,14 @@ mod tests {
             let b = std::fs::read(dir.path().join(classic.file(s))).unwrap();
             assert_ne!(a, b);
         }
-        // What the first version wrote, and a file of another version.
+        // A file cut short is written again, whole.
+        let cut = dir.path().join(soft.file(Sound::Move));
+        let whole = std::fs::read(&cut).unwrap();
+        std::fs::write(&cut, &whole[..whole.len() / 2]).unwrap();
+        write_files(dir.path(), soft).unwrap();
+        assert_eq!(std::fs::read(&cut).unwrap(), whole);
+        // What the first version wrote, a file of another version, a temporary file.
+        std::fs::write(dir.path().join("v1-soft-70-move.wav.1-0.tmp"), b"x").unwrap();
         std::fs::write(dir.path().join("move.wav"), b"x").unwrap();
         std::fs::write(dir.path().join("v0-soft-70-move.wav"), b"x").unwrap();
         remove_stale(dir.path()).unwrap();
