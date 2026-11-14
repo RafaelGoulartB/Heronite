@@ -233,10 +233,10 @@ fn steam_is_for_games_with_an_id_and_can_be_linked_to_the_other_pc_games() {
     let reg = registry();
     let d = reg.get("steam").unwrap();
     assert!(d.searchable && d.applies_to == AppliesTo::HasSteamId && d.finds_by.contains(&MatchedBy::ExactTitle));
-    // The by-name search is an option, on until the user turns it off.
+    // The by-name search is an option, off until the user turns it on.
     assert_eq!(d.also_for, Some(AlsoFor { option: "byName".into(), applies_to: AppliesTo::Pc }));
     assert_eq!(d.options.iter().map(|o| o.key.as_str()).collect::<Vec<_>>(), ["byName"]);
-    assert_eq!(d.options[0].default, Some(OptionValue::Switch(true)));
+    assert_eq!(d.options[0].default, Some(OptionValue::Switch(false)));
     let game = |steam: Option<&str>, emulated: bool| SourceGame {
         steam_app_id: steam.map(Into::into),
         emulated,

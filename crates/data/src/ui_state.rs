@@ -1089,7 +1089,7 @@ mod tests {
         set_console_open_in(&paths, OpenIn::Console).unwrap();
         set_console_auto(&paths, AutoConsole::Ask).unwrap();
         set_console_fullscreen(&paths, false).unwrap();
-        assert_eq!(UiState::load(&paths).console_button, ConsoleButton::Auto);
+        assert_eq!(UiState::load(&paths).console_button, ConsoleButton::Off);
         set_console_button(&paths, ConsoleButton::Bumpers).unwrap();
         assert_eq!(UiState::load(&paths).controller, ControllerPrefs::default());
         let east = ControllerPrefs { glyphs: Glyphs::PlayStation, confirm: ConfirmButton::East };
@@ -1106,7 +1106,7 @@ mod tests {
         set_console_open_in(&paths, OpenIn::Last).unwrap();
         set_console_auto(&paths, AutoConsole::Off).unwrap();
         set_console_fullscreen(&paths, true).unwrap();
-        set_console_button(&paths, ConsoleButton::Auto).unwrap();
+        set_console_button(&paths, ConsoleButton::Off).unwrap();
         set_controller(&paths, ControllerPrefs::default()).unwrap();
         let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
         assert!(on_disk.get(CONSOLE_OPEN_IN).is_none() && on_disk.get(CONSOLE_AUTO).is_none());

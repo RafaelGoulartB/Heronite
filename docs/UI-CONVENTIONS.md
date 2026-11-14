@@ -1262,7 +1262,8 @@ controller connects" (Settings → Console mode → Startup) does nothing, enter
 bottom right corner of the screen (a layer-shell surface over every window, like the overlay's notices; a desktop
 notification without layer-shell) for 8 s, "Controller connected", the controller's name and "Hold Guide to enter
 console mode", a line at the bottom running out. "Button to enter console mode" (Off / Hold Guide / Hold Back + Start /
-Hold LB + RB; Guide on Linux and Back + Start on Windows unless changed, as XInput does not report Guide) held for a second
+Hold LB + RB; off unless chosen, as held during a game started elsewhere it would bring console mode over it; Ask asks
+for Guide on Linux and Back + Start on Windows, as XInput does not report Guide) held for a second
 enters it from anywhere, asked or not; while it is held the notice shows a ring filling around the controller, then
 "Opening console mode…" as the window comes out of the tray (or to the front: on Hyprland through `hyprctl`) in console
 mode. With that button off, Ask still asks for the system's button. Nothing happens while a game runs or while console

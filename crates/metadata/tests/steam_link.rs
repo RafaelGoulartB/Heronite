@@ -82,10 +82,12 @@ fn mock() -> Server {
     mock_over(|_| None)
 }
 
+/// The service with the search by name turned on (it is off by default).
 fn setup_with(server: Server) -> (tempfile::TempDir, DataPaths, Server, MetadataService) {
     let dir = tempfile::tempdir().unwrap();
     let paths = make_root(dir.path());
     let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());
+    svc.set_source_option("steam", "byName", OptionValue::Switch(true)).unwrap();
     (dir, paths, server, svc)
 }
 
@@ -130,6 +132,16 @@ fn appdetails(server: &Server) -> usize {
 }
 
 #[test]
+fn by_default_a_game_not_on_steam_asks_nothing_of_steam() {
+    let dir = tempfile::tempdir().unwrap();
+    let server = mock();
+    let svc = MetadataService::with_endpoints(make_root(dir.path()), server.endpoints());
+    let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
+    assert_eq!(steam_state(&preview), SourceAnswer::NotAsked { why: NotAsked::NotLinked });
+    assert_eq!(appdetails(&server) + server.count(|r| r.path().contains("search")), 0, "Steam was not asked");
+}
+
+#[test]
 fn with_the_search_by_name_off_a_game_not_on_steam_asks_nothing_of_steam() {
     let (_dir, _paths, server, svc) = setup_off();
     let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
@@ -149,7 +161,7 @@ fn with_the_search_by_name_off_a_game_not_on_steam_asks_nothing_of_steam() {
 }
 
 #[test]
-fn by_default_a_game_is_found_on_steam_by_its_exact_name_and_never_by_a_like_one() {
+fn with_the_search_by_name_on_a_game_is_found_on_steam_by_its_exact_name_and_never_by_a_like_one() {
     let (_dir, paths, server, svc) = setup();
     let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
     let SourceAnswer::Found { hit, pinned, .. } = steam_state(&preview) else { panic!("{:?}", steam_state(&preview)) };
@@ -302,6 +314,7 @@ fn a_steam_that_cannot_be_reached_is_not_a_game_found_in_no_source() {
     endpoints.steam_store = "http://127.0.0.1:9/steam".into();
     endpoints.steam_community = "http://127.0.0.1:9/community".into();
     let svc = MetadataService::with_endpoints(paths, endpoints);
+    svc.set_source_option("steam", "byName", OptionValue::Switch(true)).unwrap();
     let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
     assert_eq!(steam_state(&preview), SourceAnswer::Unreachable);
 }
@@ -538,6 +551,7 @@ fn a_game_found_by_name_of_another_year_than_a_sure_source_says_is_left_out() {
     let server = igdb_of_1993();
     let (_dir, paths, _server, svc) = setup_with(server);
     json_store::write(&paths.collection_settings(), &json!({"metadata": {"igdbClientId": "id", "igdbClientSecret": "secret"}})).unwrap();
+    svc.set_source_option("steam", "byName", OptionValue::Switch(true)).unwrap();
     let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
     let igdb = preview.candidates.iter().find(|c| c.source == "igdb").expect("IGDB found it");
     assert_eq!((igdb.match_year, igdb.matched_by), (Some(1993), Some(MatchedBy::ExactTitle)), "{:?}", igdb.metadata.release_date);
@@ -547,6 +561,7 @@ fn a_game_found_by_name_of_another_year_than_a_sure_source_says_is_left_out() {
     // The same year: the same game.
     let (_dir, paths, _server, svc) = setup();
     json_store::write(&paths.collection_settings(), &json!({"metadata": {"igdbClientId": "id", "igdbClientSecret": "secret"}})).unwrap();
+    svc.set_source_option("steam", "byName", OptionValue::Switch(true)).unwrap();
     let preview = svc.preview_game_metadata(&args("manual", None)).unwrap();
     assert!(matches!(steam_state(&preview), SourceAnswer::Found { .. }));
 
