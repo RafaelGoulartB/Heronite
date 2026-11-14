@@ -6,13 +6,15 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::path::Path;
+use std::sync::atomic::Ordering;
 
 use gpui_kit::*;
 use heronite_data::library::metadata_key;
 use heronite_data::models::{ArtFile, LocalMetaFile, MetadataFile, SessionsFile};
 use heronite_data::steam_owned;
 use heronite_data::{json_store, DataPaths};
+use heronite_i18n::tr;
 use heronite_shortcuts::menu::Roots;
 use serde_json::Value;
 
@@ -33,28 +35,37 @@ fn added(paths: &DataPaths) -> Result<Vec<String>, String> {
     Ok(steam_owned::added_entries(&metas))
 }
 
+/// Whether a command line (its words) starts one of the `gone` games: it ends
+/// with `--launch sideload <app name>`, as the shortcuts of this app do.
+fn launches<'a>(words: impl IntoIterator<Item = &'a str>, gone: &HashSet<String>) -> bool {
+    let words: Vec<&str> = words.into_iter().collect();
+    matches!(words.as_slice(), [.., "--launch", "sideload", app] if gone.contains(*app))
+}
+
+/// Whether the shortcut file starts one of the `gone` games.
+fn starts_one(file: &Path, gone: &HashSet<String>) -> bool {
+    match file.extension().and_then(|e| e.to_str()) {
+        Some("desktop") => fs::read_to_string(file)
+            .is_ok_and(|text| text.lines().filter_map(|l| l.strip_prefix("Exec=")).any(|exec| launches(exec.split_whitespace(), gone))),
+        // The shell splits the arguments of a `.lnk` file as the program sees them.
+        #[cfg(windows)]
+        Some("lnk") => heronite_platform::shortcut::read(file)
+            .is_ok_and(|link| launches(heronite_platform::shortcut::split_args(&link.arguments).iter().map(String::as_str), gone)),
+        _ => false,
+    }
+}
+
 /// Removes the desktop and menu shortcuts that start one of the `gone` games,
 /// found by what they run (`--launch sideload <app name>`), not by their
 /// title: another game with the same title (a GOG copy of the same game)
-/// keeps its own. Windows shortcuts (`.lnk`) cannot be read that way: they
-/// stay.
+/// keeps its own.
 fn remove_shortcuts(roots: &Roots, gone: &HashSet<String>) {
-    if cfg!(windows) {
-        return;
-    }
     for dir in roots.desktop.iter().chain([&roots.applications]) {
         let Ok(files) = fs::read_dir(dir) else { continue };
-        for file in files.flatten().map(|f| f.path()).filter(|p| p.extension().is_some_and(|e| e == "desktop")) {
-            let Ok(text) = fs::read_to_string(&file) else { continue };
-            let starts_one = text
-                .lines()
-                .filter_map(|l| l.strip_prefix("Exec="))
-                .any(|exec| exec.rsplit_once(" --launch sideload ").is_some_and(|(_, app)| gone.contains(app.trim())));
-            if starts_one {
-                match fs::remove_file(&file) {
-                    Ok(()) => log::info!("shortcut removed: {}", file.display()),
-                    Err(e) => log::warn!("Could not remove shortcut {}: {e}", file.display()),
-                }
+        for file in files.flatten().map(|f| f.path()).filter(|p| starts_one(p, gone)) {
+            match fs::remove_file(&file) {
+                Ok(()) => log::info!("shortcut removed: {}", file.display()),
+                Err(e) => log::warn!("Could not remove shortcut {}: {e}", file.display()),
             }
         }
     }
@@ -73,7 +84,11 @@ fn drop_from_lists(paths: &DataPaths, gone: &HashSet<String>) -> anyhow::Result<
 }
 
 /// Takes the `gone` games (app names) out of the Collection: their shortcuts,
-/// then their data, each file read and written once. How many left. Blocking.
+/// then their data, each file read and written once. `local_meta` is what
+/// [`added`] finds the games by, so it is written last and only when
+/// everything before it worked: a failed file leaves the games listed, and
+/// trying again finishes the job. The other files are all tried, and the first
+/// error is the one given. How many left. Blocking.
 fn remove_entries(paths: &DataPaths, roots: &Roots, gone: &HashSet<String>) -> anyhow::Result<usize> {
     if gone.is_empty() {
         return Ok(0);
@@ -81,56 +96,65 @@ fn remove_entries(paths: &DataPaths, roots: &Roots, gone: &HashSet<String>) -> a
     remove_shortcuts(roots, gone);
     let keys: HashSet<String> = gone.iter().map(|app| metadata_key("sideload", app)).collect();
     let art_keys: HashSet<String> = gone.iter().map(|app| format!("sideload:{app}")).collect();
+    let mut first_error: Option<anyhow::Error> = None;
+    let mut step = |result: anyhow::Result<()>| {
+        if let Err(e) = result {
+            log::warn!("Removing the Steam games: {e:#}");
+            first_error.get_or_insert(e);
+        }
+    };
 
-    json_store::update_value(&paths.sideload_library(), |doc| {
+    step(json_store::update_value(&paths.sideload_library(), |doc| {
         if let Some(games) = doc.get_mut("games").and_then(Value::as_array_mut) {
             games.retain(|g| g.get("app_name").and_then(Value::as_str).is_none_or(|a| !gone.contains(a)));
         }
         Ok(())
-    })?;
-    json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |f| {
-        f.games.retain(|app, _| !gone.contains(app));
-        Ok(())
-    })?;
-    json_store::update::<SessionsFile, _>(&paths.sessions(), |f| {
+    }));
+    step(json_store::update::<SessionsFile, _>(&paths.sessions(), |f| {
         f.sessions.retain(|app, _| !gone.contains(app));
         Ok(())
-    })?;
-    json_store::update::<ArtFile, _>(&paths.art(), |f| {
+    }));
+    step(json_store::update::<ArtFile, _>(&paths.art(), |f| {
         f.games.retain(|key, _| !art_keys.contains(key));
         Ok(())
-    })?;
-    json_store::update::<MetadataFile, _>(&paths.metadata(), |f| {
+    }));
+    step(json_store::update::<MetadataFile, _>(&paths.metadata(), |f| {
         f.games.retain(|key, _| !keys.contains(key));
         Ok(())
-    })?;
-    heronite_metadata::review::update(paths, |f| {
+    }));
+    step(heronite_metadata::review::update(paths, |f| {
         f.games.retain(|key, _| !keys.contains(key));
         Ok(())
-    })?;
-    json_store::update_value(&paths.timestamps(), |doc| {
+    }));
+    step(json_store::update_value(&paths.timestamps(), |doc| {
         if let Some(map) = doc.as_object_mut() {
             map.retain(|app, _| !gone.contains(app));
         }
         Ok(())
-    })?;
-    drop_from_lists(paths, gone)?;
+    }));
+    step(drop_from_lists(paths, gone));
     for app in gone {
         // The pictures the app saved for the game (its own art and the metadata's).
         let _ = fs::remove_dir_all(paths.art_dir().join(heronite_metadata::util::folder_name("sideload", app)));
         heronite_metadata::images::remove_metadata_art(paths, "sideload", app);
     }
+    if let Some(e) = first_error {
+        return Err(e);
+    }
+    json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |f| {
+        f.games.retain(|app, _| !gone.contains(app));
+        Ok(())
+    })?;
     log::info!("Removed {} Steam game(s) from Collection", gone.len());
     Ok(gone.len())
 }
 
-/// The work of [`SteamLibrary::remove_games`] once nothing reads: saves what
-/// the switch asked for, removes the entries but the `running` ones, and
-/// forgets the cached library. Blocking.
-fn run(paths: &DataPaths, roots: &Roots, wanted: &AtomicBool, all: Vec<String>, running: &HashSet<String>) -> Result<Removal, String> {
+/// The work of [`SteamLibrary::remove_games`] once reading is off and saved:
+/// removes the entries but the `running` ones, and forgets the cached library
+/// (not after a failure, which leaves everything to try again). Blocking.
+fn run(paths: &DataPaths, roots: &Roots, all: Vec<String>, running: &HashSet<String>) -> Result<Removal, String> {
     let (kept, entries): (Vec<String>, Vec<String>) = all.into_iter().partition(|app| running.contains(app));
     let entries: HashSet<String> = entries.into_iter().collect();
-    save_wanted(paths, wanted).map_err(|e| format!("{e:#}"))?;
     let removed = remove_entries(paths, roots, &entries).map_err(|e| format!("{e:#}"))?;
     steam_owned::forget(paths).map_err(|e| format!("{e:#}"))?;
     Ok(Removal { removed, running: kept.len() })
@@ -164,17 +188,33 @@ impl SteamLibrary {
     pub(super) fn start_removal(&mut self, cx: &mut Context<Self>) {
         let (paths, wanted) = (self.paths.clone(), self.wanted.clone());
         cx.spawn(async move |this, cx| {
-            let listed = {
+            // Reading off is saved first, so nothing adds a game in the meantime.
+            let saved = {
                 let paths = paths.clone();
-                cx.background_spawn(async move { added(&paths) }).await
+                cx.background_spawn(async move { save_wanted(&paths, &wanted).map_err(|e| format!("{e:#}")) }).await
+            };
+            let listed = match saved {
+                Ok(()) => {
+                    let paths = paths.clone();
+                    cx.background_spawn(async move { added(&paths) }).await
+                }
+                Err(e) => Err(e),
             };
             let res = match listed {
                 Err(e) => Err(e),
                 Ok(entries) => {
-                    let running: HashSet<String> = this
-                        .update(cx, |_, cx| entries.iter().filter(|app| crate::services::session::is_running(cx, app)).cloned().collect())
-                        .unwrap_or_default();
-                    cx.background_spawn(async move { run(&paths, &Roots::detect(), &wanted, entries, &running) }).await
+                    // Without the session service nothing says which games run: do not guess.
+                    let running: Option<HashSet<String>> = this
+                        .update(cx, |_, cx| {
+                            crate::services::session::get(cx)?;
+                            Some(entries.iter().filter(|app| crate::services::session::is_running(cx, app)).cloned().collect())
+                        })
+                        .ok()
+                        .flatten();
+                    match running {
+                        Some(running) => cx.background_spawn(async move { run(&paths, &Roots::detect(), entries, &running) }).await,
+                        None => Err(tr!("Could not tell which games are running.").to_string()),
+                    }
                 }
             };
             this.update(cx, |this, cx| {
@@ -198,14 +238,13 @@ mod tests {
     use std::collections::HashSet;
     use std::fs;
     use std::path::{Path, PathBuf};
-    use std::sync::atomic::AtomicBool;
 
     use heronite_data::json_store;
     use heronite_data::steam_owned::SteamOwnedFile;
     use heronite_data::DataPaths;
     use heronite_shortcuts::menu::Roots;
 
-    use super::{added, run, Removal};
+    use super::{added, launches, run, Removal};
 
     fn write(path: PathBuf, text: &str) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -293,11 +332,10 @@ mod tests {
         let steam_link =
             |lib: &heronite_data::Library, app: &str| lib.games.iter().find(|g| g.app_name == app).map(|g| g.steam_link.is_some());
         assert_eq!(steam_link(&load(), "ctl"), Some(true));
-        let wanted = AtomicBool::new(false);
 
         let all = added(&f.paths).unwrap();
         assert_eq!(all, ["steam_10", "steam_11"]);
-        assert_eq!(run(&f.paths, &f.roots, &wanted, all, &HashSet::new()), Ok(Removal { removed: 2, running: 0 }));
+        assert_eq!(run(&f.paths, &f.roots, all, &HashSet::new()), Ok(Removal { removed: 2, running: 0 }));
 
         let lib = load();
         let names: Vec<&str> = lib.games.iter().map(|g| g.app_name.as_str()).collect();
@@ -308,7 +346,6 @@ mod tests {
         // The game owned on Steam too stays, without Steam's copy.
         assert_eq!(steam_link(&lib, "ctl"), Some(false));
         assert!(!SteamOwnedFile::read(&f.paths).known());
-        assert!(!heronite_data::settings::read_steam_library(&f.paths));
         other_files_lost_only_those_games(&f.paths);
     }
 
@@ -334,10 +371,9 @@ mod tests {
     #[test]
     fn a_running_game_stays() {
         let f = fixture();
-        let wanted = AtomicBool::new(false);
         let all = added(&f.paths).unwrap();
         let running = HashSet::from(["steam_11".to_string()]);
-        assert_eq!(run(&f.paths, &f.roots, &wanted, all, &running), Ok(Removal { removed: 1, running: 1 }));
+        assert_eq!(run(&f.paths, &f.roots, all, &running), Ok(Removal { removed: 1, running: 1 }));
         // Found again by the next try.
         assert_eq!(added(&f.paths).unwrap(), ["steam_11"]);
     }
@@ -347,17 +383,48 @@ mod tests {
         let f = fixture();
         let menu = &f.roots.applications;
         let desktop = f.roots.desktop.clone().unwrap();
-        // The Steam entry's own shortcuts, and a GOG game of the same title
-        // (the file is named after the title, so it replaced no other).
-        let own = shortcut(menu, "Heronite Test One", "steam_10");
-        let own_desktop = shortcut(&desktop, "Heronite Test One", "steam_10");
-        let other = shortcut(menu, "Heronite Test One GOG", "gog_1234");
+        // The Steam entry's shortcut on the Desktop, and a GOG game of the same
+        // title in the menu: the same file name in the other folder.
+        let own = shortcut(&desktop, "Portal 2", "steam_10");
+        let gog = shortcut(menu, "Portal 2", "gog_1234");
+        let own_menu = shortcut(menu, "Heronite Test One", "steam_10");
         let renamed = shortcut(menu, "A title the user changed", "steam_11");
-        let wanted = AtomicBool::new(false);
         let all = added(&f.paths).unwrap();
-        run(&f.paths, &f.roots, &wanted, all, &HashSet::new()).unwrap();
-        assert!(!own.exists() && !own_desktop.exists());
+        run(&f.paths, &f.roots, all, &HashSet::new()).unwrap();
+        assert!(!own.exists() && !own_menu.exists());
         assert!(!renamed.exists(), "found by what it runs, not by its title");
-        assert!(other.exists(), "a shortcut of another game stays");
+        assert!(gog.exists(), "the shortcut of another game with the same title stays");
+    }
+
+    #[test]
+    fn a_failed_file_leaves_the_games_listed_so_a_second_try_finishes() {
+        let f = fixture();
+        write(f.paths.sessions(), "not json");
+        let all = added(&f.paths).unwrap();
+        assert!(run(&f.paths, &f.roots, all, &HashSet::new()).is_err());
+        // Still found, and the cached library is still there.
+        assert_eq!(added(&f.paths).unwrap(), ["steam_10", "steam_11"]);
+        assert!(SteamOwnedFile::read(&f.paths).known());
+        // The files that worked lost the games already.
+        let art = json_store::read_value(&f.paths.art()).unwrap();
+        assert!(art["games"].get("sideload:steam_10").is_none());
+
+        write(f.paths.sessions(), r#"{"sessions":{"steam_10":[],"mine":[]}}"#);
+        let all = added(&f.paths).unwrap();
+        assert_eq!(run(&f.paths, &f.roots, all, &HashSet::new()), Ok(Removal { removed: 2, running: 0 }));
+        assert!(added(&f.paths).unwrap().is_empty());
+        assert!(!SteamOwnedFile::read(&f.paths).known());
+        other_files_lost_only_those_games(&f.paths);
+    }
+
+    #[test]
+    fn a_command_line_starts_a_game_when_it_ends_with_launch_sideload_and_its_name() {
+        let gone = HashSet::from(["steam_10".to_string()]);
+        assert!(launches(["/opt/heronite-rs", "--launch", "sideload", "steam_10"], &gone));
+        assert!(launches(["--launch", "sideload", "steam_10"], &gone));
+        assert!(!launches(["/opt/heronite-rs", "--launch", "sideload", "steam_11"], &gone));
+        assert!(!launches(["/opt/heronite-rs", "--launch", "legendary", "steam_10"], &gone));
+        assert!(!launches(["--launch", "sideload", "steam_10", "--extra"], &gone));
+        assert!(!launches(["steam_10"], &gone));
     }
 }

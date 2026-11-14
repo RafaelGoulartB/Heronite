@@ -90,5 +90,6 @@
   "Reading Steam is off": "Das Lesen von Steam ist aus",
   "Reading your Steam library is off. Turn it on in the Stores, on the Steam page.": "Das Lesen deiner Steam-Bibliothek ist aus. Schalte es unter Stores auf der Steam-Seite ein.",
   "{n} Steam game is running and stays. Remove it once it closes.": "{n} Steam-Spiel läuft und bleibt. Entferne es, sobald es geschlossen ist.",
-  "{n} Steam games are running and stay. Remove them once they close.": "{n} Steam-Spiele laufen und bleiben. Entferne sie, sobald sie geschlossen sind."
+  "{n} Steam games are running and stay. Remove them once they close.": "{n} Steam-Spiele laufen und bleiben. Entferne sie, sobald sie geschlossen sind.",
+  "Could not tell which games are running.": "Es ließ sich nicht feststellen, welche Spiele laufen."
 }

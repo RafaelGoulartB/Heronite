@@ -763,16 +763,24 @@ mod tests {
     }
 
     #[test]
-    fn quick_toggles_save_the_last_value() {
+    fn a_late_save_writes_the_latest_value_not_its_own() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
-        let wanted = std::sync::atomic::AtomicBool::new(false);
-        // Two saves in the wrong order still write what was asked for last.
-        wanted.store(true, std::sync::atomic::Ordering::SeqCst);
-        super::save_wanted(&paths, &wanted).unwrap();
+        let wanted = AtomicBool::new(true);
+        // Turned on, then off at once: the save of the second toggle finishes
+        // first and the save of the first one comes last.
         wanted.store(false, std::sync::atomic::Ordering::SeqCst);
         super::save_wanted(&paths, &wanted).unwrap();
-        super::save_wanted(&paths, &wanted).unwrap();
         assert!(!heronite_data::settings::read_steam_library(&paths));
+        super::save_wanted(&paths, &wanted).unwrap();
+        assert!(!heronite_data::settings::read_steam_library(&paths), "the late save must not bring back the older value");
+        // Saves from several threads at once end with the value asked for last.
+        wanted.store(true, std::sync::atomic::Ordering::SeqCst);
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| super::save_wanted(&paths, &wanted).unwrap());
+            }
+        });
+        assert!(heronite_data::settings::read_steam_library(&paths));
     }
 }
