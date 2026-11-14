@@ -71,5 +71,22 @@
   "Store apps": "Store-Apps",
   "Not read yet: only your installed Steam games are in the Collection.": "Noch nicht gelesen: Nur deine installierten Steam-Spiele sind in der Sammlung.",
   "one|{n} not installed": "{n} nicht installiert",
-  "other|{n} not installed": "{n} nicht installiert"
+  "other|{n} not installed": "{n} nicht installiert",
+  "Read my Steam library": "Meine Steam-Bibliothek lesen",
+  "Heronite adds your Steam games to the Collection. Turn it off to add only the games you choose yourself.": "Heronite fügt deine Steam-Spiele zur Sammlung hinzu. Schalte es aus, um nur die Spiele hinzuzufügen, die du selbst wählst.",
+  "Reading is off: Heronite adds no Steam game by itself. Turn it on to bring your library in again.": "Das Lesen ist aus: Heronite fügt von selbst kein Steam-Spiel hinzu. Schalte es ein, um deine Bibliothek wieder hereinzuholen.",
+  "Reading is off: only the games you add yourself, and what other stores bring, are in the Collection.": "Das Lesen ist aus: In der Sammlung sind nur die Spiele, die du selbst hinzufügst, und was andere Stores mitbringen.",
+  "{n} Steam game added before is still in your Collection.": "{n} früher hinzugefügtes Steam-Spiel ist noch in deiner Sammlung.",
+  "{n} Steam games added before are still in your Collection.": "{n} früher hinzugefügte Steam-Spiele sind noch in deiner Sammlung.",
+  "Remove Steam games": "Steam-Spiele entfernen",
+  "Remove {n} Steam game from the Collection?": "{n} Steam-Spiel aus der Sammlung entfernen?",
+  "Remove {n} Steam games from the Collection?": "{n} Steam-Spiele aus der Sammlung entfernen?",
+  "Nothing is uninstalled and Steam is not touched. Playtime, status and Collection images for them are deleted.": "Es wird nichts deinstalliert und Steam bleibt unberührt. Spielzeit, Status und Sammlungsbilder dieser Spiele werden gelöscht.",
+  "Games you added yourself or got from other stores stay. If you own one on Steam too, it only loses its link to Steam's copy.": "Spiele, die du selbst hinzugefügt oder aus anderen Stores hast, bleiben. Besitzt du eines auch auf Steam, verliert es nur die Verbindung zur Steam-Kopie.",
+  "Reading your Steam library turns off, so they do not come back. You can turn it on again.": "Das Lesen deiner Steam-Bibliothek wird ausgeschaltet, damit sie nicht zurückkommen. Du kannst es wieder einschalten.",
+  "Removed {n} Steam game from the Collection.": "{n} Steam-Spiel aus der Sammlung entfernt.",
+  "Removed {n} Steam games from the Collection.": "{n} Steam-Spiele aus der Sammlung entfernt.",
+  "Could not remove every Steam game: {err}": "Nicht alle Steam-Spiele konnten entfernt werden: {err}",
+  "Reading Steam is off": "Das Lesen von Steam ist aus",
+  "Reading your Steam library is off. Turn it on in the Stores, on the Steam page.": "Das Lesen deiner Steam-Bibliothek ist aus. Schalte es unter Stores auf der Steam-Seite ein."
 }

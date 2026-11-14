@@ -7,6 +7,11 @@
 //! Steam pill ([`SteamLibrary::notice`]). The Collection reloads on
 //! [`SteamLibraryEvent::Imported`].
 //!
+//! Reading can be turned off (Stores → Steam, `read_steam_library` in
+//! `settings.json`): the service then never looks at Steam, not even to check
+//! whether it can be read ([`SteamState::Off`]). The Steam games it added
+//! before stay until [`SteamLibrary::remove_games`] takes them out.
+//!
 //! A Steam sign-in an earlier version saved (with a QR code, as the Steam
 //! mobile app) is ended on Steam and deleted at start
 //! ([`retire_steam_sign_in`]): Steam's security took those sign-ins for a
@@ -15,7 +20,8 @@
 use std::time::{Duration, Instant};
 
 use gpui_kit::*;
-use heronite_data::steam_owned::{SteamOwnedFile, SteamSource};
+use heronite_data::models::LocalMetaFile;
+use heronite_data::steam_owned::{self, SteamOwnedFile, SteamSource};
 use heronite_data::{AppPaths, DataPaths};
 use heronite_launch::settings::GlobalSettings;
 use heronite_launch::steam::{find_steam_binary, SteamLocator};
@@ -70,6 +76,39 @@ fn sync_blocking(paths: &DataPaths) -> Result<ImportReport, String> {
     heronite_steam::library::import(paths, read, find_steam_binary(&SystemProbe).as_deref()).map_err(|e| format!("{e:#}"))
 }
 
+/// Takes one Steam entry out of the Collection: its desktop and menu
+/// shortcuts, then its data. Steam's own files (its non-Steam shortcuts
+/// included) are left alone. Blocking.
+fn remove_entry(paths: &DataPaths, app_name: &str) -> anyhow::Result<()> {
+    let outcome = crate::system::shortcuts::remove_shortcuts(paths, "sideload", app_name);
+    log::info!("shortcuts of {app_name}: {outcome:?}");
+    heronite_metadata::remove::remove_collection_game(paths, &heronite_metadata::remove::ShortcutDirs::none(), app_name, "sideload")?;
+    Ok(())
+}
+
+/// [`SteamLibrary::remove_games`]'s work: how many games left. Blocking.
+fn remove_blocking(paths: &DataPaths) -> Result<usize, String> {
+    heronite_data::settings::save_read_steam_library(paths, false).map_err(|e| format!("{e:#}"))?;
+    let metas: LocalMetaFile = heronite_data::json_store::read(&paths.local_meta()).map_err(|e| format!("{e:#}"))?;
+    let mut removed = 0;
+    let mut failed = None;
+    for app_name in steam_owned::added_entries(&metas) {
+        match remove_entry(paths, &app_name) {
+            Ok(()) => removed += 1,
+            Err(e) => {
+                log::warn!("Removing {app_name}: {e:#}");
+                failed.get_or_insert(format!("{e:#}"));
+            }
+        }
+    }
+    // Kept while a game could not leave, so the next try finds it again.
+    if let Some(e) = failed {
+        return Err(e);
+    }
+    steam_owned::forget(paths).map_err(|e| format!("{e:#}"))?;
+    Ok(removed)
+}
+
 /// Ends on Steam and deletes a sign-in an earlier version saved, if there
 /// is one. Quiet: only the log says how it went. Blocking.
 fn retire_steam_sign_in(paths: &DataPaths) {
@@ -106,11 +145,15 @@ pub enum SteamNotice {
 
 pub enum SteamLibraryEvent {
     Imported(ImportReport),
+    /// [`SteamLibrary::remove_games`] took games out of the Collection.
+    Removed,
 }
 
 /// Where getting the library stands, for the welcome.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SteamState {
+    /// Reading Steam is turned off.
+    Off,
     Checking,
     NotInstalled,
     Closed,
@@ -169,6 +212,14 @@ pub struct SteamLibrary {
     pub taken: Option<PortOwner>,
     /// A read was asked for while another ran: it runs next.
     pending: bool,
+    /// Reading Steam is on (`read_steam_library`).
+    enabled: bool,
+    /// How many Steam games Heronite added are in the Collection
+    /// ([`steam_owned::added_entries`]), as of the last look.
+    pub removable: usize,
+    pub removing: bool,
+    /// How the last removal ended: how many games left, or what went wrong.
+    pub removal: Option<Result<usize, String>>,
 }
 
 impl EventEmitter<SteamLibraryEvent> for SteamLibrary {}
@@ -176,6 +227,7 @@ impl EventEmitter<SteamLibraryEvent> for SteamLibrary {}
 impl SteamLibrary {
     pub fn new(paths: DataPaths, cx: &mut Context<Self>) -> Self {
         let mut this = Self {
+            enabled: heronite_data::settings::read_steam_library(&paths),
             paths,
             syncing: false,
             last: None,
@@ -192,6 +244,9 @@ impl SteamLibrary {
             logged: None,
             taken: None,
             pending: false,
+            removable: 0,
+            removing: false,
+            removal: None,
         };
         this.load_summary(cx);
         let retire = this.paths.clone();
@@ -238,7 +293,14 @@ impl SteamLibrary {
             )
     }
 
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
     pub fn state(&self) -> SteamState {
+        if !self.enabled {
+            return SteamState::Off;
+        }
         if self.restarting {
             return SteamState::Restarting;
         }
@@ -279,6 +341,9 @@ impl SteamLibrary {
     /// after "Ignore". `HERONITE_DEBUG_STEAM_NOTICE=restart|restarting`
     /// shows one (for screenshots).
     pub fn notice(&self) -> Option<SteamNotice> {
+        if !self.enabled {
+            return None;
+        }
         if let Some(debug) = crate::env::value("HERONITE_DEBUG_STEAM_NOTICE") {
             return Some(if debug == "restarting" { SteamNotice::Restarting } else { SteamNotice::Restart });
         }
@@ -308,6 +373,9 @@ impl SteamLibrary {
 
     /// Starts Steam (with the access on); the checks read it once it answers.
     pub fn open(&mut self, cx: &mut Context<Self>) {
+        if !self.enabled {
+            return;
+        }
         self.opened_at = Some(Instant::now());
         self.error = None;
         let paths = self.paths.clone();
@@ -328,7 +396,7 @@ impl SteamLibrary {
 
     /// Closes Steam and starts it again with the access on.
     pub fn restart(&mut self, cx: &mut Context<Self>) {
-        if self.restarting {
+        if self.restarting || !self.enabled {
             return;
         }
         self.restarting = true;
@@ -355,23 +423,31 @@ impl SteamLibrary {
         cx.notify();
     }
 
+    /// Looks at the cache and at the Collection again (the Steam page was shown).
+    pub fn reload(&mut self, cx: &mut Context<Self>) {
+        self.load_summary(cx);
+    }
+
     fn load_summary(&mut self, cx: &mut Context<Self>) {
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
-            let (summary, ignored) = cx
+            let (summary, ignored, removable) = cx
                 .background_spawn(async move {
                     let f = SteamOwnedFile::read(&paths);
+                    let removable = heronite_data::json_store::read::<LocalMetaFile>(&paths.local_meta())
+                        .map_or(0, |metas| steam_owned::added_entries(&metas).len());
                     let summary = Summary {
                         games: f.games.len(),
                         installed: f.games.iter().filter(|g| g.installed).count(),
                         updated_at: f.updated_at,
                         source: f.source.unwrap_or_default(),
                     };
-                    (summary, heronite_data::ui_state::note_dismissed(&AppPaths::for_data(&paths), NOTICE_NOTE))
+                    (summary, heronite_data::ui_state::note_dismissed(&AppPaths::for_data(&paths), NOTICE_NOTE), removable)
                 })
                 .await;
             this.update(cx, |this, cx| {
                 this.summary = summary;
+                this.removable = removable;
                 this.summary_loaded = true;
                 this.notice_ignored |= ignored;
                 cx.notify();
@@ -417,6 +493,9 @@ impl SteamLibrary {
 
     /// Checks whether the client can be read now (for the Steam page).
     pub fn check(&mut self, cx: &mut Context<Self>) {
+        if !self.enabled {
+            return;
+        }
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
             let (check, flag) = cx.background_spawn(async move { library_check(&paths) }).await;
@@ -431,7 +510,7 @@ impl SteamLibrary {
 
     /// A quiet read (the timer, the refresh button): when the client answers.
     pub fn sync_if_ready(&mut self, cx: &mut Context<Self>) {
-        if self.syncing {
+        if self.syncing || !self.enabled {
             return;
         }
         let paths = self.paths.clone();
@@ -450,6 +529,67 @@ impl SteamLibrary {
         .detach();
     }
 
+    /// Turns reading Steam on or off. Off: nothing Steam adds comes in, and
+    /// Steam is not looked at (not even to see whether it can be read). The
+    /// games it added stay ([`Self::remove_games`] takes them out). On: Steam
+    /// is checked and read at once.
+    pub fn set_enabled(&mut self, on: bool, cx: &mut Context<Self>) {
+        if on == self.enabled {
+            return;
+        }
+        self.enabled = on;
+        self.error = None;
+        let paths = self.paths.clone();
+        cx.spawn(async move |this, cx| {
+            let saved = cx.background_spawn(async move { heronite_data::settings::save_read_steam_library(&paths, on) }).await;
+            this.update(cx, |this, cx| {
+                if let Err(e) = saved {
+                    log::warn!("Saving whether Steam is read: {e:#}");
+                    this.error = Some(format!("{e:#}"));
+                }
+                if on {
+                    this.sync_if_ready(cx);
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// Takes the Steam games Heronite added out of the Collection and forgets
+    /// the cached library, so no game joins a Steam copy any more. Nothing is
+    /// uninstalled and Steam is not touched; games the user added or got from
+    /// another store stay (a game that had Steam's install as its twin loses
+    /// that install). Turns reading off first, or the next read would bring
+    /// the games back.
+    pub fn remove_games(&mut self, cx: &mut Context<Self>) {
+        if self.removing || self.syncing {
+            return;
+        }
+        self.removing = true;
+        self.removal = None;
+        self.enabled = false;
+        let paths = self.paths.clone();
+        cx.spawn(async move |this, cx| {
+            let res = cx.background_spawn(async move { remove_blocking(&paths) }).await;
+            this.update(cx, |this, cx| {
+                this.removing = false;
+                if let Err(e) = &res {
+                    log::warn!("Removing the Steam games: {e}");
+                }
+                this.removal = Some(res);
+                cx.emit(SteamLibraryEvent::Removed);
+                this.load_summary(cx);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
     /// Reads the library now. `asked`: the user asked (the result is kept
     /// for the Steam page); otherwise failures are only logged.
     pub fn sync(&mut self, cx: &mut Context<Self>) {
@@ -457,12 +597,16 @@ impl SteamLibrary {
     }
 
     fn run(&mut self, asked: bool, cx: &mut Context<Self>) {
+        if !self.enabled || self.removing {
+            return;
+        }
         if self.syncing {
             // The user asked while a quiet read ran: next.
             self.pending |= asked;
             return;
         }
         self.syncing = true;
+        self.removal = None;
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
             let res = cx.background_spawn(async move { sync_blocking(&paths) }).await;
@@ -502,7 +646,9 @@ mod tests {
     use heronite_data::DataPaths;
     use heronite_steam::{ClientApiFlag, LibraryAccess};
 
-    use super::{SteamLibrary, SteamNotice, SteamState, Summary, NOT_ANSWERING};
+    use heronite_data::steam_owned::SteamOwnedFile;
+
+    use super::{remove_blocking, SteamLibrary, SteamNotice, SteamState, Summary, NOT_ANSWERING};
 
     fn library() -> SteamLibrary {
         SteamLibrary {
@@ -522,7 +668,84 @@ mod tests {
             logged: None,
             taken: None,
             pending: false,
+            enabled: true,
+            removable: 0,
+            removing: false,
+            removal: None,
         }
+    }
+
+    #[test]
+    fn removing_the_steam_games_keeps_the_others_and_turns_reading_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let write = |path: std::path::PathBuf, text: &str| {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        let entry = |app: &str, title: &str| {
+            format!(r#"{{"runner":"sideload","app_name":"{app}","title":"{title}","is_installed":true,"install":{{"executable":"x"}}}}"#)
+        };
+        write(
+            paths.sideload_library(),
+            &format!(
+                r#"{{"games":[{},{},{},{}]}}"#,
+                entry("steam_10", "Heronite Test One"),
+                entry("steam_400", "Heronite Test Two"),
+                entry("mine", "Heronite Test Mine"),
+                entry("ctl", "Heronite Test Control"),
+            ),
+        );
+        let meta = |app: &str, steam: bool, auto: bool, id: &str| {
+            let kind = if steam { r#""launchKind":"steam-uri","#.to_string() } else { String::new() };
+            let auto = if auto { r#","heroniteSteamAuto":true"# } else { "" };
+            format!(r#""{app}":{{"appName":"{app}","runner":"sideload",{kind}"steamAppId":"{id}"{auto}}}"#)
+        };
+        write(
+            paths.local_meta(),
+            &format!(
+                r#"{{"games":{{{},{},{},{}}}}}"#,
+                meta("steam_10", true, true, "10"),
+                // A Steam game the user added by hand.
+                meta("steam_400", true, false, "400"),
+                meta("mine", false, false, ""),
+                // Owned on Steam too: Steam's copy is its twin.
+                meta("ctl", false, false, "870780"),
+            ),
+        );
+        write(
+            paths.steam_owned(),
+            r#"{"games":[{"appId":"10","name":"Heronite Test One"},{"appId":"870780","name":"Heronite Test Control","installed":true}],"updatedAt":"x"}"#,
+        );
+        let load = || heronite_data::Library::load_with(&paths, true).unwrap();
+        let steam_link =
+            |lib: &heronite_data::Library, app: &str| lib.games.iter().find(|g| g.app_name == app).map(|g| g.steam_link.is_some());
+        let lib = load();
+        assert_eq!(steam_link(&lib, "ctl"), Some(true));
+
+        assert_eq!(remove_blocking(&paths), Ok(1));
+
+        let lib = load();
+        let names: Vec<&str> = lib.games.iter().map(|g| g.app_name.as_str()).collect();
+        assert!(!names.contains(&"steam_10"), "the entry Heronite added is gone: {names:?}");
+        for stays in ["steam_400", "mine", "ctl"] {
+            assert!(names.contains(&stays), "{stays} stays: {names:?}");
+        }
+        // The game owned on Steam too stays, without Steam's copy.
+        assert_eq!(steam_link(&lib, "ctl"), Some(false));
+        assert!(!SteamOwnedFile::read(&paths).known());
+        assert!(!heronite_data::settings::read_steam_library(&paths));
+    }
+
+    #[test]
+    fn with_reading_off_steam_is_not_looked_at_and_no_pill_shows() {
+        let mut s = library();
+        s.set_access(LibraryAccess::NeedsRestart, None);
+        s.enabled = false;
+        assert_eq!(s.state(), SteamState::Off);
+        assert_eq!(s.notice(), None);
+        s.enabled = true;
+        assert_eq!(s.state(), SteamState::NeedsRestart);
     }
 
     #[test]

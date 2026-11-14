@@ -265,7 +265,7 @@ impl CollectionView {
         }
         let steam = crate::services::steam_library(cx);
         cx.subscribe(&steam, |this, _, ev: &SteamLibraryEvent, cx| {
-            let SteamLibraryEvent::Imported(report) = ev;
+            let SteamLibraryEvent::Imported(report) = ev else { return };
             // One toast: a second would replace the first.
             let mut said: Vec<String> = Vec::new();
             if report.added > 0 {
