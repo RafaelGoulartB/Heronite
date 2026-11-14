@@ -14,7 +14,9 @@
 //!   limit. Setting the atom needs X, so the overlay does it
 //!   (`heronite_overlay::gamescope`).
 //!
-//! DXVK / VKD3D-Proton read their variables once, at start.
+//! DXVK / VKD3D-Proton read their variables once, at start: a game they
+//! limit keeps its limit, but MangoHud's HUD (when it runs) can still be
+//! shown and hidden.
 
 use std::path::{Path, PathBuf};
 
@@ -45,6 +47,10 @@ pub enum LiveFps {
         limit: u32,
         /// The HUD shows at launch (not `no_display`).
         hud: bool,
+        /// MangoHud limits the game; `false` when DXVK / VKD3D-Proton does
+        /// (only the HUD changes then).
+        #[serde(default = "yes")]
+        limits: bool,
     },
     Gamescope {
         /// At launch (`-r`); `0` = none.
@@ -66,6 +72,15 @@ impl LiveFps {
         match self {
             LiveFps::MangoHud { hud, .. } => Some(*hud),
             LiveFps::Gamescope { .. } => None,
+        }
+    }
+
+    /// Whether the limit can change while the game runs (not when DXVK /
+    /// VKD3D-Proton holds it).
+    pub fn changes_limit(&self) -> bool {
+        match self {
+            LiveFps::MangoHud { limits, .. } => *limits,
+            LiveFps::Gamescope { .. } => true,
         }
     }
 
@@ -97,14 +112,16 @@ impl LiveFps {
 /// the user's own, an inherited one, a file that cannot be written).
 pub fn prepare(cmd: &mut Command, app_name: &str, probe: &dyn Probe) -> Option<LiveFps> {
     // DXVK / VKD3D-Proton already limit it: a second limiter would fight theirs
-    // (see `fps_limit`), and theirs cannot change.
-    if crate::env::DXVK_FRAME_RATE.iter().any(|k| cmd.env.get(*k).is_some_and(|v| !v.is_empty() && v != "0")) {
-        return None;
-    }
+    // (see `fps_limit`), and theirs cannot change. MangoHud's HUD still can.
+    let dxvk_limits = crate::env::DXVK_FRAME_RATE.iter().any(|k| cmd.env.get(*k).is_some_and(|v| !v.is_empty() && v != "0"));
     let words: Vec<&str> = std::iter::once(cmd.program.as_str()).chain(cmd.args.iter().map(String::as_str)).collect();
     // The game command follows `--`; only the wrappers before it count.
     let wrappers = &words[..words.iter().position(|w| *w == "--").unwrap_or(words.len())];
     if let Some(i) = wrappers.iter().position(|w| is_program(w, "gamescope")) {
+        // gamescope only offers its limit here, and DXVK holds the limit.
+        if dxvk_limits {
+            return None;
+        }
         let limit = wrappers[i..].windows(2).find(|p| p[0] == "-r").and_then(|p| p[1].parse().ok()).unwrap_or(0);
         return Some(LiveFps::Gamescope { limit });
     }
@@ -128,7 +145,7 @@ pub fn prepare(cmd: &mut Command, app_name: &str, probe: &dyn Probe) -> Option<L
     let hud = hud && !hides_hud(&base);
     let dir = probe.env_var("XDG_RUNTIME_DIR").filter(|d| !d.is_empty()).unwrap_or_else(|| "/tmp".into());
     let file = Path::new(&dir).join("heronite/mangohud").join(format!("{}.conf", file_name(app_name)));
-    let live = LiveFps::MangoHud { file: file.clone(), base, smooth, limit, hud };
+    let live = LiveFps::MangoHud { file: file.clone(), base, smooth, limit, hud, limits: !dxvk_limits };
     if let Err(e) = set_mangohud(&live, limit, hud) {
         log::warn!("MangoHud config for {app_name}: {e}");
         return None;
@@ -145,25 +162,33 @@ pub fn prepare(cmd: &mut Command, app_name: &str, probe: &dyn Probe) -> Option<L
 /// shows: it rereads the file a moment later. Gamescope's limit is set by the
 /// overlay. Blocking file write.
 pub fn set_mangohud(live: &LiveFps, limit: u32, hud: bool) -> Result<(), String> {
-    let LiveFps::MangoHud { file, base, smooth, .. } = live else { return Err("not MangoHud".into()) };
+    let LiveFps::MangoHud { file, base, smooth, limits, .. } = live else { return Err("not MangoHud".into()) };
     if let Some(dir) = file.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     // Written in place: MangoHud watches this path for changes.
+    let limit = limits.then_some(limit);
     std::fs::write(file, config_text(base, limit, *smooth, hud)).map_err(|e| e.to_string())
 }
 
-/// The user's config, then the limit and the HUD (a later line wins in MangoHud).
-fn config_text(base: &str, limit: u32, smooth: bool, hud: bool) -> String {
+fn yes() -> bool {
+    true
+}
+
+/// The user's config, then the limit (`None`: DXVK holds it, MangoHud's is
+/// left as the user's config says) and the HUD (a later line wins in MangoHud).
+fn config_text(base: &str, limit: Option<u32>, smooth: bool, hud: bool) -> String {
     let mut text = base.trim_end().to_string();
     if !text.is_empty() {
         text.push('\n');
     }
     text.push_str(OURS);
     text.push('\n');
-    text.push_str(&format!("fps_limit={limit}\n"));
-    if smooth {
-        text.push_str("fps_limit_method=early\n");
+    if let Some(limit) = limit {
+        text.push_str(&format!("fps_limit={limit}\n"));
+        if smooth {
+            text.push_str("fps_limit_method=early\n");
+        }
     }
     text.push_str(&format!("no_display={}\n", u8::from(!hud)));
     text
@@ -307,6 +332,44 @@ mod tests {
     }
 
     #[test]
+    fn dxvk_keeps_its_limit_and_the_hud_still_shows_and_hides() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = probe(tmp.path());
+        let user = tmp.path().join("home/.config/MangoHud");
+        std::fs::create_dir_all(&user).unwrap();
+        std::fs::write(user.join("MangoHud.conf"), "fps\nfps_limit=0\n").unwrap();
+        let dxvk = [("DXVK_FRAME_RATE", "60"), ("VKD3D_FRAME_RATE", "60")];
+        let mut c = cmd("/usr/bin/mangohud", &["--dlsym", "/games/run.sh"], &dxvk);
+        let live = prepare(&mut c, "g", &p).expect("the HUD can still change");
+        assert!(!live.changes_limit(), "DXVK limits it: no second limiter");
+        assert_eq!((live.limit(), live.hud()), (0, Some(true)));
+        assert_eq!(c.env["DXVK_FRAME_RATE"], "60", "DXVK's limit stays");
+        assert!(!c.env.contains_key("MANGOHUD_CONFIG"));
+        let LiveFps::MangoHud { file, .. } = &live else { unreachable!() };
+        assert_eq!(c.env["MANGOHUD_CONFIGFILE"], file.to_string_lossy());
+        assert_eq!(std::fs::read_to_string(file).unwrap(), format!("fps\nfps_limit=0\n{OURS}\nno_display=0\n"), "no limit of ours");
+        set_mangohud(&live, 0, false).unwrap();
+        assert!(std::fs::read_to_string(file).unwrap().ends_with(&format!("{OURS}\nno_display=1\n")));
+        // Picked up again from `running.json`.
+        let saved: LiveFps = serde_json::from_value(serde_json::to_value(&live).unwrap()).unwrap();
+        assert_eq!(saved.current().hud(), Some(false));
+
+        let mut c =
+            cmd("/usr/bin/mangohud", &["/games/run.sh"], &[("DXVK_FRAME_RATE", "60"), ("MANGOHUD_CONFIG", "read_cfg,no_display=1")]);
+        let live = prepare(&mut c, "g", &p).unwrap();
+        assert_eq!((live.hud(), live.changes_limit()), (Some(false), false), "started hidden");
+        let mut c = cmd("/games/run.sh", &[], &dxvk);
+        assert_eq!(prepare(&mut c, "g", &p), None, "no MangoHud");
+    }
+
+    #[test]
+    fn a_session_saved_before_dxvk_kept_the_hud_still_limits() {
+        let old = serde_json::json!({"kind": "mangoHud", "file": "/run/x.conf", "base": "", "smooth": false, "limit": 60, "hud": true});
+        let live: LiveFps = serde_json::from_value(old).unwrap();
+        assert!(live.changes_limit());
+    }
+
+    #[test]
     fn gamescope_and_plain_launches() {
         let tmp = tempfile::tempdir().unwrap();
         let p = probe(tmp.path());
@@ -316,8 +379,6 @@ mod tests {
         assert_eq!(prepare(&mut c, "g", &p), Some(LiveFps::Gamescope { limit: 0 }));
         let mut c = cmd("/games/run.sh", &["--", "/x/mangohud"], &[]);
         assert_eq!(prepare(&mut c, "g", &p), None, "a game argument named mangohud");
-        let mut c = cmd("/usr/bin/mangohud", &["--dlsym", "/games/run.sh"], &[("DXVK_FRAME_RATE", "60"), ("VKD3D_FRAME_RATE", "60")]);
-        assert_eq!(prepare(&mut c, "g", &p), None, "DXVK limits it: no second limiter");
         let mut c = cmd("/usr/bin/gamescope", &["--", "/games/run.sh"], &[("DXVK_FRAME_RATE", "60")]);
         assert_eq!(prepare(&mut c, "g", &p), None);
     }
