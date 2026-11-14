@@ -46,8 +46,14 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   Emit `DialogEvent::Changed` after writing data, `Close` to close.
 - Settings: there is ONE place, the ☰ Settings page (`app/src/pages/settings/`, Ctrl ,). The left nav is grouped under captions
   (`Section::GROUPS`): App (General, Appearance, Console mode), Games (Game defaults, Downloads, Other launchers),
-  Collection (Library, Metadata, Achievements), While playing (Overlay, Screenshots, Replay), Data (Storage, Saves,
-  Backups), System (Advanced, Logs, About). A section = title + lead (`Section::blurb`) +
+  Collection (Library, Metadata, Achievements), While playing (Controller, Overlay, Screenshots, Replay), Data (Storage, Saves,
+  Backups), System (Advanced, Logs, About). Controller (`controls/`, `Section::Controls`): the controller found and
+  how console mode draws its buttons (its theme's, read only), the checks (Steam Input as a note, Guide's tap-and-hold
+  clash outside games with a fix), "Show" (All, In a game, Outside games, Overlay open, Console mode), the drawn
+  controller with a callout per button joined by a line (`pad.rs`; a click on either lights both and its table rows),
+  then every binding in a table by context (`table.rs`: action, controller chord, keyboard key, a switch, the button
+  to change; keys open Overlay, Screenshots or Replay; console mode's rows are locked, from its theme). A section =
+  title + lead (`Section::blurb`) +
   captioned cards of rows. The Collection sections live in `app/src/pages/settings/<section>.rs`
   (`appearance`, `metadata/`, `screenshots`, `saves` + `backup/` for Backups: settings, what goes in, then the restore list
   with each backup's parts and an inline "Restore and restart" confirmation; `HERONITE_DEBUG_SETTINGS_ACTION=backup-now|backup-open:<n>|backup-confirm:<n>`) with `State::new(&PageCtx, &EffectiveSettings, …)`

@@ -188,6 +188,27 @@ const INDEX: &[(Section, &[&str])] = &[
         ],
     ),
     (
+        Section::Controls,
+        &[
+            "Checks",
+            "Buttons drawn as",
+            "Open the overlay",
+            "Take a screenshot",
+            "Change the button",
+            "Save the replay",
+            "Mark a moment",
+            "Volume up / down",
+            "Enter console mode",
+            "Open the overlay without a game too",
+            "Overlay open",
+            "A opens",
+            "Confirm with the east button",
+            "Hint bar",
+            "Navigation sounds",
+            "Wrap around at the ends",
+        ],
+    ),
+    (
         Section::Overlay,
         &[
             "Turn on the overlay",
@@ -460,7 +481,7 @@ fn settings_of(section: Section) -> Vec<Setting> {
         .iter()
         .filter(|(s, _)| *s == section)
         .flat_map(|(_, labels)| labels.iter().copied())
-        .filter(|label| *label != "Guide + X: save the replay" || Section::Replay.available())
+        .filter(|label| *label != "Guide + X: save the replay" && *label != "Save the replay" || Section::Replay.available())
         .map(|label| Setting { label, tab: None })
         .collect();
     if section == Section::Metadata {
@@ -568,7 +589,7 @@ mod tests {
         assert_eq!(sections("apearance").first(), Some(&Section::Appearance));
         assert!(sections("proton").contains(&Section::GameDefaults));
         // The group caption brings its sections, ahead of a blurb that says the word.
-        assert_eq!(sections("while")[..3], [Section::Overlay, Section::Screenshots, Section::Replay]);
+        assert_eq!(sections("while")[..4], [Section::Controls, Section::Overlay, Section::Screenshots, Section::Replay]);
         assert!(search("zzqx").is_empty());
     }
 

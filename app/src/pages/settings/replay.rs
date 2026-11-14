@@ -599,6 +599,13 @@ fn advanced_part(d: &SettingsPage, o: &Options, cx: &mut Context<SettingsPage>) 
 }
 
 /// `CommandOrControl` as the keyboard says it.
+/// The key that saves the replay, as the keyboard says it; `None` unless set.
+pub(super) fn accelerator(d: &SettingsPage, cx: &App) -> Option<String> {
+    let p = prefs(d, cx);
+    let a = p.keyboard_accelerator.trim();
+    (!a.is_empty()).then(|| shown_accelerator(a))
+}
+
 fn shown_accelerator(a: &str) -> String {
     a.replace("CommandOrControl", "Ctrl")
 }

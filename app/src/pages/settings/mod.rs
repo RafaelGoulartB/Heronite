@@ -29,7 +29,7 @@
 //!
 //! Debug: `HERONITE_DEBUG_SETTINGS_SEARCH=<text>` types it in the search (`<text>!`: and presses Enter),
 //! `HERONITE_DEBUG_SETTINGS_KEYS=down,down,enter` then presses those keys in it (`lang:pt-BR` switches the language);
-//! `HERONITE_DEBUG_PAGE=settings[:general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|integrations|storage|mods|overlay|replay|metadata|screenshots|backups|cloud|logs|about]`.
+//! `HERONITE_DEBUG_PAGE=settings[:controls|general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|integrations|storage|mods|overlay|replay|metadata|screenshots|backups|cloud|logs|about]`.
 
 mod about;
 mod achievements;
@@ -39,6 +39,7 @@ mod backup;
 mod cloud;
 mod console;
 mod console_mode;
+mod controls;
 mod integrations;
 mod launchers;
 mod library;
@@ -156,6 +157,7 @@ pub struct SettingsPage {
     about: about::State,
     logs: logs::State,
     console_mode: Option<console_mode::State>,
+    controls: controls::State,
     /// Console mode focus, keyboard and pickers.
     console: console::ConsoleState,
     /// The section list's scroll, for its scrollbar.
@@ -254,6 +256,7 @@ impl SettingsPage {
             about: about::State::default(),
             logs: logs::State::default(),
             console_mode: None,
+            controls: Default::default(),
             console: Default::default(),
             nav_scroll: ScrollHandle::new(),
             nav_search,
@@ -442,6 +445,7 @@ impl SettingsPage {
             Section::About => self.about.load(&self.ctx, cx),
             Section::Screenshots => self.screenshots.shown(cx),
             Section::Achievements => achievements::shown(self, cx),
+            Section::Controls => controls::shown(cx),
             Section::Overlay => overlay::shown(cx),
             Section::Launchers => launchers::shown(self, cx),
             Section::Replay => replay::shown(self, cx),
@@ -752,6 +756,7 @@ impl SettingsPage {
             Section::Library => self.library_section(cx).into_any_element(),
             Section::Storage => storage::render(self, window, cx),
             Section::Mods => mods::render(self, window, cx),
+            Section::Controls => controls::render(self, window, cx),
             Section::Overlay => overlay::render(self, window, cx),
             Section::Launchers => launchers::render(self, cx),
             Section::Integrations => integrations::render(self, window, cx),

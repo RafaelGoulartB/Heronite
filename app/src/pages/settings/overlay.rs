@@ -63,7 +63,7 @@ impl SettingsPage {
 
 /// Changes the options, saves them (off the UI thread) and hands them to the
 /// overlay.
-fn update(d: &mut SettingsPage, cx: &mut Context<SettingsPage>, change: impl FnOnce(&mut OverlayPrefs)) {
+pub(super) fn update(d: &mut SettingsPage, cx: &mut Context<SettingsPage>, change: impl FnOnce(&mut OverlayPrefs)) {
     change(&mut d.overlay.prefs);
     let prefs = d.overlay.prefs.clone();
     let app = d.ctx.app.clone();
@@ -80,6 +80,16 @@ fn update(d: &mut SettingsPage, cx: &mut Context<SettingsPage>, change: impl FnO
     cx.notify();
 }
 
+/// Turns the overlay on (Settings → Controller, while its shortcuts wait for it).
+pub(super) fn turn_on(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
+    update(d, cx, |p| p.enabled = true);
+}
+
+/// The controllers found; `None` while they are looked for.
+pub(super) fn controllers(d: &SettingsPage) -> Option<&[Controller]> {
+    d.overlay.controllers.as_deref()
+}
+
 fn controllers_text(list: Option<&Vec<Controller>>) -> String {
     match list {
         None => tr!("Looking for controllers…").into(),
@@ -88,7 +98,7 @@ fn controllers_text(list: Option<&Vec<Controller>>) -> String {
     }
 }
 
-fn step_label(step: u8) -> &'static str {
+pub(super) fn step_label(step: u8) -> &'static str {
     match step {
         2 => "2%",
         10 => "10%",
@@ -97,7 +107,7 @@ fn step_label(step: u8) -> &'static str {
 }
 
 /// The button as written after "Guide +".
-fn button_short(b: ChordButton) -> String {
+pub(super) fn button_short(b: ChordButton) -> String {
     match b {
         ChordButton::Left => "←".into(),
         ChordButton::Right => "→".into(),
@@ -118,7 +128,7 @@ fn button_label(b: ChordButton) -> String {
     }
 }
 
-fn shot_title(p: &OverlayPrefs) -> String {
+pub(super) fn shot_title(p: &OverlayPrefs) -> String {
     labels::screenshot(&button_short(screenshot_button(p)))
 }
 
@@ -128,11 +138,11 @@ fn stands_for_guide(b: ChordButton) -> bool {
 }
 
 /// The buttons the screenshot can use here.
-fn screenshot_buttons() -> Vec<ChordButton> {
+pub(super) fn screenshot_buttons() -> Vec<ChordButton> {
     ChordButton::ALL.into_iter().filter(|b| !stands_for_guide(*b)).collect()
 }
 
-fn screenshot_button(p: &OverlayPrefs) -> ChordButton {
+pub(super) fn screenshot_button(p: &OverlayPrefs) -> ChordButton {
     if screenshot_buttons().contains(&p.screenshot_button) {
         p.screenshot_button
     } else {

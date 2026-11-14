@@ -39,8 +39,8 @@ use heronite_i18n::{n_, tr, trc};
 use super::list::{Row, Value};
 use super::look::ACCENTS;
 use crate::icons::Icon;
-pub use labels::layout_name;
 use labels::*;
+pub use labels::{console_button_name, layout_name};
 
 /// What the library has, for the pickers (a tab's games, a shelf's kind).
 #[derive(Clone, Debug, Default, PartialEq)]

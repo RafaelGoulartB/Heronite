@@ -223,6 +223,26 @@ pub fn caption(text: impl Into<SharedString>) -> Div {
         .child(text)
 }
 
+/// A small neutral tag after a label or a title, with an icon. Colour is
+/// not its meaning.
+pub fn scope_chip(id: impl Into<ElementId>, ic: Icon, text: impl Into<SharedString>, tip: &str) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(px(4.))
+        .px(px(8.))
+        .py(px(3.))
+        .rounded_full()
+        .bg(theme::ink_a(0.07))
+        .text_size(px(11.5))
+        .text_color(theme::text_muted())
+        .tooltip(super::tooltip(tip.to_string()))
+        .child(icon(ic, px(12.), theme::text_muted()))
+        .child(text.into())
+}
+
 /// Page / sheet title: Rubik 600, 26px.
 pub fn page_heading(text: impl Into<SharedString>) -> Div {
     div()
