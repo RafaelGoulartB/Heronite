@@ -220,15 +220,15 @@ pub fn mangohud_record(data_paths: &DataPaths) -> std::path::PathBuf {
     AppPaths::for_data(data_paths).config.join("mangohud-overlay-files")
 }
 
-/// The app is quitting: the HUD shows again wherever the panel hid it
-/// (blocking: small files).
-pub fn restore_mangohud(cx: &mut App) {
-    let Some(service) = get(cx) else { return };
-    let record = service.update(cx, |s, _| {
+/// The app is quitting: the list of MangoHud config files to restore, for
+/// the caller to restore off the UI thread
+/// (`heronite_overlay::mangohud::restore_recorded`).
+pub fn take_mangohud_record(cx: &mut App) -> Option<std::path::PathBuf> {
+    let service = get(cx)?;
+    Some(service.update(cx, |s, _| {
         s.hud_files.clear();
         mangohud_record(&s.data_paths)
-    });
-    heronite_overlay::mangohud::restore_recorded(&record);
+    }))
 }
 
 pub fn get(cx: &App) -> Option<Entity<OverlayService>> {
@@ -318,6 +318,17 @@ impl OverlayService {
                 list.push(f);
             }
         }
+    }
+
+    /// A HUD change through the user's config `files` finished: when the
+    /// game ended meanwhile, they are restored again (its end came first).
+    pub fn hud_settled(&mut self, app_name: &str, files: Vec<std::path::PathBuf>, cx: &mut Context<Self>) {
+        if self.games.iter().any(|g| g.app_name == app_name) {
+            return;
+        }
+        self.hud_files.remove(app_name);
+        let record = mangohud_record(&self.data_paths);
+        cx.background_spawn(async move { heronite_overlay::mangohud::restore_files(&files, &record) }).detach();
     }
 
     /// The panel changed the running game's FPS limit or MangoHud's HUD

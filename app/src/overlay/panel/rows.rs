@@ -404,9 +404,12 @@ impl OverlayPanel {
         }
         let record = crate::overlay::mangohud_record(&self.paths);
         let files = hud.files.clone();
-        self.with_service(cx, move |s, _| s.hud_edited(&app_name, files));
+        let edited = (app_name.clone(), files.clone());
+        self.with_service(cx, move |s, _| s.hud_edited(&edited.0, edited.1));
         cx.spawn(async move |this, cx| {
             let res = cx.background_spawn(async move { heronite_overlay::mangohud::set_shown(&hud, shown, &record) }).await;
+            // The game may have ended while it was written.
+            this.update(cx, |this, cx| this.with_service(cx, move |s, cx| s.hud_settled(&app_name, files, cx))).ok();
             if let Err(e) = res {
                 log::warn!("overlay: MangoHud HUD {shown}: {e}");
                 this.update(cx, |this, cx| {
