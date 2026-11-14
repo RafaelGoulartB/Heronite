@@ -254,30 +254,54 @@ choice! {
         Achievements = "achievements",
         Timeline = "timeline",
         Related = "related",
+        /// The store's trailers and screenshots (off until turned on).
+        Media = "media",
+        /// The game's store pages and sites, as a row of icons (off until
+        /// turned on; it keeps to "Details"' column).
+        Links = "links",
     } default Overview
 }
 
 /// Order and visibility of the [`Section`]s. In the Focus panel's two
-/// columns "Details" and "Achievements" stay in the side column; the others
-/// keep this order.
+/// columns "Details", "Achievements" and "Links" stay in the side column; the
+/// others keep this order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Sections {
-    order: [Section; 6],
+    order: [Section; SECTION_COUNT],
     /// Bit `1 << index in Section::ALL` set = hidden.
-    hidden: u8,
+    hidden: u16,
 }
+
+const SECTION_COUNT: usize = 8;
+
+/// Sections newer than a stored order, and the one each joins it right after.
+const NEWER: [(Section, Section); 3] =
+    [(Section::Achievements, Section::Details), (Section::Media, Section::Overview), (Section::Links, Section::Details)];
+
+/// Sections that start hidden: they fetch from the internet (the store's
+/// videos) or add to a page that already worked without them.
+const OFF_BY_DEFAULT: [Section; 2] = [Section::Media, Section::Links];
 
 impl Sections {
     pub const DEFAULT: Sections = Sections {
-        order: [Section::Screenshots, Section::Overview, Section::Details, Section::Achievements, Section::Timeline, Section::Related],
-        hidden: 0,
+        order: [
+            Section::Screenshots,
+            Section::Overview,
+            Section::Media,
+            Section::Details,
+            Section::Links,
+            Section::Achievements,
+            Section::Timeline,
+            Section::Related,
+        ],
+        hidden: Self::bit(Section::Media) | Self::bit(Section::Links),
     };
 
-    fn bit(s: Section) -> u8 {
-        1 << Section::ALL.iter().position(|x| *x == s).unwrap_or(0)
+    const fn bit(s: Section) -> u16 {
+        1 << s as u16
     }
 
-    pub fn order(&self) -> [Section; 6] {
+    pub fn order(&self) -> [Section; SECTION_COUNT] {
         self.order
     }
 
@@ -311,29 +335,34 @@ impl Sections {
     }
 
     /// From stored names: unknown names are dropped, missing sections are
-    /// added at the end, except "Achievements" (newer than a stored order),
-    /// which goes right under "Details".
+    /// added at the end, except the ones newer than a stored order
+    /// ([`NEWER`]), which go right under the section they belong with.
+    /// A missing section that starts hidden ([`OFF_BY_DEFAULT`]) is hidden.
     pub fn from_names<'a>(order: impl IntoIterator<Item = &'a str>, hidden: impl IntoIterator<Item = &'a str>) -> Self {
-        let mut seen: Vec<Section> = Vec::with_capacity(6);
+        let mut seen: Vec<Section> = Vec::with_capacity(SECTION_COUNT);
         for s in order.into_iter().filter_map(Section::parse) {
             if !seen.contains(&s) {
                 seen.push(s);
             }
         }
-        let had_achievements = seen.contains(&Section::Achievements);
+        let stored = seen.clone();
         for s in Self::DEFAULT.order {
-            if !seen.contains(&s) {
+            if !seen.contains(&s) && !NEWER.iter().any(|(n, _)| *n == s) {
                 seen.push(s);
             }
         }
-        if !had_achievements {
-            seen.retain(|s| *s != Section::Achievements);
-            let at = seen.iter().position(|s| *s == Section::Details).map_or(seen.len(), |i| i + 1);
-            seen.insert(at, Section::Achievements);
+        for (s, after) in NEWER {
+            if !seen.contains(&s) {
+                let at = seen.iter().position(|x| *x == after).map_or(seen.len(), |i| i + 1);
+                seen.insert(at, s);
+            }
         }
         let mut out = Self { order: Self::DEFAULT.order, hidden: 0 };
-        out.order.copy_from_slice(&seen[..6]);
+        out.order.copy_from_slice(&seen[..SECTION_COUNT]);
         for s in hidden.into_iter().filter_map(Section::parse) {
+            out.hidden |= Self::bit(s);
+        }
+        for s in OFF_BY_DEFAULT.into_iter().filter(|s| !stored.contains(s)) {
             out.hidden |= Self::bit(s);
         }
         out
@@ -380,8 +409,19 @@ mod tests {
         let s = s.toggled(Section::Timeline);
         assert!(!s.shown(Section::Timeline));
         assert_eq!(s.visible().count(), 5);
-        assert_eq!(s.hidden_names(), ["timeline"]);
+        assert_eq!(s.hidden_names(), ["timeline", "media", "links"]);
         assert!(s.toggled(Section::Timeline).shown(Section::Timeline));
+    }
+
+    #[test]
+    fn store_media_and_links_start_hidden() {
+        assert!(!Sections::DEFAULT.shown(Section::Media));
+        assert!(!Sections::DEFAULT.shown(Section::Links));
+        assert_eq!(Sections::DEFAULT.visible().count(), 6);
+        let on = Sections::DEFAULT.toggled(Section::Media).toggled(Section::Links);
+        let names: Vec<&str> = on.order().iter().map(|s| s.as_str()).collect();
+        let back = Sections::from_names(names, on.hidden_names());
+        assert_eq!(back, on, "once stored, they stay as the user left them");
     }
 
     #[test]
@@ -389,19 +429,40 @@ mod tests {
         let s = Sections::from_names(["related", "bogus", "related", "overview"], ["details", "x"]);
         assert_eq!(
             s.order(),
-            [Section::Related, Section::Overview, Section::Screenshots, Section::Details, Section::Achievements, Section::Timeline]
+            [
+                Section::Related,
+                Section::Overview,
+                Section::Media,
+                Section::Screenshots,
+                Section::Details,
+                Section::Links,
+                Section::Achievements,
+                Section::Timeline
+            ]
         );
         assert!(!s.shown(Section::Details));
+        assert!(!s.shown(Section::Media) && !s.shown(Section::Links));
         assert_eq!(Sections::from_names([], []), Sections::DEFAULT);
     }
 
     #[test]
-    fn achievements_join_a_stored_order_under_details() {
+    fn newer_sections_join_a_stored_order_where_they_belong() {
         let s = Sections::from_names(["timeline", "details", "screenshots", "overview", "related"], []);
         assert_eq!(
             s.order(),
-            [Section::Timeline, Section::Details, Section::Achievements, Section::Screenshots, Section::Overview, Section::Related]
+            [
+                Section::Timeline,
+                Section::Details,
+                Section::Links,
+                Section::Achievements,
+                Section::Screenshots,
+                Section::Overview,
+                Section::Media,
+                Section::Related
+            ]
         );
+        assert!(s.shown(Section::Achievements), "Achievements was on before it was stored");
+        assert!(!s.shown(Section::Links) && !s.shown(Section::Media));
         let kept = Sections::from_names(["achievements", "screenshots"], ["achievements"]);
         assert_eq!(kept.order()[0], Section::Achievements);
         assert!(!kept.shown(Section::Achievements));

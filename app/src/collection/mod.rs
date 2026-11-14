@@ -39,6 +39,7 @@ mod launch_problem;
 mod launch_progress;
 mod launchers;
 mod library_sync;
+pub(crate) mod links;
 mod list;
 mod list_heights;
 mod list_row;
@@ -71,6 +72,7 @@ mod smart_groups;
 mod steam_copy;
 mod steam_pill;
 mod store_badges;
+pub(crate) mod store_media;
 mod system_glue;
 mod timeline;
 mod timeline_achievements;
@@ -206,6 +208,8 @@ pub struct CollectionView {
     /// The Mods manager, FOMOD wizard and game picker (`mods.rs`).
     mods: mods::ModsUi,
     shots: screenshots::Shots,
+    /// "Store media" of the focused game (`store_media/`).
+    media: store_media::StoreMediaUi,
     toast_task: Option<Task<()>>,
     images: ImageStore,
     cover_chains: HashMap<SharedString, Vec<ImageRef>>,
@@ -421,6 +425,7 @@ impl CollectionView {
             focus_scroll: ScrollHandle::new(),
             mods: Default::default(),
             shots: Default::default(),
+            media: Default::default(),
             images,
             cover_chains: HashMap::new(),
             stage_chains: HashMap::new(),
@@ -684,6 +689,7 @@ impl CollectionView {
         self.sync_facts(cx);
         self.sync_journal(window, cx);
         self.sync_shots(window, cx);
+        self.sync_store_media(window, cx);
         self.drive_palette(window, cx);
         crate::ui::glass::set_backdrop(self.glass_image(window));
         self.sync_nav_meta(cx);

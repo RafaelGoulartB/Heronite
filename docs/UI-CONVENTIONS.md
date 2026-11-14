@@ -177,6 +177,12 @@ what the Cover aspect asks for and the Cover shapes card counts it) and "Review 
   goes in the page's `palette.rs` (`pages::commands::PaletteCommands`: list it, even before the page exists, from the
   services or `CommandCtx`; run it; say when the page has a dialog open with `page_modal`). Something that cannot run
   now is listed with `disabled(Some(reason))`, not left out.
+  "Pick a random game" (`palette/random.rs`) picks from the games on screen (search, filters and categories in use),
+  the installed ones, the ones never played, the favourites, the whole Collection, or one category, manual or smart
+  (those only when something is typed); each entry says how many games it picks from and is dimmed when there are
+  none. The pick is focused in the Collection and the palette stays on it: "Pick another" first (Enter rolls again
+  from the same games), then the game's actions; Esc goes back to the main list. The last eight picks wait while
+  other games remain.
 
 ## Glass design system (menus, dialogs, pages, settings)
 
@@ -1354,6 +1360,38 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   < 40 %); icons, bars, pills and dates from `ui::achievements`.
 - `scripts/shot.sh` on a hidden workspace paints only the frames it captures: textures that arrive late (an
   achievement icon, the focus cover) show after a few more captures.
+
+## Store media and Links
+- Two game sections off until turned on in Settings → Appearance → Game sections (`Sections::DEFAULT` hides them,
+  and a stored order without them keeps them hidden). "Store media" (`collection/store_media/`, main column, under
+  Overview) is the store's trailers and screenshots of a game with a Steam app id: a 16:9 stage, at most 1100px
+  wide, with the picked item, and a strip of 128x72 thumbnails under it, the trailers first with a play mark; the
+  title row says "6 videos · 8 screenshots" and has a "Steam ↗" link to the store page. A trailer shows its still and
+  a 64px play button; playing (`heronite_media::stream`, ffmpeg at 480p and 30 fps, sound through PulseAudio /
+  PipeWire on Linux only), its name and a bar (play / pause, time, seek bar, sound) fade in while the pointer is over
+  the stage; paused they stay. Every trailer starts without sound (the sound button turns it on for that trailer, with a volume bar
+  beside it, 50% at first, changed live through ffmpeg's command keys) and loops once played;
+  "Show" (a sub-row of Store media, `storeMediaKinds`: Both, Videos or Screenshots) keeps one kind; with
+  Screenshots only, the rows about trailers are left out. "Autoplay trailers" (a sub-row of Store media, `videoAutoplay`, off by default) starts the focused game's
+  first trailer once the section is drawn. Arrows on the stage's sides step through the items. It stops when the game is no
+  longer focused, when the section is not drawn (another page, the drawer closed, the section off) and when a game
+  starts, or when the window has not drawn 1.5 s after a frame asked it to (minimized, another workspace). Frames wait in one slot and only
+  the newest becomes a texture when the window draws, so a slow or hidden window never piles them up. A failure says so
+  on the stage with "Watch on the store page".
+- Only the lists (3 days) and the first 15 s of the first trailer of the installed games visited are kept, under
+  `<cache>/store-media`, within "Video cache" (a sub-row of Store media: None, 25, 50 (default), 100 or 250 MB;
+  `videoCacheLimitMb` in `settings.json`), the least recently played going first. Turning the section off deletes
+  the folder and the copies of its pictures in the image cache (`store_media::clear_kept`, also at start while off).
+- "Links" (`collection/links.rs`, side column with Details) is a row of bare icons (18px, dimmed, a faint round hover that brightens them), one per store page or site
+  (`heronite_data::game_links`: the game's own store page, its Steam app id, its metadata's websites, SteamDB,
+  PCGamingWiki and, on Linux, ProtonDB); the hover names it (a site with no icon of its own by its host), a click
+  opens it in the browser. Its title is a menu like Details' (chevron on hover): "Add links…" opens "Links of <game>"
+  (`dialogs/game_links.rs`, `HERONITE_DEBUG_DIALOG=links`): a field for a web address (`https://` added when it has
+  none) with Add, then the game's own links (its metadata's websites) with a remove button and the ones found by
+  themselves with a "Found by itself" pill; each change is saved at once. A game without links shows "No links yet."
+  under the title.
+- `HERONITE_DEBUG_MEDIA=play|paused|paused-sound|pick:<n>` plays the first trailer without sound (`paused`: pauses it after 5 s; `paused-sound`: then shows its sound controls, without playing any)
+  or picks item `n` once the list is read.
 
 ## Verifying visually (mandatory for UI work)
 - Build: `cargo build -p heronite`.

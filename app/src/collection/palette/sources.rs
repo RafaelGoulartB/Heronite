@@ -11,6 +11,7 @@ use heronite_data::{FacetKind, GroupBy, InstallFilter, SortMode};
 use heronite_i18n::{tr, trn};
 
 use super::matching::{fold, Haystack};
+use super::random::RandomScope;
 use crate::collection::game_actions::{GameAction, GameActionItem};
 use crate::collection::view_filters::{category_label, Only};
 use crate::icons::Icon;
@@ -67,6 +68,8 @@ pub(super) enum Act {
         navigate: bool,
     },
     SelectGame(String),
+    /// Picks a game at random among these and lists it (`random.rs`).
+    Random(RandomScope),
     /// An action of the game under the key (`game_actions.rs`).
     Game(String, GameAction),
     /// Lists every action of the game (the palette's second level).
@@ -144,7 +147,7 @@ impl Entry {
         Haystack { title: &self.f_title, alt: &self.f_alt, keywords: &self.f_keywords }
     }
 
-    fn new(kind: Kind, act: Act, id: impl Into<SharedString>, title: &str, subtitle: &str, icon: Icon, keywords: &str) -> Entry {
+    pub(super) fn new(kind: Kind, act: Act, id: impl Into<SharedString>, title: &str, subtitle: &str, icon: Icon, keywords: &str) -> Entry {
         Entry {
             kind,
             act,

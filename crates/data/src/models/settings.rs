@@ -24,6 +24,15 @@ pub struct CollectionSettingsFile {
     /// Size cap of the downloaded art and its resized copies, in MB (0 = no cap).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_cache_limit_mb: Option<u32>,
+    /// Size of the store videos kept so they start at once, in MB (0 = none).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video_cache_limit_mb: Option<u32>,
+    /// The focused game's first trailer plays by itself, without sound.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video_autoplay: Option<bool>,
+    /// What "Store media" shows: `"both"`, `"videos"` or `"screenshots"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub store_media_kinds: Option<String>,
     #[serde(flatten)]
     pub extra: Extra,
 }

@@ -222,9 +222,14 @@ impl PaletteView {
     }
 
     /// The second level, for the game `title` (entries from `action_entries`).
+    /// Shown again over a game's list (another random pick), Esc still goes
+    /// back to the main list as it was.
     pub fn show_game(&mut self, title: SharedString, entries: Vec<Entry>, window: &mut Window, cx: &mut Context<Self>) {
-        let root_query = std::mem::take(&mut self.query);
-        let root_selected = if self.game.is_some() { 0 } else { self.selected };
+        let (root_query, root_selected) = match self.game.take() {
+            Some(g) => (g.root_query, g.root_selected),
+            None => (std::mem::take(&mut self.query), self.selected),
+        };
+        self.query.clear();
         let placeholder = tr!("Search the actions of {title}\u{2026}", title);
         self.game = Some(GameLevel { title, entries: Rc::new(entries), root_query, root_selected });
         self.input.update(cx, |s, cx| {

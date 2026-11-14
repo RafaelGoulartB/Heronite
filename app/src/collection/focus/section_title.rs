@@ -1,7 +1,8 @@
 //! A section title that is also its menu: while the section is pointed at, a
 //! chevron fades and slides in after the title; a click on the title opens
 //! the section's menu under it ("Screenshots": "Open folder"; "How Long To
-//! Beat": its page, "Change match…", "Refresh"; "Details": "Edit rows…").
+//! Beat": its page, "Change match…", "Refresh"; "Details": "Edit rows…";
+//! "Links": "Add links…").
 //! Nothing takes room until it is wanted, and the title keeps its look.
 
 use std::rc::Rc;
@@ -22,6 +23,7 @@ pub(in crate::collection) enum TitleMenu {
     Screenshots,
     Details,
     Hltb,
+    Links,
 }
 
 impl TitleMenu {
@@ -30,6 +32,7 @@ impl TitleMenu {
             Self::Screenshots => "screenshots",
             Self::Details => "details",
             Self::Hltb => "hltb",
+            Self::Links => "links",
         }
     }
 }

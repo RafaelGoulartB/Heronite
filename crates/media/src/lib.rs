@@ -9,12 +9,14 @@
 //! * [`trash_screenshot`] - move an original to the freedesktop trash.
 //! * [`capture`]  - global-shortcut screen capture (port of `capture.ts`).
 //! * [`compress`] - lossless PNG -> WebP conversion of the captures (this app only).
+//! * [`stream`]   - a video played into frames (ffmpeg), for the store trailers.
 
 pub mod capture;
 pub mod compress;
 pub mod list;
 pub mod matching;
 pub mod posters;
+pub mod stream;
 pub mod thumbnails;
 mod trashing;
 

@@ -118,7 +118,76 @@ pub(super) fn section_label(s: Section) -> &'static str {
         Section::Achievements => tr!("Achievements"),
         Section::Timeline => tr!("Timeline"),
         Section::Related => tr!("Related games"),
+        Section::Media => tr!("Store media"),
+        Section::Links => tr!("Links"),
     }
+}
+
+/// Sizes offered for the store videos kept on this PC, in MB (0 = none).
+const VIDEO_CACHE_SIZES: [u32; 5] = [0, 25, 50, 100, 250];
+
+/// Under "Store media": videos, screenshots or both.
+fn media_kinds_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    use heronite_data::settings::StoreMediaKinds;
+    let items = [
+        (StoreMediaKinds::Both, tr!("Both")),
+        (StoreMediaKinds::Videos, tr!("Videos")),
+        (StoreMediaKinds::Screenshots, tr!("Screenshots")),
+    ];
+    let this = cx.entity();
+    let pick = tabs("store-media-kinds", &items, d.settings.store_media_kinds, move |kinds, _, cx| {
+        this.update(cx, |d, cx| {
+            let res = heronite_data::settings::save_store_media_kinds(&d.ctx.data_paths, kinds);
+            d.saved(res, cx);
+        })
+    });
+    div().pl(px(20.)).child(row(tr!("Show"), Some(tr!("The store's trailers, its screenshots, or both.")), pick)).into_any_element()
+}
+
+/// Under "Store media": whether the first trailer plays by itself.
+fn autoplay_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    let on = d.settings.video_autoplay;
+    div()
+        .pl(px(20.))
+        .child(
+            toggle_row(
+                "video-autoplay",
+                tr!("Autoplay trailers"),
+                Some(tr!("The selected game's first trailer starts on its own, muted. Trailers always start muted: turn the sound on from their controls.")),
+                on,
+            )
+            .on_click(cx.listener(move |d, _, _, cx| {
+                let res = heronite_data::settings::save_video_autoplay(&d.ctx.data_paths, !on);
+                d.saved(res, cx);
+            })),
+        )
+        .into_any_element()
+}
+
+/// Under "Store media": how much of the trailers stays on this PC.
+fn video_cache_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    let now = d.settings.video_cache_limit_mb;
+    let labels: Vec<(u32, String)> =
+        VIDEO_CACHE_SIZES.iter().map(|mb| (*mb, if *mb == 0 { tr!("None").to_string() } else { format!("{mb} MB") })).collect();
+    let this = cx.entity();
+    let pick = tabs("video-cache", &labels, now, move |mb, _, cx| {
+        this.update(cx, |d, cx| {
+            let res = heronite_data::settings::save_video_cache_limit(&d.ctx.data_paths, mb);
+            d.saved(res, cx);
+            let app = d.ctx.app.clone();
+            cx.background_spawn(async move { crate::collection::store_media::trim_kept(&app, mb) }).detach();
+        })
+    });
+    div()
+        .pl(px(20.))
+        .child(row(
+            tr!("Video cache"),
+            Some(tr!(
+                "The first seconds of the trailers of the installed games you visit, so they start at once. Trailers are never downloaded whole: the rest streams while they play."
+            )),
+            pick,
+        ))
+        .into_any_element()
 }
 
 /// The Colour card, each choice followed by what depends on it: the theme
@@ -741,6 +810,13 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
                 )
                 .into_any_element(),
         );
+        if section == Section::Media && shown {
+            rows.push(media_kinds_row(d, cx));
+            if d.settings.store_media_kinds.videos() {
+                rows.push(autoplay_row(d, cx));
+                rows.push(video_cache_row(d, cx));
+            }
+        }
     }
     card([toolbar, start, with_game, with_sub_rows(switch, width), widths, with_sub_rows(sections_row, rows)])
 }

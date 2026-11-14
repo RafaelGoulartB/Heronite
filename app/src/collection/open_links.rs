@@ -56,6 +56,11 @@ impl CollectionView {
         );
     }
 
+    /// Opens a web page (a store page, a site about a game) in the browser.
+    pub(super) fn open_url(&mut self, url: String, cx: &mut Context<Self>) {
+        self.open_external(move || xdg_open(&url), cx);
+    }
+
     /// Opens the ProtonDB page of a Steam game in the browser.
     pub(super) fn open_protondb(&mut self, steam_app_id: &str, cx: &mut Context<Self>) {
         let url = protondb_url(steam_app_id);

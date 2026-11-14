@@ -56,7 +56,9 @@ impl CollectionView {
         let html_images = self.focus_html_images(&vm, inner_w, scale);
         let screenshots = self.screenshots_section(cx);
         let timeline = self.timeline_section(&vm.key, inner_w, scale, cx);
-        let extras = self.focus_extras(&vm.key, scale, cx);
+        let mut extras = self.focus_extras(&vm.key, scale, cx);
+        extras.media = self.store_media_section(inner_w, scale, cx);
+        extras.links = self.links_section(&vm.key, cx);
         let details = focus::stacked_details(
             focus::StackedProps {
                 vm,

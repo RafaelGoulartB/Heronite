@@ -143,6 +143,8 @@ fn section_name(s: Section) -> &'static str {
         Section::Achievements => tr!("Achievements"),
         Section::Timeline => tr!("Timeline"),
         Section::Related => tr!("Related games"),
+        Section::Media => tr!("Store media"),
+        Section::Links => tr!("Links"),
     }
 }
 
@@ -809,8 +811,9 @@ impl CollectionView {
                 (a.background, a.collection_opacity) = (d.background, d.collection_opacity);
                 (a.interface_mode, a.interface_opacity, a.interface_blur) = (d.interface_mode, d.interface_opacity, d.interface_blur);
                 if !grid {
+                    // Back to each section's own default: some start hidden.
                     for s in Section::ALL {
-                        if !a.sections.shown(*s) {
+                        if a.sections.shown(*s) != d.sections.shown(*s) {
                             a.sections = a.sections.toggled(*s);
                         }
                     }
