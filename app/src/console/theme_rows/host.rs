@@ -170,7 +170,7 @@ fn preview_sound(app: &AppPaths, id: &str, theme: &ConsoleTheme) {
         return;
     }
     let sound = if id == "controls.sound_volume" { sound::Sound::Move } else { sound::Sound::Confirm };
-    sound::preview(&app.cache.join("console-sounds"), sound, sound::Settings::of(c));
+    sound::preview(&app.cache, sound, sound::Settings::of(c));
 }
 
 /// The theme now draws a cover family the one before did not: the line

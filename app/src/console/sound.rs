@@ -2,7 +2,7 @@
 //! WAV files in the cache folder and played by whatever player the system has
 //! (`pw-play`, `paplay`, `aplay`). A worker thread does all of it (finding the
 //! player, writing the files, starting the process), so a press never waits;
-//! the thread lives as long as the [`Player`] does.
+//! the app has one such thread, started with the first sound.
 //!
 //! The tones depend on the style and the volume (`controls.soundStyle`,
 //! `controls.soundVolume`). The files are named after them and after
@@ -173,55 +173,66 @@ fn pick_player(path: &OsStr, exists: impl Fn(&Path) -> bool) -> Option<(PathBuf,
     PLAYERS.iter().find_map(|(name, args)| std::env::split_paths(path).map(|d| d.join(name)).find(|p| exists(p)).map(|p| (p, *args)))
 }
 
-/// Plays the sounds from a worker thread; dropping it stops the thread.
-pub struct Player {
-    tx: Sender<(Sound, Settings)>,
-    last: [Option<Instant>; 4],
+/// A request to the worker.
+struct Request {
+    sound: Sound,
+    settings: Settings,
+    /// A preview of a change: it takes the place of the sound the press that
+    /// made the change just started (with the settings from before it).
+    replaces_press: bool,
 }
 
+/// A sound this young is the press's, for a preview to cut.
+const PRESS_WINDOW: Duration = Duration::from_millis(100);
+
+/// Plays the sounds from a worker thread, one for the whole app.
+struct Player {
+    tx: Sender<Request>,
+    last: [Option<Instant>; 4],
+    last_preview: Option<Instant>,
+}
+
+static PLAYER: Mutex<Option<Player>> = Mutex::new(None);
+
 impl Player {
-    /// `dir` is where the WAV files are kept (written when first needed).
-    pub fn new(dir: PathBuf) -> Self {
+    fn new(dir: PathBuf) -> Self {
         let (tx, rx) = channel();
         if let Err(e) = std::thread::Builder::new().name("console-sounds".into()).spawn(move || work(&dir, rx)) {
             log::warn!("console sounds: {e}");
         }
-        Self { tx, last: [None; 4] }
+        Self { tx, last: [None; 4], last_preview: None }
     }
 
-    pub fn play(&mut self, sound: Sound, settings: Settings) {
+    fn send(&mut self, sound: Sound, settings: Settings, preview: bool) {
         let now = Instant::now();
-        let last = &mut self.last[sound as usize];
+        let last = if preview { &mut self.last_preview } else { &mut self.last[sound as usize] };
         if last.is_some_and(|t| now.duration_since(t) < sound.gap()) {
             return;
         }
         *last = Some(now);
-        self.tx.send((sound, settings)).ok();
-        *LAST_SENT.lock().unwrap_or_else(|e| e.into_inner()) = Some(now);
+        self.tx.send(Request { sound, settings, replaces_press: preview }).ok();
     }
 }
 
-/// When any player last sent a sound, for [`preview`].
-static LAST_SENT: Mutex<Option<Instant>> = Mutex::new(None);
-
-/// A sound this recent comes from the press that made the change.
-const PRESS_WINDOW: Duration = Duration::from_millis(60);
-
-static PREVIEW: Mutex<Option<Player>> = Mutex::new(None);
-
-/// Plays `sound` as `settings` make it, for Settings to let the user hear a
-/// change. Console mode's own player already sounds for the press that made
-/// it: then this stays silent (the next press has the new sound).
-pub fn preview(dir: &Path, sound: Sound, settings: Settings) {
-    let pressed = LAST_SENT.lock().unwrap_or_else(|e| e.into_inner()).is_some_and(|t| t.elapsed() < PRESS_WINDOW);
-    if pressed {
-        return;
-    }
-    let mut p = PREVIEW.lock().unwrap_or_else(|e| e.into_inner());
-    p.get_or_insert_with(|| Player::new(dir.to_path_buf())).play(sound, settings);
+fn send(cache: &Path, sound: Sound, settings: Settings, preview: bool) {
+    let mut p = PLAYER.lock().unwrap_or_else(|e| e.into_inner());
+    p.get_or_insert_with(|| Player::new(cache.join("console-sounds"))).send(sound, settings, preview);
 }
 
-fn work(dir: &Path, rx: Receiver<(Sound, Settings)>) {
+/// Plays `sound` for a press. `cache` is the app's cache folder, where the
+/// WAV files are kept (written when first needed).
+pub fn play(cache: &Path, sound: Sound, settings: Settings) {
+    send(cache, sound, settings, false);
+}
+
+/// Plays `sound` as `settings` make it, for the user to hear a change. In
+/// console mode the press that made the change has just started its own
+/// sound with the old settings: this replaces it.
+pub fn preview(cache: &Path, sound: Sound, settings: Settings) {
+    send(cache, sound, settings, true);
+}
+
+fn work(dir: &Path, rx: Receiver<Request>) {
     let Some((player, args)) = std::env::var_os("PATH").and_then(|p| pick_player(&p, |f| f.is_file())) else {
         log::info!("console sounds: no pw-play, paplay or aplay found");
         return;
@@ -230,23 +241,30 @@ fn work(dir: &Path, rx: Receiver<(Sound, Settings)>) {
         log::warn!("console sounds: {e}");
     }
     let mut ready: Option<Settings> = None;
-    let mut running: Vec<Child> = Vec::new();
+    let mut running: Vec<(Child, Instant)> = Vec::new();
     loop {
         // While a sound plays, wake up to reap it (no zombies left behind).
         let next = if running.is_empty() {
             match rx.recv() {
-                Ok(s) => Some(s),
+                Ok(r) => Some(r),
                 Err(_) => break,
             }
         } else {
             match rx.recv_timeout(Duration::from_millis(250)) {
-                Ok(s) => Some(s),
+                Ok(r) => Some(r),
                 Err(RecvTimeoutError::Timeout) => None,
                 Err(RecvTimeoutError::Disconnected) => break,
             }
         };
-        running.retain_mut(|c| matches!(c.try_wait(), Ok(None)));
-        let Some((sound, settings)) = next else { continue };
+        running.retain_mut(|(c, _)| matches!(c.try_wait(), Ok(None)));
+        let Some(Request { sound, settings, replaces_press }) = next else { continue };
+        if replaces_press {
+            for (c, started) in &mut running {
+                if started.elapsed() < PRESS_WINDOW {
+                    c.kill().ok();
+                }
+            }
+        }
         // A burst never piles up processes.
         if running.len() >= 4 {
             continue;
@@ -266,11 +284,11 @@ fn work(dir: &Path, rx: Receiver<(Sound, Settings)>) {
             .stderr(Stdio::null())
             .spawn()
         {
-            Ok(child) => running.push(child),
+            Ok(child) => running.push((child, Instant::now())),
             Err(e) => log::debug!("console sounds: {e}"),
         }
     }
-    for mut c in running {
+    for (mut c, _) in running {
         c.wait().ok();
     }
 }
@@ -297,15 +315,20 @@ fn write_files(dir: &Path, settings: Settings) -> std::io::Result<()> {
     Ok(())
 }
 
+/// A temporary file this old is a crash's: a younger one may be about to be renamed.
+const STALE_TEMP: Duration = Duration::from_secs(60);
+
 /// Deletes the files of another [`VERSION`] (and of the first version, which
-/// had no number in its names), and temporary files a crash left.
+/// had no number in its names), and the temporary files a crash left.
 fn remove_stale(dir: &Path) -> std::io::Result<()> {
     let Ok(entries) = std::fs::read_dir(dir) else { return Ok(()) };
     let keep = format!("v{VERSION}-");
     for e in entries.flatten() {
         let name = e.file_name();
         let name = name.to_string_lossy();
-        if name.ends_with(".tmp") || (name.ends_with(".wav") && !name.starts_with(&keep)) {
+        let abandoned =
+            name.ends_with(".tmp") && e.metadata().and_then(|m| m.modified()).is_ok_and(|t| t.elapsed().is_ok_and(|d| d > STALE_TEMP));
+        if abandoned || (name.ends_with(".wav") && !name.starts_with(&keep)) {
             std::fs::remove_file(e.path())?;
         }
     }
@@ -430,7 +453,13 @@ mod tests {
         write_files(dir.path(), soft).unwrap();
         assert_eq!(std::fs::read(&cut).unwrap(), whole);
         // What the first version wrote, a file of another version, a temporary file.
-        std::fs::write(dir.path().join("v1-soft-70-move.wav.1-0.tmp"), b"x").unwrap();
+        let temp = dir.path().join("v1-soft-70-move.wav.1-0.tmp");
+        std::fs::write(&temp, b"x").unwrap();
+        remove_stale(dir.path()).unwrap();
+        assert!(temp.is_file(), "a young temporary file may be about to be renamed");
+        let old = std::fs::File::options().write(true).open(&temp).unwrap();
+        old.set_modified(std::time::SystemTime::now() - 2 * STALE_TEMP).unwrap();
+        drop(old);
         std::fs::write(dir.path().join("move.wav"), b"x").unwrap();
         std::fs::write(dir.path().join("v0-soft-70-move.wav"), b"x").unwrap();
         remove_stale(dir.path()).unwrap();

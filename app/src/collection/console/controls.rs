@@ -17,7 +17,6 @@ use crate::console::{look, sound, startup, themes, Pad};
 const CHECK_EVERY: Duration = Duration::from_secs(20);
 
 pub(super) struct ControlsState {
-    sounds: Option<sound::Player>,
     /// The last press, for the idle screen.
     last_press: Instant,
     /// Quiet time before the idle screen ([`idle::IDLE_AFTER`]).
@@ -28,7 +27,7 @@ pub(super) struct ControlsState {
 
 impl Default for ControlsState {
     fn default() -> Self {
-        Self { sounds: None, last_press: Instant::now(), idle_after: idle::IDLE_AFTER, idle: None, idle_task: None }
+        Self { last_press: Instant::now(), idle_after: idle::IDLE_AFTER, idle: None, idle_task: None }
     }
 }
 
@@ -77,12 +76,10 @@ impl CollectionView {
             return true;
         }
         let theme = look::theme();
-        let controls = &theme.controls;
-        if !controls.sounds {
-            st.sounds = None;
-        } else if let Some(sound) = sound::for_pad(pad) {
-            let player = st.sounds.get_or_insert_with(|| sound::Player::new(self.app_paths.cache.join("console-sounds")));
-            player.play(sound, sound::Settings::of(controls));
+        if theme.controls.sounds {
+            if let Some(sound) = sound::for_pad(pad) {
+                sound::play(&self.app_paths.cache, sound, sound::Settings::of(&theme.controls));
+            }
         }
         false
     }
