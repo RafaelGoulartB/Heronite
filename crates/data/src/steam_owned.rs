@@ -21,7 +21,7 @@ use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::json_store;
-use crate::models::Extra;
+use crate::models::{Extra, LocalGameMeta, LocalMetaFile};
 use crate::paths::DataPaths;
 
 /// Set (`true`) in the overlay meta of the Steam entries this app adds by
@@ -213,6 +213,30 @@ pub fn twins(candidates: &[Candidate<'_>], owned: &SteamOwnedFile) -> HashMap<St
     out
 }
 
+/// Whether this app added the entry by itself ([`AUTO_KEY`]): a Steam game
+/// from the library or found installed. A Steam game the user added is not.
+pub fn added_by_app(meta: &LocalGameMeta) -> bool {
+    meta.launch_kind == "steam-uri" && meta.extra.get(AUTO_KEY) == Some(&serde_json::Value::Bool(true))
+}
+
+/// The app names of the Steam entries this app added to the Collection:
+/// what "Remove Steam games" takes out.
+pub fn added_entries(metas: &LocalMetaFile) -> Vec<String> {
+    metas.games.values().filter(|m| added_by_app(m)).map(|m| m.app_name.clone()).collect()
+}
+
+/// Empties the cached library, as if it was never read: no game of the
+/// Collection joins a Steam copy any more.
+pub fn forget(paths: &DataPaths) -> anyhow::Result<()> {
+    json_store::update::<SteamOwnedFile, _>(&paths.steam_owned(), |f| {
+        f.games.clear();
+        f.family.clear();
+        f.updated_at = None;
+        f.source = None;
+        Ok(())
+    })
+}
+
 /// Unix seconds as the timestamps file writes dates.
 pub fn unix_to_iso(secs: i64) -> Option<String> {
     chrono::DateTime::from_timestamp(secs, 0).map(|d| d.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
@@ -318,6 +342,50 @@ mod tests {
         assert_eq!((&f.games[0].share, f.games[0].hidden), (&None, false));
         let back: serde_json::Value = serde_json::to_value(&f).unwrap();
         assert_eq!(back, serde_json::from_str::<serde_json::Value>(old).unwrap());
+    }
+
+    fn meta(app: &str, launch_kind: &str, auto: bool) -> LocalGameMeta {
+        let mut m = LocalGameMeta { app_name: app.into(), launch_kind: launch_kind.into(), ..Default::default() };
+        if auto {
+            m.extra.insert(AUTO_KEY.into(), serde_json::Value::Bool(true));
+        }
+        m
+    }
+
+    #[test]
+    fn only_the_steam_entries_the_app_added_are_selected() {
+        let mut file = LocalMetaFile::default();
+        for m in [
+            // From the library or found installed.
+            meta("steam_620", "steam-uri", true),
+            // A Steam game the user added by hand.
+            meta("steam_400", "steam-uri", false),
+            // Another store, a local game, an emulated one.
+            meta("legendary_a", "", false),
+            meta("sideload_b", "executable", false),
+            // The mark alone is not enough: the entry has to start a Steam game.
+            meta("sideload_c", "executable", true),
+        ] {
+            file.games.insert(m.app_name.clone(), m);
+        }
+        assert_eq!(added_entries(&file), ["steam_620"]);
+        assert!(added_entries(&LocalMetaFile::default()).is_empty());
+    }
+
+    #[test]
+    fn forgetting_the_library_keeps_the_file_s_other_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        std::fs::create_dir_all(paths.steam_owned().parent().unwrap()).unwrap();
+        std::fs::write(
+            paths.steam_owned(),
+            r#"{"games":[{"appId":"620","name":"Portal 2"}],"family":[{"appId":"1","name":"A","share":{"ownerId":"2"}}],"updatedAt":"x","source":"client","other":1}"#,
+        )
+        .unwrap();
+        forget(&paths).unwrap();
+        let f = SteamOwnedFile::read(&paths);
+        assert!(f.games.is_empty() && f.family.is_empty() && !f.known() && f.source.is_none());
+        assert_eq!(f.extra.get("other"), Some(&serde_json::json!(1)));
     }
 
     #[test]
