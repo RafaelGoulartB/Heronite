@@ -8,8 +8,9 @@
 //! the game's own actions (Play, Install...). The last picks are not offered
 //! again while there are other games to pick.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::BuildHasher;
+use std::sync::Arc;
 
 use gpui_kit::*;
 use heronite_data::CollectionGame;
@@ -85,11 +86,42 @@ fn keywords() -> &'static str {
 impl CollectionView {
     /// The keys `scope` picks from: one per card, hidden games only while
     /// they are shown.
+    /// The cards of the Collection a pick can land on (hidden games only
+    /// while they are shown): each card's key and its copies, once.
+    fn random_cards(&self) -> Vec<(String, Vec<Arc<CollectionGame>>)> {
+        let Some(lib) = self.lib.as_ref() else { return Vec::new() };
+        let mut seen = HashSet::new();
+        let mut out = Vec::new();
+        for g in lib.games.iter().filter(|g| self.ui.show_hidden || !g.hidden) {
+            // A card stands for all its copies: it counts once, by its first.
+            let copies: Vec<Arc<CollectionGame>> =
+                if self.ui.group_copies { lib.copies_of(&g.key).into_iter().cloned().collect() } else { vec![g.clone()] };
+            let card = copies.first().map_or(&g.key, |c| &c.key).clone();
+            if seen.insert(card.clone()) {
+                out.push((card, copies));
+            }
+        }
+        out
+    }
+
+    /// Whether a card of `copies` is among the games of `scope` (not
+    /// [`RandomScope::OnScreen`]); `smart`: the members of a smart scope.
+    fn in_scope(&self, scope: &RandomScope, copies: &[Arc<CollectionGame>], smart: Option<&HashSet<String>>) -> bool {
+        copies.iter().any(|g| match scope {
+            RandomScope::OnScreen | RandomScope::All => true,
+            RandomScope::Installed => g.installed,
+            RandomScope::NotPlayed => g.playtime_minutes == 0 && g.last_played.is_none(),
+            RandomScope::Favourites => g.favourite,
+            RandomScope::Category(name) => self.categories.contains(name, &g.runner, &g.app_name),
+            RandomScope::Smart(_) => smart.is_some_and(|m| m.contains(&g.key)),
+        })
+    }
+
+    /// The keys `scope` picks from.
     fn random_pool(&self, scope: &RandomScope) -> Vec<String> {
         if *scope == RandomScope::OnScreen {
             return self.shown_keys().into_iter().map(|k| k.to_string()).collect();
         }
-        let Some(lib) = self.lib.as_ref() else { return Vec::new() };
         let smart = match scope {
             RandomScope::Smart(id) => match self.smart_groups.get(id) {
                 Some(g) => Some(self.group_members(g)),
@@ -97,33 +129,37 @@ impl CollectionView {
             },
             _ => None,
         };
-        let keeps = |g: &CollectionGame| match scope {
-            RandomScope::OnScreen | RandomScope::All => true,
-            RandomScope::Installed => g.installed,
-            RandomScope::NotPlayed => g.playtime_minutes == 0 && g.last_played.is_none(),
-            RandomScope::Favourites => g.favourite,
-            RandomScope::Category(name) => self.categories.matches(&[name.clone()].into(), &g.runner, &g.app_name),
-            RandomScope::Smart(_) => smart.as_ref().is_some_and(|m| m.contains(&g.key)),
-        };
-        let mut seen = HashSet::new();
-        let mut out = Vec::new();
-        for g in lib.games.iter().filter(|g| self.ui.show_hidden || !g.hidden) {
-            // A card stands for all its copies: it counts once, by its first.
-            let card = if self.ui.group_copies { lib.copies_of(&g.key).first().map_or(&g.key, |c| &c.key) } else { &g.key };
-            if !seen.contains(card) && self.with_copies(card).iter().any(|c| keeps(c)) {
-                seen.insert(card.clone());
-                out.push(card.clone());
-            }
-        }
-        out
+        let cards = self.random_cards();
+        cards.into_iter().filter(|(_, copies)| self.in_scope(scope, copies, smart.as_deref())).map(|(k, _)| k).collect()
     }
 
     /// The palette's "Pick a random game" entries: the games on screen and
-    /// the usual sets first, each category when something is typed.
+    /// the usual sets first, each category when something is typed. Their
+    /// counts come from one pass over the Collection (the palette opens
+    /// with them).
     pub(super) fn random_entries(&self) -> Vec<Entry> {
+        let cards = self.random_cards();
+        let mut by_category: HashMap<&str, usize> = HashMap::new();
+        for (_, copies) in &cards {
+            let mut names: Vec<&str> = copies.iter().flat_map(|g| self.categories.of_game(&g.runner, &g.app_name)).collect();
+            names.sort_unstable();
+            names.dedup();
+            for n in names {
+                *by_category.entry(n).or_default() += 1;
+            }
+        }
+        let count = |scope: &RandomScope| match scope {
+            RandomScope::OnScreen => self.shown_keys().len(),
+            RandomScope::Category(name) => by_category.get(name.as_str()).copied().unwrap_or(0),
+            RandomScope::Smart(id) => {
+                let members = self.smart_groups.get(id).map(|g| self.group_members(g));
+                members.map_or(0, |m| cards.iter().filter(|(_, c)| self.in_scope(scope, c, Some(&m))).count())
+            }
+            other => cards.iter().filter(|(_, c)| self.in_scope(other, c, None)).count(),
+        };
         let mut v = Vec::new();
         let mut add = |scope: RandomScope, title: String, name: &str, secondary: bool| {
-            let n = self.random_pool(&scope).len();
+            let n = count(&scope);
             let mut e = Entry::new(
                 Kind::Action,
                 Act::Random(scope.clone()),
@@ -144,13 +180,12 @@ impl CollectionView {
         add(RandomScope::NotPlayed, tr!("Pick a random game you have not played").into(), "", false);
         add(RandomScope::Favourites, tr!("Pick a random favourite").into(), "", true);
         add(RandomScope::All, tr!("Pick a random game from the whole Collection").into(), "", true);
-        for name in self.categories.names().map(str::to_owned).collect::<Vec<_>>() {
-            let label = category_label(&name);
-            add(RandomScope::Category(name), tr!("Pick a random game: {category}", category = label.as_str()), &label, true);
+        for name in self.categories.names() {
+            let label = category_label(name);
+            add(RandomScope::Category(name.to_owned()), tr!("Pick a random game: {category}", category = label.as_str()), &label, true);
         }
-        let smart: Vec<(String, String)> = self.smart_groups.groups.iter().map(|g| (g.id.clone(), g.name.clone())).collect();
-        for (id, name) in smart {
-            add(RandomScope::Smart(id), tr!("Pick a random game: {category}", category = name.as_str()), &name, true);
+        for g in &self.smart_groups.groups {
+            add(RandomScope::Smart(g.id.clone()), tr!("Pick a random game: {category}", category = g.name.as_str()), &g.name, true);
         }
         v
     }

@@ -359,7 +359,7 @@ impl CollectionView {
             )
             .child(div().flex_none().child(time))
             .child(seek);
-        if heronite_media::stream::sound_supported() {
+        if heronite_media::stream::sound_known() == Some(true) {
             let label = if sound { tr!("Mute") } else { tr!("Sound on") };
             bar = bar.child(
                 stage_button("sm-sound", if sound { Icon::VolumeUp } else { Icon::VolumeOff }, 32.)

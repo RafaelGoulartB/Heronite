@@ -86,11 +86,18 @@ impl Drop for Stream {
     }
 }
 
+/// [`sound_supported`] once it was asked (it runs ffmpeg: ask it off the UI
+/// thread first); `None` before.
+pub fn sound_known() -> Option<bool> {
+    SOUND.get().copied()
+}
+
+static SOUND: OnceLock<bool> = OnceLock::new();
+
 /// Whether ffmpeg can play sound here: Linux with an ffmpeg built with the
 /// `pulse` output (asked once). Elsewhere trailers play without sound.
 pub fn sound_supported() -> bool {
-    static FOUND: OnceLock<bool> = OnceLock::new();
-    *FOUND.get_or_init(|| {
+    *SOUND.get_or_init(|| {
         if !cfg!(target_os = "linux") || !crate::posters::available() {
             return false;
         }

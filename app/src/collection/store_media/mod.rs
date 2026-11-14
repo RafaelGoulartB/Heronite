@@ -19,7 +19,9 @@ mod view;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use futures::channel::mpsc::unbounded;
 use futures::StreamExt;
@@ -39,6 +41,14 @@ use super::CollectionView;
 const FPS: u32 = 30;
 const FRAME_W: u32 = 854;
 const FRAME_H: u32 = 480;
+/// A trailer stops when the window has not drawn for this long (minimized,
+/// on another workspace): its frames would only pile up unseen.
+const UNSEEN: Duration = Duration::from_millis(1500);
+/// Browsing the list with the keys asks the store only for the game the
+/// selection stays on.
+const LIST_DELAY: Duration = Duration::from_millis(250);
+/// A trailer's start is kept only for a game looked at this long.
+const KEEP_AFTER: Duration = Duration::from_secs(3);
 
 /// The focused game's list.
 #[derive(Clone, Default)]
@@ -69,10 +79,13 @@ struct Player {
     stream: Option<Stream>,
     state: PlayState,
     frame: Option<Arc<RenderImage>>,
+    /// The newest frame the stream decoded, taken when the window draws (a
+    /// frame never drawn is replaced, never queued).
+    slot: Arc<Mutex<Option<Decoded>>>,
     /// Seconds into the trailer where the stream started.
     start: f64,
-    /// Frames shown since then.
-    frames: u64,
+    /// Frames the stream decoded since then (its clock).
+    count: Arc<AtomicU64>,
     /// Length in seconds; 0 until the playlist is read.
     seconds: f64,
     playable: Option<cache::Playable>,
@@ -84,7 +97,7 @@ struct Player {
 
 impl Player {
     fn position(&self) -> f64 {
-        let at = self.start + self.frames as f64 / FPS as f64;
+        let at = self.start + self.count.load(Ordering::Relaxed) as f64 / FPS as f64;
         if self.seconds > 0. {
             at.min(self.seconds)
         } else {
@@ -117,6 +130,10 @@ pub(super) struct StoreMediaUi {
     swept: bool,
     /// What the list on screen keeps: videos, screenshots or both.
     kinds: StoreMediaKinds,
+    /// When the window last drew.
+    last_draw: Option<Instant>,
+    /// ffmpeg's sound output was looked for off the UI thread.
+    warmed: bool,
     /// Games running at the last frame.
     games_running: usize,
     /// Where the seek bar is, for its clicks.
@@ -173,6 +190,18 @@ impl CollectionView {
     /// Every frame, before the layout: follows the focused game, stops a
     /// trailer the panel no longer draws, drops the frames shown before.
     pub(super) fn sync_store_media(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.media.last_draw = Some(Instant::now());
+        // The newest frame becomes the one drawn; the one before goes from the GPU now.
+        if let Some(p) = self.media.player.as_mut() {
+            let newest = p.slot.lock().unwrap_or_else(|e| e.into_inner()).take();
+            if let Some(f) = newest {
+                let image = Arc::new(RenderImage::new(smallvec![image::Frame::new(f.into_image_buffer())]));
+                self.media.old_frames.extend(p.frame.replace(image));
+                if p.state == PlayState::Loading {
+                    p.state = PlayState::Playing;
+                }
+            }
+        }
         for old in self.media.old_frames.drain(..) {
             let _ = window.drop_image(old);
         }
@@ -226,7 +255,18 @@ impl CollectionView {
         self.media.app_id = Some(id.clone());
         self.media.list = List::Loading;
         let dir = root(&self.app_paths);
+        if !std::mem::replace(&mut self.media.warmed, true) {
+            cx.background_spawn(async {
+                heronite_media::posters::available();
+                heronite_media::stream::sound_supported();
+            })
+            .detach();
+        }
         cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(LIST_DELAY).await;
+            if this.read_with(cx, |this, _| this.media.game.as_ref() != Some(&key)).unwrap_or(true) {
+                return;
+            }
             let found = cx.background_spawn(async move { store_media::steam(&Http::new(Endpoints::default()), &dir, &id) }).await;
             this.update(cx, |this, cx| {
                 if this.media.game.as_ref() != Some(&key) {
@@ -263,7 +303,8 @@ impl CollectionView {
     }
 
     /// Keeps the start of the focused game's first trailer, so it plays at
-    /// once next time (an installed game only, within the cache's size).
+    /// once next time (an installed game looked at for [`KEEP_AFTER`], within
+    /// the cache's size), on a thread at idle priority.
     fn keep_first_trailer(&mut self, cx: &mut Context<Self>) {
         let List::Ready(m) = &self.media.list else { return };
         let Some(video) = m.videos.first().cloned() else { return };
@@ -272,10 +313,23 @@ impl CollectionView {
             return;
         }
         let dir = root(&self.app_paths);
-        cx.background_spawn(async move {
-            heronite_data::proc::idle_priority();
-            if let Err(e) = cache::keep(&Http::new(Endpoints::default()), &dir, &video, u64::from(limit) << 20) {
-                log::info!("could not keep the start of {}: {e:#}", video.name);
+        let key = self.media.game.clone();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(KEEP_AFTER).await;
+            let still = this.read_with(cx, |this, _| this.media.game == key && shown()).unwrap_or(false);
+            if !still {
+                this.update(cx, |this, _| this.media.kept.remove(&video.id)).ok();
+                return;
+            }
+            // A thread of its own: idle priority stays with it.
+            let spawned = std::thread::Builder::new().name("trailer-keep".into()).spawn(move || {
+                heronite_data::proc::idle_priority();
+                if let Err(e) = cache::keep(&Http::new(Endpoints::default()), &dir, &video, u64::from(limit) << 20) {
+                    log::info!("could not keep the start of {}: {e:#}", video.name);
+                }
+            });
+            if let Err(e) = spawned {
+                log::warn!("trailer-keep thread: {e}");
             }
         })
         .detach();
@@ -328,7 +382,7 @@ impl CollectionView {
         if let Some(p) = self.media.player.as_mut() {
             if p.stream.take().is_some() {
                 p.start = p.position();
-                p.frames = 0;
+                p.count = Arc::default();
                 p.state = PlayState::Paused;
             }
         }
@@ -367,7 +421,7 @@ impl CollectionView {
         let app_id = self.media.app_id.clone();
         self.media.generation += 1;
         let generation = self.media.generation;
-        let sound = sound && heronite_media::stream::sound_supported();
+        let sound = sound && heronite_media::stream::sound_known() == Some(true);
         let (frame, playable, seconds) = match self.media.player.take() {
             Some(p) if p.video == video => (p.frame, p.playable, p.seconds),
             Some(p) => {
@@ -381,8 +435,9 @@ impl CollectionView {
             stream: None,
             state: PlayState::Loading,
             frame,
+            slot: Arc::default(),
             start: at,
-            frames: 0,
+            count: Arc::default(),
             seconds,
             playable: playable.clone(),
             sound,
@@ -426,39 +481,32 @@ impl CollectionView {
         .detach();
     }
 
-    /// Runs ffmpeg on `playable`; its frames land on the stage one at a
-    /// time (a late frame is replaced by the next, never queued).
+    /// Runs ffmpeg on `playable`. Its frames wait in the player's slot for
+    /// the next draw; each one only asks for a draw.
     fn media_stream(&mut self, playable: cache::Playable, at: f64, sound: bool, generation: u64, cx: &mut Context<Self>) {
-        let slot: Arc<Mutex<Option<Decoded>>> = Arc::default();
+        let Some(p) = self.media.player.as_mut() else { return };
+        let (slot, count) = (p.slot.clone(), p.count.clone());
         let (tx, mut rx) = unbounded::<Option<StreamEvent>>();
         let spec = StreamSpec { video: playable.video, audio: playable.audio, start: at, width: FRAME_W, height: FRAME_H, fps: FPS, sound };
-        let shared = slot.clone();
-        let stream = Stream::start(spec, move |ev| match ev {
+        p.stream = Some(Stream::start(spec, move |ev| match ev {
             StreamEvent::Frame(f) => {
-                let was_empty = shared.lock().unwrap_or_else(|e| e.into_inner()).replace(f).is_none();
-                if was_empty {
+                let n = count.fetch_add(1, Ordering::Relaxed) + 1;
+                let was_empty = slot.lock().unwrap_or_else(|e| e.into_inner()).replace(f).is_none();
+                // Also once a second while nothing draws, so an unseen trailer stops.
+                if was_empty || n % u64::from(FPS) == 0 {
                     let _ = tx.unbounded_send(None);
                 }
             }
             end => {
                 let _ = tx.unbounded_send(Some(end));
             }
-        });
-        if let Some(p) = self.media.player.as_mut() {
-            p.stream = Some(stream);
-        }
+        }));
         cx.spawn(async move |this, cx| {
             while let Some(ev) = rx.next().await {
-                let frame = slot.lock().unwrap_or_else(|e| e.into_inner()).take();
                 let alive = this
                     .update(cx, |this, cx| {
+                        let unseen = this.media.last_draw.is_none_or(|t| t.elapsed() > UNSEEN);
                         let Some(p) = this.media.player.as_mut().filter(|p| p.generation == generation) else { return false };
-                        if let Some(f) = frame {
-                            let image = Arc::new(RenderImage::new(smallvec![image::Frame::new(f.into_image_buffer())]));
-                            this.media.old_frames.extend(p.frame.replace(image));
-                            p.frames += 1;
-                            p.state = PlayState::Playing;
-                        }
                         match ev {
                             Some(StreamEvent::Ended) => {
                                 p.stream = None;
@@ -468,6 +516,10 @@ impl CollectionView {
                                 log::warn!("trailer: {why}");
                                 p.stream = None;
                                 p.state = PlayState::Failed(tr!("The trailer could not be played.").into());
+                            }
+                            _ if unseen => {
+                                this.media_pause(cx);
+                                return false;
                             }
                             _ => {}
                         }

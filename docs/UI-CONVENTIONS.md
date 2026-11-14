@@ -1374,7 +1374,9 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   Screenshots only, the rows about trailers are left out. "Autoplay trailers" (a sub-row of Store media, `videoAutoplay`, off by default) starts the focused game's
   first trailer once the section is drawn. Arrows on the stage's sides step through the items. It stops when the game is no
   longer focused, when the section is not drawn (another page, the drawer closed, the section off) and when a game
-  starts. A failure says so on the stage with "Watch on the store page".
+  starts, or when the window has not drawn for 1.5 s (minimized, another workspace). Frames wait in one slot and only
+  the newest becomes a texture when the window draws, so a slow or hidden window never piles them up. A failure says so
+  on the stage with "Watch on the store page".
 - Only the lists (3 days) and the first 15 s of the first trailer of the installed games visited are kept, under
   `<cache>/store-media`, within "Video cache" (a sub-row of Store media: None, 25, 50 (default), 100 or 250 MB;
   `videoCacheLimitMb` in `settings.json`), the least recently played going first. Turning the section off deletes
