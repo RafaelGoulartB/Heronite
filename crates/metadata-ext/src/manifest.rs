@@ -15,6 +15,7 @@ use heronite_metadata::sources::{
 use heronite_metadata::{platforms, MatchedBy, SourceDescriptor, SourceKind};
 use toml::{Table, Value};
 
+use crate::id_pattern::IdPattern;
 use crate::net::HostRule;
 use crate::ExtensionError;
 
@@ -97,6 +98,9 @@ pub struct Manifest {
     pub applies_to: AppliesTo,
     pub asked: Asked,
     pub game_kind: Option<GameKind>,
+    /// `[ids] pattern`: the code it finds in a game's title or file name,
+    /// passed to its script as `game.ids.<id>`.
+    pub id_pattern: Option<IdPattern>,
     pub network: Network,
     pub settings: Vec<SourceOption>,
     /// Keys left out and other things worth a line in the log.
@@ -307,6 +311,7 @@ impl Manifest {
                 "applies",
                 "network",
                 "settings",
+                "ids",
             ],
         );
         let mut warnings: Vec<String> = top.unknown().into_iter().map(|k| format!("unknown key {k} left out")).collect();
@@ -339,6 +344,7 @@ impl Manifest {
 
         let provides = provides(&top, kind, &mut warnings)?;
         let (applies_to, asked, game_kind) = applies(&top, &mut warnings)?;
+        let id_pattern = id_pattern(&top, &mut warnings)?;
         let network = network(&top)?;
         let settings = settings(&table, &mut warnings)?;
         Ok(Self {
@@ -354,6 +360,7 @@ impl Manifest {
             applies_to,
             asked,
             game_kind,
+            id_pattern,
             network,
             settings,
             warnings,
@@ -485,6 +492,19 @@ fn platform_ids(names: Vec<String>, warnings: &mut Vec<String>) -> Result<Vec<St
         return Err(err("applies.platforms names no platform this app knows"));
     }
     Ok(ids)
+}
+
+/// `[ids] pattern`, checked: a loose pattern would make guesses sure
+/// matches, so one that breaks a rule refuses the manifest.
+fn id_pattern(top: &Keys<'_>, warnings: &mut Vec<String>) -> Result<Option<IdPattern>, ExtensionError> {
+    let Some(table) = top.table("ids")? else { return Ok(None) };
+    let keys = Keys::new(table, "ids", &["pattern"]);
+    warnings.extend(keys.unknown().into_iter().map(|k| format!("unknown key {k} left out")));
+    match keys.get("pattern") {
+        None => Ok(None),
+        Some(Value::String(text)) => IdPattern::parse(text).map(Some).map_err(err),
+        Some(_) => Err(err("ids.pattern must be text (one pattern)")),
+    }
 }
 
 fn network(top: &Keys<'_>) -> Result<Network, ExtensionError> {
