@@ -229,6 +229,29 @@ fn the_file_name_is_the_roms_else_the_install_folders() {
 }
 
 #[test]
+fn steam_is_for_games_with_an_id_and_can_be_linked_to_the_other_pc_games() {
+    let reg = registry();
+    let d = reg.get("steam").unwrap();
+    assert!(d.searchable && d.applies_to == AppliesTo::HasSteamId && d.finds_by.contains(&MatchedBy::ExactTitle));
+    // The by-name search is an option, on until the user turns it off.
+    assert_eq!(d.also_for, Some(AlsoFor { option: "byName".into(), applies_to: AppliesTo::Pc }));
+    assert_eq!(d.options.iter().map(|o| o.key.as_str()).collect::<Vec<_>>(), ["byName"]);
+    assert_eq!(d.options[0].default, Some(OptionValue::Switch(true)));
+    let game = |steam: Option<&str>, emulated: bool| SourceGame {
+        steam_app_id: steam.map(Into::into),
+        emulated,
+        ..SourceGame::new(&args(None), None, &[])
+    };
+    let link = d.link_for.as_ref().expect("a link to a Steam page can be made by hand");
+    assert!(link.matches(&game(None, false)), "a game added by hand");
+    assert!(!link.matches(&game(None, true)), "an emulated game is never linked to a Steam page");
+    assert!(d.applies_to.matches(&game(Some("620"), false)) && !d.applies_to.matches(&game(None, false)));
+    // Only Steam can be linked by hand.
+    let linkable: Vec<_> = reg.lookups().map(|s| s.descriptor()).filter(|d| d.link_for.is_some()).map(|d| d.id.as_str()).collect();
+    assert_eq!(linkable, ["steam"]);
+}
+
+#[test]
 fn libretro_is_for_the_emulated_games_of_platforms_with_a_folder() {
     let reg = registry();
     let d = reg.get("libretro").unwrap();

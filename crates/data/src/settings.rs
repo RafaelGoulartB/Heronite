@@ -177,6 +177,9 @@ pub struct EffectiveSettings {
     /// by default).
     pub video_autoplay: bool,
     pub store_media_kinds: StoreMediaKinds,
+    /// Heronite reads the Steam library and adds its games and the installed
+    /// Steam games to the Collection (on by default).
+    pub read_steam_library: bool,
     /// Heroic `store/config.json` `theme` (default `midnightMirage`).
     pub theme: String,
     /// The interface language (`heronite_i18n`), which also picks the Steam
@@ -250,6 +253,7 @@ impl EffectiveSettings {
             video_cache_limit_mb: file.video_cache_limit_mb.map_or(DEFAULT_VIDEO_CACHE_LIMIT_MB, |mb| mb.min(MAX_VIDEO_CACHE_LIMIT_MB)),
             video_autoplay: file.video_autoplay == Some(true),
             store_media_kinds: file.store_media_kinds.as_deref().map(StoreMediaKinds::parse).unwrap_or_default(),
+            read_steam_library: file.read_steam_library != Some(false),
             theme: config.theme.clone().unwrap_or_else(|| DEFAULT_THEME.to_owned()),
             language: heronite_i18n::current().code().to_owned(),
             all_tiles_in_color: config.all_tiles_in_color.unwrap_or(false),
@@ -623,6 +627,20 @@ pub fn save_video_autoplay(paths: &DataPaths, on: bool) -> Result<EffectiveSetti
     load(paths)
 }
 
+/// Whether Heronite reads the Steam library and adds Steam's games to the
+/// Collection ([`EffectiveSettings::read_steam_library`]). Reads only
+/// `settings.json`, so the jobs that add games can ask it cheaply.
+pub fn read_steam_library(paths: &DataPaths) -> bool {
+    json_store::read::<CollectionSettingsFile>(&paths.collection_settings()).map_or(true, |f| f.read_steam_library != Some(false))
+}
+
+pub fn save_read_steam_library(paths: &DataPaths, on: bool) -> Result<()> {
+    json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |file| {
+        file.read_steam_library = Some(on);
+        Ok(())
+    })
+}
+
 /// `setCollectionMetadataSettings`: `patch` replaces the metadata section after
 /// normalisation; `field_priority` entries are merged over the current ones.
 pub fn save_metadata(paths: &DataPaths, patch: &MetadataSettings) -> Result<EffectiveSettings> {
@@ -805,6 +823,11 @@ mod tests {
         assert_eq!(save_video_cache_limit(&paths, 1 << 20).unwrap().video_cache_limit_mb, MAX_VIDEO_CACHE_LIMIT_MB);
         assert!(!s.video_autoplay);
         assert!(save_video_autoplay(&paths, true).unwrap().video_autoplay);
+        assert!(s.read_steam_library && read_steam_library(&paths));
+        save_read_steam_library(&paths, false).unwrap();
+        assert!(!read_steam_library(&paths) && !load(&paths).unwrap().read_steam_library);
+        save_read_steam_library(&paths, true).unwrap();
+        assert!(read_steam_library(&paths) && load(&paths).unwrap().read_steam_library);
         assert_eq!(s.store_media_kinds, StoreMediaKinds::Both);
         assert_eq!(save_store_media_kinds(&paths, StoreMediaKinds::Videos).unwrap().store_media_kinds, StoreMediaKinds::Videos);
         assert_eq!(StoreMediaKinds::parse("bogus"), StoreMediaKinds::Both);

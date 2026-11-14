@@ -161,10 +161,14 @@ pub struct MetadataDialog {
 impl EventEmitter<DialogEvent> for MetadataDialog {}
 
 impl MetadataDialog {
-    pub fn new(ctx: DialogCtx, game: Game, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(ctx: DialogCtx, game: Game, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut this = Self::build(ctx, game, None, cx);
         this.read_families(cx);
         this.run_preview(cx);
+        // `HERONITE_DEBUG_METADATA_CHANGE=<source id>` opens "Change" on that source (the real search).
+        if let Some(source) = crate::env::value("HERONITE_DEBUG_METADATA_CHANGE") {
+            this.open_change(&source, window, cx);
+        }
         this
     }
 

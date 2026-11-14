@@ -146,8 +146,9 @@ fn ids(game: &CollectionGame) -> Vec<String> {
     if let Some(id) = game.metadata.as_deref().and_then(|m| m.igdb_id).map(|n| n.get()).filter(|n| *n >= 1.0) {
         out.push(format!("igdb:{}", id as i64));
     }
-    let steam =
-        [game.meta.as_deref().and_then(|m| m.steam_app_id.as_deref()), game.metadata.as_deref().and_then(|m| m.steam_app_id.as_deref())];
+    // A link to a Steam page (by hand, or found by name) is metadata: it does not make copies.
+    let record_id = game.metadata.as_deref().filter(|m| !crate::library::steam_id_is_a_link(m)).and_then(|m| m.steam_app_id.as_deref());
+    let steam = [game.meta.as_deref().and_then(|m| m.steam_app_id.as_deref()), record_id];
     for id in steam.into_iter().flatten().map(str::trim).filter(|s| !s.is_empty()) {
         let id = format!("steam:{id}");
         if !out.contains(&id) {

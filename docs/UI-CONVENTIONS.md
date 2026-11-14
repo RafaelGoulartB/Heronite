@@ -689,7 +689,10 @@ source…"), and again after a match is pinned and after "Search every source ag
   tooltip "Pinned: every update uses this game". A match the merge ignored because it is another game than the others
   found is amber and reads "(left out: another game)" (not while the game waits for review, where nothing is merged).
   A source asked only as a fallback (an extension such as VNDB or Wikipedia) that the others made unnecessary keeps
-  its row, "Not asked: the others found it", with "Search". The other sources not asked fold into one muted line per
+  its row, "Not asked: the others found it", with "Search". Steam, for a PC game that is not on it (a game added by hand,
+  a sideloaded one, one from another store; not an emulated game), keeps its row too: "Not linked" with "Link" (tooltip
+  "Pick this game's page to get its details from there."); once linked it reads like any match, with the pin and
+  "Change". The other sources not asked fold into one muted line per
   reason under the rows: "Not for this game: Lutris", "Off: …", "Needs a key: …", "Not asked: …". Above the rows: the offline line, the IGDB key hint with
   "Open Settings → Metadata" (closes the dialog), and, for a game that waits for review, "The sources are not sure which
   game this is: nothing is picked for you. Pick the values, or change a match." The refresh button below ("Search every
@@ -697,8 +700,16 @@ source…"), and again after a match is pinned and after "Search every source ag
 - **Change** replaces the column: a back arrow, "Which game of IGDB is it?", the hits of that source alone for the game's
   title (a search field, "Search this source", Enter searches again; a source may read a typed id or address as that
   entry, as the VNDB extension does with v17; each hit's year, its name in another script and platforms under it), the
-  one in use checked. A click pins that game and asks every source again; when the match is pinned, "Automatic" ("Let IGDB find the game by itself") comes first and
-  unpins it. A line says why there are no hits ("Nothing found for “zelda”.", "This source is off.", "This source needs a
+  one in use checked; a hit with a small cover shows it (30 × 40) at its left. A click pins that game and asks every source again; when the match is pinned, "Automatic" ("Let IGDB find the game by itself") comes first and
+  unpins it. For Steam on a game that is not on it, the search field says "Name, store address or app id": a store
+  address (`store.steampowered.com/app/620/…`, the community or SteamDB page) comes first as that game
+  (name, year, cover; a number alone is an app id too, listed after the games titled with it, as "2048" would be), then the games the Steam store finds by name (no year: the store search gives none); a link
+  pinned by hand, or a game Steam found by its exact name (the setting "Find games not on Steam by name", on by default;
+  its row reads like any match by name, with "Change"), has "Unlink" ("Take away the link to Steam") first instead of
+  "Automatic". Unlink means "this game is not on Steam": the row goes back to "Not linked" with "Link", and no later
+  update, the bulk and idle fills included, finds the game on Steam by name again until it is linked by hand. Apply
+  saves it even when no source answered. The link is the record's, never the game's own Steam id: the game keeps launching, installing and counting
+  playtime as it did, and Steam's details, tags, ProtonDB and links read the record's id. A line says why there are no hits ("Nothing found for “zelda”.", "This source is off.", "This source needs a
   key: add it in Settings → Metadata.", "Could not reach this source. Check your connection and try again."). Esc closes
   Change, then an open select, then the dialog.
 - **The fields** (right), in one list that scrolls, as two captioned cards like Settings' (`ui::controls::caption`). First
@@ -709,10 +720,10 @@ source…"), and again after a match is pinned and after "Search every source ag
   behind). Each value is a tile in the picture's own shape, every tile 60 px high so the rows stay low, with the
   sources' marks over its corner ("Now" when only the game has it); a click picks it (accent border and check), and
   the tile under the pointer shows its details beside the tiles: who has it ("· now" when the game has it), its size (read from the picture's first bytes,
-  `MetadataService::picture_sizes`, "…" while read) and badges: "Own shape" (green) or "Cropped: the picture is
+  `MetadataService::picture_sizes`, "…" while read; `heronite_metadata::picture_size::resolution_label` writes it as "1920 × 1080") and badges: "Own shape" (green) or "Cropped: the picture is
   square / wide / tall" (amber; a background is meant to be wide), "Low resolution" (amber: under 200 px on a cover's
   short side, under 960 px of a background's width), and "Set in Covers" (tooltip "Your picture from Covers is shown
-  instead") when a picture set by hand wins. The tiles are one row; those that do not fit scroll sideways, with a round ‹ or › over the end that has more (a click moves the row by most of what is in view). A tile whose size says it is cropped or low resolution has an amber warning in its corner. Then
+  instead") when a picture set by hand wins. The tiles are one row; those that do not fit scroll sideways, with a round ‹ or › over the end that has more (a click moves the row by most of what is in view). A tile whose size says it is cropped or low resolution has an amber warning in its corner. Under each picture its resolution is a dimmed caption ("1920 × 1080"; the line stays empty until it is read). Then
   the "Details" card: a header (Field, What will be saved, Source) and a row per other field that has a value now or from some
   source, in the usual order: the field's name, the value that will be saved (two lines at most, "Empty" when
   none), where it comes from, and the lock. Sources with the same value are
@@ -734,10 +745,13 @@ source…"), and again after a match is pinned and after "Search every source ag
 `HERONITE_DEBUG_DIALOG=metadata:<state>` opens the selected game's "Metadata" over a made-up preview: `fake` (a pinned
 match, a match left out, a locked field, a field picked from another source, a fallback source not asked), `fallback` (as
 `fake`, with that source found by name; `novels`, a made-up extension id, shows by its id and cannot be searched),
-`emulated` (an emulated game: Steam not for it, LaunchBox found by the dump's name, its line with the platform: a source of emulated games says which platform it matched on; libretro-thumbnails gives box art and, a
+`link` (a game that is not on Steam: Steam "Not linked" with "Link"), `link-change` (the same with "Change" open on Steam, whose
+made-up hits have covers) and `linked` (Steam pinned for it; the debug game must have no Steam id of its own, as a game
+added by hand), `emulated` (an emulated game: Steam not for it, LaunchBox found by the dump's name, its line with the platform: a source of emulated games says which platform it matched on; libretro-thumbnails gives box art and, a
 pictures source, has no row there), `change` (the same with "Change" open),
 `none` (no source found the game), `offline`, `nokey` (no IGDB key), `covers` (as `fake`, scrolled to the cover rows);
-plain `metadata` asks the sources for real.
+plain `metadata` asks the sources for real, and `HERONITE_DEBUG_METADATA_CHANGE=<source id>` (with it) opens "Change" on
+that source with the real search.
 `HERONITE_DEBUG_DIALOG=covers[:<state>]` opens the selected game's "Covers" over made-up searches (pictures the
 Collection already has; nothing asked or written): no state opens on the family the desktop draws, `tall`, `square`,
 `wide`, `background` on that slot, `none` (nothing found), `busy` (searching), `saving` (a picture being
@@ -787,7 +801,7 @@ family); the dot is green for a picture of its own, amber for a crop and grey fo
 slot. A click on a card picks the slot. Right: for the picked slot, "Square pictures found · 9 from 2 sources" (or
 "Backgrounds found") and a search field (the game's title; Enter searches), then, when more than one source found pictures, a pill per source with its mark and count after "All 90" (a click lists that source's pictures alone, without the one shown now; another slot lists all again), then the picture the slot shows now first,
 labelled "{source} · now" or "Cropped · now", and what SteamGridDB (first) and the web found for that shape, each with its
-source's mark and size ("1024×1024"), 15 at a time with "Load more"; a search already made is not asked again on the way
+source's mark, its name (LaunchBox: the region) and, dimmed under it, its resolution ("1024 × 1024"; the size the source gave, else read from the picture's first bytes, `art_images::PictureSizes`, and nothing while unknown; the picture shown now has it too), 15 at a time with "Load more"; a search already made is not asked again on the way
 back, "Searching…" shows while it runs, "No pictures found. Try another search." when nothing came, and a failure in red
 under the grid. A click picks a picture (a double click uses it). A slot that is not kept shows, in place of all this,
 "Square covers are not kept", why ("No view on this PC draws square covers, so updates do not download them. Keep the shape
@@ -796,6 +810,16 @@ shape keeps its own picture. A view asks for the shape it draws.", "Choose a fil
 for the picked slot), "Reset" (back to what the sources gave; only when the slot has a picture of the user's), Close and
 the primary "Use for Square" (Tall, Wide, Background; "Downloading…" while it saves), which needs a picture picked. Every
 change is saved at once and the Collection behind shows it; Esc closes the screenshot picker first.
+
+In console mode (`covers/console.rs`, in `console::registry`) the dialog fills the window: the slots are tabs on LB / RB, the picture
+the slot shows now is on the left (its shape, where it comes from, its resolution) and what was found is a grid of thumbnails the
+d-pad moves over, each with its source (or LaunchBox's region) and resolution. A uses the focused one ("Downloading…", then
+"Saved"; a slot that is not kept says so and A keeps the shape), Y types another search on the on-screen keyboard, X lists
+more (so does Down on the last row), Start opens Options ("Choose a file…" with the console browser, "Reset", and one source
+alone when more than one found pictures) and B closes. It opens from the game page's Manage › "Change pictures…" (any game; the Sheet page
+style has it under Full page) and from Game settings › Game › Images' "Change pictures…", where it sits over the page in its `Layer`. "From a
+screenshot…" is the desktop's alone. `HERONITE_DEBUG_DIALOG=covers[:<state>]` also opens it in console mode
+(`HERONITE_DEBUG_CONSOLE=1`).
 
 **Get more sources** (`dialogs/extensions/`: `mod.rs` the dialog and its two faces, `gallery.rs` the entries and the picked
 one's panel, `confirm.rs` the installer, `lists_manager.rs` "Lists…", `permissions.rs` "What it is allowed to do",
@@ -1207,6 +1231,13 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   `ConsoleTheme` (with a default and `#[serde(default)]`, so old and new theme files keep loading), its rows in
   `theme_rows`, and its use. Nothing console-only may run, read files or allocate while console mode is off;
   no "HERONITE" wordmark in console screens (the theme's `interface.label` may add a text of its own).
+- Navigation sounds (`controls.sounds`, off by default; `console/sound.rs`): four short tones (move, confirm, back,
+  tab) written as WAV files in `cache/console-sounds` and played by `pw-play`, `paplay` or `aplay` from a worker thread
+  (Linux only). `controls.soundStyle` is `soft` (the default: ~320-590 Hz with a round start, quiet) or `classic` (the
+  first one: a 1150 Hz tick); `controls.soundVolume` is 10-100 % (a gain steeper than linear). Both sit under the
+  switch in the Controls card, and are off while the switch is. The file names hold the style, the volume and a
+  version (`VERSION`, bumped when a tone changes; files of other versions are deleted), so a change never plays a
+  stale file. Switching the sounds on or changing the style or the volume plays a preview.
 - Debug: `HERONITE_DEBUG_CONSOLE=1` (or `=game:<key>` for a game page, `=menu`, `=customize`, `=filters`) starts in console mode
   without saving it; `HERONITE_DEBUG_CONSOLE_PRESET=<theme id>` / `HERONITE_DEBUG_CONSOLE_LAYOUT=<layout>` start with
   that theme / every tab in that layout (not saved); `HERONITE_DEBUG_IDLE_SECS=<n>` shows the idle screen sooner;

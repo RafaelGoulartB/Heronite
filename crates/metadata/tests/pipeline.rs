@@ -352,6 +352,9 @@ fn no_provider_answers_stores_a_fetch_error_and_idle_fill_retries_later() {
     // Everything fails (also the store lookup: "plain" is the only candidate source and has no data worth... it does)
     let server = Server::start(|_| Resp::status(500));
     let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());
+    // A Steam that fails (5xx) is one that could not answer, not "not on Steam": the search by
+    // name, which would say so for these games, is off here (`steam_link` tests it).
+    svc.set_source_option("steam", "byName", heronite_metadata::sources::OptionValue::Switch(false)).unwrap();
     // 'steam_620' resolves from the store (Heroic GameInfo) so make a game that is not in any library.
     let md = svc.apply_game_metadata(&args("ghost", "Ghost Game")).unwrap();
     assert_eq!(md.fetch_error.as_deref(), Some("No metadata sources returned data"));

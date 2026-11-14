@@ -1,8 +1,8 @@
 //! The pictures (each kept cover family and the background), above the
 //! other fields: a row each, where every value a source has is a tile in
 //! the picture's shape (one height for all, so the rows stay low) with the
-//! sources' marks over it, and a click picks it (the tile under the pointer
-//! shows its details). Beside the tiles,
+//! sources' marks over it and its resolution, dimmed, under it; a click picks
+//! it (the tile under the pointer shows its details). Beside the tiles,
 //! the details of that value: who has it, its size (read from the
 //! picture's first bytes, `MetadataService::picture_sizes`) and what to
 //! know before picking it: whether it is of the field's shape or a view
@@ -13,7 +13,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::cover_family::CoverFamily;
 use heronite_i18n::tr;
-use heronite_metadata::picture_size::family_of;
+use heronite_metadata::picture_size::{family_of, resolution_label};
 use heronite_metadata::ArtKind;
 
 use super::fields::{Choice, LABEL_W};
@@ -34,6 +34,8 @@ const LOW_BACKGROUND: u32 = 960;
 
 /// The height of every tile's picture.
 const TILE_H: f32 = 60.;
+/// The height of the resolution under each tile's picture.
+const CAPTION_H: f32 = 13.;
 /// The size of the arrows over a row of tiles that does not fit.
 const ARROW: f32 = 28.;
 
@@ -164,25 +166,39 @@ impl MetadataDialog {
         let source = choice.pick.clone();
         let (hover_field, hover_source) = (field, source.clone());
         let accent: Hsla = theme::accent().into();
-        let corner = |d: Div| d.absolute().top(px(5.)).size(px(14.)).rounded_full().flex().items_center().justify_center();
+        let corner = |d: Div| d.absolute().size(px(14.)).rounded_full().flex().items_center().justify_center();
         let who = if choice.sources().next().is_some() {
             self.marks(choice, 13.)
         } else {
             div().px(px(5.)).rounded(px(4.)).text_size(px(10.)).text_color(theme::text_bright()).child(tr!("Now"))
         };
+        // The resolution under the picture: nothing while it is not read.
+        let resolution = self.size_of(&url).and_then(|(w, h)| resolution_label(w, h)).unwrap_or_default();
+        let shown = div()
+            .relative()
+            .flex_none()
+            .child(pic)
+            .child(div().absolute().left(px(3.)).bottom(px(3.)).p(px(1.)).rounded(px(5.)).bg(theme::recess_a(0.7)).child(who))
+            .when(picked, |d| {
+                d.child(corner(div()).top(px(2.)).right(px(2.)).bg(accent).child(icon(Icon::Check, px(10.), theme::on_accent())))
+            })
+            .when(off, |d| {
+                d.child(corner(div()).top(px(2.)).left(px(2.)).bg(theme::warning()).child(icon(Icon::Warning, px(9.), theme::on_accent())))
+            });
         div()
             .id(SharedString::from(format!("md-pic-{field}-{source}")))
-            .relative()
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap(px(2.))
             .flex_none()
             .p(px(3.))
             .rounded(px(8.))
             .border_1()
             .border_color(if picked { Hsla { a: 0.85, ..accent } } else { theme::ink_a(0.07) })
             .bg(if picked { theme::accent_alpha(0.12).into() } else { theme::ink_a(0.025) })
-            .child(pic)
-            .child(div().absolute().left(px(6.)).bottom(px(6.)).p(px(1.)).rounded(px(5.)).bg(theme::recess_a(0.7)).child(who))
-            .when(picked, |d| d.child(corner(div()).right(px(5.)).bg(accent).child(icon(Icon::Check, px(10.), theme::on_accent()))))
-            .when(off, |d| d.child(corner(div()).left(px(5.)).bg(theme::warning()).child(icon(Icon::Warning, px(9.), theme::on_accent()))))
+            .child(shown)
+            .child(div().h(px(CAPTION_H)).whitespace_nowrap().text_size(px(10.)).text_color(theme::text_dim()).child(resolution))
             .when(frozen, |d| d.opacity(0.4))
             .when(!frozen, |d| {
                 d.cursor_pointer()
@@ -239,7 +255,7 @@ impl MetadataDialog {
             );
         }
         let size_text = match (size, self.sizes.contains_key(&url)) {
-            (Some((w, h)), _) => Some(format!("{w}\u{d7}{h}")),
+            (Some((w, h)), _) => resolution_label(w, h),
             (None, false) => Some("\u{2026}".to_string()),
             (None, true) => None,
         };
@@ -347,7 +363,7 @@ fn scroll_arrows(field: &'static str, scroll: &ScrollHandle) -> Vec<Stateful<Div
         div()
             .id(SharedString::from(format!("md-tiles-{field}-{side}")))
             .absolute()
-            .top(px((TILE_H + 8. - ARROW) / 2.))
+            .top(px((TILE_H + 8. + 2. + CAPTION_H - ARROW) / 2.))
             .size(px(ARROW))
             .flex()
             .items_center()

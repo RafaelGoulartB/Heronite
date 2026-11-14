@@ -293,6 +293,17 @@ pub(super) static OPTS: &[Opt] = &[
     ),
     sel!("controls.hints", Controls, n_!("Hint bar"), "", &[], Hints, hints_name, theme.controls.hints),
     tgl!("controls.sounds", Controls, n_!("Navigation sounds"), "", &[], theme.controls.sounds),
+    sel!(
+        "controls.sound_style",
+        Controls,
+        n_!("Sound style"),
+        n_!("Soft is low and round. Classic is the first, higher one."),
+        &[],
+        SoundStyle,
+        sound_style_name,
+        theme.controls.sound_style
+    ),
+    num!("controls.sound_volume", Controls, n_!("Sound volume"), "", 10, 100, 10, "%", u8, theme.controls.sound_volume),
     sel!("game_page", GamePage, n_!("Game page"), "", &[], GamePage, game_page_name, theme.game_page),
     sel!("menu.style", GamePage, n_!("Menu"), "", &[], MenuStyle, menu_style_name, theme.menu.style),
     sel!("menu.side", GamePage, n_!("Side of the menu"), "", &[], Side, side_name, theme.menu.side),

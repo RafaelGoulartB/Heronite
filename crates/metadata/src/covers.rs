@@ -155,15 +155,30 @@ pub fn strict_steam_score(query: &str, name: &str) -> i32 {
     }
 }
 
-/// Keeps the best-scoring Steam app (>= 60); the first wins ties. `strict`
-/// scores with [`strict_steam_score`] instead.
+/// How a search scores the names it finds.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum Mode {
+    /// [`score_steam_name`].
+    #[default]
+    Loose,
+    /// [`strict_steam_score`]: the same name, or with edition words after it.
+    Strict,
+    /// Only the same name (a strict score of 100): an edition is another listing.
+    Exact,
+}
+
+/// Keeps the best-scoring Steam app (>= 60); the first wins ties.
 #[derive(Default)]
-struct BestApp(Option<(String, i32)>, bool);
+struct BestApp(Option<(String, i32)>, Mode);
 
 impl BestApp {
     fn consider(&mut self, id: Option<String>, name: &str, title: &str) {
         let Some(id) = id.filter(|i| !i.is_empty() && i != "0") else { return };
-        let score = if self.1 { strict_steam_score(title, name) } else { score_steam_name(title, name) };
+        let score = match self.1 {
+            Mode::Loose => score_steam_name(title, name),
+            Mode::Strict => strict_steam_score(title, name),
+            Mode::Exact => Some(strict_steam_score(title, name)).filter(|s| *s == 100).unwrap_or(0),
+        };
         if score < 60 {
             return;
         }
@@ -188,12 +203,50 @@ pub fn steam_app_id_exact(http: &Http, title: &str) -> Option<String> {
 }
 
 fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Option<String> {
-    let mut best = BestApp(None, strict);
+    search_app(http, title, if strict { Mode::Strict } else { Mode::Loose }).lookup.into_option()
+}
+
+/// What a search for a Steam app by title found, and how sure its "no".
+pub struct Searched {
+    pub lookup: Lookup<String>,
+    /// Every request answered with what it should: a `NotFound` is then
+    /// Steam's own "no such game", worth remembering. Not so after a request
+    /// that failed, was refused, or came back in another shape.
+    pub complete: bool,
+    /// Steam said to wait (429, 5xx): for how long it asked, if it did.
+    pub busy: Option<std::time::Duration>,
+}
+
+/// [`steam_app_id_exact`] for a search by name: only a game named exactly
+/// as `title` ([`Mode::Exact`]; an edition listed first does not stop the
+/// search), saying whether the "no" is Steam's own and whether it is busy.
+pub fn search_exact_app(http: &Http, title: &str) -> Searched {
+    search_app(http, title, Mode::Exact)
+}
+
+fn search_app(http: &Http, title: &str, mode: Mode) -> Searched {
+    let mut best = BestApp(None, mode);
+    let (mut answered, mut failed, mut busy, mut complete) = (false, None, None::<std::time::Duration>, true);
+    let mut note = |r: &Result<Value>, answered: &mut bool, array: bool| match r {
+        Ok(v) => {
+            *answered = true;
+            complete &= !array || v.is_array();
+        }
+        Err(e) => {
+            complete = false;
+            // A Steam that throttles or fails could not say, whatever it answered before.
+            if let Some(wait) = crate::http::busy_for(e) {
+                busy = Some(busy.map_or(wait, |b| b.max(wait)));
+            }
+            failed = Some(Lookup::<String>::from_error(e));
+        }
+    };
     for query in title_queries(title) {
         let community = http
             .get(format!("{}/actions/SearchApps/{}", http.endpoints.steam_community, encode_uri_component(&query)))
             .send_ok()
             .and_then(|r| r.json::<Value>());
+        note(&community, &mut answered, true);
         match community {
             Ok(Value::Array(hits)) => best_from_search_apps(&mut best, &hits, title),
             Ok(_) => {}
@@ -208,6 +261,7 @@ fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Option<String>
             .query(&[("term", query.as_str()), ("l", "english"), ("cc", "US")])
             .send_ok()
             .and_then(|r| r.json::<Value>());
+        note(&store, &mut answered, false);
         match store {
             Ok(v) => best_from_store_search(&mut best, &v, title),
             Err(e) => log::warn!("Steam store search failed for {query}: {e}"),
@@ -216,7 +270,38 @@ fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Option<String>
             break;
         }
     }
-    best.0.map(|(id, _)| id)
+    let lookup = match (best.0, answered, failed) {
+        (Some((id, _)), ..) => Lookup::Found(id),
+        (None, ..) if busy.is_some() => Lookup::Unreachable,
+        (None, false, Some(failure)) => failure,
+        _ => Lookup::NotFound,
+    };
+    Searched { lookup, complete, busy }
+}
+
+/// The Steam app a typed store or community page names
+/// (`https://store.steampowered.com/app/620/Portal_2/`,
+/// `steamcommunity.com/app/620`), or a SteamDB one.
+pub fn steam_id_in(query: &str) -> Option<String> {
+    let lower = query.trim().to_ascii_lowercase();
+    let from_host = ["store.steampowered.com", "steamcommunity.com", "steamdb.info"].iter().any(|h| lower.contains(h));
+    if !from_host {
+        return None;
+    }
+    let after = lower.split("/app/").nth(1)?;
+    let id: String = after.chars().take_while(char::is_ascii_digit).collect();
+    app_id_digits(&id).then_some(id)
+}
+
+/// The Steam app id a typed number is, when the query is one (a title such
+/// as "2048" is one too: it does not outrank the games of that name).
+pub fn steam_id_alone(query: &str) -> Option<String> {
+    let query = query.trim();
+    app_id_digits(query).then(|| query.to_owned())
+}
+
+fn app_id_digits(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 10 && s.bytes().all(|b| b.is_ascii_digit())
 }
 
 fn best_from_search_apps(best: &mut BestApp, hits: &[Value], title: &str) {
@@ -630,6 +715,23 @@ mod tests {
 
     fn fixture(name: &str) -> Value {
         serde_json::from_str(&std::fs::read_to_string(format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn a_typed_address_or_number_names_a_steam_app() {
+        for typed in [
+            "https://store.steampowered.com/app/620/Portal_2/",
+            "http://store.steampowered.com/app/620",
+            "store.steampowered.com/app/620/",
+            "https://steamcommunity.com/app/620/discussions/",
+            "https://steamdb.info/app/620/charts/",
+        ] {
+            assert_eq!(steam_id_in(typed).as_deref(), Some("620"), "{typed}");
+        }
+        for typed in ["", "Portal 2", "2048 Tiles", "https://example.com/app/620", "https://store.steampowered.com/sub/469", "12345678901"]
+        {
+            assert_eq!(steam_id_in(typed), None, "{typed}");
+        }
     }
 
     #[test]

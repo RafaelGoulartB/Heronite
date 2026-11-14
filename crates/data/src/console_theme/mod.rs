@@ -35,6 +35,8 @@ pub const MAX_TABS: usize = 4;
 /// Interface scale, percent.
 pub const SCALE_RANGE: (u16, u16) = (80, 140);
 pub const DIM_MAX: u8 = 90;
+/// Console sounds' volume, percent.
+pub const SOUND_VOLUME: (u8, u8) = (10, 100);
 pub const BLUR_MAX: u8 = 40;
 
 /// The named focus colours (`interface.accent`); anything else is `#rrggbb`.
@@ -196,6 +198,11 @@ str_enum! {
     /// back). `Auto`: east on a Nintendo controller (its A), south on the
     /// others (Xbox's A, PlayStation's cross).
     pub enum ConfirmButton { Auto = "auto", South = "south", East = "east" } default Auto
+}
+str_enum! {
+    /// What the navigation sounds are like: `soft` is low and round, `classic`
+    /// the first, higher one.
+    pub enum SoundStyle { Soft = "soft", Classic = "classic" } default Soft
 }
 str_enum! {
     pub enum Hints { Always = "always", Auto = "auto", Off = "off" } default Always
@@ -463,11 +470,14 @@ pub struct ColourOptions {
 pub struct ControlOptions {
     pub hints: Hints,
     pub sounds: bool,
+    pub sound_style: SoundStyle,
+    /// Percent, [`SOUND_VOLUME`].
+    pub sound_volume: u8,
 }
 
 impl Default for ControlOptions {
     fn default() -> Self {
-        Self { hints: Hints::Always, sounds: false }
+        Self { hints: Hints::Always, sounds: false, sound_style: SoundStyle::Soft, sound_volume: SOUND_VOLUME.1 }
     }
 }
 
@@ -682,6 +692,7 @@ impl ConsoleTheme {
         self.background.dim = self.background.dim.min(DIM_MAX);
         self.background.blur = self.background.blur.min(BLUR_MAX);
         self.interface.scale = self.interface.scale.clamp(SCALE_RANGE.0, SCALE_RANGE.1);
+        self.controls.sound_volume = self.controls.sound_volume.clamp(SOUND_VOLUME.0, SOUND_VOLUME.1);
         let accent = self.interface.accent.trim();
         if !ACCENT_NAMES.contains(&accent) && parse_hex(accent).is_none() {
             self.interface.accent = "white".into();

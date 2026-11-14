@@ -362,3 +362,26 @@ fn roms_of_one_title_show_their_files() {
     });
     assert_eq!(details(&[&a, &picked])[1].as_deref(), Some("disc2.cue"));
 }
+
+#[test]
+fn a_link_to_a_steam_page_does_not_make_copies_but_an_id_a_source_reports_does() {
+    // Copies need the same title and a shared id: the id of a link (by hand, or found by name)
+    // does not count, one a source reported does.
+    let linked = |runner: &str, link: Option<serde_json::Value>| {
+        game_with("1", runner, |info, _, md, meta, _| {
+            info.title = "Skyrim".into();
+            md.steam_app_id = Some("72850".into());
+            if let Some(entry) = link {
+                md.extra.insert("sourceMatches".into(), serde_json::json!({ "steam": entry }));
+            }
+            meta.source = String::new();
+            meta.launch_kind = String::new();
+        })
+    };
+    let pinned = linked("gog", Some(serde_json::json!({"id": "72850", "pinned": true})));
+    let by_name = linked("nile", Some(serde_json::json!({"id": "72850", "matchedBy": "exactTitle"})));
+    let a = linked("legendary", None);
+    let b = linked("sideload", None);
+    let g = groups(&[pinned, by_name, a, b], &CopiesFile::default());
+    assert_eq!(keys(&g), [["legendary_1", "sideload_1"]]);
+}

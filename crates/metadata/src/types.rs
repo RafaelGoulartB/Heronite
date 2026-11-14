@@ -37,6 +37,16 @@ impl<T> Lookup<T> {
         }
     }
 
+    /// [`map`](Self::map) with a function that may find nothing.
+    pub fn and_then<U>(self, f: impl FnOnce(T) -> Lookup<U>) -> Lookup<U> {
+        match self {
+            Self::Found(v) => f(v),
+            Self::NotFound => Lookup::NotFound,
+            Self::Unreachable => Lookup::Unreachable,
+            Self::Skipped => Lookup::Skipped,
+        }
+    }
+
     /// A provider failure: transport errors are `Unreachable`, the rest
     /// (bad status, bad JSON) count as an answer without data.
     pub fn from_error(err: &anyhow::Error) -> Self {
@@ -83,10 +93,15 @@ impl MatchedBy {
     }
 }
 
-/// The year of a release date (`2011-04-18`, `2011`); `None` when unknown.
+/// The year of a release date (`2011-04-18`, `2011`, or as Steam writes it,
+/// `18 Apr, 2011`); `None` when unknown.
 pub fn release_year(date: Option<&str>) -> Option<i32> {
-    let head: String = date?.chars().take(4).collect();
-    head.trim().parse::<i32>().ok().filter(|y| *y != 0)
+    let date = date?;
+    let head: String = date.chars().take(4).collect();
+    match head.trim().parse::<i32>() {
+        Ok(year) => Some(year).filter(|y| *y != 0),
+        Err(_) => crate::steam::year_of_date(date),
+    }
 }
 
 /// `CollectionMetadataCandidate`.
@@ -222,6 +237,9 @@ pub enum NotAsked {
     /// Asked only as a fallback, and nothing called for it: the other
     /// sources found the game ([`crate::sources::Asked::AsFallback`]).
     Fallback,
+    /// A source the game can be linked to by hand ([`crate::sources::SourceDescriptor::link_for`])
+    /// and is not: nothing is asked until the user picks its game.
+    NotLinked,
     /// It could not be loaded, or failed too many times in a row
     /// ([`crate::sources::SourceHealth`]).
     Failing,

@@ -12,10 +12,12 @@ use heronite_data::cover_family::CoverFamily;
 use heronite_data::source_prefs::ids;
 use heronite_i18n::{tr, trn};
 use heronite_images::ImageRef;
+use heronite_metadata::picture_size::resolution_label;
 use heronite_metadata::WebImage;
 
 use super::slots::{Look, Slot};
 use super::{Busy, CoversDialog};
+use crate::dialogs::art_images::first_address;
 use crate::icons::Icon;
 use crate::pages::settings::metadata_labels as labels;
 use crate::theme;
@@ -60,7 +62,7 @@ impl CoversDialog {
     }
 
     /// The sources that found pictures, in the grid's order, and how many each.
-    fn source_counts(&self) -> Vec<(&'static str, usize)> {
+    pub(super) fn source_counts(&self) -> Vec<(&'static str, usize)> {
         let r = &self.results;
         [(LAUNCHBOX, r.launchbox.len()), (ids::STEAMGRIDDB, r.steamgrid.len()), (ids::WEB_IMAGES, r.web.len())]
             .into_iter()
@@ -68,19 +70,19 @@ impl CoversDialog {
             .collect()
     }
 
-    fn sources_found(&self) -> usize {
+    pub(super) fn sources_found(&self) -> usize {
         self.source_counts().len()
     }
 
     /// The source listed alone, while it found pictures (a new search may
     /// find none there: then every source is).
-    fn source_shown(&self) -> Option<&'static str> {
+    pub(super) fn source_shown(&self) -> Option<&'static str> {
         self.source.filter(|id| self.source_counts().iter().any(|(s, _)| s == id))
     }
 
     /// Lists the pictures of `source` alone (`None`: of every source). A
     /// picture picked of another source is no longer picked.
-    fn show_source(&mut self, source: Option<&'static str>, cx: &mut Context<Self>) {
+    pub(super) fn show_source(&mut self, source: Option<&'static str>, cx: &mut Context<Self>) {
         self.source = source;
         self.visible = PAGE;
         if let (Some(id), Some(i)) = (source, self.selected) {
@@ -141,19 +143,22 @@ impl CoversDialog {
         Some(row)
     }
 
-    /// The source's mark and a few words under a picture.
-    fn tile_label(&self, source: Option<&str>, text: String) -> Div {
+    /// The source's mark and a few words under a picture, then its
+    /// resolution, dimmed (a line is kept for it while unknown, so the
+    /// tiles stay the same height).
+    fn tile_label(&self, source: Option<&str>, text: String, resolution: Option<String>) -> Div {
         let mark = source.map(|id| {
             let name = crate::dialogs::metadata_update::words::source_name(&self.service, id);
             labels::mark(id, &name, 16.)
         });
+        let line = |color: Hsla, size: f32, text: String| div().min_w_0().truncate().text_size(px(size)).text_color(color).child(text);
         div()
             .flex()
-            .items_center()
-            .gap(px(6.))
+            .flex_col()
+            .gap(px(1.))
             .min_w_0()
-            .children(mark)
-            .child(div().min_w_0().truncate().text_size(px(11.5)).text_color(theme::text_dim()).child(text))
+            .child(div().flex().items_center().gap(px(6.)).min_w_0().children(mark).child(line(theme::text_muted().into(), 11.5, text)))
+            .child(div().h(px(14.)).child(line(theme::text_dim().into(), 11., resolution.unwrap_or_default())))
     }
 
     fn tile_frame(id: SharedString, selected: bool) -> Stateful<Div> {
@@ -181,22 +186,29 @@ impl CoversDialog {
             _ => from.map(|f| tr!("{from} \u{b7} now", from = f)).unwrap_or_else(|| tr!("Now").to_string()),
         };
         let pic = self.picture_box("now", &chain, w, h, cx);
-        Some(Self::tile_frame("cv-now".into(), false).w(px(w + 12.)).child(pic).child(self.tile_label(None, text)))
+        let address = first_address(&chain);
+        if self.fake.is_none() {
+            self.sizes.update(cx, |s, cx| s.ask(address.clone(), cx));
+        }
+        let resolution = address.and_then(|url| self.sizes.read(cx).caption_of(&url));
+        Some(Self::tile_frame("cv-now".into(), false).w(px(w + 12.)).child(pic).child(self.tile_label(None, text, resolution)))
     }
 
     fn found_tile(&mut self, i: usize, (source, region, image): Tile, w: f32, h: f32, cx: &mut Context<Self>) -> Stateful<Div> {
         let selected = self.selected == Some(i);
         let pic = self.picture_box("found", &[ImageRef::Url(image.thumb_url.clone())], w, h, cx);
-        let size = (image.width > 0 && image.height > 0).then(|| format!("{}\u{d7}{}", image.width, image.height));
+        let resolution = self.sizes.read(cx).caption(&image);
         // LaunchBox's region names are English; the ones Settings offers are translated.
-        let region = (!region.is_empty()).then(|| heronite_i18n::tr(&region).to_owned());
-        let size = region.into_iter().chain(size).collect::<Vec<_>>().join(" \u{b7} ");
+        let name = match region.is_empty() {
+            true => crate::dialogs::metadata_update::words::source_name(&self.service, source),
+            false => heronite_i18n::tr(&region).to_owned(),
+        };
         Self::tile_frame(SharedString::from(format!("cv-found-{i}")), selected)
             .w(px(w + 12.))
             .cursor_pointer()
             .when(!selected, |d| d.hover(|s| s.border_color(theme::ink_a(0.3))))
             .child(pic)
-            .child(self.tile_label(Some(source), size))
+            .child(self.tile_label(Some(source), name, resolution))
             .on_click(cx.listener(move |this, ev: &ClickEvent, _, cx| {
                 if this.busy.is_some() {
                     return;
@@ -312,6 +324,12 @@ impl CoversDialog {
             .map(|(i, f)| (i, (f.source, f.region.to_owned(), f.image.clone())))
             .collect();
         let total = found.len();
+        // What a source gave no size of is read from the picture itself.
+        if !self.loading && self.fake.is_none() {
+            let unsized_ = found.iter().take(self.visible).filter(|(_, (_, _, im))| resolution_label(im.width, im.height).is_none());
+            let urls: Vec<String> = unsized_.map(|(_, (_, _, im))| im.image_url.clone()).collect();
+            self.sizes.update(cx, |s, cx| s.ask(urls, cx));
+        }
         if !self.loading {
             for (i, tile) in found.into_iter().take(self.visible) {
                 tiles = tiles.child(self.found_tile(i, tile, w, h, cx));

@@ -24,6 +24,7 @@ use indexmap::IndexMap;
 
 use super::fetch::{asks_details, is_picture_source};
 use super::MetadataService;
+use crate::confidence::YEAR_SLACK;
 use crate::record;
 use crate::sources::{is_on, GameKind, MetadataSource, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind, SourceRegistry};
 use crate::store::{as_runner, get_game_metadata};
@@ -138,6 +139,15 @@ impl MetadataService {
         game
     }
 
+    /// Whether the game has a Steam id of its own: its library entry's, or the arguments' that
+    /// are not the one of a Steam copy it joined (a link made by hand to a game the user also
+    /// owns on Steam must stay unlinkable).
+    pub(super) fn has_own_steam_id(&self, sources: &SourceRegistry, args: &MetadataApplyArgs) -> bool {
+        let mut bare = args.clone();
+        bare.steam_app_id = None;
+        self.source_game(sources, &bare, None).steam_app_id.is_some()
+    }
+
     /// `gatherCandidates`: asks every provider that is on and applies to the
     /// game at once (IGDB calls queue among themselves) and keeps those that
     /// answered, in provider order.
@@ -204,6 +214,24 @@ impl MetadataService {
             .filter(|(source, _)| sources.get(source).is_some_and(SourceDescriptor::is_fallback) && !unpinned(source))
             .map(|(source, m)| (source, m.id))
             .collect();
+        let record_year = current.as_ref().and_then(|md| release_year(md.release_date.as_deref()));
+        // The game of a source a search by name found (not pinned), kept in the record.
+        let remembered: IndexMap<String, String> = current
+            .as_ref()
+            .map(record::source_matches)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(source, m)| {
+                !m.pinned
+                    && m.matched_by == Some(MatchedBy::ExactTitle)
+                    && sources.get(source).is_some_and(|d| d.link_for.is_some())
+                    && !unpinned(source)
+                    // Not after a rename, or once a year says it is another game.
+                    && crate::steam_name::match_is_current(m, &game.title, record_year)
+            })
+            .map(|(source, m)| (source, m.id))
+            .collect();
+        let own_steam = std::cell::OnceCell::new();
         let mut steam_tags: Option<Vec<String>> = None;
         let plans: Vec<Plan<'_>> = sources
             .lookups()
@@ -221,12 +249,23 @@ impl MetadataService {
                 if !Self::wanted(d, game, game_view) {
                     return Plan::Not(NotAsked::NotChosen);
                 }
-                if pin.is_none() && !sources.applies(&self.paths, settings, d, game_view) {
-                    return Plan::Not(NotAsked::NotForThisGame);
+                let linkable = d.searchable && d.link_for.as_ref().is_some_and(|a| a.matches(game_view));
+                // Unlinked by hand (or being unlinked now): the game is not on this source, so a
+                // search by name does not find it again. A Steam copy the game joined is not
+                // its own Steam id: only the library entry's is.
+                let not_on = linkable
+                    && (unpinned(&d.id) || current.as_ref().is_some_and(|md| record::is_not_on(md, &d.id)))
+                    && !*own_steam.get_or_init(|| self.has_own_steam_id(sources, game));
+                if pin.is_none() && (not_on || !sources.applies(&self.paths, settings, d, game_view)) {
+                    return Plan::Not(if linkable { NotAsked::NotLinked } else { NotAsked::NotForThisGame });
                 }
                 // Never asked, not even for a pinned game, before the user downloads its database.
                 if !sources.downloaded(&self.paths, &d.id) {
                     return Plan::Not(NotAsked::NeedsDownload);
+                }
+                // Found by its name before: asked for that game again, not searched again.
+                if let Some(id) = remembered.get(&d.id).filter(|_| pin.is_none() && linkable && game_view.steam_app_id.is_none()) {
+                    return Plan::Ask(Some(id));
                 }
                 if !d.is_fallback() || pin.is_some() {
                     return Plan::Ask(pin);
@@ -296,6 +335,26 @@ impl MetadataService {
                 (source.descriptor(), why, answer.unwrap_or(Lookup::Skipped))
             })
             .collect();
+        // A game found by name whose year is not the year of another sure candidate's is
+        // another game of the same title (Doom, 1993 and 2016): it is left out.
+        let year_of = |c: &MetadataCandidate| c.match_year.or_else(|| release_year(c.metadata.release_date.as_deref()));
+        let others: Vec<i32> = lookups_done
+            .iter()
+            .filter(|(d, _, _)| d.kind == SourceKind::Details && d.link_for.is_none())
+            .filter_map(|(_, _, l)| match l {
+                Lookup::Found(c) if c.matched_by.is_none_or(MatchedBy::is_sure) => year_of(c),
+                _ => None,
+            })
+            .collect();
+        for (d, _, lookup) in &mut lookups_done {
+            if d.link_for.is_none() || pins.contains_key(&d.id) {
+                continue;
+            }
+            let Lookup::Found(c) = lookup else { continue };
+            if c.matched_by != Some(MatchedBy::SteamId) && year_of(c).is_some_and(|y| others.iter().any(|o| (o - y).abs() > YEAR_SLACK)) {
+                *lookup = Lookup::NotFound;
+            }
+        }
         if !settings.allow_adult_covers {
             for (_, _, lookup) in &mut lookups_done {
                 if let Lookup::Found(c) = lookup {

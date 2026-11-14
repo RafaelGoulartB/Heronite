@@ -5,20 +5,18 @@
 //! the tray too.
 
 mod idle;
-mod sound;
 
 use std::time::{Duration, Instant};
 
 use gpui_kit::*;
 
 use super::super::CollectionView;
-use crate::console::{look, startup, themes, Pad};
+use crate::console::{look, sound, startup, themes, Pad};
 
 /// How often the idle screen checks for quiet.
 const CHECK_EVERY: Duration = Duration::from_secs(20);
 
 pub(super) struct ControlsState {
-    sounds: Option<sound::Player>,
     /// The last press, for the idle screen.
     last_press: Instant,
     /// Quiet time before the idle screen ([`idle::IDLE_AFTER`]).
@@ -29,7 +27,7 @@ pub(super) struct ControlsState {
 
 impl Default for ControlsState {
     fn default() -> Self {
-        Self { sounds: None, last_press: Instant::now(), idle_after: idle::IDLE_AFTER, idle: None, idle_task: None }
+        Self { last_press: Instant::now(), idle_after: idle::IDLE_AFTER, idle: None, idle_task: None }
     }
 }
 
@@ -77,10 +75,11 @@ impl CollectionView {
             cx.notify();
             return true;
         }
-        if !look::theme().controls.sounds {
-            st.sounds = None;
-        } else if let Some(sound) = sound::for_pad(pad) {
-            st.sounds.get_or_insert_with(|| sound::Player::new(self.app_paths.cache.join("console-sounds"))).play(sound);
+        let theme = look::theme();
+        if theme.controls.sounds {
+            if let Some(sound) = sound::for_pad(pad) {
+                sound::play(&self.app_paths.cache, sound, sound::Settings::of(&theme.controls));
+            }
         }
         false
     }

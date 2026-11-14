@@ -7,15 +7,25 @@
 //! Steam pill ([`SteamLibrary::notice`]). The Collection reloads on
 //! [`SteamLibraryEvent::Imported`].
 //!
+//! Reading can be turned off (Stores → Steam, `read_steam_library` in
+//! `settings.json`): the service then never looks at Steam, not even to check
+//! whether it can be read ([`SteamState::Off`]). The Steam games it added
+//! before stay until [`SteamLibrary::remove_games`] takes them out.
+//!
 //! A Steam sign-in an earlier version saved (with a QR code, as the Steam
 //! mobile app) is ended on Steam and deleted at start
 //! ([`retire_steam_sign_in`]): Steam's security took those sign-ins for a
 //! phishing attack and locked accounts over them.
 
+mod remove;
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use gpui_kit::*;
-use heronite_data::steam_owned::{SteamOwnedFile, SteamSource};
+use heronite_data::models::LocalMetaFile;
+use heronite_data::steam_owned::{self, SteamOwnedFile, SteamSource};
 use heronite_data::{AppPaths, DataPaths};
 use heronite_launch::settings::GlobalSettings;
 use heronite_launch::steam::{find_steam_binary, SteamLocator};
@@ -23,6 +33,8 @@ use heronite_launch::SystemProbe;
 use heronite_steam::account::http::Net;
 use heronite_steam::library::ImportReport;
 use heronite_steam::{ClientApiFlag, LibraryAccess, LibraryCheck, PortOwner, Steam};
+
+pub use self::remove::Removal;
 
 const FIRST_DELAY: Duration = Duration::from_secs(6);
 /// Until the library was read once: cheap local checks (a pid file, the
@@ -70,6 +82,14 @@ fn sync_blocking(paths: &DataPaths) -> Result<ImportReport, String> {
     heronite_steam::library::import(paths, read, find_steam_binary(&SystemProbe).as_deref()).map_err(|e| format!("{e:#}"))
 }
 
+/// Saves whether Steam is read: always the latest value asked for, and one
+/// save at a time, so quick toggles cannot land out of order. Blocking.
+fn save_wanted(paths: &DataPaths, wanted: &AtomicBool) -> anyhow::Result<()> {
+    static SAVING: Mutex<()> = Mutex::new(());
+    let _one_at_a_time = SAVING.lock().unwrap_or_else(|e| e.into_inner());
+    heronite_data::settings::save_read_steam_library(paths, wanted.load(Ordering::SeqCst))
+}
+
 /// Ends on Steam and deletes a sign-in an earlier version saved, if there
 /// is one. Quiet: only the log says how it went. Blocking.
 fn retire_steam_sign_in(paths: &DataPaths) {
@@ -106,11 +126,15 @@ pub enum SteamNotice {
 
 pub enum SteamLibraryEvent {
     Imported(ImportReport),
+    /// [`SteamLibrary::remove_games`] took games out of the Collection.
+    Removed,
 }
 
 /// Where getting the library stands, for the welcome.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SteamState {
+    /// Reading Steam is turned off.
+    Off,
     Checking,
     NotInstalled,
     Closed,
@@ -169,6 +193,18 @@ pub struct SteamLibrary {
     pub taken: Option<PortOwner>,
     /// A read was asked for while another ran: it runs next.
     pending: bool,
+    /// Reading Steam is on (`read_steam_library`).
+    enabled: bool,
+    /// What the switch last asked for: what [`save_wanted`] writes.
+    wanted: Arc<AtomicBool>,
+    /// Removing the games waits for the read that is running.
+    remove_after_read: bool,
+    /// How many Steam games Heronite added are in the Collection
+    /// ([`steam_owned::added_entries`]), as of the last look.
+    pub removable: usize,
+    pub removing: bool,
+    /// How the last removal ended: how many games left, or what went wrong.
+    pub removal: Option<Result<Removal, String>>,
 }
 
 impl EventEmitter<SteamLibraryEvent> for SteamLibrary {}
@@ -176,6 +212,9 @@ impl EventEmitter<SteamLibraryEvent> for SteamLibrary {}
 impl SteamLibrary {
     pub fn new(paths: DataPaths, cx: &mut Context<Self>) -> Self {
         let mut this = Self {
+            enabled: heronite_data::settings::read_steam_library(&paths),
+            wanted: Arc::new(AtomicBool::new(heronite_data::settings::read_steam_library(&paths))),
+            remove_after_read: false,
             paths,
             syncing: false,
             last: None,
@@ -192,6 +231,9 @@ impl SteamLibrary {
             logged: None,
             taken: None,
             pending: false,
+            removable: 0,
+            removing: false,
+            removal: None,
         };
         this.load_summary(cx);
         let retire = this.paths.clone();
@@ -238,7 +280,14 @@ impl SteamLibrary {
             )
     }
 
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
     pub fn state(&self) -> SteamState {
+        if !self.enabled {
+            return SteamState::Off;
+        }
         if self.restarting {
             return SteamState::Restarting;
         }
@@ -279,6 +328,9 @@ impl SteamLibrary {
     /// after "Ignore". `HERONITE_DEBUG_STEAM_NOTICE=restart|restarting`
     /// shows one (for screenshots).
     pub fn notice(&self) -> Option<SteamNotice> {
+        if !self.enabled {
+            return None;
+        }
         if let Some(debug) = crate::env::value("HERONITE_DEBUG_STEAM_NOTICE") {
             return Some(if debug == "restarting" { SteamNotice::Restarting } else { SteamNotice::Restart });
         }
@@ -308,6 +360,9 @@ impl SteamLibrary {
 
     /// Starts Steam (with the access on); the checks read it once it answers.
     pub fn open(&mut self, cx: &mut Context<Self>) {
+        if !self.enabled {
+            return;
+        }
         self.opened_at = Some(Instant::now());
         self.error = None;
         let paths = self.paths.clone();
@@ -328,7 +383,7 @@ impl SteamLibrary {
 
     /// Closes Steam and starts it again with the access on.
     pub fn restart(&mut self, cx: &mut Context<Self>) {
-        if self.restarting {
+        if self.restarting || !self.enabled {
             return;
         }
         self.restarting = true;
@@ -355,23 +410,31 @@ impl SteamLibrary {
         cx.notify();
     }
 
+    /// Looks at the cache and at the Collection again (the Steam page was shown).
+    pub fn reload(&mut self, cx: &mut Context<Self>) {
+        self.load_summary(cx);
+    }
+
     fn load_summary(&mut self, cx: &mut Context<Self>) {
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
-            let (summary, ignored) = cx
+            let (summary, ignored, removable) = cx
                 .background_spawn(async move {
                     let f = SteamOwnedFile::read(&paths);
+                    let removable = heronite_data::json_store::read::<LocalMetaFile>(&paths.local_meta())
+                        .map_or(0, |metas| steam_owned::added_entries(&metas).len());
                     let summary = Summary {
                         games: f.games.len(),
                         installed: f.games.iter().filter(|g| g.installed).count(),
                         updated_at: f.updated_at,
                         source: f.source.unwrap_or_default(),
                     };
-                    (summary, heronite_data::ui_state::note_dismissed(&AppPaths::for_data(&paths), NOTICE_NOTE))
+                    (summary, heronite_data::ui_state::note_dismissed(&AppPaths::for_data(&paths), NOTICE_NOTE), removable)
                 })
                 .await;
             this.update(cx, |this, cx| {
                 this.summary = summary;
+                this.removable = removable;
                 this.summary_loaded = true;
                 this.notice_ignored |= ignored;
                 cx.notify();
@@ -417,6 +480,9 @@ impl SteamLibrary {
 
     /// Checks whether the client can be read now (for the Steam page).
     pub fn check(&mut self, cx: &mut Context<Self>) {
+        if !self.enabled {
+            return;
+        }
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
             let (check, flag) = cx.background_spawn(async move { library_check(&paths) }).await;
@@ -431,7 +497,7 @@ impl SteamLibrary {
 
     /// A quiet read (the timer, the refresh button): when the client answers.
     pub fn sync_if_ready(&mut self, cx: &mut Context<Self>) {
-        if self.syncing {
+        if self.syncing || !self.enabled {
             return;
         }
         let paths = self.paths.clone();
@@ -450,6 +516,36 @@ impl SteamLibrary {
         .detach();
     }
 
+    /// Turns reading Steam on or off. Off: nothing Steam adds comes in, and
+    /// Steam is not looked at (not even to see whether it can be read). The
+    /// games it added stay ([`Self::remove_games`] takes them out). On: Steam
+    /// is checked and read at once. Ignored while the games are removed.
+    pub fn set_enabled(&mut self, on: bool, cx: &mut Context<Self>) {
+        if on == self.enabled || self.removing {
+            return;
+        }
+        self.enabled = on;
+        self.wanted.store(on, Ordering::SeqCst);
+        self.error = None;
+        let (paths, wanted) = (self.paths.clone(), self.wanted.clone());
+        cx.spawn(async move |this, cx| {
+            let saved = cx.background_spawn(async move { save_wanted(&paths, &wanted) }).await;
+            this.update(cx, |this, cx| {
+                if let Err(e) = saved {
+                    log::warn!("Saving whether Steam is read: {e:#}");
+                    this.error = Some(format!("{e:#}"));
+                }
+                if this.enabled {
+                    this.sync_if_ready(cx);
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
     /// Reads the library now. `asked`: the user asked (the result is kept
     /// for the Steam page); otherwise failures are only logged.
     pub fn sync(&mut self, cx: &mut Context<Self>) {
@@ -457,12 +553,16 @@ impl SteamLibrary {
     }
 
     fn run(&mut self, asked: bool, cx: &mut Context<Self>) {
+        if !self.enabled || self.removing {
+            return;
+        }
         if self.syncing {
             // The user asked while a quiet read ran: next.
             self.pending |= asked;
             return;
         }
         self.syncing = true;
+        self.removal = None;
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
             let res = cx.background_spawn(async move { sync_blocking(&paths) }).await;
@@ -486,6 +586,9 @@ impl SteamLibrary {
                 if std::mem::take(&mut this.pending) {
                     this.run(true, cx);
                 }
+                if std::mem::take(&mut this.remove_after_read) {
+                    this.start_removal(cx);
+                }
                 cx.notify();
             })
             .ok();
@@ -497,6 +600,8 @@ impl SteamLibrary {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
     use std::time::Instant;
 
     use heronite_data::DataPaths;
@@ -522,7 +627,24 @@ mod tests {
             logged: None,
             taken: None,
             pending: false,
+            enabled: true,
+            wanted: Arc::new(AtomicBool::new(true)),
+            remove_after_read: false,
+            removable: 0,
+            removing: false,
+            removal: None,
         }
+    }
+
+    #[test]
+    fn with_reading_off_steam_is_not_looked_at_and_no_pill_shows() {
+        let mut s = library();
+        s.set_access(LibraryAccess::NeedsRestart, None);
+        s.enabled = false;
+        assert_eq!(s.state(), SteamState::Off);
+        assert_eq!(s.notice(), None);
+        s.enabled = true;
+        assert_eq!(s.state(), SteamState::NeedsRestart);
     }
 
     #[test]
@@ -638,5 +760,27 @@ mod tests {
         assert!(s.awaiting());
         s.set_access(LibraryAccess::Ready, None);
         assert!(!s.awaiting());
+    }
+
+    #[test]
+    fn a_late_save_writes_the_latest_value_not_its_own() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let wanted = AtomicBool::new(true);
+        // Turned on, then off at once: the save of the second toggle finishes
+        // first and the save of the first one comes last.
+        wanted.store(false, std::sync::atomic::Ordering::SeqCst);
+        super::save_wanted(&paths, &wanted).unwrap();
+        assert!(!heronite_data::settings::read_steam_library(&paths));
+        super::save_wanted(&paths, &wanted).unwrap();
+        assert!(!heronite_data::settings::read_steam_library(&paths), "the late save must not bring back the older value");
+        // Saves from several threads at once end with the value asked for last.
+        wanted.store(true, std::sync::atomic::Ordering::SeqCst);
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| super::save_wanted(&paths, &wanted).unwrap());
+            }
+        });
+        assert!(heronite_data::settings::read_steam_library(&paths));
     }
 }

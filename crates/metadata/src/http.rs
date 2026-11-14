@@ -88,6 +88,37 @@ impl std::fmt::Display for Unreachable {
 
 impl std::error::Error for Unreachable {}
 
+/// A server's refusal (a status that is not a success): the message is
+/// `HTTP <status>: <start of the body>`.
+#[derive(Debug)]
+pub struct Refused {
+    pub status: u16,
+    /// `Retry-After`, in seconds, when the server sent one.
+    pub retry_after: Option<u64>,
+    text: String,
+}
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "HTTP {}: {}", self.status, self.text)
+    }
+}
+
+impl std::error::Error for Refused {}
+
+/// Whether `err` is a server that could not answer now: it is throttling
+/// (429) or failing (5xx). Not "no such thing".
+pub fn is_busy(err: &anyhow::Error) -> bool {
+    busy_for(err).is_some()
+}
+
+/// How long a server that is busy ([`is_busy`]) should be left alone: what
+/// it asked (up to an hour), else five minutes.
+pub fn busy_for(err: &anyhow::Error) -> Option<Duration> {
+    let r = err.downcast_ref::<Refused>().filter(|r| r.status == 429 || r.status >= 500)?;
+    Some(Duration::from_secs(r.retry_after.unwrap_or(300).clamp(30, 3600)))
+}
+
 /// A body over the request's [`Request::max_bytes`]. Counts as
 /// [`Unreachable`] for [`is_unreachable`], as it always did; the extension
 /// runtime tells it apart.
@@ -137,7 +168,7 @@ impl Response {
     pub fn error(&self) -> anyhow::Error {
         let body = self.text();
         let body: String = body.chars().take(300).collect();
-        anyhow!("HTTP {}: {}", self.status, body)
+        anyhow::Error::new(Refused { status: self.status, retry_after: self.retry_after, text: body })
     }
 }
 
