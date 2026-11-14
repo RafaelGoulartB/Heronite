@@ -396,8 +396,7 @@ pub(super) fn studio_width(window: &Window) -> f32 {
 }
 
 fn room(window: &Window) -> f32 {
-    // The sheet's inset (12 + 12), the section list (230) and the body's padding (36 + 36).
-    f32::from(crate::ui::content_size(window).width) - 24. - 230. - 72.
+    super::room(window)
 }
 
 /// The options of `card`, without the lists the editors draw.

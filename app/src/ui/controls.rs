@@ -123,20 +123,27 @@ pub fn icon_badge(ic: Icon) -> Div {
     ))
 }
 
+/// Least width of a [`row`]'s label before its control goes under it.
+pub const ROW_LABEL_MIN_W: f32 = 200.;
+
 fn row_with(label: SharedString, description: Option<&str>, after_label: Option<AnyElement>, control: impl IntoElement) -> Div {
     div()
         .relative()
         .children(super::find::flash(&label, 8.))
         .flex()
+        // A control too wide for the label beside it goes under it (narrow window).
+        .flex_wrap()
         .items_center()
         .justify_between()
-        .gap(px(16.))
+        .gap_x(px(16.))
+        .gap_y(px(8.))
         .py(px(11.))
         .child(
             div()
                 .flex()
                 .flex_col()
-                .flex_1()
+                .flex_grow(1.)
+                .flex_basis(px(ROW_LABEL_MIN_W))
                 .min_w_0()
                 .gap(px(1.))
                 .child(
@@ -153,7 +160,7 @@ fn row_with(label: SharedString, description: Option<&str>, after_label: Option<
                     div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(SharedString::from(d.to_string()))
                 })),
         )
-        .child(div().flex_none().child(control))
+        .child(div().flex_none().max_w_full().child(control))
 }
 
 /// The styled container of a [`card`] without rows (fill, border, radius 16,

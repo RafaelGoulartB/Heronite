@@ -31,6 +31,8 @@ use crate::ui::icon;
 
 /// Width of the column beside the options: the status and the cost.
 const SIDE_W: f32 = 250.;
+/// Least width of the settings beside the side column.
+const MAIN_MIN_W: f32 = 520.;
 
 /// The section's width: the options and the column beside them.
 pub const MAX_W: f32 = 1080.;
@@ -766,14 +768,17 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         tr!("Choose a screenshots folder in Settings → Screenshots").into()
     };
     let status = status.child(status_item(has_folder, tr!("Saved in"), saved_in, None)).child(status_item(now_ok, tr!("Now"), now, None));
+    // A narrow window puts the side column under the settings.
+    let beside = super::room(window) >= MAIN_MIN_W + SIDE_W + 18.;
     let side = div()
         .flex()
         .flex_col()
-        .flex_none()
-        .w(px(SIDE_W))
         .gap(px(12.))
-        // Level with the first card, under its caption.
-        .mt(px(CAPTION_H + 20.))
+        .when(beside, |d| {
+            // Level with the first card, under its caption.
+            d.flex_none().w(px(SIDE_W)).mt(px(CAPTION_H + 20.))
+        })
+        .when(!beside, |d| d.w_full().mt(px(18.)))
         .child(side_card(tr!("Status"), status))
         .child(div().when(!p.any_enabled(), |d| d.opacity(0.5)).child(cost_card(o, &d.replay)));
 
@@ -790,6 +795,9 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .child(dim(on, picture_sound))
         .child(dim(on, advanced))
         .child(div().mt(px(14.)).px(px(6.)).child(meta_text(per_game)));
+    if !beside {
+        return div().flex().flex_col().child(column).child(side).into_any_element();
+    }
     div().flex().items_start().gap(px(18.)).child(column.flex_1().min_w_0()).child(side).into_any_element()
 }
 

@@ -393,7 +393,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .flex()
         .flex_col()
         .child(summary::card(d))
-        .children(sources::cards(d, cx))
+        .children(sources::cards(d, super::room(window) < sources::NARROW_BELOW, cx))
         .child(more::row(cx))
         .children(shapes::card(d, cx))
         .child(arrive::card(d, cx))
