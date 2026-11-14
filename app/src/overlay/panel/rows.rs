@@ -94,7 +94,7 @@ impl OverlayPanel {
                 rows.push(Row::action(CAPTURES, tr!("Capture")).icon(Icon::PhotoCamera).desc(desc));
             }
         }
-        // Only when the game's limiter can change while it runs.
+        // When its limiter or MangoHud's HUD can change while it runs.
         if let Some(now) = &game.fps {
             let steps = fps_steps(now.limit);
             let options = steps.iter().map(|n| if *n == 0 { tr!("Off").into() } else { SharedString::from(format!("{n} FPS")) }).collect();
@@ -113,7 +113,10 @@ impl OverlayPanel {
                 };
                 rows.push(Row::toggle(MANGOHUD, tr!("Show MangoHud"), hud).icon(ic).desc(line));
             }
-            rows.push(Row::choice(FPS, tr!("FPS limit"), options, index).icon(Icon::Tune).desc(desc).compact());
+            // DXVK / VKD3D-Proton hold it: only MangoHud's HUD changes.
+            if now.live.changes_limit() {
+                rows.push(Row::choice(FPS, tr!("FPS limit"), options, index).icon(Icon::Tune).desc(desc).compact());
+            }
         }
         if let Some(id) = &self.data.status_id {
             let options: Vec<SharedString> = self.data.statuses.iter().map(|s| status::status_label(&s.name).to_string().into()).collect();
