@@ -532,7 +532,7 @@ impl SettingsPage {
         };
         let layer = |ix: usize, radius: f32| nav_keys::item_layer(&self.nav_bounds, ix, cursor == Some(ix), px(radius));
         let pill = |s: Section, ix: usize, cx: &mut Context<Self>| {
-            nav_pill(SharedString::from(format!("settings-nav-{s:?}")), s.icon(), s.label(), self.section == s)
+            nav_pill(SharedString::from(format!("settings-nav-{s:?}")), nav_icon(s), s.label(), self.section == s)
                 .relative()
                 .child(layer(ix, 999.))
                 .on_click(cx.listener(move |this, _, window, cx| this.nav_clicked(ix, search::Pick::Section(s), window, cx)))
@@ -864,5 +864,14 @@ impl Render for SettingsPage {
             .child(content)
             .child(close);
         div().size_full().p(px(12.)).pt(px(2.)).child(sheet).into_any_element()
+    }
+}
+
+/// A section's icon in the left list: [`Section::icon`] (which console mode
+/// draws too), except Mods, a puzzle piece here.
+fn nav_icon(section: Section) -> Icon {
+    match section {
+        Section::Mods => Icon::Extension,
+        s => s.icon(),
     }
 }
