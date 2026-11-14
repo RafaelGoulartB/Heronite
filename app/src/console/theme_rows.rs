@@ -29,8 +29,8 @@ use heronite_data::categories::{Categories, UNCATEGORIZED};
 use heronite_data::console_theme::{
     parse_hex, presets, slug, AButton, AutoConsole, BackgroundMotion, BackgroundSource, Badges, Clock, ConfirmButton, ConsoleButton,
     ConsoleFont, ConsolePrefs, ConsoleTheme, Corners, FactStyle, FocusStyle, GamePage, Glyphs, GridPanel, Headings, HeroAlign, HeroTitle,
-    Hints, Idle, Layout, MenuStyle, Motion, OpenIn, ShelfSpec, Side, Size3, SoundStyle, SpotActions, StartOn, TabBar, TabSpec, TileShape, TileSize,
-    TileTitles, WheelItems, MAX_TABS, MENU_LOCKED,
+    Hints, Idle, Layout, MenuStyle, Motion, OpenIn, ShelfSpec, Side, Size3, SoundStyle, SpotActions, StartOn, TabBar, TabSpec, TileShape,
+    TileSize, TileTitles, WheelItems, MAX_TABS, MENU_LOCKED,
 };
 use heronite_data::smart_groups::SmartGroups;
 use heronite_data::{CollectionGame, Library};
