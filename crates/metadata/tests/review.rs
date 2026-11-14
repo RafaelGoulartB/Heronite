@@ -520,8 +520,8 @@ fn the_preview_says_what_each_source_did() {
     );
     assert_eq!(
         *states[1].1,
-        SourceAnswer::NotFound,
-        "a PC game with no Steam id: asked by its name, and no Steam game has that exact title"
+        SourceAnswer::NotAsked { why: NotAsked::NotLinked },
+        "a PC game with no Steam id: not looked up by its name unless that option is on"
     );
     assert_eq!(*states[2].1, SourceAnswer::NotFound);
     assert_eq!(*states[5].1, SourceAnswer::NotFound, "nothing sure: the fallback source was asked");

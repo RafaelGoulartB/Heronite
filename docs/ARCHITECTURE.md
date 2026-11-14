@@ -782,7 +782,7 @@ text size) and applies it.
   source (`record::unlink`, the record's `notOn` list; `unlink_sources` when
   no source found anything to save with it). A game so marked is not
   searched on that source by name again; linking it by hand clears the mark.
-  Steam's option "Find games not on Steam by name" (`byName`, on by default,
+  Steam's option "Find games not on Steam by name" (`byName`, off by default,
   `also_for` `Pc`) makes `lookup` of a game with no id search the store by
   the exact title (`steam_name`: the strict search, then only a game whose
   name is the title once normalized, with no edition words, and whose year

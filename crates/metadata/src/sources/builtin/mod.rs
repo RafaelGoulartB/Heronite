@@ -128,8 +128,9 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
                     n_!("A PC game with no Steam page is looked up on Steam by its exact title. A title that is only alike is never taken.")
                         .into(),
                 ),
-                // On: an exact title only, so a wrong game is never taken.
-                default: Some(OptionValue::Switch(true)),
+                // Off unless turned on: a game of the same title from another
+                // year is taken when neither side knows the year.
+                default: Some(OptionValue::Switch(false)),
                 ..option(BY_NAME, n_!("Find games not on Steam by name"), OptionKind::Switch)
             }],
             ..source(

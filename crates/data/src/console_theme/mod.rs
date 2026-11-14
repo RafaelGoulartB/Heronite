@@ -234,14 +234,16 @@ str_enum! {
 str_enum! {
     /// The button held (1 s) to enter console mode from anywhere, and the one
     /// the "Ask" notice asks for. `Auto` is the system's: Guide on Linux,
-    /// Back + Start on Windows (XInput does not report Guide).
+    /// Back + Start on Windows (XInput does not report Guide). Off unless
+    /// chosen: held during a game started elsewhere (a Steam chord on Guide)
+    /// it would bring console mode over that game.
     pub enum ConsoleButton {
         Auto = "auto",
         Off = "off",
         Guide = "guide",
         BackStart = "backStart",
         Bumpers = "bumpers",
-    } default Auto
+    } default Off
 }
 
 impl ConsoleButton {
@@ -765,7 +767,7 @@ impl Default for ConsolePrefs {
             theme: presets::default_theme(),
             based_on: presets::DEFAULT.into(),
             auto_console: AutoConsole::Off,
-            console_button: ConsoleButton::Auto,
+            console_button: ConsoleButton::Off,
             open_in: OpenIn::Last,
             fullscreen: true,
             idle: Idle::Off,
