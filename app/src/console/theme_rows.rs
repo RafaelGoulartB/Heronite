@@ -40,7 +40,7 @@ use super::list::{Row, Value};
 use super::look::ACCENTS;
 use crate::icons::Icon;
 use labels::*;
-pub use labels::{console_button_name, layout_name};
+pub use labels::{a_button_name, console_button_name, layout_name};
 
 /// What the library has, for the pickers (a tab's games, a shelf's kind).
 #[derive(Clone, Debug, Default, PartialEq)]

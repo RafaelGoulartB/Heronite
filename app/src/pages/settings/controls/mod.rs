@@ -4,8 +4,9 @@
 //! with what each button does (`pad`) and its shortcuts in a table (`table`),
 //! where a click on a shortcut changes it. What can stop a shortcut sits
 //! under the table (Steam's Guide setting). The overlay's options change
-//! through its own setters (`overlay::update`); console mode's rows are
-//! read-only: they belong to its theme (Console mode).
+//! through its own setters (`overlay::update`); console mode's rows come
+//! from its saved theme, where what A does on a cover and which button
+//! confirms change (`change_console_theme`), the rest is fixed.
 
 mod pad;
 mod table;
@@ -60,7 +61,7 @@ impl State {
 /// `HERONITE_DEBUG_CONTROLS=<tab>[:<popover>]` (for captures): the tab
 /// (`ingame`, `outside`, `overlay`, `console`) and a popover open in it
 /// (`shot`, `replay`, `moment`, `volume`, `anywhere`, `console-button`,
-/// `key-overlay`, `key-shot`, `key-replay`).
+/// `key-overlay`, `key-shot`, `key-replay`, `console-a`, `console-swap`).
 fn debug_start() -> (Option<Show>, Option<table::Edit>) {
     use table::{Edit, Fixed, Key};
     let Some(v) = crate::env::value("HERONITE_DEBUG_CONTROLS") else { return (None, None) };
@@ -82,6 +83,8 @@ fn debug_start() -> (Option<Show>, Option<table::Edit>) {
         "key-overlay" => Some(Edit::Key(Key::Overlay)),
         "key-shot" => Some(Edit::Key(Key::Shot)),
         "key-replay" => Some(Edit::Key(Key::Replay)),
+        "console-a" => Some(Edit::ConsoleA),
+        "console-swap" => Some(Edit::ConsoleSwap),
         _ => None,
     };
     (show, edit)
@@ -118,6 +121,22 @@ fn console_button(d: &SettingsPage) -> ConsoleButton {
 /// is Classic while it is not running).
 fn console_theme(d: &SettingsPage) -> heronite_data::console_theme::ConsoleTheme {
     crate::console::themes::read(&d.ctx.app, |p| p.theme.clone())
+}
+
+/// Changes console mode's theme (and the Console mode section's copy, when
+/// it was shown).
+fn change_console_theme(
+    d: &mut SettingsPage,
+    cx: &mut Context<SettingsPage>,
+    change: impl FnOnce(&mut heronite_data::console_theme::ConsoleTheme),
+) {
+    let prefs = crate::console::themes::update(&d.ctx.app, |p| change(&mut p.theme));
+    if let Some(s) = d.console_mode.as_mut() {
+        s.theme.prefs = prefs;
+        // Its Undo holds whole themes from before this change.
+        s.theme.forget_steps();
+    }
+    cx.notify();
 }
 
 /// The overlay's button (Guide, Back + Start on Windows) is also the one
@@ -294,9 +313,9 @@ fn show_bar(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
         Show::Console => {
             let name = console_theme(d).name;
             if name.trim().is_empty() {
-                tr!("Set by console mode's theme: read-only here.").to_string()
+                tr!("Set by console mode's theme. Click a shortcut to change it; the others are fixed.").to_string()
             } else {
-                tr!("Set by console mode's theme ({name}): read-only here.", name = name.trim())
+                tr!("Set by console mode's theme ({name}). Click a shortcut to change it; the others are fixed.", name = name.trim())
             }
         }
     };

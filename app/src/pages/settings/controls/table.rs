@@ -3,8 +3,9 @@
 //! change is a chip with a chevron; a click opens its popover under it (one
 //! at a time): the screenshot's button, the button held for console mode,
 //! a key recorded in place, or only the on/off of a fixed button. A shortcut
-//! that is off is a dashed chip that says so. The rows of "Overlay open" and
-//! "Console mode" are read-only (fixed, and console mode's theme).
+//! that is off is a dashed chip that says so. The rows of "Overlay open" are
+//! fixed; "Console mode" changes what A does on a cover and which button
+//! confirms (its theme's), the rest is fixed.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -41,6 +42,12 @@ pub(super) enum Edit {
     Key(Key),
     /// The button held to enter console mode.
     ConsoleButton,
+    /// What console mode's A does on a cover (X does the other), from its
+    /// A row or its X row.
+    ConsoleA,
+    ConsoleX,
+    /// Console mode confirms with the east button.
+    ConsoleSwap,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -852,11 +859,13 @@ fn overlay_open(d: &SettingsPage) -> Vec<Line> {
     ]
 }
 
-/// Console mode, as its theme has it (read-only here).
-fn console(d: &SettingsPage) -> Vec<Line> {
+/// Console mode, as its theme has it: what A does on a cover (X does the
+/// other) and which button confirms change here, the rest is fixed.
+fn console(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Vec<Line> {
     let theme = super::console_theme(d);
     let swap = theme.controls.swap_ab;
     let details = theme.nav.a_button == AButton::Details;
+    let open = d.controls.edit;
     let read = |action: &'static str, part: Part, pad: Div, key: Option<Div>| {
         let mut l = Line::new(action, Some(part));
         l.also = pair(part);
@@ -864,22 +873,67 @@ fn console(d: &SettingsPage) -> Vec<Line> {
         l.key = key.map(|k| k.into_any_element()).unwrap_or_else(dash);
         l
     };
+    let theme_chip = |id: &'static str, glyph_name: &str, edit: Edit, cx: &mut Context<SettingsPage>| {
+        let st = ChipState { open: open == Some(edit), ..Default::default() };
+        let c = chip(id, glyph(glyph_name), st, edit, cx);
+        let pop = st.open.then(|| match edit {
+            Edit::ConsoleSwap => swap_popover(swap, cx),
+            _ => a_popover(details, cx),
+        });
+        with_popover(d, c, pop, cx)
+    };
     let (confirm, back) = if swap { (("B", Part::B), ("A", Part::A)) } else { (("A", Part::A), ("B", Part::B)) };
     let (opens, other) = if details { (tr!("Open the game page"), tr!("Play")) } else { (tr!("Play"), tr!("Open the game page")) };
-    let mut first = read(opens, confirm.1, glyph(confirm.0), Some(key_cap("Enter")));
+    let mut first = Line::new(opens, Some(confirm.1));
+    first.pad = theme_chip("controls-console-a", confirm.0, Edit::ConsoleA, cx);
+    first.key = key_cap("Enter").into_any_element();
     if swap {
         first.note = Some(tr!("Confirm with the east button is on").to_string());
     }
+    let mut x = Line::new(other, Some(Part::X));
+    x.pad = theme_chip("controls-console-x", "X", Edit::ConsoleX, cx);
+    x.key = key_cap("X").into_any_element();
+    let mut back_line = Line::new(tr!("Back · sidebar"), Some(back.1));
+    back_line.pad = theme_chip("controls-console-back", back.0, Edit::ConsoleSwap, cx);
+    back_line.key = key_cap("Esc").into_any_element();
     vec![
         first,
-        read(other, Part::X, glyph("X"), Some(key_cap("X"))),
-        read(tr!("Back · sidebar"), back.1, glyph(back.0), Some(key_cap("Esc"))),
+        x,
+        back_line,
         read(tr!("Search and filters"), Part::Y, glyph("Y"), Some(key_cap("Y"))),
         read(tr!("Previous / next tab"), Part::RB, glyphs(&["LB", "RB"]), Some(keys_or(&["Q", "E"]))),
         read(tr!("Jump by letter"), Part::RT, glyphs(&["LT", "RT"]), Some(keys_or(&["Page Up", "Page Down"]))),
         read(tr!("Open the menu"), Part::Menu, glyph(tr!("Menu")), Some(key_cap("M"))),
         read(tr!("Move"), Part::LStick, glyphs(&[tr!("L stick"), tr!("D-pad")]), Some(key_cap(tr!("Arrows")))),
     ]
+}
+
+/// What A does on a cover in console mode (X does the other).
+fn a_popover(details: bool, cx: &mut Context<SettingsPage>) -> Div {
+    use crate::console::theme_rows::a_button_name;
+    let mut list = div().mt(px(10.)).flex().flex_col().gap(px(2.));
+    for (i, v) in [AButton::Details, AButton::Play].into_iter().enumerate() {
+        let on = (v == AButton::Details) == details;
+        list = list.child(
+            crate::ui::dropdown::menu_item(SharedString::from(format!("controls-console-a-{i}")), on)
+                .child(div().flex_1().child(translate(a_button_name(v))))
+                .when(on, |c| c.child(icon(Icon::Check, px(14.), theme::text_primary())))
+                .on_click(cx.listener(move |d, _, _, cx| {
+                    super::change_console_theme(d, cx, |t| t.nav.a_button = v);
+                    close_edit(d, cx);
+                })),
+        );
+    }
+    popover(tr!("A on a cover"), Some(tr!("X does the other.").to_string())).child(list)
+}
+
+/// Whether console mode confirms with the east button.
+fn swap_popover(swap: bool, cx: &mut Context<SettingsPage>) -> Div {
+    popover(tr!("Confirm with the east button"), Some(tr!("The Nintendo way: east confirms, south goes back.").to_string())).child(footer(
+        None,
+        Some((swap, "controls-console-swap", |d, on, cx| super::change_console_theme(d, cx, |t| t.controls.swap_ab = on))),
+        cx,
+    ))
 }
 
 /// The tab that shows `label` (a row's action, translated), for the
@@ -933,7 +987,7 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
         }
         Show::Outside => outside(d, cx),
         Show::Overlay => overlay_open(d),
-        Show::Console => console(d),
+        Show::Console => console(d, cx),
     };
     for (i, l) in lines.into_iter().enumerate() {
         table = table.child(line_el(i, l, picked, cx));

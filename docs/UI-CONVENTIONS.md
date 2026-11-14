@@ -54,11 +54,11 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   it and its table row), then the tab's shortcuts in a table (`table.rs`: action, controller, keyboard). Every shortcut
   that changes is a chip with a chevron whose popover (one at a time) picks the screenshot's button, the button held for
   console mode, records a key, or turns a fixed button's shortcut on or off; an off one is a dashed chip saying "Off".
-  Outside games Guide may both open the overlay (a tap) and enter console mode (a hold): one callout says both, no warning. Overlay open and Console mode
-  are read-only (console mode's rows come from its saved theme, `themes::read`: `look::theme` is Classic outside console
-  mode). `HERONITE_DEBUG_CONTROLS=<tab>[:<popover>]` opens a tab
+  Outside games Guide may both open the overlay (a tap) and enter console mode (a hold): one callout says both, no warning. Overlay open is read-only;
+  Console mode's rows come from its theme (read with `themes::read`, not `look::theme`, which is Classic outside console
+  mode): what A does on a cover (X does the other) and "Confirm with the east button" change there, the rest is fixed. `HERONITE_DEBUG_CONTROLS=<tab>[:<popover>]` opens a tab
   (`ingame`, `outside`, `overlay`, `console`) and a popover (`shot`, `replay`, `moment`, `volume`, `anywhere`,
-  `console-button`, `key-overlay`, `key-shot`, `key-replay`). A section =
+  `console-button`, `key-overlay`, `key-shot`, `key-replay`, `console-a`, `console-swap`). A section =
   title + lead (`Section::blurb`) +
   captioned cards of rows. The Collection sections live in `app/src/pages/settings/<section>.rs`
   (`appearance`, `metadata/`, `screenshots`, `saves` + `backup/` for Backups: settings, what goes in, then the restore list
