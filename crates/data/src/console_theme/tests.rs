@@ -253,3 +253,23 @@ fn the_controller_options_leave_the_theme_and_keep_what_was_chosen() {
     let text = presets::pulse().to_json().unwrap();
     assert!(!text.contains("glyphs") && !text.contains("swapAb"), "{text}");
 }
+
+#[test]
+fn a_theme_from_before_the_sound_options_gets_the_soft_sound_at_full_volume() {
+    let text = json!({ "format": 1, "controls": { "hints": "off", "sounds": true } }).to_string();
+    let c = ConsoleTheme::from_json(&text).unwrap().controls;
+    assert!(c.sounds);
+    assert_eq!((c.sound_style, c.sound_volume), (SoundStyle::Soft, 100));
+    let text = json!({ "format": 1, "controls": { "soundStyle": "classic", "soundVolume": 40 } }).to_string();
+    let c = ConsoleTheme::from_json(&text).unwrap().controls;
+    assert_eq!((c.sound_style, c.sound_volume), (SoundStyle::Classic, 40));
+}
+
+#[test]
+fn the_sound_style_and_volume_are_repaired() {
+    let text = json!({ "format": 1, "controls": { "soundStyle": "loud", "soundVolume": 0 } }).to_string();
+    let c = ConsoleTheme::from_json(&text).unwrap().normalized().controls;
+    assert_eq!((c.sound_style, c.sound_volume), (SoundStyle::Soft, SOUND_VOLUME.0));
+    let text = json!({ "format": 1, "controls": { "soundVolume": 200 } }).to_string();
+    assert_eq!(ConsoleTheme::from_json(&text).unwrap().normalized().controls.sound_volume, SOUND_VOLUME.1);
+}

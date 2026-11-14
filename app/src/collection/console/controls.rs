@@ -5,14 +5,13 @@
 //! the tray too.
 
 mod idle;
-mod sound;
 
 use std::time::{Duration, Instant};
 
 use gpui_kit::*;
 
 use super::super::CollectionView;
-use crate::console::{look, startup, themes, Pad};
+use crate::console::{look, sound, startup, themes, Pad};
 
 /// How often the idle screen checks for quiet.
 const CHECK_EVERY: Duration = Duration::from_secs(20);
@@ -77,10 +76,13 @@ impl CollectionView {
             cx.notify();
             return true;
         }
-        if !look::theme().controls.sounds {
+        let theme = look::theme();
+        let controls = &theme.controls;
+        if !controls.sounds {
             st.sounds = None;
         } else if let Some(sound) = sound::for_pad(pad) {
-            st.sounds.get_or_insert_with(|| sound::Player::new(self.app_paths.cache.join("console-sounds"))).play(sound);
+            let player = st.sounds.get_or_insert_with(|| sound::Player::new(self.app_paths.cache.join("console-sounds")));
+            player.play(sound, sound::Settings::of(controls));
         }
         false
     }

@@ -1189,6 +1189,13 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   `ConsoleTheme` (with a default and `#[serde(default)]`, so old and new theme files keep loading), its rows in
   `theme_rows`, and its use. Nothing console-only may run, read files or allocate while console mode is off;
   no "HERONITE" wordmark in console screens (the theme's `interface.label` may add a text of its own).
+- Navigation sounds (`controls.sounds`, off by default; `console/sound.rs`): four short tones (move, confirm, back,
+  tab) written as WAV files in `cache/console-sounds` and played by `pw-play`, `paplay` or `aplay` from a worker thread
+  (Linux only). `controls.soundStyle` is `soft` (the default: ~320-590 Hz with a round start, quiet) or `classic` (the
+  first one: a 1150 Hz tick); `controls.soundVolume` is 10-100 % (a gain steeper than linear). Both sit under the
+  switch in the Controls card, and are off while the switch is. The file names hold the style, the volume and a
+  version (`VERSION`, bumped when a tone changes; files of other versions are deleted), so a change never plays a
+  stale file. Switching the sounds on or changing the style or the volume plays a preview.
 - Debug: `HERONITE_DEBUG_CONSOLE=1` (or `=game:<key>` for a game page, `=menu`, `=customize`, `=filters`) starts in console mode
   without saving it; `HERONITE_DEBUG_CONSOLE_PRESET=<theme id>` / `HERONITE_DEBUG_CONSOLE_LAYOUT=<layout>` start with
   that theme / every tab in that layout (not saved); `HERONITE_DEBUG_IDLE_SECS=<n>` shows the idle screen sooner;
