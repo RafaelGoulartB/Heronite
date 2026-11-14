@@ -87,6 +87,15 @@ impl PaletteView {
         store.get_or_request(&id, || chain, pw, ph, Variant::Cover, priority).map(ImageSource::Render)
     }
 
+    /// Frees every cover's GPU memory: the palette is closing and its window
+    /// stays (Ctrl K).
+    pub fn release_covers(&mut self, window: &mut Window) {
+        if let Some(store) = &mut self.covers.store {
+            store.forget_matching(|_| true);
+            store.drop_evicted(window);
+        }
+    }
+
     /// Frees the GPU memory of covers the store let go (from `render`).
     pub(super) fn drop_evicted_covers(&mut self, window: &mut Window) {
         if let Some(store) = &mut self.covers.store {

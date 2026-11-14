@@ -71,8 +71,12 @@ fn fail(cx: &mut App, message: String) {
             let _ = view.update(cx, |v, cx| v.system_toast(message, true, cx));
         }
         // Nobody sees a toast; a one-shot launch exits right after, so wait
-        // for the notification to be handed over.
-        None => crate::system::notify::send_and_wait("Heronite", message, std::time::Duration::from_secs(2)),
+        // for the notification to be handed over. An instance that stays (in
+        // the tray, the quick launcher's) does not block for it.
+        None if hub.0.borrow().exit_when_idle => {
+            crate::system::notify::send_and_wait("Heronite", message, std::time::Duration::from_secs(2))
+        }
+        None => crate::system::notify::send("Heronite", message),
     }
     maybe_exit_idle(cx);
 }

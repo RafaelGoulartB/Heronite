@@ -398,6 +398,6 @@ impl CollectionView {
     /// The library and its art, for the Settings page's Storage section.
     pub(super) fn library_offer(&self) -> Option<crate::pages::settings::LibraryOffer> {
         let lib = self.lib.clone()?;
-        Some(crate::pages::settings::LibraryOffer { lib, chains: self.cover_chains.clone(), stages: self.stage_chains.clone() })
+        Some(crate::pages::settings::LibraryOffer { lib, chains: (*self.cover_chains).clone(), stages: self.stage_chains.clone() })
     }
 }

@@ -41,6 +41,7 @@ pub(crate) use self::games::library_entries;
 use self::sources::ViewCmd;
 pub(crate) use self::sources::{Act, Entry, GameBits};
 pub(crate) use self::view::{Mode, PaletteEvent, PaletteView, Setup};
+use super::game_actions::GameAction;
 use super::CollectionView;
 use crate::pages::Page;
 
@@ -126,8 +127,7 @@ impl CollectionView {
         self.context_menu = None;
         let entries = Rc::new(self.palette_entries(cx));
         let recent = Rc::new(self.ui.palette_recent.clone());
-        let setup =
-            Setup { entries, recent, covers: Rc::new(self.cover_chains.clone()), data_paths: self.data_paths.clone(), mode: Mode::InApp };
+        let setup = Setup { entries, recent, covers: self.cover_chains.clone(), data_paths: self.data_paths.clone(), mode: Mode::InApp };
         let view = cx.new(|cx| PaletteView::new(setup, query, window, cx));
         self.palette.sub = Some(cx.subscribe_in(&view, window, Self::on_palette_event));
         self.palette.view = Some(view.clone());
@@ -140,7 +140,9 @@ impl CollectionView {
     }
 
     pub(super) fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.palette.view.take().is_some() {
+        if let Some(view) = self.palette.view.take() {
+            // Its covers live in this window's atlas, which outlives the view.
+            view.update(cx, |p, _| p.release_covers(window));
             self.palette.sub = None;
             window.focus(&self.focus_handle, cx);
             cx.notify();
@@ -178,7 +180,19 @@ impl CollectionView {
     /// history and run as if chosen in Ctrl K.
     /// A window that has just opened runs it once its library is loaded.
     pub(crate) fn run_from_launcher(&mut self, act: Act, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        // A dialog is up, or console mode is on (Ctrl K is not there either):
+        // the window comes up and nothing runs under them.
+        if self.modal_open(cx) || crate::console::active() {
+            window.activate_window();
+            return;
+        }
         self.remember_palette_item(id);
+        // Favourites and hiding, from the launcher, leave the window's page
+        // and selection as they are.
+        if let Act::Game(key, action @ (GameAction::Favourite | GameAction::Hide)) = &act {
+            self.run_game_action(key, action, window, cx);
+            return;
+        }
         if self.lib.is_some() {
             self.close_palette(window, cx);
             self.run_palette_act(act, window, cx);
@@ -192,6 +206,9 @@ impl CollectionView {
                 cx.background_executor().timer(std::time::Duration::from_millis(50)).await;
             }
             this.update_in(cx, |this, window, cx| {
+                if this.modal_open(cx) {
+                    return;
+                }
                 this.close_palette(window, cx);
                 this.run_palette_act(act, window, cx);
             })

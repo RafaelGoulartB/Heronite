@@ -148,7 +148,9 @@ pub fn init(
     // the capture compression, the app's own updates and the scheduled
     // backup belong to the app, not to the window. A one-shot launch has no
     // use for them.
-    if !hub(cx).0.borrow().exit_when_idle {
+    // A cold `--quick-launch` without a tray quits with the launcher, but may
+    // open the window first: it gets them too.
+    if !hub(cx).0.borrow().exit_when_idle || quick_launch {
         crate::services::downloads(cx);
         // The store clients under Wine: looks at them a few seconds from now.
         crate::services::clients(cx);

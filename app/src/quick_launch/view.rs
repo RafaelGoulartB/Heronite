@@ -24,6 +24,9 @@ pub(super) struct QuickLauncher {
     /// Whether it ever had the keyboard: leaving it after that closes it.
     was_active: bool,
     opened: std::time::Instant,
+    /// Enter pressed before the games were listed: run once they are, on
+    /// what is then first.
+    pending_enter: Option<Keystroke>,
     _subs: Vec<Subscription>,
 }
 
@@ -76,13 +79,21 @@ impl QuickLauncher {
                     this.was_active = true;
                 } else if this.was_active {
                     // Clicked away: it goes, like a menu.
-                    cx.defer(super::close);
+                    let id = window.window_handle().window_id();
+                    cx.defer(move |cx| super::close_window(id, cx));
                 }
             }),
             keys_sub,
         ];
-        let this =
-            Self { palette, data_paths: data_paths.clone(), lib: None, was_active: false, opened: std::time::Instant::now(), _subs: subs };
+        let this = Self {
+            palette,
+            data_paths: data_paths.clone(),
+            lib: None,
+            was_active: false,
+            opened: std::time::Instant::now(),
+            pending_enter: None,
+            _subs: subs,
+        };
         let include_hidden = ui.show_hidden;
         cx.spawn_in(window, async move |this, cx| {
             let loaded = cx.background_spawn(async move { load(&data_paths, include_hidden) }).await;
@@ -104,6 +115,9 @@ impl QuickLauncher {
         self.lib = Some(Arc::new(l.lib));
         let covers = Rc::new(l.covers);
         self.palette.update(cx, |p, cx| p.set_entries(Rc::new(entries), covers, cx));
+        if let Some(ks) = self.pending_enter.take() {
+            self.key(&ks, window, cx);
+        }
         // `HERONITE_DEBUG_QUICK_LAUNCH_KEYS`, once the games are listed.
         let keys = keys.iter().flat_map(|k| k.split(',')).filter(|k| !k.is_empty()).map(str::to_string).collect();
         self.feed_keys(keys, window, cx);
@@ -127,17 +141,26 @@ impl QuickLauncher {
     }
 
     fn key(&mut self, ks: &Keystroke, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let m = &ks.modifiers;
+        if self.lib.is_none() && ks.key == "enter" && !(m.control || m.alt || m.platform) {
+            self.pending_enter = Some(ks.clone());
+            return true;
+        }
         self.palette.update(cx, |p, cx| p.key(ks, window, cx))
     }
 
     fn on_palette_event(&mut self, view: &Entity<PaletteView>, ev: &PaletteEvent, window: &mut Window, cx: &mut Context<Self>) {
         match ev {
-            PaletteEvent::Close => cx.defer(super::close),
+            PaletteEvent::Close => {
+                let id = window.window_handle().window_id();
+                cx.defer(move |cx| super::close_window(id, cx));
+            }
             PaletteEvent::Run { act: Act::Random(_), .. } => {}
             PaletteEvent::Run { act, id } => {
                 let bits = act.game().and_then(|k| view.read(cx).game_bits_of(k));
                 run::run(act.clone(), id, bits, self.lib.clone(), &self.data_paths, cx);
-                cx.defer(super::close);
+                let id = window.window_handle().window_id();
+                cx.defer(move |cx| super::close_window(id, cx));
             }
             PaletteEvent::OpenGame(key) => {
                 let Some(bits) = view.read(cx).game_bits_of(key) else { return };

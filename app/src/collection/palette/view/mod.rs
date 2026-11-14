@@ -257,7 +257,13 @@ impl PaletteView {
         self.entries = entries;
         self.covers.set_chains(covers);
         if self.game.is_none() {
+            // A row the user moved to stays selected; else the new best match.
+            let kept = (self.selected != 0).then(|| self.selected_entry().map(|e| e.id.clone())).flatten();
             self.recompute(cx);
+            if let Some(i) = kept.and_then(|id| self.results.items().position(|i| self.entry(i).id == id)) {
+                self.selected = i;
+                self.reveal_selected();
+            }
         }
     }
 

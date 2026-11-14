@@ -213,7 +213,8 @@ pub struct CollectionView {
     media: store_media::StoreMediaUi,
     toast_task: Option<Task<()>>,
     images: ImageStore,
-    cover_chains: HashMap<SharedString, Vec<ImageRef>>,
+    /// Shared with the command palette (Ctrl K), which only reads it.
+    cover_chains: std::rc::Rc<HashMap<SharedString, Vec<ImageRef>>>,
     stage_chains: HashMap<SharedString, Vec<ImageRef>>,
     /// The games' own square and wide covers (`family_art.rs`).
     family_chains: family_art::FamilyChains,
@@ -428,7 +429,7 @@ impl CollectionView {
             shots: Default::default(),
             media: Default::default(),
             images,
-            cover_chains: HashMap::new(),
+            cover_chains: Default::default(),
             stage_chains: HashMap::new(),
             family_chains: Default::default(),
             shown_stage: None,

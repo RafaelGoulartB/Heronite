@@ -43,15 +43,40 @@ thread_local! {
     static OPEN: RefCell<Option<Open>> = const { RefCell::new(None) };
 }
 
+thread_local! {
+    /// Work a choice started that the app must not quit before (a folder
+    /// being opened, a notification being handed over).
+    static PENDING: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Whether the launcher is on screen.
-pub fn is_open(_cx: &App) -> bool {
+fn is_open() -> bool {
     OPEN.with(|o| o.borrow().is_some())
+}
+
+/// Whether the launcher is on screen, or work it started is not done: the
+/// app does not quit for being idle meanwhile.
+pub fn busy(_cx: &App) -> bool {
+    is_open() || PENDING.with(|p| p.get()) > 0
+}
+
+/// Runs `work` off the UI thread; the app waits for it before quitting.
+fn background(cx: &mut App, work: impl FnOnce() + Send + 'static) {
+    PENDING.with(|p| p.set(p.get() + 1));
+    cx.spawn(async move |cx| {
+        cx.background_spawn(async move { work() }).await;
+        cx.update(|cx| {
+            PENDING.with(|p| p.set(p.get().saturating_sub(1)));
+            crate::system::exit_if_idle(cx);
+        });
+    })
+    .detach();
 }
 
 /// Opens the launcher, or closes it when it is open (its shortcut and
 /// `heronite://quick-launch`).
 pub fn toggle(cx: &mut App) {
-    if is_open(cx) {
+    if is_open() {
         close(cx);
     } else {
         open(cx);
@@ -66,8 +91,11 @@ pub fn open(cx: &mut App) {
 fn open_with(cx: &mut App, query: &str, keys: Option<String>) {
     let open = OPEN.with(|o| o.borrow().as_ref().map(|o| o.handle));
     if let Some(handle) = open {
-        handle.update(cx, |_, window, _| window.activate_window()).ok();
-        return;
+        if handle.update(cx, |_, window, _| window.activate_window()).is_ok() {
+            return;
+        }
+        // Gone without a word (the compositor): open a new one.
+        OPEN.with(|o| o.borrow_mut().take());
     }
     // Console mode is for the controller: the shortcut brings it forward
     // rather than a keyboard panel over it.
@@ -97,6 +125,14 @@ pub fn close(cx: &mut App) {
     let Some(open) = OPEN.with(|o| o.borrow_mut().take()) else { return };
     open.handle.update(cx, |_, window, _| window.remove_window()).ok();
     cx.defer(crate::system::exit_if_idle);
+}
+
+/// Closes the launcher if it is still the window `id` (a close asked by a
+/// launcher that has since been replaced does nothing).
+fn close_window(id: WindowId, cx: &mut App) {
+    if OPEN.with(|o| o.borrow().as_ref().is_some_and(|o| o.handle.window_id() == id)) {
+        close(cx);
+    }
 }
 
 /// Forgets the launcher when its window goes away by other means (the
@@ -129,4 +165,9 @@ pub fn debug_requested() -> bool {
 pub fn open_at_start(cx: &mut App) {
     let query = crate::env::value("HERONITE_DEBUG_QUICK_LAUNCH").filter(|q| q != "-").unwrap_or_default();
     open_with(cx, &query, crate::env::value("HERONITE_DEBUG_QUICK_LAUNCH_KEYS"));
+    // It did not open (a game in exclusive fullscreen, no window): a start
+    // made only for it must not stay with nothing on screen.
+    if !is_open() {
+        cx.defer(crate::system::exit_if_idle);
+    }
 }

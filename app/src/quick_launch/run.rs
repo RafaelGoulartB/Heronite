@@ -2,9 +2,8 @@
 //! here (through the hub, like the tray's recent games); the rest opens
 //! Heronite and runs there as Ctrl K would.
 //!
-//! Favourites and hiding go through the open window when there is one: it
-//! keeps the library in memory and writes it whole, so a change made beside
-//! it would be lost.
+//! Favourites and hiding go through the open window when there is one, so
+//! it reloads its library and shows the change at once.
 
 use std::sync::Arc;
 
@@ -38,33 +37,41 @@ pub(super) fn run(act: Act, id: &str, bits: Option<GameBits>, lib: Option<Arc<Li
         Chosen::OpenFolder(key) => {
             remember(id, paths, cx);
             let (Some(g), paths) = (game(&key), paths.clone()) else { return };
-            cx.background_spawn(async move {
+            super::background(cx, move || {
                 if let Err(e) = crate::collection::open_install_folder_of(&paths, &g) {
-                    crate::system::notify::send("Heronite", e);
+                    tell(e);
                 }
-            })
-            .detach();
+            });
         }
         Chosen::Favourite(key) | Chosen::Hide(key) => {
             remember(id, paths, cx);
             let favourite = matches!(chosen(&act, bits.as_ref()), Chosen::Favourite(_));
             if let (Some(lib), Some(g)) = (lib.as_deref(), game(&key)) {
                 if let Err(e) = toggle_list(paths, lib, &g, favourite) {
-                    crate::system::notify::send("Heronite", format!("{e:#}"));
+                    let message = format!("{e:#}");
+                    super::background(cx, move || tell(message));
                 }
             }
         }
         Chosen::OpenLogs => {
             remember(id, paths, cx);
             let dir = heronite_launch::log_writer::LogPaths::for_data(paths).base;
-            if !dir.is_dir() {
-                crate::system::notify::send("Heronite", tr!("There is no logs folder yet: it appears when a game is launched"));
-            } else if let Err(e) = heronite_platform::shell::open(&dir) {
-                crate::system::notify::send("Heronite", format!("{e}"));
-            }
+            super::background(cx, move || {
+                if !dir.is_dir() {
+                    tell(tr!("There is no logs folder yet: it appears when a game is launched").to_string());
+                } else if let Err(e) = heronite_platform::shell::open(&dir) {
+                    tell(format!("{e}"));
+                }
+            });
         }
         Chosen::Quit => cx.defer(crate::system::request_quit),
     }
+}
+
+/// A notification, handed over before returning: the app may quit right
+/// after (a start made only for the launcher). Off the UI thread.
+fn tell(message: String) {
+    crate::system::notify::send_and_wait("Heronite", message, std::time::Duration::from_secs(2));
 }
 
 /// Runs `act` in the main window, opening it (`raise`) or leaving it where

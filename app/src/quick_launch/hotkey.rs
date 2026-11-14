@@ -77,7 +77,9 @@ impl QuickLaunchService {
     fn sync_hotkey(&mut self, cx: &mut Context<Self>) {
         let accelerator = self.prefs.keyboard_accelerator.trim();
         let wanted = (!accelerator.is_empty()).then(|| accelerator.to_string());
-        if wanted.as_deref() == self.hotkey.as_ref().map(|(a, _)| a.as_str()) {
+        // The same keys again after a failure: tried once more.
+        let failed = matches!(self.hotkey_state, HotkeyState::Failed(_));
+        if wanted.as_deref() == self.hotkey.as_ref().map(|(a, _)| a.as_str()) && !failed {
             return;
         }
         self.hotkey_epoch += 1;
