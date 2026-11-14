@@ -1,0 +1,14 @@
+{
+  "Store media": "Mídia da loja",
+  "Links": "Links",
+  "{n} video": "{n} vídeo",
+  "{n} videos": "{n} vídeos",
+  "Open the store page": "Abrir a página da loja",
+  "Watch on the store page": "Assistir na página da loja",
+  "Sound on": "Ligar o som",
+  "Trailers play with ffmpeg, which is not installed.": "Os trailers tocam com o ffmpeg, que não está instalado.",
+  "The trailer could not be loaded.": "Não foi possível carregar o trailer.",
+  "The trailer could not be played.": "Não foi possível reproduzir o trailer.",
+  "Video cache": "Cache de vídeo",
+  "The first seconds of the trailers of the installed games you visit, so they start at once. Trailers are never downloaded whole: the rest streams while they play.": "Os primeiros segundos dos trailers dos jogos instalados que você visita, para que comecem na hora. Os trailers nunca são baixados inteiros: o resto é transmitido enquanto tocam."
+}

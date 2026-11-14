@@ -89,6 +89,8 @@ const INDEX: &[(Section, &[&str])] = &[
             "Switch with the window's width",
             "Panel widths",
             "Game sections",
+            "Store media",
+            "Video cache",
         ],
     ),
     (

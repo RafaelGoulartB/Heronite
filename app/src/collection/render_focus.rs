@@ -35,7 +35,9 @@ impl CollectionView {
         let left = self.focus_left(&vm, &lay, epic_focus, scale, vh, cx);
         let screenshots = self.screenshots_section(cx);
         let timeline = self.timeline_section(&vm.key, lay.main_w, scale, cx);
-        let focus_extras = self.focus_extras(&vm.key, scale, cx);
+        let mut focus_extras = self.focus_extras(&vm.key, scale, cx);
+        focus_extras.media = self.store_media_section(lay.main_w, scale, cx);
+        focus_extras.links = self.links_section(&vm.key, cx);
         focus::focus_panel(
             focus::FocusProps {
                 vm,

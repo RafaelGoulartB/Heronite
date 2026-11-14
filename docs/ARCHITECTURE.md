@@ -57,7 +57,9 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      read-only so far                             → platform
  ├─ heronite-metadata   registry of metadata sources (IGDB, Steam,
  │                      Lutris, LaunchBox, HLTB, ...), the merge,  
- │                      the review of unsure matches, artwork        → data, images
+ │                      the review of unsure matches, artwork, the
+ │                      stores' trailers and screenshots
+ │                      (`store_media`: list, HLS, kept starts)      → data, images
  ├─ heronite-metadata-ext metadata sources as extensions: manifest,
  │                      package (folder / zip), installed ones, the
  │                      QuickJS sandbox that runs their scripts      → data, metadata, images
@@ -67,7 +69,8 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      that keeps them                → data, metadata, gog, epic, steam, launch
  ├─ heronite-media      screenshots: listing, thumbnails, capture,
  │                      lossless PNG → WebP compression, posters of
- │                      replays (ffmpeg)                             → data, images
+ │                      replays and store trailers played into
+ │                      frames (`stream`; both ffmpeg)               → data, images
  ├─ heronite-overlay    in-game overlay backend: controller input
  │                      (evdev, Guide button, grabs; XInput with
  │                      Back + Start on Windows), audio (pactl; Core

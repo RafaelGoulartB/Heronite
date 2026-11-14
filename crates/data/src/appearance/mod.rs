@@ -559,7 +559,7 @@ mod tests {
             open_with_game: false,
             auto_view: AutoView { on: true, width: 1600. },
             quick_toolbar_controls: true,
-            sections: Sections::DEFAULT.moved(Section::Related, -5).toggled(Section::Timeline),
+            sections: Sections::DEFAULT.moved(Section::Related, -10).toggled(Section::Timeline).toggled(Section::Media),
         };
         a.save(&p).unwrap();
         assert_eq!(Appearance::load(&p), a);
@@ -582,7 +582,7 @@ mod tests {
         assert_eq!(on_disk["coverStoresAll"], false);
         assert_eq!(on_disk["coverStoresHideGrouped"], true);
         assert_eq!(on_disk["sections"][0], "related");
-        assert_eq!(on_disk["hiddenSections"], json!(["timeline"]));
+        assert_eq!(on_disk["hiddenSections"], json!(["timeline", "links"]));
         assert_eq!(on_disk["autoView"], true);
         assert_eq!(on_disk["autoViewWidth"], 1600.0);
         assert_eq!(on_disk["quickToolbarControls"], true);

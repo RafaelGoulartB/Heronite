@@ -31,6 +31,7 @@ pub mod focus;
 pub mod fuzzy;
 pub mod game_actions;
 pub mod game_config;
+pub mod game_links;
 pub mod heronite_ui_import;
 pub mod hltb;
 pub mod install_size;

@@ -143,6 +143,8 @@ fn section_name(s: Section) -> &'static str {
         Section::Achievements => tr!("Achievements"),
         Section::Timeline => tr!("Timeline"),
         Section::Related => tr!("Related games"),
+        Section::Media => tr!("Store media"),
+        Section::Links => tr!("Links"),
     }
 }
 

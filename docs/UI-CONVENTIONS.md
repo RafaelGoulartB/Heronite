@@ -1355,6 +1355,28 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
 - `scripts/shot.sh` on a hidden workspace paints only the frames it captures: textures that arrive late (an
   achievement icon, the focus cover) show after a few more captures.
 
+## Store media and Links
+- Two game sections off until turned on in Settings → Appearance → Game sections (`Sections::DEFAULT` hides them,
+  and a stored order without them keeps them hidden). "Store media" (`collection/store_media/`, main column, under
+  Screenshots) is the store's trailers and screenshots of a game with a Steam app id: a 16:9 stage, at most 1100px
+  wide, with the picked item, and a strip of 128x72 thumbnails under it, the trailers first with a play mark; the
+  title row says "6 videos · 8 screenshots" and has a "Steam ↗" link to the store page. A trailer shows its still and
+  a 64px play button; playing (`heronite_media::stream`, ffmpeg at 480p and 30 fps, sound through PulseAudio /
+  PipeWire on Linux only), its name and a bar (play / pause, time, seek bar, sound) fade in while the pointer is over
+  the stage; paused they stay. Arrows on the stage's sides step through the items. It stops when the game is no
+  longer focused, when the section is not drawn (another page, the drawer closed, the section off) and when a game
+  starts. A failure says so on the stage with "Watch on the store page".
+- Only the lists (3 days) and the first 15 s of the first trailer of the installed games visited are kept, under
+  `<cache>/store-media`, within "Video cache" (a sub-row of Store media: None, 25, 50 (default), 100 or 250 MB;
+  `videoCacheLimitMb` in `settings.json`), the least recently played going first. Turning the section off deletes
+  the folder and the copies of its pictures in the image cache (`store_media::clear_kept`, also at start while off).
+- "Links" (`collection/links.rs`, side column with Details) is a row of 38px icon buttons, one per store page or site
+  (`heronite_data::game_links`: the game's own store page, its Steam app id, its metadata's websites, SteamDB,
+  PCGamingWiki and, on Linux, ProtonDB); the hover names it (a site with no icon of its own by its host), a click
+  opens it in the browser.
+- `HERONITE_DEBUG_MEDIA=play|paused|pick:<n>` plays the first trailer without sound (`paused`: pauses it after 5 s)
+  or picks item `n` once the list is read.
+
 ## Verifying visually (mandatory for UI work)
 - Build: `cargo build -p heronite`.
 - `scripts/shot.sh /tmp/x.png [wait_s]` opens the app **on Hyprland
