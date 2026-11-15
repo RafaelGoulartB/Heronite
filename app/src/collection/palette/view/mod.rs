@@ -278,6 +278,11 @@ impl PaletteView {
         size(px(PANEL_W + preview::PANE_W), px(INPUT_H + LIST_MAX_H + FOOTER_H + 2.))
     }
 
+    /// The footer's height (the quick launcher puts its notice above it).
+    pub fn footer_height() -> Pixels {
+        px(FOOTER_H)
+    }
+
     /// Asks for the actions of the selected game (or of the game the
     /// selected verb is about). Returns whether there was one.
     pub fn open_selected_game(&mut self, cx: &mut Context<Self>) -> bool {

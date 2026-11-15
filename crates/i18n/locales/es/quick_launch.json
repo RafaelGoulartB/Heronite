@@ -1,5 +1,6 @@
 {
   "Enter plays the game, or stops it while it runs.": "Enter juega al juego, o lo cierra mientras se ejecuta.",
+  "Heronite could not read the library, so no games are listed.": "Heronite no pudo leer la biblioteca, así que no se muestra ningún juego.",
   "How it works": "Cómo funciona",
   "Items marked like this open Heronite and run there.": "Los elementos marcados así abren Heronite y se ejecutan allí.",
   "Open from a key of the desktop": "Abrir con una tecla del escritorio",
@@ -21,5 +22,6 @@
   "stop": "detener",
   "The command palette in a small window of its own: open it from anywhere with a key, type a few letters and press Enter to play, without opening Heronite.": "La paleta de comandos en una pequeña ventana propia: ábrela desde cualquier lugar con una tecla, escribe algunas letras y pulsa Enter para jugar, sin abrir Heronite.",
   "Where the desktop takes no shortcut from Heronite, bind a key to this command in its keyboard settings. It also starts Heronite when it is not running: {command}": "Donde el escritorio no acepta atajos de Heronite, asigna una tecla a este comando en sus ajustes de teclado. También inicia Heronite cuando no se está ejecutando: {command}",
-  "{key} already opens the quick launcher.": "{key} ya abre el lanzador rápido."
+  "{key} already opens the quick launcher.": "{key} ya abre el lanzador rápido.",
+  "{key} needs Ctrl, Alt, Shift or {logo} with it; only the F keys, Print Screen and Pause work alone.": "{key} necesita Ctrl, Alt, Mayús o {logo} con ella; solo las teclas F, Impr Pant y Pausa funcionan solas."
 }

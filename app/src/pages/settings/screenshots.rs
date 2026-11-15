@@ -10,18 +10,24 @@ use heronite_i18n::{grouped, tr, trn};
 use heronite_media::{CacheInfo, ThumbnailCache};
 use heronite_platform::{supported, Feature};
 
+use super::shortcuts::{self, Shortcut};
 use super::SettingsPage;
 use crate::collection::screenshots_global;
 use crate::pages::PageCtx;
 use crate::services::compression::{self, Compression, Phase};
 use crate::theme;
 use crate::ui::controls::{action_button, button_sm, caption, card, card_box, row, toggle_row, with_sub_rows, ButtonKind};
-use crate::ui::fields::{accelerator_from_key, choose_path, hotkey_box, input_box, labeled, meta_text, new_input, on_commit, path_field};
+use crate::ui::fields::{
+    choose_path, hotkey_box, hotkey_press, input_box, labeled, meta_text, needs_modifier_text, new_input, on_commit, path_field,
+    HotkeyPress,
+};
 
 pub struct State {
     folder: Entity<InputState>,
     limit: Entity<InputState>,
     hotkey: FocusHandle,
+    /// Why the combination last pressed in the shortcut field was refused.
+    hotkey_refused: Option<String>,
     cache: ThumbnailCache,
     info: Option<CacheInfo>,
     busy: bool,
@@ -70,7 +76,18 @@ impl State {
             .detach();
         }
         let capture_command = cfg!(target_os = "linux").then(|| capture_command(&crate::system::shortcuts::own_exe()));
-        Self { folder, limit, hotkey: cx.focus_handle(), cache, info: None, busy: false, message: None, compression, capture_command }
+        Self {
+            folder,
+            limit,
+            hotkey: cx.focus_handle(),
+            hotkey_refused: None,
+            cache,
+            info: None,
+            busy: false,
+            message: None,
+            compression,
+            capture_command,
+        }
     }
 
     /// Section shown: reads the cache size and measures the folder (off the
@@ -318,11 +335,22 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let focused = st.hotkey.is_focused(window);
 
     let hotkey = hotkey_box(
-        div().id("shot-hotkey").track_focus(&st.hotkey).cursor_pointer().on_key_down(cx.listener(|d, ev: &KeyDownEvent, _, cx| {
+        div().id("shot-hotkey").track_focus(&st.hotkey).cursor_pointer().on_key_down(cx.listener(|d, ev: &KeyDownEvent, window, cx| {
             cx.stop_propagation();
-            if let Some(a) = accelerator_from_key(ev) {
+            let a = match hotkey_press(&ev.keystroke, false) {
+                HotkeyPress::Set(a) => a,
+                HotkeyPress::Leave => return d.leave_hotkey_field(window, cx),
+                HotkeyPress::NeedsModifier(a) => {
+                    d.screenshots.hotkey_refused = Some(needs_modifier_text(&a.replace("CommandOrControl", "Ctrl")));
+                    return cx.notify();
+                }
+                HotkeyPress::Clear | HotkeyPress::Ignore => return,
+            };
+            d.screenshots.hotkey_refused = shortcuts::taken_by(d, Shortcut::Screenshot, &a, cx);
+            if d.screenshots.hotkey_refused.is_none() {
                 save(d, None, None, None, Some(a), cx);
             }
+            cx.notify();
         })),
         accel,
         focused,
@@ -359,7 +387,9 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             )
         });
 
-    let status_line: Option<(SharedString, bool)> = if s.capture_enabled {
+    let status_line: Option<(SharedString, bool)> = if let Some(why) = &st.hotkey_refused {
+        Some((why.clone().into(), true))
+    } else if s.capture_enabled {
         Some(match status {
             Some(status) if status.registered => (registered_text(status.desktop_trigger.as_deref()), false),
             Some(status) if status.error.is_some() => (status.error.unwrap_or_default().into(), true),

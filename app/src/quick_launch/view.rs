@@ -10,11 +10,14 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::ui_state::UiState;
 use heronite_data::{art, AppPaths, ArtContext, DataPaths, Library};
+use heronite_i18n::tr;
 use heronite_images::ImageRef;
 
 use super::run;
 use crate::collection::palette::{self, global_entries, library_entries, Act, Mode, PaletteEvent, PaletteView, Setup};
 use crate::images::to_chain;
+use crate::theme;
+use crate::ui::controls::{button_sm, kbd, ButtonKind};
 
 pub(super) struct QuickLauncher {
     palette: Entity<PaletteView>,
@@ -27,6 +30,12 @@ pub(super) struct QuickLauncher {
     /// Enter pressed before the games were listed: run once they are, on
     /// what is then first.
     pending_enter: Option<Keystroke>,
+    /// Reading the library failed: no games are listed, Enter is not held
+    /// for them, and Ctrl R (or the notice's button) reads it again.
+    load_failed: bool,
+    /// What reading it again needs.
+    include_hidden: bool,
+    debug_keys: Option<String>,
     _subs: Vec<Subscription>,
 }
 
@@ -92,19 +101,44 @@ impl QuickLauncher {
             was_active: false,
             opened: std::time::Instant::now(),
             pending_enter: None,
+            load_failed: false,
+            include_hidden: ui.show_hidden,
+            debug_keys: keys,
             _subs: subs,
         };
-        let include_hidden = ui.show_hidden;
+        Self::spawn_load(data_paths, this.include_hidden, window, cx);
+        this
+    }
+
+    /// Reads the library off the UI thread, then lists its games.
+    fn spawn_load(data_paths: DataPaths, include_hidden: bool, window: &mut Window, cx: &mut Context<Self>) {
         cx.spawn_in(window, async move |this, cx| {
             let loaded = cx.background_spawn(async move { load(&data_paths, include_hidden) }).await;
             this.update_in(cx, |this, window, cx| match loaded {
-                Ok(l) => this.apply_loaded(l, keys, window, cx),
-                Err(e) => log::warn!("quick launcher: cannot read the library: {e:#}"),
+                Ok(l) => {
+                    let keys = this.debug_keys.take();
+                    this.apply_loaded(l, keys, window, cx);
+                }
+                Err(e) => this.on_load_failed(e, cx),
             })
             .ok();
         })
         .detach();
-        this
+    }
+
+    /// No games: an Enter held for them is dropped (it would run whatever
+    /// page or action is first instead), and the notice says why.
+    fn on_load_failed(&mut self, e: anyhow::Error, cx: &mut Context<Self>) {
+        log::warn!("quick launcher: cannot read the library: {e:#}");
+        self.load_failed = true;
+        self.pending_enter = None;
+        cx.notify();
+    }
+
+    fn retry_load(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.load_failed = false;
+        cx.notify();
+        Self::spawn_load(self.data_paths.clone(), self.include_hidden, window, cx);
     }
 
     fn apply_loaded(&mut self, l: Loaded, keys: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
@@ -142,8 +176,12 @@ impl QuickLauncher {
 
     fn key(&mut self, ks: &Keystroke, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let m = &ks.modifiers;
-        if self.lib.is_none() && ks.key == "enter" && !(m.control || m.alt || m.platform) {
+        if self.lib.is_none() && !self.load_failed && ks.key == "enter" && !(m.control || m.alt || m.platform) {
             self.pending_enter = Some(ks.clone());
+            return true;
+        }
+        if self.load_failed && ks.key == "r" && (m.control || m.platform) && !(m.alt || m.shift) {
+            self.retry_load(window, cx);
             return true;
         }
         self.palette.update(cx, |p, cx| p.key(ks, window, cx))
@@ -173,7 +211,48 @@ impl QuickLauncher {
 }
 
 impl Render for QuickLauncher {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        div().size_full().child(self.palette.clone())
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let notice = self.load_failed.then(|| load_error_notice(cx));
+        div().relative().size_full().child(self.palette.clone()).children(notice)
     }
+}
+
+/// Over the bottom of the list, above the footer: the library could not be
+/// read, so only pages and actions are listed; Ctrl R or the button tries again.
+fn load_error_notice(cx: &mut Context<QuickLauncher>) -> Stateful<Div> {
+    let row = div()
+        .flex()
+        .items_center()
+        .gap(px(12.))
+        .px(px(14.))
+        .py(px(10.))
+        .bg(theme::danger_fill())
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_size(px(13.))
+                .line_height(px(18.))
+                .text_color(theme::danger_text())
+                .child(tr!("Heronite could not read the library, so no games are listed.")),
+        )
+        .child(kbd("Ctrl R"))
+        .child(
+            button_sm("quick-launch-retry", ButtonKind::Glass, tr!("Try again"))
+                .on_click(cx.listener(|this, _, window, cx| this.retry_load(window, cx))),
+        );
+    // The tint is see-through: the page colour under it hides the list.
+    div()
+        .id("quick-launch-load-error")
+        .occlude()
+        .absolute()
+        .left(px(12.))
+        .right(px(12.))
+        .bottom(PaletteView::footer_height() + px(8.))
+        .overflow_hidden()
+        .rounded(px(theme::R_INPUT))
+        .border_1()
+        .border_color(theme::card_border())
+        .bg(theme::page_bg())
+        .child(row)
 }
