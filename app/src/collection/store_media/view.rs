@@ -31,6 +31,16 @@ const STAGE_MAX_W: f32 = 1100.;
 const STAGE_GROUP: &str = "store-media-stage";
 
 /// A round dark button on the stage.
+/// The stage's corners, and those of what fills it inside its 1 px border.
+/// Overflow is clipped as a rectangle, not to the rounded corners: every
+/// picture and overlay that reaches an edge rounds its own corners, or its
+/// square ones show past the stage's.
+const STAGE_R: f32 = 12.;
+const STAGE_INNER_R: f32 = STAGE_R - 1.;
+/// A thumbnail's corners, and its picture's inside the 2 px border.
+const THUMB_R: f32 = 8.;
+const THUMB_INNER_R: f32 = THUMB_R - 2.;
+
 fn stage_button(id: impl Into<ElementId>, ic: Icon, d: f32) -> Stateful<Div> {
     div()
         .id(id)
@@ -146,14 +156,14 @@ impl CollectionView {
                 .flex_none()
                 .w(px(THUMB_W))
                 .h(px(THUMB_H))
-                .rounded(px(8.))
+                .rounded(px(THUMB_R))
                 .overflow_hidden()
                 .cursor_pointer()
                 .bg(theme::recess_a(0.35))
                 .border_2()
                 .border_color(if active { theme::accent().into() } else { theme::ink_a(0.0) })
                 .when(!active, |d| d.opacity(0.78).hover(|s| s.opacity(1.)))
-                .children(src.map(|s| img(s).size_full().object_fit(ObjectFit::Cover)))
+                .children(src.map(|s| img(s).size_full().rounded(px(THUMB_INNER_R)).object_fit(ObjectFit::Cover)))
                 .on_click(cx.listener(move |this, _, _, cx| this.media_pick(i, cx)));
             if is_video {
                 tile = tile.child(
@@ -195,7 +205,7 @@ impl CollectionView {
             .relative()
             .w(px(w))
             .h(px(h))
-            .rounded(px(12.))
+            .rounded(px(STAGE_R))
             .overflow_hidden()
             .bg(rgb(0x05070a))
             .border_1()
@@ -207,7 +217,9 @@ impl CollectionView {
                 let src = self
                     .media_image(&full, w, h, scale, 30)
                     .or_else(|| self.media_image(&media.screenshots[s].thumb.clone(), THUMB_W, THUMB_H, scale, 25));
-                stage = stage.children(src.map(|s| img(s).absolute().inset_0().size_full().object_fit(ObjectFit::Contain)));
+                stage = stage.children(
+                    src.map(|s| img(s).absolute().inset_0().size_full().rounded(px(STAGE_INNER_R)).object_fit(ObjectFit::Contain)),
+                );
             }
             None => stage = self.media_video(stage, media, pick, w, h, scale, cx),
         }
@@ -250,13 +262,19 @@ impl CollectionView {
         let state = player.map(|p| p.state.clone());
         let (position, seconds, sound) = player.map_or((0., 0., false), |p| (p.position(), p.seconds, p.sound));
         match frame {
-            Some(f) => stage = stage.child(img(ImageSource::Render(f)).absolute().inset_0().size_full().object_fit(ObjectFit::Contain)),
+            Some(f) => {
+                stage = stage.child(
+                    img(ImageSource::Render(f)).absolute().inset_0().size_full().rounded(px(STAGE_INNER_R)).object_fit(ObjectFit::Contain),
+                )
+            }
             None => {
                 let still = self.media_image(&v.thumb.clone(), w, h, scale, 30);
-                stage = stage.children(still.map(|s| img(s).absolute().inset_0().size_full().object_fit(ObjectFit::Cover).opacity(0.75)));
+                stage = stage.children(still.map(|s| {
+                    img(s).absolute().inset_0().size_full().rounded(px(STAGE_INNER_R)).object_fit(ObjectFit::Cover).opacity(0.75)
+                }));
             }
         }
-        let center = div().absolute().inset_0().flex().flex_col().items_center().justify_center().gap(px(10.));
+        let center = div().absolute().inset_0().rounded(px(STAGE_INNER_R)).flex().flex_col().items_center().justify_center().gap(px(10.));
         stage = match &state {
             None => stage.child(center.child(
                 stage_button("sm-play-big", Icon::PlayArrow, 64.).on_click(cx.listener(|this, _, _, cx| this.media_toggle_play(cx))),
@@ -304,6 +322,7 @@ impl CollectionView {
             .top_0()
             .left_0()
             .right_0()
+            .rounded_t(px(STAGE_INNER_R))
             .px(px(14.))
             .py(px(10.))
             .bg(linear_gradient(180., linear_color_stop(theme::rgb_a(0, 0, 0, 0.55), 0.), linear_color_stop(theme::rgb_a(0, 0, 0, 0.), 1.)))
@@ -356,6 +375,7 @@ impl CollectionView {
             .left_0()
             .right_0()
             .bottom_0()
+            .rounded_b(px(STAGE_INNER_R))
             .flex()
             .items_center()
             .gap(px(10.))
