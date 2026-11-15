@@ -187,7 +187,9 @@ impl PaletteView {
 
     fn reveal_selected(&mut self) {
         let Some((top, bottom)) = self.selected_span() else { return };
-        let view_h = self.content_h().min(LIST_MAX_H);
+        // The list as drawn: shorter than its most in a short window.
+        let drawn = f32::from(self.scroll.bounds().size.height);
+        let view_h = if drawn > 0. { drawn } else { self.content_h().min(LIST_MAX_H) };
         let shown = f32::from(-self.scroll.offset().y);
         let new = if top < shown {
             top
