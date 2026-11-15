@@ -20,7 +20,7 @@
 //! still the default one (no field set by hand, no source moved).
 
 use heronite_data::models::MetadataSettings;
-use heronite_data::settings::{default_field_priority, ADDED_SOURCES, ALL_FIELDS};
+use heronite_data::settings::{default_field_priority, ADDED_SOURCES, ALL_FIELDS, STORE_MEDIA};
 use heronite_data::source_prefs::{is_field_customised, is_field_on, is_on};
 use indexmap::IndexMap;
 
@@ -80,7 +80,20 @@ impl SourceRegistry {
         }
         let default = default_field_priority(field);
         let joins = |d: &SourceDescriptor| d.kind != SourceKind::Pictures || d.extension.is_some() || default.contains(&d.id);
-        self.order(m).into_iter().filter(|id| self.has_lookup(id) && self.get(id).is_some_and(|d| d.provides(field) && joins(d))).collect()
+        let mut list: Vec<String> = self
+            .order(m)
+            .into_iter()
+            .filter(|id| self.has_lookup(id) && self.get(id).is_some_and(|d| d.provides(field) && joins(d)))
+            .collect();
+        // The Store media keep Steam first (its trailers) wherever its row
+        // is; the others follow the rows. Only the field's own order moves it.
+        if field == STORE_MEDIA {
+            if let Some(at) = list.iter().position(|id| id == "steam") {
+                let steam = list.remove(at);
+                list.insert(0, steam);
+            }
+        }
+        list
     }
 
     /// The user's list for `field` when set, else [`Self::base_order`],
@@ -205,13 +218,30 @@ mod tests {
         let reg = SourceRegistry::for_tests();
         for m in [untouched(), normalize_metadata(Some(&MetadataSettings::default()))] {
             assert!(!reg.is_order_customised(&m));
-            for field in ALL_FIELDS {
+            for field in ALL_FIELDS.into_iter().chain([STORE_MEDIA]) {
                 assert_eq!(reg.field_order(&m, field), default_field_priority(field), "{field}");
                 assert_eq!(reg.base_order(&m, field), default_field_priority(field), "{field}");
             }
-            assert_eq!(reg.field_orders(&m), m.field_priority, "what the merge used before");
+            let mut merged = m.field_priority.clone();
+            merged.shift_remove(STORE_MEDIA);
+            assert_eq!(reg.field_orders(&m), merged, "what the merge used before");
         }
         assert_eq!(reg.order(&untouched()), reg.descriptors().map(|d| d.id.clone()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn the_store_media_keep_steam_first_after_a_move() {
+        let reg = SourceRegistry::for_tests();
+        let mut m = untouched();
+        moved(&reg, &mut m, "launchbox", 0);
+        moved(&reg, &mut m, "igdb", 0);
+        assert_eq!(reg.field_order(&m, "description")[..3], ["igdb", "launchbox", "steam"]);
+        // Steam leads; the others follow the rows.
+        assert_eq!(reg.field_order(&m, STORE_MEDIA), ["steam", "igdb", "launchbox", "store", "libretro"]);
+        // The field's own order still puts it anywhere.
+        m.field_priority
+            .insert(STORE_MEDIA.into(), vec!["igdb".into(), "steam".into(), "store".into(), "launchbox".into(), "libretro".into()]);
+        assert_eq!(reg.field_order(&m, STORE_MEDIA)[..2], ["igdb", "steam"]);
     }
 
     #[test]

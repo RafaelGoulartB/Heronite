@@ -68,6 +68,13 @@ pub const ALL_FIELDS: [&str; 16] = [
     "coverWide",
 ];
 
+/// The Store media of the focus panel (trailers and screenshots): not a
+/// field of the record (the merge never takes it), but the sources that give
+/// them can be switched off for it and put in order like a field, in
+/// `fieldPriority` and `sources.<id>.fieldsOff`. Only the first source in
+/// its order that has any media for a game is shown.
+pub const STORE_MEDIA: &str = "storeMedia";
+
 /// `MetadataSourceId`: the built-in ids of a `fieldPriority`. Every one but
 /// `manual` is a details source of `heronite_metadata::sources` (its tests
 /// check the two agree). A saved list keeps other ids too.
@@ -114,6 +121,8 @@ pub fn default_field_priority(field: &str) -> Vec<String> {
         // Official art first (Steam's header, the store's wide box art,
         // LaunchBox's landscape boxes), then SteamGridDB's.
         "coverWide" => &["steam", "store", "launchbox", "steamgriddb", "libretro"],
+        // Steam first: its trailers; the others have screenshots only.
+        STORE_MEDIA => &["steam", "igdb", "store", "launchbox", "libretro"],
         _ => &[],
     };
     list.iter().map(|s| s.to_string()).collect()
@@ -423,7 +432,7 @@ fn normalize_source_prefs(value: Option<&IndexMap<String, SourcePrefs>>) -> Inde
 /// `normalizeMetadata`.
 pub fn normalize_metadata(value: Option<&MetadataSettings>) -> MetadataSettings {
     let mut field_priority: IndexMap<String, Vec<String>> = IndexMap::new();
-    for field in ALL_FIELDS {
+    for field in ALL_FIELDS.into_iter().chain([STORE_MEDIA]) {
         let current = value.and_then(|v| v.field_priority.get(field));
         field_priority.insert(field.to_owned(), as_source_list(current, default_field_priority(field)));
     }

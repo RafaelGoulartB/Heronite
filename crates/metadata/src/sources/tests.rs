@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use heronite_data::models::LocalGameMeta;
-use heronite_data::settings::{default_field_priority, ALL_FIELDS, SOURCE_IDS};
+use heronite_data::settings::{default_field_priority, ALL_FIELDS, SOURCE_IDS, STORE_MEDIA};
 use parking_lot::RwLock;
 
 use super::*;
@@ -114,7 +114,7 @@ fn data_crate_ids_match_the_details_sources() {
         }
     }
     for d in reg.descriptors().filter(|d| d.kind == SourceKind::Details) {
-        assert!(d.provides.iter().all(|f| ALL_FIELDS.contains(&f.as_str())), "{}", d.id);
+        assert!(d.provides.iter().all(|f| ALL_FIELDS.contains(&f.as_str()) || f == STORE_MEDIA), "{}", d.id);
     }
 }
 
@@ -257,7 +257,8 @@ fn libretro_is_for_the_emulated_games_of_platforms_with_a_folder() {
     let d = reg.get("libretro").unwrap();
     assert_eq!((d.kind, d.needs, d.network, d.searchable, d.hidden), (SourceKind::Pictures, Needs::Nothing, true, false, false));
     assert!(d.options.is_empty() && d.download.is_none() && d.also_for.is_none() && !d.manual_only && d.asked == Asked::Always);
-    assert_eq!(d.provides, ["cover", "coverSquare", "coverWide"], "no background: its screenshots are small");
+    // No background: its screenshots are small; they are the Store media's last resort.
+    assert_eq!(d.provides, ["cover", "coverSquare", "coverWide", STORE_MEDIA]);
     assert_eq!(d.finds_by, [MatchedBy::ExactTitle, MatchedBy::FuzzyTitle]);
     assert_eq!(d.leads_for, Some(AppliesTo::Emulated));
     let game = |platform: Option<&str>, emulated: bool| SourceGame {

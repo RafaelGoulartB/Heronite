@@ -18,6 +18,7 @@ mod launchbox_art;
 mod picture_sizes;
 mod review;
 mod source_settings;
+mod store_media;
 mod tag_fill;
 mod undo;
 

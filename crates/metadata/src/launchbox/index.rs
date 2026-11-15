@@ -12,7 +12,7 @@
 //! - `files`: LaunchBox's own file name → title table (`Files.xml`), by
 //!   platform: WHDLoad and MAME set names, and dump names it knows.
 //! - `images`: the pictures the source uses (box fronts of every region,
-//!   one fan art background, one square cover), regions by number
+//!   one fan art background, one square cover, a few gameplay screenshots), regions by number
 //!   (`regions`) and file names packed ([`pack_file`]): most are a UUID.
 
 use std::io::Read;
@@ -54,7 +54,13 @@ pub enum ImageKind {
     Background = 3,
     /// "Square": a 1:1 cover.
     Square = 4,
+    /// "Screenshot - Gameplay" (the store media's screenshots). An index
+    /// built before has none until the database is downloaded again.
+    Screenshot = 5,
 }
+
+/// Gameplay screenshots kept of one game at most.
+pub(super) const MAX_SCREENSHOTS: usize = 8;
 
 impl ImageKind {
     pub(super) fn from_type(t: &str) -> Option<Self> {
@@ -63,12 +69,13 @@ impl ImageKind {
             "Box - Front - Reconstructed" => Self::BoxFrontReconstructed,
             "Fanart - Background" => Self::Background,
             "Square" => Self::Square,
+            "Screenshot - Gameplay" => Self::Screenshot,
             _ => return None,
         })
     }
 
     fn from_code(n: u8) -> Option<Self> {
-        [Self::BoxFront, Self::BoxFrontReconstructed, Self::Background, Self::Square].into_iter().find(|k| *k as u8 == n)
+        [Self::BoxFront, Self::BoxFrontReconstructed, Self::Background, Self::Square, Self::Screenshot].into_iter().find(|k| *k as u8 == n)
     }
 }
 

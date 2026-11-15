@@ -31,6 +31,16 @@ const STAGE_MAX_W: f32 = 1100.;
 const STAGE_GROUP: &str = "store-media-stage";
 
 /// A round dark button on the stage.
+/// The stage's corners, and those of what fills it inside its 1 px border.
+/// Overflow is clipped as a rectangle, not to the rounded corners: every
+/// picture and overlay that reaches an edge rounds its own corners, or its
+/// square ones show past the stage's.
+const STAGE_R: f32 = 12.;
+const STAGE_INNER_R: f32 = STAGE_R - 1.;
+/// A thumbnail's corners, and its picture's inside the 2 px border.
+const THUMB_R: f32 = 8.;
+const THUMB_INNER_R: f32 = THUMB_R - 2.;
+
 fn stage_button(id: impl Into<ElementId>, ic: Icon, d: f32) -> Stateful<Div> {
     div()
         .id(id)
@@ -44,6 +54,18 @@ fn stage_button(id: impl Into<ElementId>, ic: Icon, d: f32) -> Stateful<Div> {
         .bg(theme::rgb_a(10, 12, 14, 0.55))
         .hover(|s| s.bg(theme::rgb_a(10, 12, 14, 0.8)))
         .child(icon(ic, px(d * 0.55), rgb(0xf4f6f8)))
+}
+
+/// The icon and name of where a list comes from (`StoreMedia::source`).
+fn source_label(source: &str) -> (Icon, &'static str) {
+    match source {
+        "igdb" => (Icon::BrandIgdb, "IGDB"),
+        "gog" => (Icon::BrandGog, "GOG"),
+        "amazon" => (Icon::BrandAmazon, "Amazon"),
+        "launchbox" => (Icon::Image, "LaunchBox"),
+        "libretro" => (Icon::BrandRetroArch, "libretro"),
+        _ => (Icon::BrandSteam, "Steam"),
+    }
 }
 
 fn spinner(id: &'static str) -> impl IntoElement {
@@ -65,29 +87,15 @@ impl CollectionView {
         self.images.get_or_request(&id, chain, pw, ph, Variant::Cover, priority).map(ImageSource::Render)
     }
 
-    /// The section, `width` px wide; `None` while the game has no store
-    /// media (or the section is off).
+    /// The section, `width` px wide; `None` until the game's store media
+    /// are read and while it has none (or the section is off): a game without
+    /// any never shows the section, not even while it is asked.
     pub(in crate::collection) fn store_media_section(&mut self, width: f32, scale: f32, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let media = match &self.media.list {
-            List::Ready(m) => Some(m.clone()),
-            List::Loading => None,
-            List::None | List::Missing => return None,
-        };
+        let List::Ready(media) = &self.media.list else { return None };
+        let media = media.clone();
         self.media.drawn = true;
         let stage_w = width.min(STAGE_MAX_W);
         let stage_h = (stage_w * 9. / 16.).round();
-        let Some(media) = media else {
-            let stage = div()
-                .w(px(stage_w))
-                .h(px(stage_h))
-                .rounded(px(12.))
-                .bg(theme::recess_a(0.35))
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(spinner("sm-list-spin"));
-            return Some(div().flex().flex_col().child(h3(tr!("Store media"))).child(stage).into_any_element());
-        };
         let (videos, shots) = (media.videos.len(), media.screenshots.len());
         let total = videos + shots;
         let pick = self.media.pick.min(total.saturating_sub(1));
@@ -100,6 +108,8 @@ impl CollectionView {
             counts.push(trn!(shots, "{n} screenshot", "{n} screenshots"));
         }
         let page = media.page.clone();
+        let (source_icon, source_name) = source_label(&media.source);
+        let has_page = !page.is_empty();
         let source = div()
             .id("sm-source")
             .flex()
@@ -109,15 +119,17 @@ impl CollectionView {
             .px(px(8.))
             .py(px(3.))
             .rounded(px(8.))
-            .cursor_pointer()
             .text_size(px(12.5))
             .text_color(theme::text_muted())
-            .hover(|s| s.bg(theme::ink_a(0.08)).text_color(theme::text_primary()))
-            .tooltip(tooltip(tr!("Open the store page")))
-            .child(icon(Icon::BrandSteam, px(14.), theme::text_muted()))
-            .child("Steam")
-            .child(icon(Icon::OpenInNew, px(13.), theme::text_muted()))
-            .on_click(cx.listener(move |this, _, _, cx| this.open_url(page.clone(), cx)));
+            .child(icon(source_icon, px(14.), theme::text_muted()))
+            .child(source_name)
+            .when(has_page, |d| {
+                d.cursor_pointer()
+                    .hover(|s| s.bg(theme::ink_a(0.08)).text_color(theme::text_primary()))
+                    .tooltip(tooltip(tr!("Open the store page")))
+                    .child(icon(Icon::OpenInNew, px(13.), theme::text_muted()))
+                    .on_click(cx.listener(move |this, _, _, cx| this.open_url(page.clone(), cx)))
+            });
         let header = div().flex().items_center().justify_between().gap(px(12.)).child(h3(tr!("Store media"))).child(
             div()
                 .flex()
@@ -144,14 +156,14 @@ impl CollectionView {
                 .flex_none()
                 .w(px(THUMB_W))
                 .h(px(THUMB_H))
-                .rounded(px(8.))
+                .rounded(px(THUMB_R))
                 .overflow_hidden()
                 .cursor_pointer()
                 .bg(theme::recess_a(0.35))
                 .border_2()
                 .border_color(if active { theme::accent().into() } else { theme::ink_a(0.0) })
                 .when(!active, |d| d.opacity(0.78).hover(|s| s.opacity(1.)))
-                .children(src.map(|s| img(s).size_full().object_fit(ObjectFit::Cover)))
+                .children(src.map(|s| img(s).size_full().rounded(px(THUMB_INNER_R)).object_fit(ObjectFit::Cover)))
                 .on_click(cx.listener(move |this, _, _, cx| this.media_pick(i, cx)));
             if is_video {
                 tile = tile.child(
@@ -193,7 +205,7 @@ impl CollectionView {
             .relative()
             .w(px(w))
             .h(px(h))
-            .rounded(px(12.))
+            .rounded(px(STAGE_R))
             .overflow_hidden()
             .bg(rgb(0x05070a))
             .border_1()
@@ -205,7 +217,9 @@ impl CollectionView {
                 let src = self
                     .media_image(&full, w, h, scale, 30)
                     .or_else(|| self.media_image(&media.screenshots[s].thumb.clone(), THUMB_W, THUMB_H, scale, 25));
-                stage = stage.children(src.map(|s| img(s).absolute().inset_0().size_full().object_fit(ObjectFit::Contain)));
+                stage = stage.children(
+                    src.map(|s| img(s).absolute().inset_0().size_full().rounded(px(STAGE_INNER_R)).object_fit(ObjectFit::Contain)),
+                );
             }
             None => stage = self.media_video(stage, media, pick, w, h, scale, cx),
         }
@@ -248,13 +262,19 @@ impl CollectionView {
         let state = player.map(|p| p.state.clone());
         let (position, seconds, sound) = player.map_or((0., 0., false), |p| (p.position(), p.seconds, p.sound));
         match frame {
-            Some(f) => stage = stage.child(img(ImageSource::Render(f)).absolute().inset_0().size_full().object_fit(ObjectFit::Contain)),
+            Some(f) => {
+                stage = stage.child(
+                    img(ImageSource::Render(f)).absolute().inset_0().size_full().rounded(px(STAGE_INNER_R)).object_fit(ObjectFit::Contain),
+                )
+            }
             None => {
                 let still = self.media_image(&v.thumb.clone(), w, h, scale, 30);
-                stage = stage.children(still.map(|s| img(s).absolute().inset_0().size_full().object_fit(ObjectFit::Cover).opacity(0.75)));
+                stage = stage.children(still.map(|s| {
+                    img(s).absolute().inset_0().size_full().rounded(px(STAGE_INNER_R)).object_fit(ObjectFit::Cover).opacity(0.75)
+                }));
             }
         }
-        let center = div().absolute().inset_0().flex().flex_col().items_center().justify_center().gap(px(10.));
+        let center = div().absolute().inset_0().rounded(px(STAGE_INNER_R)).flex().flex_col().items_center().justify_center().gap(px(10.));
         stage = match &state {
             None => stage.child(center.child(
                 stage_button("sm-play-big", Icon::PlayArrow, 64.).on_click(cx.listener(|this, _, _, cx| this.media_toggle_play(cx))),
@@ -302,6 +322,7 @@ impl CollectionView {
             .top_0()
             .left_0()
             .right_0()
+            .rounded_t(px(STAGE_INNER_R))
             .px(px(14.))
             .py(px(10.))
             .bg(linear_gradient(180., linear_color_stop(theme::rgb_a(0, 0, 0, 0.55), 0.), linear_color_stop(theme::rgb_a(0, 0, 0, 0.), 1.)))
@@ -354,6 +375,7 @@ impl CollectionView {
             .left_0()
             .right_0()
             .bottom_0()
+            .rounded_b(px(STAGE_INNER_R))
             .flex()
             .items_center()
             .gap(px(10.))

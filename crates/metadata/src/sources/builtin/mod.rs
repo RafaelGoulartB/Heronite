@@ -4,7 +4,7 @@
 use std::sync::{Arc, LazyLock};
 
 use heronite_data::models::CollectionGameMetadata;
-use heronite_data::settings::METADATA_FIELDS;
+use heronite_data::settings::{METADATA_FIELDS, STORE_MEDIA};
 use heronite_data::source_prefs::ids::{HOW_LONG_TO_BEAT, PROTONDB, STEAMGRIDDB, STEAM_TAGS, WEB_IMAGES};
 use heronite_i18n::n_;
 use parking_lot::RwLock;
@@ -97,7 +97,20 @@ fn key(key: &str, label: &str, kind: OptionKind, help: Option<&str>, link: Optio
     SourceOption { help: help.map(Into::into), link: link.map(Into::into), required: true, ..option(key, label, kind) }
 }
 
+/// The sources that give the Store media (`STORE_MEDIA`, not a field of
+/// the record): Steam's trailers and screenshots, the others' screenshots
+/// ([`crate::store_media::shots`]).
+const STORE_MEDIA_SOURCES: [&str; 5] = [STEAM, IGDB, STORE, LAUNCHBOX, LIBRETRO];
+
 static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
+    let mut list = descriptors();
+    for d in list.iter_mut().filter(|d| STORE_MEDIA_SOURCES.contains(&d.id.as_str())) {
+        d.provides.push(STORE_MEDIA.into());
+    }
+    list
+});
+
+fn descriptors() -> Vec<SourceDescriptor> {
     use MatchedBy::*;
     use SourceKind::*;
     vec![
@@ -287,7 +300,7 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
         },
         SourceDescriptor { finds_by: vec![SteamId, ExactTitle], ..source(PROTONDB, "ProtonDB", Extras, &[LINUX_RATING]) },
     ]
-});
+}
 
 /// The platforms that have a system folder on libretro's server.
 fn libretro_platforms() -> Vec<String> {
