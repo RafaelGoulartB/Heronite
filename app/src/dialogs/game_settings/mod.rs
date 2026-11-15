@@ -147,9 +147,12 @@ pub struct GameSettingsDialog {
     backups: Option<Entity<SaveBackupsView>>,
     /// "Edit details" alone (opened on `Tab::Game`), not the settings.
     details_only: bool,
-    /// Console mode: the focus is in the lower of a tab's two blocks (the
-    /// panel under Play and the actions, or under the backups).
+    /// Console mode: the tab's panel is shown rather than its own block
+    /// (Play and the actions, or the backups): each is an entry of the left
+    /// column (`console.rs`).
     lower: bool,
+    /// Console mode: the left column has the focus, not the rows.
+    console_nav: bool,
     /// Console mode: focused row and the open keyboard / picker.
     console_list: crate::console::list::ListNav,
     layer: crate::console::Layer,
@@ -242,6 +245,7 @@ impl GameSettingsDialog {
             backups,
             details_only,
             lower: false,
+            console_nav: false,
             game,
             ctx,
             console_list: Default::default(),
@@ -302,10 +306,14 @@ impl GameSettingsDialog {
         tab.section().is_some_and(|s| self.panel.as_ref().is_some_and(|(_, secs)| secs.contains(&s)))
     }
 
-    /// The tab has its own block above the panel: Play and the actions
+    /// The tab has its own block beside the panel: Play and the actions
     /// (Start), the backups (Saves). The details are that block alone.
     fn has_upper(&self) -> bool {
-        match self.tab {
+        self.has_upper_of(self.tab)
+    }
+
+    fn has_upper_of(&self, tab: Tab) -> bool {
+        match tab {
             Tab::Game | Tab::Start => true,
             Tab::Saves => self.backups.is_some(),
             _ => false,
@@ -318,14 +326,21 @@ impl GameSettingsDialog {
         self.has_panel(self.tab) && !(self.tab == Tab::Start && self.actions.editor.is_some())
     }
 
-    /// Console mode: moves the focus to the lower block (`true`) or the upper.
+    /// Console mode: shows the tab's panel (`true`) or its own block.
     fn console_focus(&mut self, lower: bool, cx: &mut Context<Self>) {
         self.lower = lower;
+        self.console_sync(cx);
+    }
+
+    /// Console mode: the shown block has the focus unless the left column has it.
+    fn console_sync(&mut self, cx: &mut Context<Self>) {
+        let rows = !self.console_nav;
+        let lower = self.lower;
         if let Some((panel, _)) = &self.panel {
-            panel.update(cx, |p, _| p.set_console_active(lower));
+            panel.update(cx, |p, _| p.set_console_active(rows && lower));
         }
         if let Some(view) = &self.backups {
-            view.update(cx, |v, _| v.set_console_active(!lower));
+            view.update(cx, |v, _| v.set_console_active(rows && !lower));
         }
     }
 
