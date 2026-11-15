@@ -65,29 +65,15 @@ impl CollectionView {
         self.images.get_or_request(&id, chain, pw, ph, Variant::Cover, priority).map(ImageSource::Render)
     }
 
-    /// The section, `width` px wide; `None` while the game has no store
-    /// media (or the section is off).
+    /// The section, `width` px wide; `None` until the game's store media
+    /// are read and while it has none (or the section is off): a game without
+    /// any never shows the section, not even while it is asked.
     pub(in crate::collection) fn store_media_section(&mut self, width: f32, scale: f32, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let media = match &self.media.list {
-            List::Ready(m) => Some(m.clone()),
-            List::Loading => None,
-            List::None | List::Missing => return None,
-        };
+        let List::Ready(media) = &self.media.list else { return None };
+        let media = media.clone();
         self.media.drawn = true;
         let stage_w = width.min(STAGE_MAX_W);
         let stage_h = (stage_w * 9. / 16.).round();
-        let Some(media) = media else {
-            let stage = div()
-                .w(px(stage_w))
-                .h(px(stage_h))
-                .rounded(px(12.))
-                .bg(theme::recess_a(0.35))
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(spinner("sm-list-spin"));
-            return Some(div().flex().flex_col().child(h3(tr!("Store media"))).child(stage).into_any_element());
-        };
         let (videos, shots) = (media.videos.len(), media.screenshots.len());
         let total = videos + shots;
         let pick = self.media.pick.min(total.saturating_sub(1));
