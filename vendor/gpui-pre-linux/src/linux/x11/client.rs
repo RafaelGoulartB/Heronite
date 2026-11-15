@@ -1815,7 +1815,9 @@ impl X11Client {
     }
 
     /// Heronite: X11 has no xdg-activation; the window manager decides.
-    pub(crate) fn set_activation_token(&self, _token: Option<String>) {}
+    pub(crate) fn replace_activation_token(&self, _token: Option<String>) -> Option<String> {
+        None
+    }
 
     pub(crate) fn is_cursor_visible(&self) -> bool {
         self.0.borrow().cursor_hidden_window.is_none()

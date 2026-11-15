@@ -70,10 +70,11 @@ pub(super) fn open<V: Render>(
 #[cfg(target_os = "linux")]
 fn activated<T>(token: Option<String>, open: impl FnOnce() -> T) -> T {
     let Some(token) = token else { return open() };
-    gpui_linux::set_activation_token(Some(token));
+    let start = gpui_linux::replace_activation_token(Some(token));
     let opened = open();
-    // Not used when the window did not open: no later window takes it.
-    gpui_linux::set_activation_token(None);
+    // Back to the start's (still unused, or none): a token the window did
+    // not take (it did not open) goes to no later window.
+    gpui_linux::replace_activation_token(start);
     opened
 }
 

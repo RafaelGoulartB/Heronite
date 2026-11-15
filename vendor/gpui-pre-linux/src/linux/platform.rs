@@ -315,9 +315,9 @@ impl LinuxPlatform {
         self.connection.borrow().show_cursor()
     }
 
-    /// Heronite: see [`crate::set_activation_token`].
-    pub(crate) fn set_activation_token_now(&self, token: Option<String>) {
-        self.connection.borrow().set_activation_token(token)
+    /// Heronite: see [`crate::replace_activation_token`].
+    pub(crate) fn replace_activation_token_now(&self, token: Option<String>) -> Option<String> {
+        self.connection.borrow().replace_activation_token(token)
     }
 
     /// Creates the platform, headless until `run` connects it in its initial mode.

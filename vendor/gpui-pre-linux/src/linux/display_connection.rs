@@ -168,8 +168,11 @@ impl DisplayConnection {
     }
 
     /// Heronite: the activation token for the next window (Wayland).
-    pub(crate) fn set_activation_token(&self, token: Option<String>) {
-        dispatch!(self, connection => connection.set_activation_token(token), headless => drop(token))
+    pub(crate) fn replace_activation_token(&self, token: Option<String>) -> Option<String> {
+        dispatch!(self, connection => connection.replace_activation_token(token), headless => {
+            drop(token);
+            None
+        })
     }
 
     pub(crate) fn is_cursor_visible(&self) -> bool {

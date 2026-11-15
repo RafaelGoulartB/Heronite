@@ -244,7 +244,9 @@ pub(super) fn on_message(cx: &mut App, msg: Message) {
         log::info!("request from another invocation ignored: quitting");
         return;
     }
-    log::info!("request from another invocation: {msg:?}");
+    // The activation token is a credential: logged only as there or not.
+    let logged = Message { activation_token: msg.activation_token.as_ref().map(|_| "…".into()), ..msg.clone() };
+    log::info!("request from another invocation: {logged:?}");
     if let Some(req) = &msg.stop {
         stop_game(cx, req);
         if msg.launch.is_none() {

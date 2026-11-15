@@ -55,7 +55,7 @@ pub fn linux_platform(allowed_modes: WindowingModes) -> Rc<dyn gpui::Platform> {
 
 thread_local! {
     /// Heronite: the platform made last, for [`show_cursor`],
-    /// [`hide_cursor_until_mouse_moves`] and [`set_activation_token`] (GPUI
+    /// [`hide_cursor_until_mouse_moves`] and [`replace_activation_token`] (GPUI
     /// has no API for them).
     static PLATFORM: std::cell::RefCell<std::rc::Weak<LinuxPlatform>> = std::cell::RefCell::new(std::rc::Weak::new());
 }
@@ -78,11 +78,11 @@ pub fn show_cursor() {
 
 /// Heronite: the xdg-activation token the next window opened activates
 /// itself with, as the first one does with `XDG_ACTIVATION_TOKEN`
-/// (Wayland; `None` drops one not used). For a window opened on a request
-/// another process forwarded with its token: without one, a compositor that
-/// prevents focus stealing (GNOME) leaves it behind the focused window.
-pub fn set_activation_token(token: Option<String>) {
-    if let Some(platform) = PLATFORM.with(|p| p.borrow().upgrade()) {
-        platform.set_activation_token_now(token);
-    }
+/// (Wayland). Returns the one it replaces (the start's, while no window took
+/// it), to put back once that window is open. For a window opened on a
+/// request another process forwarded with its token: without one, a
+/// compositor that prevents focus stealing (GNOME) leaves it behind the
+/// focused window.
+pub fn replace_activation_token(token: Option<String>) -> Option<String> {
+    PLATFORM.with(|p| p.borrow().upgrade()).and_then(|platform| platform.replace_activation_token_now(token))
 }
