@@ -2,7 +2,7 @@
 //! pages and actions at once and the library's games once it is read (off
 //! the UI thread), and the keys of its window.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -24,6 +24,11 @@ pub(super) struct QuickLauncher {
     data_paths: DataPaths,
     /// The library, once read.
     lib: Option<Arc<Library>>,
+    /// The games running when the rows were made (Play or Stop, Enter).
+    running: HashSet<String>,
+    /// The game whose actions were last asked for (key and title), to make
+    /// them again when it starts or ends.
+    game_shown: Option<(String, SharedString)>,
     /// Whether it ever had the keyboard: leaving it after that closes it.
     was_active: bool,
     opened: std::time::Instant,
@@ -98,6 +103,8 @@ impl QuickLauncher {
             palette,
             data_paths: data_paths.clone(),
             lib: None,
+            running: HashSet::new(),
+            game_shown: None,
             was_active: false,
             opened: std::time::Instant::now(),
             pending_enter: None,
@@ -143,9 +150,8 @@ impl QuickLauncher {
 
     fn apply_loaded(&mut self, l: Loaded, keys: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
         log::info!("quick launcher: {} games listed {:?} after opening", l.lib.games.len(), self.opened.elapsed());
-        let running = crate::system::running_games(cx);
-        let mut entries = global_entries(cx);
-        entries.extend(library_entries(&l.lib, &|app_name| running.contains(app_name)));
+        self.running = crate::system::running_games(cx);
+        let entries = self.entries_for(&l.lib, cx);
         self.lib = Some(Arc::new(l.lib));
         let covers = Rc::new(l.covers);
         self.palette.update(cx, |p, cx| p.set_entries(Rc::new(entries), covers, cx));
@@ -155,6 +161,33 @@ impl QuickLauncher {
         // `HERONITE_DEBUG_QUICK_LAUNCH_KEYS`, once the games are listed.
         let keys = keys.iter().flat_map(|k| k.split(',')).filter(|k| !k.is_empty()).map(str::to_string).collect();
         self.feed_keys(keys, window, cx);
+    }
+
+    /// The pages, the actions and `lib`'s games, as Play or Stop by
+    /// [`Self::running`].
+    fn entries_for(&self, lib: &Library, cx: &App) -> Vec<palette::Entry> {
+        let mut entries = global_entries(cx);
+        entries.extend(library_entries(lib, &|app_name| self.running.contains(app_name)));
+        entries
+    }
+
+    /// A game started or ended while the launcher is open: its row, the
+    /// actions shown for it, the footer and Enter follow.
+    pub(super) fn set_running(&mut self, running: HashSet<String>, cx: &mut Context<Self>) {
+        if running == self.running {
+            return;
+        }
+        self.running = running;
+        let Some(lib) = self.lib.clone() else { return };
+        let entries = Rc::new(self.entries_for(&lib, cx));
+        let game = self.game_shown.clone().filter(|_| self.palette.read(cx).in_game());
+        self.palette.update(cx, |p, cx| {
+            let game_entries = game.and_then(|(key, title)| {
+                let bits = entries.iter().find(|e| matches!(&e.act, Act::SelectGame(k) if *k == key))?.game.clone()?;
+                Some(palette::launcher::game_level(&title, &bits))
+            });
+            p.refresh_entries(entries.clone(), game_entries, cx);
+        });
     }
 
     /// Debug keys, one per cycle, so what a key asks for (a game's actions)
@@ -204,6 +237,7 @@ impl QuickLauncher {
                 let Some(bits) = view.read(cx).game_bits_of(key) else { return };
                 let title = bits.card.as_ref().map(|c| c.title.clone()).unwrap_or_else(|| key.clone().into());
                 let entries = palette::launcher::game_level(&title, &bits);
+                self.game_shown = Some((key.clone(), title.clone()));
                 view.update(cx, |p, cx| p.show_game(title, entries, window, cx));
             }
         }

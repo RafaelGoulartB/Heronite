@@ -74,6 +74,9 @@ pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
     }
     tell_downloads(cx, &ev);
     tell_compression(cx, &ev);
+    if !matches!(ev, LaunchEvent::Status { .. } | LaunchEvent::Preparing { .. }) {
+        crate::quick_launch::running_changed(cx);
+    }
     // Heroic's `minimizeOnLaunch`, once the game runs: the window shows the
     // launch's progress until then. Needs the tray to come back from.
     if started && settings.minimize_on_launch && close_window_keep_alive(cx) {
