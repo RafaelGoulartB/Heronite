@@ -180,7 +180,7 @@ impl SourceRegistry {
 
 #[cfg(test)]
 mod tests {
-    use heronite_data::settings::{normalize_metadata, METADATA_FIELDS};
+    use heronite_data::settings::{normalize_metadata, METADATA_FIELDS, STORE_MEDIA};
     use heronite_data::source_prefs::{reset_field, set_field_on, set_on};
 
     use super::*;
@@ -205,11 +205,13 @@ mod tests {
         let reg = SourceRegistry::for_tests();
         for m in [untouched(), normalize_metadata(Some(&MetadataSettings::default()))] {
             assert!(!reg.is_order_customised(&m));
-            for field in ALL_FIELDS {
+            for field in ALL_FIELDS.into_iter().chain([STORE_MEDIA]) {
                 assert_eq!(reg.field_order(&m, field), default_field_priority(field), "{field}");
                 assert_eq!(reg.base_order(&m, field), default_field_priority(field), "{field}");
             }
-            assert_eq!(reg.field_orders(&m), m.field_priority, "what the merge used before");
+            let mut merged = m.field_priority.clone();
+            merged.shift_remove(STORE_MEDIA);
+            assert_eq!(reg.field_orders(&m), merged, "what the merge used before");
         }
         assert_eq!(reg.order(&untouched()), reg.descriptors().map(|d| d.id.clone()).collect::<Vec<_>>());
     }

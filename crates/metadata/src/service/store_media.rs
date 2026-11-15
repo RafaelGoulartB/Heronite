@@ -1,49 +1,56 @@
-//! The Store media's screenshots of a game Steam has nothing for.
+//! The Store media of a game: from the first source, in the order of the
+//! "Store media" field, that has any.
 
 use std::path::Path;
 
-use heronite_data::source_prefs::is_on;
+use heronite_data::settings::STORE_MEDIA;
 
 use super::MetadataService;
-use crate::store_media::shots::{self, ShotsGame};
-use crate::store_media::{kept_or_fetched, StoreMedia};
+use crate::store_media::{kept_or_fetched, shots, steam_for, MediaGame, StoreMedia};
 use crate::types::Lookup;
 
 impl MetadataService {
-    /// The screenshots of `game` from the first source that is on and has
-    /// any, in the user's source order (Steam is not asked here: the caller
-    /// asks it first). Each source answers for the game the record matched
-    /// ([`shots`]); the lists of the sources asked over the network are kept
-    /// under `dir`. Blocking.
-    pub fn other_screenshots(&self, dir: &Path, game: &ShotsGame) -> Lookup<StoreMedia> {
+    /// The trailers and screenshots of `game` from the first source of the
+    /// "Store media" field's order (the user's, else Steam, IGDB, the store,
+    /// LaunchBox, libretro) that is on, is not switched off for the field,
+    /// and has anything the section shows: only one source is ever shown.
+    /// Steam's app id comes with its media. Each other source answers for the
+    /// game its record matched ([`shots`]) and has screenshots only. The
+    /// lists of the sources asked over the network are kept under `dir`.
+    /// Blocking.
+    pub fn store_media(&self, dir: &Path, game: &MediaGame) -> Lookup<(Option<String>, StoreMedia)> {
         let m = self.metadata_settings();
+        let o = &game.others;
         let mut unreachable = false;
-        for id in self.sources().order(&m) {
-            if !is_on(&m, &id) {
-                continue;
-            }
+        for id in self.sources().field_order(&m, STORE_MEDIA) {
             let found = match id.as_str() {
-                "igdb" => match game.igdb_id {
-                    Some(i) => kept_or_fetched(dir, "igdb", &i.to_string(), || shots::igdb(&self.igdb, &self.http, &self.credentials(), i)),
+                "steam" => match &game.steam {
+                    Some(target) => steam_for(&self.http, &self.paths, dir, target).map(|(id, m)| (Some(id), m)),
                     None => continue,
                 },
-                "store" => match &game.gog_id {
-                    Some(g) => kept_or_fetched(dir, "gog", g, || shots::gog(&self.http, g)),
-                    None if !game.store_shots.is_empty() => shots::amazon(&game.store_shots),
+                _ if !game.screenshots => continue,
+                "igdb" => match o.igdb_id {
+                    Some(i) => kept_or_fetched(dir, "igdb", &i.to_string(), || shots::igdb(&self.igdb, &self.http, &self.credentials(), i))
+                        .map(|m| (None, m)),
                     None => continue,
                 },
-                crate::launchbox::SOURCE => match game.launchbox_id {
-                    Some(i) => shots::launchbox(&self.launchbox, &self.paths, &self.http, i),
+                "store" => match &o.gog_id {
+                    Some(g) => kept_or_fetched(dir, "gog", g, || shots::gog(&self.http, g)).map(|m| (None, m)),
+                    None if !o.store_shots.is_empty() => shots::amazon(&o.store_shots).map(|m| (None, m)),
                     None => continue,
                 },
-                crate::libretro::SOURCE => match &game.libretro_boxart {
-                    Some(u) => kept_or_fetched(dir, "libretro", &url_key(u), || shots::libretro(&self.http, u)),
+                crate::launchbox::SOURCE => match o.launchbox_id {
+                    Some(i) => shots::launchbox(&self.launchbox, &self.paths, &self.http, i).map(|m| (None, m)),
+                    None => continue,
+                },
+                crate::libretro::SOURCE => match &o.libretro_boxart {
+                    Some(u) => kept_or_fetched(dir, "libretro", &url_key(u), || shots::libretro(&self.http, u)).map(|m| (None, m)),
                     None => continue,
                 },
                 _ => continue,
             };
             match found {
-                Lookup::Found(m) if !m.screenshots.is_empty() => return Lookup::Found(m),
+                Lookup::Found((id, m)) if game.shows(&m) => return Lookup::Found((id, m)),
                 Lookup::Unreachable => unreachable = true,
                 _ => {}
             }

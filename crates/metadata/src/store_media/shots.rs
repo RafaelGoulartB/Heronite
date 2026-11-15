@@ -12,8 +12,8 @@
 //! - libretro: the snapshot and title screen next to the record's box art
 //!   (`Named_Snaps`, `Named_Titles`), the ones that exist.
 //!
-//! [`crate::MetadataService::other_screenshots`] asks them in the user's
-//! source order and keeps the first that has any. The lists are kept like
+//! [`crate::MetadataService::store_media`] asks them in the order of the
+//! "Store media" field and keeps the first that has any. The lists are kept like
 //! Steam's ([`super::kept_or_fetched`]).
 
 use serde_json::Value;

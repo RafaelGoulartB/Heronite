@@ -212,6 +212,42 @@ fn same_time(year: Option<i32>, released: Option<i32>) -> bool {
     }
 }
 
+/// How a game's Steam page is found.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SteamTarget {
+    /// Its Steam app id.
+    Id(String),
+    /// A game with none: the Steam game of this exact name, while Steam's
+    /// "Find games not on Steam by name" is on ([`steam_by_name`]).
+    Name { title: String, year: Option<i32> },
+}
+
+/// The media of `target` on Steam, with its app id. Blocking.
+pub fn steam_for(http: &Http, paths: &DataPaths, dir: &Path, target: &SteamTarget) -> Lookup<(String, StoreMedia)> {
+    match target {
+        SteamTarget::Id(id) => steam(http, dir, id).map(|m| (id.clone(), m)),
+        SteamTarget::Name { title, year } if crate::sources::steam_by_name(paths) => steam_by_name(http, paths, dir, title, *year),
+        SteamTarget::Name { .. } => Lookup::Skipped,
+    }
+}
+
+/// What the Store media are asked about a game: where Steam has it, what
+/// the other sources know it by, and what the section shows.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct MediaGame {
+    pub steam: Option<SteamTarget>,
+    pub others: shots::ShotsGame,
+    pub videos: bool,
+    pub screenshots: bool,
+}
+
+impl MediaGame {
+    /// Whether `m` has anything the section shows.
+    pub fn shows(&self, m: &StoreMedia) -> bool {
+        (self.videos && !m.videos.is_empty()) || (self.screenshots && !m.screenshots.is_empty())
+    }
+}
+
 /// Drops the kept list of `app_id`, so the next [`steam`] asks again.
 pub fn forget(dir: &Path, app_id: &str) {
     let _ = fs::remove_file(list_path(dir, "steam", app_id));

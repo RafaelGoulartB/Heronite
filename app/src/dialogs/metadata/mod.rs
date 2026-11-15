@@ -66,6 +66,7 @@ pub fn field_label(field: &str) -> &'static str {
         "coverSquare" => tr!("Cover \u{b7} Square"),
         "coverWide" => tr!("Cover \u{b7} Wide"),
         "hero" => tr!("Background"),
+        heronite_data::settings::STORE_MEDIA => tr!("Store media"),
         _ => "",
     }
 }
