@@ -1,7 +1,9 @@
 //! Where ffmpeg and ffprobe are: on the `PATH` first (the system's own,
 //! which on Linux plays the trailers' sound), else the copies downloaded
-//! into `<data>/tools/bin` (`heronite_launch::ffmpeg_install`, on Windows
-//! when a trailer is played). Everything that runs them (the trailers,
+//! into `<data>/tools/ffmpeg/<release>` (`heronite_launch::ffmpeg_install`,
+//! on Windows when a trailer is played). The folder names the release, so
+//! a newer pinned release is downloaded again rather than an older copy
+//! being kept. Everything that runs them (the trailers,
 //! the posters of replays, cutting a replay) starts them through
 //! [`command`].
 //!
@@ -47,9 +49,17 @@ impl Tool {
     }
 }
 
-/// The folder the downloaded copies go to: `<data>/tools/bin`.
+/// The release the downloaded copies are (`heronite_launch::ffmpeg_install`).
+pub const DOWNLOADED_RELEASE: &str = "n8.1.2-2";
+
+/// The folder of every downloaded release: `<data>/tools/ffmpeg`.
+pub fn downloads_dir(paths: &DataPaths) -> PathBuf {
+    paths.tools_dir().join("ffmpeg")
+}
+
+/// The folder the downloaded copies go to: `<data>/tools/ffmpeg/<release>`.
 pub fn data_bin_dir(paths: &DataPaths) -> PathBuf {
-    paths.tools_dir().join("bin")
+    downloads_dir(paths).join(DOWNLOADED_RELEASE)
 }
 
 /// Where the downloaded `tool` is (or would be).
@@ -62,7 +72,7 @@ static FOUND: Mutex<[Option<Option<PathBuf>>; 2]> = Mutex::new([None, None]);
 /// Bumped by [`forget`]: a lookup that started before is not kept.
 static EPOCH: AtomicU64 = AtomicU64::new(0);
 
-/// `tool` on the `PATH`, else in this data folder's `tools/bin`.
+/// `tool` on the `PATH`, else downloaded into this data folder.
 pub fn find(tool: Tool) -> Option<PathBuf> {
     let epoch = {
         let found = FOUND.lock().unwrap_or_else(|e| e.into_inner());
@@ -146,6 +156,9 @@ mod tests {
     fn the_names_are_programs_of_this_system() {
         assert_eq!(Tool::Ffprobe.file_name(), if cfg!(windows) { "ffprobe.exe" } else { "ffprobe" });
         let paths = DataPaths::at("/hr");
-        assert_eq!(data_bin(&paths, Tool::Ffmpeg), paths.tools_dir().join("bin").join(Tool::Ffmpeg.file_name()));
+        assert_eq!(
+            data_bin(&paths, Tool::Ffmpeg),
+            paths.tools_dir().join("ffmpeg").join(DOWNLOADED_RELEASE).join(Tool::Ffmpeg.file_name())
+        );
     }
 }

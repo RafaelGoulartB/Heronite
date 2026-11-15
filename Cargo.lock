@@ -3821,7 +3821,6 @@ version = "1.6.1"
 dependencies = [
  "anyhow",
  "chrono",
- "flate2",
  "heronite-data",
  "heronite-i18n",
  "heronite-platform",

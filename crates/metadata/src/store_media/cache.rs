@@ -86,6 +86,17 @@ fn playlists(http: &Http, video: &StoreVideo) -> Result<Playlists> {
     Ok(Playlists { variant, video: media, audio })
 }
 
+/// `file` as a line of a playlist ffmpeg reads. On Windows with `/`: its
+/// HLS reader finds no file at a `C:\...` line (it does at `C:/...`).
+fn playlist_path(file: &Path) -> String {
+    let path = file.to_string_lossy().into_owned();
+    if cfg!(windows) {
+        path.replace('\\', "/")
+    } else {
+        path
+    }
+}
+
 /// Gets a trailer ready to play: its playlists, with the segments kept on
 /// this PC read from their files. Blocking (three small requests).
 pub fn prepare(http: &Http, root: &Path, video: &StoreVideo) -> Result<Playable> {
@@ -95,7 +106,7 @@ pub fn prepare(http: &Http, root: &Path, video: &StoreVideo) -> Result<Playable>
         let dir = dir.clone();
         move |uri: &str| {
             let file = dir.join(file_name(kind, uri));
-            file.is_file().then(|| file.to_string_lossy().into_owned())
+            file.is_file().then(|| playlist_path(&file))
         }
     };
     let any_kept = p.video.map().is_some_and(|m| kept('v')(m).is_some());
@@ -224,6 +235,15 @@ mod tests {
         assert_eq!(file_name('v', "https://v/x/dash_h264/chunk-stream2-00001.m4s?t=1"), "v-chunk-stream2-00001.m4s");
         assert_eq!(file_name('a', "https://v/x/init-stream4.m4s"), "a-init-stream4.m4s");
         assert_eq!(file_name('v', "https://v/../../etc/pa ss"), "v-pass");
+    }
+
+    #[test]
+    fn kept_segments_are_named_the_way_ffmpeg_reads_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("videos").join("v-chunk-stream2-00001.m4s");
+        let line = playlist_path(&file);
+        assert!(!line.contains('\\'), "{line}");
+        assert_eq!(Path::new(&line), file.as_path(), "the same file");
     }
 
     #[test]
