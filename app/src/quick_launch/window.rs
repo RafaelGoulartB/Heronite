@@ -25,9 +25,14 @@ pub(super) fn open<V: Render>(cx: &mut App, build: impl Fn(&mut Window, &mut App
             opened => return Ok(opened?.into()),
         }
     }
+    // The bounds are that screen's: GPUI checks them against `display_id`
+    // (the primary screen without one) and, off it, opens its default size
+    // there instead (Windows).
+    let display = display(cx);
     let options = WindowOptions {
         titlebar: None,
-        window_bounds: Some(WindowBounds::Windowed(Bounds::centered(display(cx), size, cx))),
+        window_bounds: Some(WindowBounds::Windowed(Bounds::centered(display, size, cx))),
+        display_id: display,
         window_decorations: Some(WindowDecorations::Client),
         app_id: Some("app.heronite.Heronite".into()),
         window_background: WindowBackgroundAppearance::Transparent,
@@ -43,15 +48,18 @@ pub(super) fn open<V: Render>(cx: &mut App, build: impl Fn(&mut Window, &mut App
         build(window, cx)
     })?;
     #[cfg(windows)]
-    drop_frame(cx, handle.into());
+    finish(cx, handle.into());
     cx.activate(true);
     Ok(handle.into())
 }
 
-/// Windows: no frame around the panel (see `overlay_window::drop_frame`).
-/// Run once the borrows unwind, as that sends GPUI synchronous messages.
+/// Windows: no frame around the panel (see `overlay_window::drop_frame`),
+/// and the foreground with the keyboard, which Windows refuses a window
+/// opened on a request from outside (`heronite://quick-launch` through the
+/// socket: no input came to Heronite; `cx.activate` does nothing there).
+/// Run once the borrows unwind, as both send GPUI synchronous messages.
 #[cfg(windows)]
-fn drop_frame(cx: &mut App, handle: AnyWindowHandle) {
+fn finish(cx: &mut App, handle: AnyWindowHandle) {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     let hwnd = handle.update(cx, |_, window, _| match window.window_handle().map(|h| h.as_raw()) {
         Ok(RawWindowHandle::Win32(raw)) => Some(raw.hwnd),
@@ -66,15 +74,21 @@ fn drop_frame(cx: &mut App, handle: AnyWindowHandle) {
             if let Err(e) = heronite_platform::overlay_window::drop_frame(hwnd) {
                 log::warn!("quick launcher: could not take the frame off: {e}");
             }
+            match heronite_platform::overlay_window::take_foreground(hwnd) {
+                Ok(true) => {}
+                Ok(false) => log::info!("quick launcher: Windows kept the foreground elsewhere; a click gives it the keyboard"),
+                Err(e) => log::warn!("quick launcher: could not take the foreground: {e}"),
+            }
         })
         .detach();
 }
 
 /// Windows: the screen of the foreground window (where the user is), else
-/// the primary one.
+/// the primary one; the overlay's (`HERONITE_DEBUG_OVERLAY_MONITOR` picks
+/// another in debug runs).
 #[cfg(windows)]
 fn display(cx: &App) -> Option<DisplayId> {
-    let screen = heronite_platform::overlay_window::foreground_screen().ok()?;
+    let screen = crate::overlay::window::target_screen().ok()?;
     let scale = screen.scale.max(0.1);
     let (x, y) = ((screen.left as f32 + screen.width as f32 / 2.) / scale, (screen.top as f32 + screen.height as f32 / 2.) / scale);
     let distance = |b: Bounds<Pixels>| {

@@ -190,6 +190,25 @@ pub fn show(
     }
 }
 
+/// Brings a shown window of this process to the foreground with the keyboard
+/// (as a panel takes it, see [`activate`]). Windows gives the foreground
+/// only to the process that got the last input, so a window opened on a
+/// request from outside (the quick launcher through the socket) is
+/// otherwise shown behind the window that keeps the keyboard. Returns
+/// whether it has the foreground. Call on the window's (the UI) thread.
+pub fn take_foreground(handle: NonZeroIsize) -> io::Result<bool> {
+    let hwnd = handle.get() as HWND;
+    // SAFETY: a live HWND of this process only, on its thread (the caller's).
+    unsafe {
+        let mut pid = 0;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+        if IsWindow(hwnd) == 0 || pid != GetCurrentProcessId() {
+            return Err(io::Error::other("window is not owned by this process"));
+        }
+        Ok(GetForegroundWindow() == hwnd || activate(hwnd))
+    }
+}
+
 /// Takes the frame off a shown GPUI pop-up, keeping its client area where it
 /// is. GPUI creates pop-ups with style 0 (`WS_OVERLAPPED`), to which Windows
 /// adds a caption: GPUI hides the title bar, but the frame stays on the sides

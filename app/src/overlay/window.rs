@@ -111,7 +111,7 @@ pub fn exclusive_fullscreen() -> bool {
 /// point (physical px) instead, so another monitor is tested without moving
 /// the focus.
 #[cfg(windows)]
-fn target_screen() -> std::io::Result<heronite_platform::overlay_window::Screen> {
+pub(crate) fn target_screen() -> std::io::Result<heronite_platform::overlay_window::Screen> {
     use heronite_platform::overlay_window;
     let point = crate::env::value("HERONITE_DEBUG_OVERLAY_MONITOR").and_then(|v| {
         let (x, y) = v.split_once(',')?;
