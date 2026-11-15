@@ -18,6 +18,7 @@ pub mod dxvk;
 pub mod emulators;
 pub mod env;
 pub mod epic_native_setup;
+pub mod ffmpeg_install;
 pub mod first_launch;
 pub mod fps_limit;
 pub mod galaxy;

@@ -7,6 +7,8 @@
   "Watch on the store page": "Ver en la página de la tienda",
   "Sound on": "Activar el sonido",
   "Trailers play with ffmpeg, which is not installed.": "Los tráileres se reproducen con ffmpeg, que no está instalado.",
+  "Downloading ffmpeg to play trailers (about {mb} MB, only once)…": "Descargando ffmpeg para reproducir los tráilers (unos {mb} MB, solo una vez)…",
+  "ffmpeg, which plays the trailers, could not be downloaded.": "No se pudo descargar ffmpeg, que reproduce los tráilers.",
   "The trailer could not be loaded.": "No se pudo cargar el tráiler.",
   "The trailer could not be played.": "No se pudo reproducir el tráiler.",
   "Video cache": "Caché de vídeo",

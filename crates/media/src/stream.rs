@@ -15,10 +15,11 @@
 //! `volume -1 volume 0.5`): no restart, no gap.
 
 use std::io::{Read, Write};
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, ChildStdin, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use heronite_data::ffmpeg::{command, Tool};
 use heronite_data::proc::{guard, spawn};
 use heronite_images::Decoded;
 
@@ -120,7 +121,7 @@ pub fn sound_supported() -> bool {
         }
         let out = heronite_data::proc::Run::new()
             .timeout(std::time::Duration::from_secs(5))
-            .run(Command::new("ffmpeg").args(["-hide_banner", "-devices"]));
+            .run(command(Tool::Ffmpeg).args(["-hide_banner", "-devices"]));
         out.is_ok_and(|o| o.stdout_text().lines().any(|l| l.split_whitespace().nth(1) == Some("pulse") && l.trim_start().contains('E')))
     })
 }
@@ -195,7 +196,7 @@ fn run(
     if !crate::posters::available() {
         return StreamEvent::Failed("ffmpeg is not installed".into());
     }
-    let mut cmd = Command::new("ffmpeg");
+    let mut cmd = command(Tool::Ffmpeg);
     let sound = spec.sound && sound_supported();
     cmd.args(args(spec)).stdin(if sound { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::piped());
     guard(&mut cmd);
@@ -307,7 +308,7 @@ mod tests {
         // `lavfi` is a device, not a file: play it through a tiny wrapper.
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("t.mp4");
-        let made = Command::new("ffmpeg")
+        let made = command(Tool::Ffmpeg)
             .args(["-v", "error", "-nostdin", "-f", "lavfi", "-i", &spec.video, "-pix_fmt", "yuv420p"])
             .arg(&file)
             .status()

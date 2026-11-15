@@ -7,7 +7,9 @@
 //! the lists for a few days, and the first seconds of the trailers of the
 //! installed games they visit, within the video cache's size. A trailer
 //! streams when played, through ffmpeg (`heronite_media::stream`), at 480p,
-//! with sound on Linux. It stops when its game is no longer focused, when
+//! with sound on Linux. On Windows, ffmpeg is downloaded into the data folder
+//! the first time a trailer is played without one
+//! (`heronite_launch::ffmpeg_install`). It stops when its game is no longer focused, when
 //! the section is not drawn (another page, the drawer closed, the section
 //! turned off), and when a game starts. Turning the section off deletes
 //! everything it kept (`clear_kept`).
@@ -67,6 +69,8 @@ enum List {
 pub(super) enum PlayState {
     /// Getting the playlists, or waiting for the first frame.
     Loading,
+    /// Downloading ffmpeg (Windows) before it can play.
+    Downloading,
     Playing,
     Paused,
     Failed(SharedString),
@@ -225,7 +229,11 @@ impl CollectionView {
         // A game that starts stops the trailer (one running already does not).
         let games = self.playing.len();
         let game_started = games > std::mem::replace(&mut self.media.games_running, games);
-        let running = self.media.player.as_ref().is_some_and(|p| p.stream.is_some() || p.state == PlayState::Loading);
+        let running = self
+            .media
+            .player
+            .as_ref()
+            .is_some_and(|p| p.stream.is_some() || matches!(p.state, PlayState::Loading | PlayState::Downloading));
         if running && (!drawn || game_started) {
             self.media_pause(cx);
         }
@@ -396,7 +404,9 @@ impl CollectionView {
     pub(super) fn media_toggle_play(&mut self, cx: &mut Context<Self>) {
         let video = self.media.pick;
         match &self.media.player {
-            Some(p) if p.video == video && matches!(p.state, PlayState::Playing | PlayState::Loading) => self.media_pause(cx),
+            Some(p) if p.video == video && matches!(p.state, PlayState::Playing | PlayState::Loading | PlayState::Downloading) => {
+                self.media_pause(cx)
+            }
             Some(p) if p.video == video && p.state == PlayState::Paused => {
                 let (at, sound) = (p.position(), p.sound);
                 self.media_play(video, at, sound, cx);
@@ -411,8 +421,8 @@ impl CollectionView {
                 p.start = p.position();
                 p.count = Arc::default();
                 p.state = PlayState::Paused;
-            } else if p.state == PlayState::Loading {
-                // Still getting its playlists: it does not start once they come.
+            } else if matches!(p.state, PlayState::Loading | PlayState::Downloading) {
+                // Still getting its playlists (or ffmpeg): it does not start once they come.
                 p.state = PlayState::Paused;
             }
         }
@@ -485,7 +495,9 @@ impl CollectionView {
         });
         cx.notify();
         if !heronite_media::posters::available() {
-            if let Some(p) = self.media.player.as_mut() {
+            if heronite_launch::ffmpeg_install::can_download() {
+                self.media_get_ffmpeg(video, at, sound, generation, cx);
+            } else if let Some(p) = self.media.player.as_mut() {
                 p.state = PlayState::Failed(tr!("Trailers play with ffmpeg, which is not installed.").into());
             }
             return;
@@ -515,6 +527,41 @@ impl CollectionView {
                             let dir = root(&this.app_paths);
                             cx.background_spawn(async move { store_media::forget(&dir, &id) }).detach();
                         }
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Downloads ffmpeg into the data folder (Windows), then plays the
+    /// trailer `video`, unless it was paused or another one started
+    /// meanwhile. A second play while it downloads waits for the same
+    /// download (`ffmpeg_install::ensure` runs one at a time); one that ends
+    /// unseen is still kept for the next play.
+    fn media_get_ffmpeg(&mut self, video: usize, at: f64, sound: bool, generation: u64, cx: &mut Context<Self>) {
+        if let Some(p) = self.media.player.as_mut() {
+            p.state = PlayState::Downloading;
+        }
+        let paths = self.data_paths.clone();
+        cx.spawn(async move |this, cx| {
+            let got = cx
+                .background_spawn(
+                    async move { heronite_launch::ffmpeg_install::ensure(&paths, &heronite_launch::net::SystemNet, &|| false) },
+                )
+                .await;
+            this.update(cx, |this, cx| {
+                let Some(p) = this.media.player.as_mut().filter(|p| p.generation == generation) else { return };
+                if p.state != PlayState::Downloading {
+                    return;
+                }
+                match got {
+                    Ok(()) => this.media_play(video, at, sound, cx),
+                    Err(e) => {
+                        log::warn!("ffmpeg download: {e}");
+                        p.state = PlayState::Failed(tr!("ffmpeg, which plays the trailers, could not be downloaded.").into());
                     }
                 }
                 cx.notify();
