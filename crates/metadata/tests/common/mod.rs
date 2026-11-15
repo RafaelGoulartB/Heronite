@@ -115,6 +115,7 @@ impl Server {
             libretro_thumbnails: format!("{b}/libretro"),
             steamgriddb: format!("{b}/sgdb/api/v2"),
             bottles_steamgrid: format!("{b}/bottles"),
+            gog_api: format!("{b}/gog"),
             hltb: format!("{b}/hltb"),
             protondb: format!("{b}/protondb"),
             duckduckgo: format!("{b}/ddg"),

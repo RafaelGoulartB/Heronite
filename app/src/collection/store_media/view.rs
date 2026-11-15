@@ -46,6 +46,18 @@ fn stage_button(id: impl Into<ElementId>, ic: Icon, d: f32) -> Stateful<Div> {
         .child(icon(ic, px(d * 0.55), rgb(0xf4f6f8)))
 }
 
+/// The icon and name of where a list comes from (`StoreMedia::source`).
+fn source_label(source: &str) -> (Icon, &'static str) {
+    match source {
+        "igdb" => (Icon::BrandIgdb, "IGDB"),
+        "gog" => (Icon::BrandGog, "GOG"),
+        "amazon" => (Icon::BrandAmazon, "Amazon"),
+        "launchbox" => (Icon::Image, "LaunchBox"),
+        "libretro" => (Icon::BrandRetroArch, "libretro"),
+        _ => (Icon::BrandSteam, "Steam"),
+    }
+}
+
 fn spinner(id: &'static str) -> impl IntoElement {
     icon(Icon::FaSpinner, px(22.), rgb(0xf4f6f8)).with_animation(
         id,
@@ -86,6 +98,8 @@ impl CollectionView {
             counts.push(trn!(shots, "{n} screenshot", "{n} screenshots"));
         }
         let page = media.page.clone();
+        let (source_icon, source_name) = source_label(&media.source);
+        let has_page = !page.is_empty();
         let source = div()
             .id("sm-source")
             .flex()
@@ -95,15 +109,17 @@ impl CollectionView {
             .px(px(8.))
             .py(px(3.))
             .rounded(px(8.))
-            .cursor_pointer()
             .text_size(px(12.5))
             .text_color(theme::text_muted())
-            .hover(|s| s.bg(theme::ink_a(0.08)).text_color(theme::text_primary()))
-            .tooltip(tooltip(tr!("Open the store page")))
-            .child(icon(Icon::BrandSteam, px(14.), theme::text_muted()))
-            .child("Steam")
-            .child(icon(Icon::OpenInNew, px(13.), theme::text_muted()))
-            .on_click(cx.listener(move |this, _, _, cx| this.open_url(page.clone(), cx)));
+            .child(icon(source_icon, px(14.), theme::text_muted()))
+            .child(source_name)
+            .when(has_page, |d| {
+                d.cursor_pointer()
+                    .hover(|s| s.bg(theme::ink_a(0.08)).text_color(theme::text_primary()))
+                    .tooltip(tooltip(tr!("Open the store page")))
+                    .child(icon(Icon::OpenInNew, px(13.), theme::text_muted()))
+                    .on_click(cx.listener(move |this, _, _, cx| this.open_url(page.clone(), cx)))
+            });
         let header = div().flex().items_center().justify_between().gap(px(12.)).child(h3(tr!("Store media"))).child(
             div()
                 .flex()

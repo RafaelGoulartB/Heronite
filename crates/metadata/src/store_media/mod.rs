@@ -7,11 +7,14 @@
 //! [`steam_by_name`]). The list is small JSON kept for a
 //! few days under `<cache>/store-media/lists/`; the trailers themselves are
 //! streamed when played, and only their first seconds may be kept
-//! ([`cache`]), within the size the user allows. Turning the section off
+//! ([`cache`]), within the size the user allows. A game Steam has nothing
+//! for gets screenshots from the other sources ([`shots`]), only from the
+//! first of them in the user's order that has any. Turning the section off
 //! deletes the whole folder ([`clear`]).
 
 pub mod cache;
 pub mod hls;
+pub mod shots;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -35,9 +38,10 @@ const LIST_MS: i64 = 3 * 24 * 60 * 60 * 1000;
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreMedia {
-    /// `"steam"`.
+    /// `"steam"`, or where the screenshots of a game Steam has nothing for
+    /// come from: `"igdb"`, `"gog"`, `"amazon"`, `"launchbox"`, `"libretro"`.
     pub source: String,
-    /// The store page the media come from.
+    /// The page the media come from (`""` when the source has none).
     pub page: String,
     #[serde(default)]
     pub videos: Vec<StoreVideo>,
@@ -153,12 +157,19 @@ pub fn steam(http: &Http, dir: &Path, app_id: &str) -> Lookup<StoreMedia> {
     if app_id.is_empty() || !app_id.bytes().all(|b| b.is_ascii_digit()) {
         return Lookup::Skipped;
     }
-    let path = list_path(dir, "steam", app_id);
+    kept_or_fetched(dir, "steam", app_id, || fetch_steam(http, app_id))
+}
+
+/// The list of `source`'s game `id` kept under `dir` while it is recent,
+/// else `fetch`'s, kept for next time (an old copy still answers when the
+/// source cannot be reached).
+pub(crate) fn kept_or_fetched(dir: &Path, source: &str, id: &str, fetch: impl FnOnce() -> Lookup<StoreMedia>) -> Lookup<StoreMedia> {
+    let path = list_path(dir, source, id);
     let kept: Option<StoreMedia> = fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok());
     if let Some(k) = kept.as_ref().filter(|k| now_ms() - k.fetched_at < LIST_MS) {
         return Lookup::Found(k.clone());
     }
-    match fetch_steam(http, app_id) {
+    match fetch() {
         Lookup::Found(mut media) => {
             media.fetched_at = now_ms();
             if let Err(e) = write_atomic(&path, &serde_json::to_vec(&media).unwrap_or_default()) {

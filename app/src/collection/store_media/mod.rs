@@ -2,7 +2,11 @@
 //! game's trailers and screenshots from its store page (Steam, for a game
 //! with a Steam app id, or, while Steam's "Find games not on Steam by name"
 //! is on, a PC game named exactly as a Steam game), in one stage with a
-//! strip of thumbnails under it.
+//! strip of thumbnails under it. A game Steam has nothing for gets the
+//! screenshots of the first other source, in the metadata's order, that has
+//! any for the game its record matched (IGDB, its GOG or Amazon store,
+//! LaunchBox, libretro: `MetadataService::other_screenshots`); only one
+//! source is ever shown.
 //! Off until turned on in Settings → Appearance → Game sections.
 //!
 //! Nothing is kept but what the user allows (`heronite_metadata::store_media`):
@@ -36,11 +40,13 @@ use heronite_data::settings::StoreMediaKinds;
 use heronite_i18n::tr;
 use heronite_images::Decoded;
 use heronite_media::stream::{Stream, StreamEvent, StreamSpec};
+use heronite_metadata::store_media::shots::{self, ShotsGame};
 use heronite_metadata::store_media::{self, cache, StoreMedia as Media};
 use heronite_metadata::{Endpoints, Http, Lookup};
 use smallvec::smallvec;
 
 use super::CollectionView;
+use crate::dialogs::metadata_wizard::{hub, HubGlobal};
 
 /// Frames of a playing trailer, and their size (480p, the stream's).
 const FPS: u32 = 30;
@@ -296,16 +302,46 @@ impl CollectionView {
         Some(Target::Name { title: title.to_owned(), year })
     }
 
+    /// What the sources other than Steam know the focused game by: the ids
+    /// its record matched, and its own store's (GOG, Amazon).
+    fn media_shots_game(&self, key: &str) -> ShotsGame {
+        use heronite_metadata::record::source_match;
+        let copies = self.with_copies(key);
+        let matched = |source: &str| {
+            copies.iter().find_map(|g| source_match(g.metadata.as_ref()?, source)).and_then(|m| m.id.trim().parse::<i64>().ok())
+        };
+        let boxart = copies.iter().find_map(|g| {
+            let md = g.metadata.as_ref()?;
+            [&md.cover_url, &md.cover_square_url, &md.cover_wide_url].into_iter().flatten().find(|u| u.contains("/Named_Boxarts/")).cloned()
+        });
+        ShotsGame {
+            igdb_id: matched("igdb"),
+            gog_id: copies.iter().find(|g| g.runner == "gog").map(|g| g.app_name.clone()),
+            store_shots: copies
+                .iter()
+                .filter(|g| g.runner == "nile")
+                .find_map(|g| Some(shots::amazon_urls(g.game.extra.as_ref()?.get("screenshots"))).filter(|u| !u.is_empty()))
+                .unwrap_or_default(),
+            launchbox_id: matched(heronite_metadata::launchbox::SOURCE),
+            libretro_boxart: boxart,
+        }
+    }
+
     fn load_store_media(&mut self, cx: &mut Context<Self>) {
         let Some(key) = self.media.game.clone() else { return };
-        let Some(target) = self.media_target(&key) else {
+        let kinds = self.media.kinds;
+        let target = self.media_target(&key);
+        // The other sources have screenshots only.
+        let others = kinds.screenshots().then(|| self.media_shots_game(&key)).filter(|g| *g != ShotsGame::default());
+        if target.is_none() && others.is_none() {
             self.media.list = List::Missing;
             return;
-        };
+        }
+        let service = others.as_ref().filter(|_| cx.has_global::<HubGlobal>()).map(|_| hub(cx).read(cx).service.clone());
         let installed = self.with_copies(&key).iter().any(|g| g.installed);
         self.media.app_id = match &target {
-            Target::Id(id) => Some(id.clone()),
-            Target::Name { .. } => None,
+            Some(Target::Id(id)) => Some(id.clone()),
+            _ => None,
         };
         self.media.list = List::Loading;
         let dir = root(&self.app_paths);
@@ -325,24 +361,31 @@ impl CollectionView {
             let found = cx
                 .background_spawn(async move {
                     let http = Http::new(Endpoints::default());
-                    match target {
-                        Target::Id(id) => store_media::steam(&http, &dir, &id).map(|m| (id, m)),
-                        Target::Name { title, year } if heronite_metadata::sources::steam_by_name(&paths) => {
+                    let steam = match target {
+                        Some(Target::Id(id)) => store_media::steam(&http, &dir, &id).map(|m| (id, m)),
+                        Some(Target::Name { title, year }) if heronite_metadata::sources::steam_by_name(&paths) => {
                             store_media::steam_by_name(&http, &paths, &dir, &title, year)
                         }
-                        Target::Name { .. } => Lookup::Skipped,
+                        _ => Lookup::Skipped,
+                    };
+                    // Steam first; the others only when it has nothing the section shows.
+                    let shows = |m: &Media| (kinds.videos() && !m.videos.is_empty()) || (kinds.screenshots() && !m.screenshots.is_empty());
+                    match (steam, others, service) {
+                        (Lookup::Found((id, m)), _, _) if shows(&m) => Lookup::Found((Some(id), m)),
+                        (_, Some(game), Some(service)) => service.other_screenshots(&dir, &game).map(|m| (None, m)),
+                        (steam, _, _) => steam.map(|(id, m)| (Some(id), m)),
                     }
                 })
                 .await;
             this.update(cx, |this, cx| {
-                if this.media.game.as_ref() != Some(&key) {
+                // Another game, or the same one asked again for other kinds.
+                if this.media.game.as_ref() != Some(&key) || this.media.kinds != kinds {
                     return;
                 }
                 let found = found.map(|(id, m)| {
-                    this.media.app_id = Some(id);
+                    this.media.app_id = id;
                     m
                 });
-                let kinds = this.media.kinds;
                 this.media.list = match found {
                     Lookup::Found(mut m) => {
                         if !kinds.videos() {

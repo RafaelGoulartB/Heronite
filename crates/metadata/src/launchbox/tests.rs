@@ -67,9 +67,10 @@ fn the_index_keeps_what_the_source_uses() {
     assert_eq!(zelda.released.as_deref(), Some("1991-11-21"));
     assert_eq!((zelda.detail.max_players, zelda.detail.votes), (Some(1), 1379));
     assert!(zelda.detail.overview.as_deref().is_some_and(|o| o.contains("Hyrule") && !o.contains('\n')));
-    // Box fronts of each region, one background; no banners, logos or screenshots.
+    // Box fronts of each region, one background, the gameplay screenshots; no banners or logos.
     assert!(zelda.images.iter().filter(|i| i.kind == ImageKind::BoxFront).count() >= 4);
     assert!(zelda.images.iter().filter(|i| i.kind == ImageKind::Background).count() <= 1);
+    assert_eq!(zelda.images.iter().filter(|i| i.kind == ImageKind::Screenshot).count(), 2);
     let names = index.names_of(1318).unwrap();
     assert!(names.contains(&("legendofzeldaalinktothepast".to_string(), false)));
     assert!(names.iter().any(|(k, alt)| *alt && k == "zeldanodensetsukamigaminotriforce"));
@@ -78,6 +79,17 @@ fn the_index_keeps_what_the_source_uses() {
     let arcade = index.platform_ids(&["Arcade"]).unwrap();
     assert_eq!(index.file_key(&arcade, "SFA2").unwrap().as_deref(), Some("streetfighteralpha2"));
     assert_eq!(index.platform_ids(&["Arcade", "Nintendo 64", "Windows"]).unwrap().len(), 2, "unknown platforms left out");
+}
+
+#[test]
+fn the_store_media_take_a_games_gameplay_screenshots() {
+    let (_dir, paths) = with_index();
+    let lb = LaunchBox::new();
+    let http = Http::new(crate::Endpoints { launchbox_images: "https://lb.test/images".into(), ..Default::default() });
+    let Lookup::Found(m) = crate::store_media::shots::launchbox(&lb, &paths, &http, 1318) else { panic!("no screenshots") };
+    assert_eq!((m.source.as_str(), m.page.as_str()), ("launchbox", "https://gamesdb.launchbox-app.com/games/details/1318"));
+    assert_eq!(m.screenshots.len(), 2);
+    assert!(m.screenshots.iter().all(|s| s.full.starts_with("https://lb.test/images/") && s.thumb == s.full));
 }
 
 #[test]

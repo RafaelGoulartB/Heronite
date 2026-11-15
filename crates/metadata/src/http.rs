@@ -36,6 +36,8 @@ pub struct Endpoints {
     pub libretro_thumbnails: String,
     pub steamgriddb: String,
     pub bottles_steamgrid: String,
+    /// GOG's product API (`/products/<id>`).
+    pub gog_api: String,
     pub hltb: String,
     pub protondb: String,
     pub duckduckgo: String,
@@ -64,6 +66,7 @@ impl Default for Endpoints {
             libretro_thumbnails: "https://thumbnails.libretro.com".into(),
             steamgriddb: "https://www.steamgriddb.com/api/v2".into(),
             bottles_steamgrid: "https://steamgrid.usebottles.com".into(),
+            gog_api: "https://api.gog.com".into(),
             hltb: "https://howlongtobeat.com".into(),
             protondb: "https://www.protondb.com".into(),
             duckduckgo: "https://duckduckgo.com".into(),
