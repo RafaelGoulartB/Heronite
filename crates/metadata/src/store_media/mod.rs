@@ -2,7 +2,9 @@
 //! "Store media" section, off until the user turns it on).
 //!
 //! Steam is the source today (`appdetails` with `filters=movies,screenshots`,
-//! for any game that has a Steam app id). The list is small JSON kept for a
+//! for any game that has a Steam app id, or, while Steam's "Find games not
+//! on Steam by name" is on, a PC game whose exact title is a Steam game's:
+//! [`steam_by_name`]). The list is small JSON kept for a
 //! few days under `<cache>/store-media/lists/`; the trailers themselves are
 //! streamed when played, and only their first seconds may be kept
 //! ([`cache`]), within the size the user allows. Turning the section off
@@ -17,8 +19,12 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use heronite_data::paths::DataPaths;
+
+use crate::confidence::YEAR_SLACK;
 use crate::http::Http;
-use crate::types::Lookup;
+use crate::steam_name;
+use crate::types::{release_year, Lookup};
 use crate::util::now_ms;
 
 /// How long a list is used before the store is asked again. Steam's trailer
@@ -37,6 +43,10 @@ pub struct StoreMedia {
     pub videos: Vec<StoreVideo>,
     #[serde(default)]
     pub screenshots: Vec<StoreShot>,
+    /// The year the store says the game came out (tells a game found by
+    /// name from another of the same title).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub released: Option<i32>,
     /// Milliseconds since the epoch.
     #[serde(default)]
     pub fetched_at: i64,
@@ -106,6 +116,7 @@ pub fn from_steam(app_id: &str, data: &Value) -> StoreMedia {
         page: format!("https://store.steampowered.com/app/{app_id}"),
         videos: videos.into_iter().map(|(_, v)| v).collect(),
         screenshots,
+        released: release_year(data.get("release_date").and_then(|r| r.get("date")).and_then(Value::as_str)),
         fetched_at: 0,
     }
 }
@@ -114,7 +125,7 @@ fn fetch_steam(http: &Http, app_id: &str) -> Lookup<StoreMedia> {
     let url = format!("{}/api/appdetails", http.endpoints.steam_store);
     let body = http
         .get(url)
-        .query(&[("appids", app_id), ("filters", "movies,screenshots")])
+        .query(&[("appids", app_id), ("filters", "movies,screenshots,release_date")])
         .timeout_secs(20)
         .send_ok()
         .and_then(|r| r.json::<Value>());
@@ -157,6 +168,36 @@ pub fn steam(http: &Http, dir: &Path, app_id: &str) -> Lookup<StoreMedia> {
         }
         Lookup::Unreachable => kept.map_or(Lookup::Unreachable, Lookup::Found),
         miss => miss,
+    }
+}
+
+/// The trailers and screenshots of the Steam game whose name is `title`
+/// (the search "Find games not on Steam by name" makes, and remembers, for
+/// the metadata: the same name, never one that is only alike), with its app
+/// id. A game of the same name released in another time than `year` is not
+/// taken. Blocking.
+pub fn steam_by_name(http: &Http, paths: &DataPaths, dir: &Path, title: &str, year: Option<i32>) -> Lookup<(String, StoreMedia)> {
+    let id = match steam_name::app_id(paths, http, title) {
+        Lookup::Found(id) => id,
+        Lookup::NotFound => return Lookup::NotFound,
+        Lookup::Unreachable => return Lookup::Unreachable,
+        Lookup::Skipped => return Lookup::Skipped,
+    };
+    match steam(http, dir, &id) {
+        Lookup::Found(m) if same_time(year, m.released) => Lookup::Found((id, m)),
+        Lookup::Found(_) => Lookup::NotFound,
+        Lookup::NotFound => Lookup::NotFound,
+        Lookup::Unreachable => Lookup::Unreachable,
+        Lookup::Skipped => Lookup::Skipped,
+    }
+}
+
+/// Whether a game of `year` may be the one released in `released` (either
+/// unknown: it may).
+fn same_time(year: Option<i32>, released: Option<i32>) -> bool {
+    match (year, released) {
+        (Some(a), Some(b)) => (a - b).abs() <= YEAR_SLACK,
+        _ => true,
     }
 }
 
@@ -212,7 +253,8 @@ mod tests {
             "screenshots": [
                 {"id": 0, "path_thumbnail": "https://cdn/s0.600x338.jpg", "path_full": "https://cdn/s0.1920x1080.jpg"},
                 {"id": 1, "path_thumbnail": "", "path_full": "https://cdn/s1.jpg"}
-            ]
+            ],
+            "release_date": {"coming_soon": false, "date": "10 Oct, 2007"}
         })
     }
 
@@ -225,6 +267,15 @@ mod tests {
         assert_eq!(m.videos[0].id, "2");
         assert_eq!(m.screenshots.len(), 1);
         assert_eq!(m.screenshots[0].full, "https://cdn/s0.1920x1080.jpg");
+        assert_eq!(m.released, Some(2007));
+    }
+
+    #[test]
+    fn a_game_found_by_name_is_taken_only_from_its_own_time() {
+        assert!(same_time(Some(2007), Some(2007)));
+        assert!(same_time(Some(2008), Some(2007)), "a year apart is the same game");
+        assert!(!same_time(Some(1993), Some(2016)), "another game of the same title");
+        assert!(same_time(None, Some(2016)) && same_time(Some(2016), None));
     }
 
     #[test]

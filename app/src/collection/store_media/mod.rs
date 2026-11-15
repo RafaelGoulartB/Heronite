@@ -1,6 +1,8 @@
 //! "Store media" in the focus panel and the grid's drawer: the focused
 //! game's trailers and screenshots from its store page (Steam, for a game
-//! with a Steam app id), in one stage with a strip of thumbnails under it.
+//! with a Steam app id, or, while Steam's "Find games not on Steam by name"
+//! is on, a PC game named exactly as a Steam game), in one stage with a
+//! strip of thumbnails under it.
 //! Off until turned on in Settings → Appearance → Game sections.
 //!
 //! Nothing is kept but what the user allows (`heronite_metadata::store_media`):
@@ -54,6 +56,15 @@ const LIST_DELAY: Duration = Duration::from_millis(250);
 const KEEP_AFTER: Duration = Duration::from_secs(3);
 /// Loudness of a trailer once its sound is turned on, until the user moves it.
 const DEFAULT_VOLUME: f32 = 0.5;
+
+/// Where the focused game's store media are asked for.
+enum Target {
+    /// Its Steam app id.
+    Id(String),
+    /// A game with none: the Steam game of this exact name, while Steam's
+    /// "Find games not on Steam by name" is on.
+    Name { title: String, year: Option<i32> },
+}
 
 /// The focused game's list.
 #[derive(Clone, Default)]
@@ -261,24 +272,44 @@ impl CollectionView {
         }
     }
 
-    /// The Steam app id of the focused game (any of its copies).
-    fn media_app_id(&self, key: &str) -> Option<String> {
-        self.with_copies(key)
+    /// How the focused game's store page is found: the Steam app id of any
+    /// of its copies, else its title (and year) when it may be looked up by
+    /// name, as the Steam metadata source does: a PC game, not emulated, the
+    /// user never said it is not on Steam. `None`: it has no store page.
+    fn media_target(&self, key: &str) -> Option<Target> {
+        let copies = self.with_copies(key);
+        let id = copies
             .iter()
             .find_map(|g| g.steam_app_id.clone().or_else(|| g.metadata.as_ref().and_then(|m| m.steam_app_id.clone())))
-            .filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()))
+            .filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()));
+        if let Some(id) = id {
+            return Some(Target::Id(id));
+        }
+        let emulated = copies.iter().any(|g| g.meta.as_ref().is_some_and(|m| m.launch_kind == "emulator" || m.source == "emulator"));
+        let unlinked = copies.iter().any(|g| g.metadata.as_ref().is_some_and(|m| heronite_metadata::record::is_not_on(m, "steam")));
+        let game = self.lib.as_ref()?.get(key)?;
+        let title = game.title.trim();
+        if emulated || unlinked || title.is_empty() {
+            return None;
+        }
+        let year = copies.iter().find_map(|g| heronite_metadata::release_year(g.metadata.as_ref()?.release_date.as_deref()));
+        Some(Target::Name { title: title.to_owned(), year })
     }
 
     fn load_store_media(&mut self, cx: &mut Context<Self>) {
         let Some(key) = self.media.game.clone() else { return };
-        let Some(id) = self.media_app_id(&key) else {
+        let Some(target) = self.media_target(&key) else {
             self.media.list = List::Missing;
             return;
         };
         let installed = self.with_copies(&key).iter().any(|g| g.installed);
-        self.media.app_id = Some(id.clone());
+        self.media.app_id = match &target {
+            Target::Id(id) => Some(id.clone()),
+            Target::Name { .. } => None,
+        };
         self.media.list = List::Loading;
         let dir = root(&self.app_paths);
+        let paths = self.data_paths.clone();
         if !std::mem::replace(&mut self.media.warmed, true) {
             cx.background_spawn(async {
                 heronite_media::stream::available();
@@ -291,11 +322,26 @@ impl CollectionView {
             if this.read_with(cx, |this, _| this.media.game.as_ref() != Some(&key)).unwrap_or(true) {
                 return;
             }
-            let found = cx.background_spawn(async move { store_media::steam(&Http::new(Endpoints::default()), &dir, &id) }).await;
+            let found = cx
+                .background_spawn(async move {
+                    let http = Http::new(Endpoints::default());
+                    match target {
+                        Target::Id(id) => store_media::steam(&http, &dir, &id).map(|m| (id, m)),
+                        Target::Name { title, year } if heronite_metadata::sources::steam_by_name(&paths) => {
+                            store_media::steam_by_name(&http, &paths, &dir, &title, year)
+                        }
+                        Target::Name { .. } => Lookup::Skipped,
+                    }
+                })
+                .await;
             this.update(cx, |this, cx| {
                 if this.media.game.as_ref() != Some(&key) {
                     return;
                 }
+                let found = found.map(|(id, m)| {
+                    this.media.app_id = Some(id);
+                    m
+                });
                 let kinds = this.media.kinds;
                 this.media.list = match found {
                     Lookup::Found(mut m) => {
