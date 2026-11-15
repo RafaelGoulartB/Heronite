@@ -1,7 +1,7 @@
-//! Downloads ffmpeg and ffprobe into `<data>/tools/bin` when a trailer is
-//! played and neither the `PATH` nor that folder has them
-//! (`heronite_data::ffmpeg` then finds them there), so trailers play on a
-//! PC where nobody installed ffmpeg.
+//! Downloads ffmpeg (and ffprobe, for whoever asks for it) into
+//! `<data>/tools/bin` when a trailer is played and neither the `PATH` nor
+//! that folder has it (`heronite_data::ffmpeg` then finds it there), so
+//! trailers play on a PC where nobody installed ffmpeg.
 //!
 //! Windows only: Linux systems have ffmpeg in their packages (with the
 //! PulseAudio output the trailers' sound needs), and the static Linux
@@ -15,6 +15,8 @@
 //! that does not match is never installed. Like the store tools
 //! ([`crate::store_tools`]), a download waits in `<name>.part.exe`, must run
 //! (`-version`, without a console window) and only then takes its place.
+//! A download that takes longer than [`DOWNLOAD_LIMIT`] (a connection that
+//! stalled) gives up, so a play never waits on it forever.
 
 use std::fs;
 use std::io::{self, Read};
@@ -33,8 +35,10 @@ use crate::net::{Cancel, Net, CANCELLED};
 /// The `ffmpeg-static` release (ffmpeg 6.1.1).
 pub const VERSION: &str = "b6.1.1";
 const REPO: &str = "eugeneware/ffmpeg-static";
-/// What a download costs, for the UI.
-pub const DOWNLOAD_MB: u32 = 60;
+/// What the download of each program costs, for the UI.
+pub const DOWNLOAD_MB_EACH: u32 = 30;
+/// Longest a program's download may take (30 MB in 20 minutes: 0.2 Mbit/s).
+pub const DOWNLOAD_LIMIT: Duration = Duration::from_secs(20 * 60);
 
 /// One gzipped program of the release.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,15 +73,16 @@ pub fn download_url(file: &str) -> String {
     format!("https://github.com/{REPO}/releases/download/{VERSION}/{file}")
 }
 
-/// Makes sure ffmpeg and ffprobe are there: each one neither on the `PATH`
-/// nor in `<data>/tools/bin` is downloaded there. Blocking, network; one
-/// download at a time per process (a second call waits, then finds them).
-pub fn ensure(paths: &DataPaths, net: &dyn Net, cancel: Cancel) -> Result<(), String> {
+/// Makes sure `tools` are there: each one neither on the `PATH` nor in
+/// `<data>/tools/bin` is downloaded there, and [`ffmpeg::find`] looks again.
+/// Blocking, network; one download at a time per process (a second call
+/// waits, then finds them).
+pub fn ensure(paths: &DataPaths, tools: &[Tool], net: &dyn Net, cancel: Cancel) -> Result<(), String> {
     static BUSY: Mutex<()> = Mutex::new(());
     let _guard = BUSY.lock().unwrap_or_else(|e| e.into_inner());
     let path_var = std::env::var_os("PATH");
     let dir = ffmpeg::data_bin_dir(paths);
-    let missing: Vec<Tool> = Tool::ALL.into_iter().filter(|t| ffmpeg::find_in(*t, path_var.clone(), &dir).is_none()).collect();
+    let missing: Vec<Tool> = tools.iter().copied().filter(|t| ffmpeg::find_in(*t, path_var.clone(), &dir).is_none()).collect();
     if missing.is_empty() {
         return Ok(());
     }
@@ -89,7 +94,10 @@ pub fn ensure(paths: &DataPaths, net: &dyn Net, cancel: Cancel) -> Result<(), St
     }
     for asset in assets.iter().filter(|a| missing.contains(&a.tool)) {
         let target = ffmpeg::data_bin(paths, asset.tool);
-        install(asset, &download_url(asset.file), &target, net, cancel)?;
+        let installed = install(asset, &download_url(asset.file), &target, net, cancel);
+        // What was installed before a failure is found from now on too.
+        ffmpeg::forget();
+        installed?;
         log::info!("{} ({} {VERSION}) downloaded to {}", asset.tool.name(), REPO, target.display());
     }
     Ok(())
@@ -113,7 +121,8 @@ pub fn install(asset: &Asset, url: &str, target: &Path, net: &dyn Net, cancel: C
         clean();
         msg
     };
-    net.download(url, &gz, cancel).map_err(|e| fail(if e == CANCELLED { e } else { format!("downloading {name} failed: {e}") }))?;
+    net.download_within(url, &gz, cancel, DOWNLOAD_LIMIT)
+        .map_err(|e| fail(if e == CANCELLED { e } else { format!("downloading {name} failed: {e}") }))?;
     let sum = sha256_of(&gz).map_err(|e| fail(format!("reading the downloaded {name}: {e}")))?;
     if sum != asset.sha256 {
         return Err(fail(format!("the downloaded {name} is not the expected file (SHA-256 {sum})")));
@@ -244,8 +253,26 @@ mod tests {
             fs::write(p, b"").unwrap();
         }
         let net = FakeNet::offline();
-        ensure(&paths, &net, &|| false).unwrap();
+        ensure(&paths, &Tool::ALL, &net, &|| false).unwrap();
         assert!(net.requests().is_empty());
+    }
+
+    #[test]
+    fn only_the_programs_asked_for_are_downloaded() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("heronite"));
+        let Some(assets) = assets_for(std::env::consts::OS, std::env::consts::ARCH) else {
+            let err = ensure(&paths, &[Tool::Ffmpeg], &FakeNet::online(), &|| false).unwrap_err();
+            assert!(err.contains("not downloaded on"), "{err}");
+            return;
+        };
+        // Not the release's bytes: refused, after asking for ffmpeg only.
+        let url = download_url(assets[0].file);
+        let net = FakeNet::online().with_file(&url, gz(&fake_bin(true)));
+        let err = ensure(&paths, &[Tool::Ffmpeg], &net, &|| false).unwrap_err();
+        assert!(err.contains("not the expected file"), "{err}");
+        assert_eq!(net.requests(), [url]);
+        assert!(!ffmpeg::data_bin(&paths, Tool::Ffmpeg).exists());
     }
 
     #[test]

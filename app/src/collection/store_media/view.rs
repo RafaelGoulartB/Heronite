@@ -269,7 +269,7 @@ impl CollectionView {
                     .child(spinner("sm-ffmpeg-spin"))
                     .child(div().text_center().child(tr!(
                         "Downloading ffmpeg to play trailers (about {mb} MB, only once)…",
-                        mb = heronite_launch::ffmpeg_install::DOWNLOAD_MB
+                        mb = heronite_launch::ffmpeg_install::DOWNLOAD_MB_EACH
                     ))),
             ),
             Some(PlayState::Failed(why)) => stage.child(

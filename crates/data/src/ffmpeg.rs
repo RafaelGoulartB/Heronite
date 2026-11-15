@@ -5,8 +5,10 @@
 //! the posters of replays, cutting a replay) starts them through
 //! [`command`].
 //!
-//! A program found is remembered; one not found is looked for again at the
-//! next call (a few file checks), so a download is picked up at once.
+//! What is found (or not) is remembered, so asking again costs one file
+//! check at most; [`forget`] (after a download) makes the next call look
+//! again. A remembered program that is gone (uninstalled, quarantined) is
+//! looked for again too.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -54,23 +56,33 @@ pub fn data_bin(paths: &DataPaths, tool: Tool) -> PathBuf {
     data_bin_dir(paths).join(tool.file_name())
 }
 
-static FOUND: Mutex<[Option<PathBuf>; 2]> = Mutex::new([None, None]);
+/// Per tool: `None` = not looked for yet, `Some(None)` = not there.
+static FOUND: Mutex<[Option<Option<PathBuf>>; 2]> = Mutex::new([None, None]);
 
 /// `tool` on the `PATH`, else in this data folder's `tools/bin`.
 pub fn find(tool: Tool) -> Option<PathBuf> {
     let mut found = FOUND.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(p) = &found[tool.index()] {
-        return Some(p.clone());
+    match &found[tool.index()] {
+        Some(Some(p)) if p.is_file() => return Some(p.clone()),
+        Some(None) => return None,
+        _ => {}
     }
-    let p = find_in(tool, std::env::var_os("PATH"), &data_bin_dir(&DataPaths::detect()))?;
+    let p = find_in(tool, std::env::var_os("PATH"), &data_bin_dir(&DataPaths::detect()));
     found[tool.index()] = Some(p.clone());
-    Some(p)
+    p
 }
 
-/// `tool` in the folders of `path_var` (a `PATH`), else in `data_bin_dir`.
+/// Makes the next [`find`] look again (ffmpeg was just downloaded).
+pub fn forget() {
+    *FOUND.lock().unwrap_or_else(|e| e.into_inner()) = [None, None];
+}
+
+/// `tool` in the folders of `path_var` (a `PATH`; its empty or relative
+/// entries are left out), else in `data_bin_dir`.
 pub fn find_in(tool: Tool, path_var: Option<OsString>, data_bin_dir: &Path) -> Option<PathBuf> {
     let file = tool.file_name();
-    let mut dirs: Vec<PathBuf> = path_var.as_deref().map(|p| std::env::split_paths(p).collect()).unwrap_or_default();
+    let mut dirs: Vec<PathBuf> =
+        path_var.as_deref().map(|p| std::env::split_paths(p).filter(|d| d.is_absolute()).collect()).unwrap_or_default();
     dirs.push(data_bin_dir.to_path_buf());
     dirs.into_iter().map(|d| d.join(&file)).find(|p| p.is_file())
 }
@@ -106,6 +118,15 @@ mod tests {
         std::fs::write(on_path.join(Tool::Ffmpeg.file_name()), b"").unwrap();
         assert_eq!(find_in(Tool::Ffmpeg, path_var.clone(), &data), Some(on_path.join(Tool::Ffmpeg.file_name())));
         assert_eq!(find_in(Tool::Ffprobe, path_var, &data), None, "each program is looked for on its own");
+    }
+
+    #[test]
+    fn relative_path_entries_are_left_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        // `a;;b` holds an empty entry, which would mean the current folder.
+        let path_var = Some(OsString::from(if cfg!(windows) { "relative;;" } else { "relative::" }));
+        assert_eq!(find_in(Tool::Ffmpeg, path_var, &data), None);
     }
 
     #[test]

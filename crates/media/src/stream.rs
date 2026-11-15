@@ -104,6 +104,11 @@ impl Drop for Stream {
     }
 }
 
+/// Whether ffmpeg is there to play with (ffprobe is not needed here).
+pub fn available() -> bool {
+    heronite_data::ffmpeg::find(Tool::Ffmpeg).is_some()
+}
+
 /// [`sound_supported`] once it was asked (it runs ffmpeg: ask it off the UI
 /// thread first); `None` before.
 pub fn sound_known() -> Option<bool> {
@@ -116,7 +121,7 @@ static SOUND: OnceLock<bool> = OnceLock::new();
 /// `pulse` output (asked once). Elsewhere trailers play without sound.
 pub fn sound_supported() -> bool {
     *SOUND.get_or_init(|| {
-        if !cfg!(target_os = "linux") || !crate::posters::available() {
+        if !cfg!(target_os = "linux") || !available() {
             return false;
         }
         let out = heronite_data::proc::Run::new()
@@ -193,7 +198,7 @@ fn run(
     stop: &AtomicBool,
     on: &mut dyn FnMut(StreamEvent),
 ) -> StreamEvent {
-    if !crate::posters::available() {
+    if !available() {
         return StreamEvent::Failed("ffmpeg is not installed".into());
     }
     let mut cmd = command(Tool::Ffmpeg);
