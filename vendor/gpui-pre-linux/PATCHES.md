@@ -34,5 +34,14 @@ through `[patch.crates-io]` in the workspace `Cargo.toml`. Changes, in
   the connection's (`display_connection.rs`) and each client's `show_cursor` call the
   existing `restore_cursor_after_hide`.
 
+- `replace_activation_token` (`src/linux.rs`, exported from the crate root (`src/gpui_linux.rs`),
+  through the same `Weak`, `LinuxPlatform::replace_activation_token_now` and the connection's
+  and each client's `replace_activation_token`): swaps the Wayland client's
+  `startup_activation_token`, which the next toplevel `open_window` hands to xdg-activation as
+  upstream does with `XDG_ACTIVATION_TOKEN` for the first window, and returns the one it
+  replaced so the caller puts it back. The quick launcher opens on a request another process
+  forwards through the socket, with that process's token; without it GNOME leaves the window
+  behind the focused one. Returns `None` and does nothing on X11.
+
 To update: copy the new release from `~/.cargo/registry/src/*/` over this
 folder (without its `Cargo.lock`) and apply these changes again.
