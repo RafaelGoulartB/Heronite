@@ -158,9 +158,12 @@ pub fn init(
         crate::services::update::init(cx, heronite_data::AppPaths::for_data(&data_paths));
         crate::services::upkeep::init(cx, data_paths.clone());
         crate::services::sync::init(cx, data_paths.clone());
-        // Its keyboard shortcut works while the app runs, in the tray too.
-        crate::quick_launch::init(cx, &data_paths);
     }
+    // Its keyboard shortcut works while the app runs: in the tray, and in a
+    // one-shot launch too, which takes the other invocations' requests (the
+    // overlay's and the replay's shortcuts work there as well) and may open
+    // the window, whose Settings set the shortcut through this service.
+    crate::quick_launch::init(cx, &data_paths);
     // Games still running from before the app restarted; after the services
     // above, which follow running games through the same events.
     // A game about to start makes its own mount: only the installs are swept then.
