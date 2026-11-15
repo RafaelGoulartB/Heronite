@@ -260,6 +260,18 @@ impl CollectionView {
                 stage_button("sm-play-big", Icon::PlayArrow, 64.).on_click(cx.listener(|this, _, _, cx| this.media_toggle_play(cx))),
             )),
             Some(PlayState::Loading) => stage.child(center.child(spinner("sm-play-spin"))),
+            Some(PlayState::Downloading) => stage.child(
+                center
+                    .bg(theme::rgb_a(5, 7, 10, 0.6))
+                    .px(px(24.))
+                    .text_size(px(13.5))
+                    .text_color(rgb(0xf4f6f8))
+                    .child(spinner("sm-ffmpeg-spin"))
+                    .child(div().text_center().child(tr!(
+                        "Downloading ffmpeg to play trailers (about {mb} MB, only once)…",
+                        mb = heronite_launch::ffmpeg_install::DOWNLOAD_MB_EACH
+                    ))),
+            ),
             Some(PlayState::Failed(why)) => stage.child(
                 center
                     .bg(theme::rgb_a(5, 7, 10, 0.6))

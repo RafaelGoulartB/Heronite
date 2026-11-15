@@ -1426,7 +1426,10 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   title row says "6 videos · 8 screenshots" and has a "Steam ↗" link to the store page. A trailer shows its still and
   a 64px play button; playing (`heronite_media::stream`, ffmpeg at 480p and 30 fps, sound through PulseAudio /
   PipeWire on Linux only), its name and a bar (play / pause, time, seek bar, sound) fade in while the pointer is over
-  the stage; paused they stay. Every trailer starts without sound (the sound button turns it on for that trailer, with a volume bar
+  the stage; paused they stay. On Windows without ffmpeg, the first click on play downloads it into `<data>/tools/ffmpeg`
+  (`heronite_launch::ffmpeg_install`, about 55 MB, once; the stage says "Downloading ffmpeg to play trailers…" with a
+  spinner) and the trailer starts when it is there (autoplay never starts that download); elsewhere the stage says
+  ffmpeg is not installed. Every trailer starts without sound (the sound button turns it on for that trailer, with a volume bar
   beside it, 50% at first, changed live through ffmpeg's command keys) and loops once played;
   "Show" (a sub-row of Store media, `storeMediaKinds`: Both, Videos or Screenshots) keeps one kind; with
   Screenshots only, the rows about trailers are left out. "Autoplay trailers" (a sub-row of Store media, `videoAutoplay`, off by default) starts the focused game's

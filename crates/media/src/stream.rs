@@ -15,10 +15,11 @@
 //! `volume -1 volume 0.5`): no restart, no gap.
 
 use std::io::{Read, Write};
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, ChildStdin, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use heronite_data::ffmpeg::{command, Tool};
 use heronite_data::proc::{guard, spawn};
 use heronite_images::Decoded;
 
@@ -103,6 +104,11 @@ impl Drop for Stream {
     }
 }
 
+/// Whether ffmpeg is there to play with (ffprobe is not needed here).
+pub fn available() -> bool {
+    heronite_data::ffmpeg::find(Tool::Ffmpeg).is_some()
+}
+
 /// [`sound_supported`] once it was asked (it runs ffmpeg: ask it off the UI
 /// thread first); `None` before.
 pub fn sound_known() -> Option<bool> {
@@ -115,12 +121,12 @@ static SOUND: OnceLock<bool> = OnceLock::new();
 /// `pulse` output (asked once). Elsewhere trailers play without sound.
 pub fn sound_supported() -> bool {
     *SOUND.get_or_init(|| {
-        if !cfg!(target_os = "linux") || !crate::posters::available() {
+        if !cfg!(target_os = "linux") || !available() {
             return false;
         }
         let out = heronite_data::proc::Run::new()
             .timeout(std::time::Duration::from_secs(5))
-            .run(Command::new("ffmpeg").args(["-hide_banner", "-devices"]));
+            .run(command(Tool::Ffmpeg).args(["-hide_banner", "-devices"]));
         out.is_ok_and(|o| o.stdout_text().lines().any(|l| l.split_whitespace().nth(1) == Some("pulse") && l.trim_start().contains('E')))
     })
 }
@@ -192,10 +198,10 @@ fn run(
     stop: &AtomicBool,
     on: &mut dyn FnMut(StreamEvent),
 ) -> StreamEvent {
-    if !crate::posters::available() {
+    if !available() {
         return StreamEvent::Failed("ffmpeg is not installed".into());
     }
-    let mut cmd = Command::new("ffmpeg");
+    let mut cmd = command(Tool::Ffmpeg);
     let sound = spec.sound && sound_supported();
     cmd.args(args(spec)).stdin(if sound { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::piped());
     guard(&mut cmd);
@@ -307,7 +313,7 @@ mod tests {
         // `lavfi` is a device, not a file: play it through a tiny wrapper.
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("t.mp4");
-        let made = Command::new("ffmpeg")
+        let made = command(Tool::Ffmpeg)
             .args(["-v", "error", "-nostdin", "-f", "lavfi", "-i", &spec.video, "-pix_fmt", "yuv420p"])
             .arg(&file)
             .status()

@@ -4,14 +4,14 @@
 //! game never waits for it.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
 
+use heronite_data::ffmpeg::{command, Tool};
 use heronite_data::proc::Run;
 
-/// Whether ffmpeg and ffprobe are there to cut with.
+/// Whether ffmpeg and ffprobe are there to cut with (`heronite_data::ffmpeg`).
 pub fn available() -> bool {
-    ["ffmpeg", "ffprobe"].iter().all(|n| std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(n).is_file())))
+    heronite_data::ffmpeg::available()
 }
 
 /// Cuts the last `seconds` off `path` in the background (the file keeps its
@@ -37,7 +37,7 @@ fn cut_end(path: &Path, seconds: f64) -> Result<(), String> {
     }
     let name = path.file_name().and_then(|n| n.to_str()).ok_or("bad file name")?;
     let tmp = path.with_file_name(format!(".{name}.cut.mp4"));
-    let mut cmd = Command::new("ffmpeg");
+    let mut cmd = command(Tool::Ffmpeg);
     cmd.args(["-v", "error", "-y", "-i"]).arg(path);
     cmd.args(["-t", &format!("{keep:.3}"), "-map", "0", "-c", "copy", "-movflags", "+faststart"]).arg(&tmp);
     let out = Run::new().timeout(Duration::from_secs(120)).run(&mut cmd).map_err(|e| e.to_string())?;
@@ -58,7 +58,7 @@ fn cut_end(path: &Path, seconds: f64) -> Result<(), String> {
 
 /// Length in seconds (ffprobe).
 fn duration(path: &Path) -> Result<f64, String> {
-    let mut cmd = Command::new("ffprobe");
+    let mut cmd = command(Tool::Ffprobe);
     cmd.args(["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1"]).arg(path);
     let out = Run::new().timeout(Duration::from_secs(20)).run(&mut cmd).map_err(|e| e.to_string())?;
     out.stdout_text().trim().parse::<f64>().map_err(|_| format!("ffprobe: {}", out.stderr_text().trim()))

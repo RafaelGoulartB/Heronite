@@ -1,5 +1,6 @@
 //! Data layer: the files of the data folder (`~/.local/share/heronite`).
 
+pub mod ffmpeg;
 pub mod json_store;
 pub mod models;
 pub mod num;
