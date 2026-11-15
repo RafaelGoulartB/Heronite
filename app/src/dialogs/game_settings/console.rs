@@ -1,10 +1,9 @@
-//! Game settings in console mode: full screen, the game's art
-//! on top with its cover and title, tabs on LB / RB, one focused row at a
-//! time. The groups are the settings panel's console rows; Start (Play and
-//! the actions) and Saves (the backups) put their own block above them, the
-//! focus moving between the two at their edges. "Edit details" has its own
-//! rows here.
-
+//! Game settings in console mode, laid out like the app's Settings: the
+//! game on top, its groups in a column on the left, the shown entry's rows
+//! on the right (◀ ▶ move between the two columns, LB / RB step through
+//! the entries). Start and Saves have two entries: their own block (Play
+//! and the actions, the backups), then the settings panel's group.
+//! "Edit details" is its own rows under the game's art.
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::{n_, tr};
@@ -17,12 +16,58 @@ use crate::console::browser::{Browser, BrowserEvent, PickKind};
 use crate::console::kit::{self, u};
 use crate::console::list::{Outcome, Row, Value};
 use crate::console::osk::{Osk, OskEvent};
+use crate::console::pointer::Clickable;
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 use crate::theme;
 
 const RUN_AS: [(&str, &str); 3] =
     [("auto", n_!("Automatic (from the file)")), ("linux", n_!("Linux native")), ("windows", n_!("Windows (Wine / Proton)"))];
+
+/// An entry of the left column: a tab's own block, or its panel group.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct Entry {
+    tab: Tab,
+    lower: bool,
+}
+
+impl Entry {
+    fn label(self) -> &'static str {
+        match (self.tab, self.lower) {
+            (Tab::Start, false) => tr!("Play"),
+            (Tab::Saves, false) => tr!("Backups"),
+            (tab, _) => tab.label(),
+        }
+    }
+
+    fn icon(self) -> Icon {
+        match (self.tab, self.lower) {
+            (Tab::Game, _) => Icon::Edit,
+            (Tab::Start, false) => Icon::PlayArrow,
+            (Tab::Start, true) => Icon::Terminal,
+            (Tab::Compatibility, _) => Icon::WineBar,
+            (Tab::Graphics, _) => Icon::Tv,
+            (Tab::Performance, _) => Icon::Memory,
+            (Tab::Saves, false) => Icon::History,
+            (Tab::Saves, true) => Icon::CloudSync,
+        }
+    }
+}
+
+/// The left column for `tabs`: each tab's own block when it has one, then
+/// its panel group when the game has it.
+fn entries_of(tabs: &[Tab], upper: impl Fn(Tab) -> bool, panel: impl Fn(Tab) -> bool) -> Vec<Entry> {
+    let mut entries = Vec::new();
+    for &tab in tabs {
+        if upper(tab) {
+            entries.push(Entry { tab, lower: false });
+        }
+        if panel(tab) {
+            entries.push(Entry { tab, lower: true });
+        }
+    }
+    entries
+}
 
 /// Which text field a keyboard edit goes to.
 #[derive(Clone, Copy)]
@@ -37,17 +82,28 @@ enum Field {
 }
 
 impl GameSettingsDialog {
-    fn console_set_tab(&mut self, tab: Tab, window: &mut Window, cx: &mut Context<Self>) {
-        self.tab = tab;
+    /// The entries of the left column, in order: each tab's own block (Play
+    /// and the actions, the backups), then its panel group (`lower`).
+    fn console_entries(&self) -> Vec<Entry> {
+        entries_of(&self.tab_list(), |t| self.has_upper_of(t), |t| self.has_panel(t))
+    }
+
+    fn console_entry_at(&self, entries: &[Entry]) -> usize {
+        entries.iter().position(|e| e.tab == self.tab && e.lower == self.lower).unwrap_or(0)
+    }
+
+    /// Shows `entry` on the right, its rows from the top.
+    fn console_show(&mut self, entry: Entry, window: &mut Window, cx: &mut Context<Self>) {
+        self.tab = entry.tab;
         self.console_list.reset();
-        if let (Some(section), Some((panel, _))) = (tab.section().filter(|_| self.has_panel(tab)), self.panel.as_ref()) {
+        if let (Some(section), Some((panel, _))) = (entry.tab.section().filter(|_| self.has_panel(entry.tab)), self.panel.as_ref()) {
             panel.update(cx, |p, cx| {
                 p.set_section(section, window, cx);
                 p.console_reset();
             });
         }
-        self.console_focus(!self.has_upper(), cx);
-        if tab == Tab::Saves {
+        self.console_focus(entry.lower, cx);
+        if entry.tab == Tab::Saves {
             if let Some(view) = &self.backups {
                 view.update(cx, |v, cx| {
                     v.console_reset();
@@ -61,10 +117,9 @@ impl GameSettingsDialog {
     fn console_rows(&self, cx: &App) -> Vec<Row> {
         match self.tab {
             Tab::Start => {
-                // The action editor takes the whole tab.
+                // The action editor takes the whole entry; "Play" is its title.
                 let mut rows = Vec::new();
                 if self.actions.editor.is_none() {
-                    rows.push(Row::header(tr!("Play")));
                     rows.extend(if self.launch.is_some() { self.console_local_play_rows(cx) } else { vec![self.console_play_row()] });
                 }
                 rows.extend(self.console_action_rows(cx));
@@ -257,198 +312,10 @@ impl GameSettingsDialog {
         self.layer.open(&browser, sub);
     }
 
-    pub(super) fn render_console(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        self.images.update(cx, |im, _| im.frame(window));
-        let s = kit::scale();
-        let scale = window.scale_factor();
-        let vw = f32::from(crate::ui::content_size(window).width);
-        let vh = f32::from(crate::ui::content_size(window).height);
-        // The settings get a shorter header than "Edit details": their rows need the height.
-        let header_h = if self.details_only { 330. } else { 210. };
-        let (cover_w, cover_h, title_size) = if self.details_only { (110., 150., 48.) } else { (80., 108., 36.) };
-        let (hero_chain, _) = self.art_chain(ArtKind::Hero);
-        let hero = if hero_chain.is_empty() {
-            None
-        } else {
-            let (w, h) = (vw * scale, 340. * s * scale);
-            self.images.update(cx, |im, _| im.get("gs-console-hero", hero_chain, w, h))
-        };
-        let (cover_chain, _) = self.art_chain(ArtKind::Cover);
-        let cover = if cover_chain.is_empty() {
-            None
-        } else {
-            self.images.update(cx, |im, _| im.get("gs-console-cover", cover_chain, cover_w * s * scale, cover_h * s * scale))
-        };
-
-        let tabs = self.tab_list();
-        let active = tabs.iter().position(|t| *t == self.tab).unwrap_or(0);
-        let details_only = self.details_only;
-        let labels: Vec<SharedString> = tabs.iter().map(|t| SharedString::from(t.label())).collect();
-        let mut meta = vec![
-            self.game.source_label.to_string(),
-            if self.game.installed { tr!("Installed").into() } else { tr!("Not installed").into() },
-        ];
-        if self.game.playtime_minutes > 0 {
-            meta.push(tr!("{time} played", time = heronite_data::collection::format_playtime_minutes(self.game.playtime_minutes)));
-        }
-
-        let header = div()
-            .relative()
-            .flex_none()
-            .h(u(header_h))
-            .overflow_hidden()
-            .children(hero.map(|h| img(h).absolute().inset_0().size_full().object_fit(ObjectFit::Cover)))
-            .child(div().absolute().inset_0().bg(linear_gradient(
-                0.,
-                linear_color_stop(theme::console_bg(), 0.),
-                linear_color_stop(theme::rgb_a(11, 14, 19, 0.15), 1.),
-            )))
-            .child(
-                div()
-                    .absolute()
-                    .left(u(46.))
-                    .right(u(46.))
-                    .bottom(u(16.))
-                    .flex()
-                    .items_end()
-                    .gap(u(24.))
-                    .child(
-                        div()
-                            .flex_none()
-                            .w(u(cover_w))
-                            .h(u(cover_h))
-                            .rounded(u(12.))
-                            .overflow_hidden()
-                            .bg(theme::white_a(0.08))
-                            .shadow(kit::shadow(0.6, 10., 30.))
-                            .children(cover.map(|c| img(c).size_full().object_fit(ObjectFit::Cover))),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap(u(4.))
-                            .min_w_0()
-                            .child(kit::kicker(if self.details_only { tr!("Edit details") } else { tr!("Game settings") }))
-                            .child(kit::title(self.title.clone(), title_size))
-                            .child(div().text_size(u(16.)).text_color(theme::text_muted()).child(meta.join(" \u{b7} "))),
-                    ),
-            );
-
-        let lower = self.has_lower().then(|| self.panel.as_ref().map(|(p, _)| p.clone())).flatten();
-        // The height under the header and the tabs; the upper block takes what
-        // its rows need of it (Play and a few actions), at most 45%.
-        let body_h = vh - (header_h + 64. + 70.) * s;
-        let mut upper_h = body_h * 0.45;
-        let upper: Option<AnyElement> = match self.tab {
-            Tab::Game | Tab::Start => {
-                let rows = self.console_rows(cx);
-                let headers = rows.iter().filter(|r| r.value == crate::console::list::Value::Header).count();
-                let need = ((rows.len() - headers) as f32 * 60. + headers as f32 * 36. + 30.) * s;
-                upper_h = upper_h.min(need).max(120. * s);
-                let active = !self.layer.is_open() && !self.lower;
-                Some(self.console_list.render("console-gs", &rows, active).size_full().into_any_element())
-            }
-            Tab::Saves => self.backups.clone().map(|b| div().size_full().child(b).into_any_element()),
-            _ => None,
-        };
-        let body: AnyElement = match (upper, lower) {
-            (Some(up), Some(panel)) => div()
-                .flex()
-                .flex_col()
-                .size_full()
-                .gap(u(10.))
-                .child(div().flex_none().h(px(upper_h)).child(up))
-                .child(div().flex().flex_col().flex_1().min_h_0().child(panel))
-                .into_any_element(),
-            (Some(up), None) => up,
-            (None, Some(panel)) => div().flex().flex_col().size_full().child(panel).into_any_element(),
-            (None, None) => div().into_any_element(),
-        };
-        let error = (!self.error.is_empty()).then(|| kit::body_text(self.error.clone()).text_color(theme::danger_text()));
-        div()
-            .absolute()
-            .inset_0()
-            .bg(theme::console_bg())
-            .flex()
-            .flex_col()
-            .child(header)
-            .when(!details_only, |c| c.child(div().flex_none().px(u(46.)).py(u(12.)).child(kit::tabs(&labels, active))))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h_0()
-                    .px(u(46.))
-                    .pb(u(70.))
-                    .child(div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(body))
-                    .children(error),
-            )
-            .children(self.layer.view())
-            .into_any_element()
-    }
-}
-
-impl PadTarget for GameSettingsDialog {
-    fn on_pad(&mut self, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        if self.layer.pad(pad, window, cx) {
-            cx.notify();
-            return true;
-        }
-        // The Saves tab's keyboard and backup menu keep B and the bumpers.
-        if let (Tab::Saves, Some(view), false) = (self.tab, self.backups.clone(), self.lower) {
-            if view.read(cx).captures(pad) {
-                return view.update(cx, |v, cx| v.on_pad(pad, window, cx));
-            }
-        }
-        let tabs = self.tab_list();
-        let i = tabs.iter().position(|t| *t == self.tab).unwrap_or(0);
-        match pad {
-            Pad::LB | Pad::RB => {
-                let n = tabs.len();
-                let next = if pad == Pad::RB { (i + 1) % n } else { (i + n - 1) % n };
-                self.console_set_tab(tabs[next], window, cx);
-                return true;
-            }
-            Pad::B if self.tab == Tab::Start && self.close_action_editor(cx) => return true,
-            Pad::B if self.cancel_reset_question(cx) => return true,
-            Pad::B => {
-                // What the Details tab has pending is saved first.
-                self.close(cx);
-                return true;
-            }
-            _ => {}
-        }
-        let (upper, lower) = (self.has_upper(), self.has_lower());
-        if lower && (self.lower || !upper) {
-            let Some((panel, _)) = self.panel.clone() else { return false };
-            if panel.update(cx, |p, cx| p.on_pad(pad, window, cx)) {
-                return true;
-            }
-            // Up from the panel's first row goes to the block above.
-            if pad == Pad::Up && upper {
-                self.console_focus(false, cx);
-                cx.notify();
-                return true;
-            }
-            return false;
-        }
-        let to_lower = |this: &mut Self, cx: &mut Context<Self>| {
-            if pad == Pad::Down && lower {
-                this.console_focus(true, cx);
-                cx.notify();
-                return true;
-            }
-            false
-        };
-        if self.tab == Tab::Saves {
-            let Some(view) = self.backups.clone() else { return false };
-            return view.update(cx, |v, cx| v.on_pad(pad, window, cx)) || to_lower(self, cx);
-        }
+    /// A pad press for the rows of Play and the actions, or the details.
+    fn console_rows_pad(&mut self, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let rows = self.console_rows(cx);
         match self.console_list.on_pad(pad, &rows) {
-            Outcome::Edge(Pad::Down) if lower => return to_lower(self, cx),
             Outcome::Activate(id) if self.console_action_activate(&id, window, cx) => {}
             Outcome::Changed(id, value) if self.console_action_changed(&id, &value, cx) => {}
             Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "run-as" => {
@@ -479,32 +346,317 @@ impl PadTarget for GameSettingsDialog {
                     }
                 }
             },
-            Outcome::Ignored => return false,
+            Outcome::Ignored | Outcome::Edge(_) => return false,
             _ => {}
         }
         cx.notify();
         true
     }
 
+    /// The game's art behind the top of the screen, fading into the background.
+    fn console_hero(&mut self, height: f32, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let s = kit::scale();
+        let scale = window.scale_factor();
+        let vw = f32::from(crate::ui::content_size(window).width);
+        let (chain, _) = self.art_chain(ArtKind::Hero);
+        let hero = if chain.is_empty() {
+            None
+        } else {
+            self.images.update(cx, |im, _| im.get("gs-console-hero", chain, vw * scale, height * s * scale))
+        };
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .right_0()
+            .h(u(height))
+            .overflow_hidden()
+            .children(hero.map(|h| img(h).absolute().inset_0().size_full().object_fit(ObjectFit::Cover)))
+            .child(div().absolute().inset_0().bg(linear_gradient(
+                0.,
+                linear_color_stop(theme::console_bg(), 0.),
+                linear_color_stop(theme::rgb_a(11, 14, 19, 0.15), 1.),
+            )))
+    }
+
+    fn console_cover(&mut self, w: f32, h: f32, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let s = kit::scale();
+        let scale = window.scale_factor();
+        let (chain, _) = self.art_chain(ArtKind::Cover);
+        let cover = if chain.is_empty() {
+            None
+        } else {
+            self.images.update(cx, |im, _| im.get("gs-console-cover", chain, w * s * scale, h * s * scale))
+        };
+        div()
+            .flex_none()
+            .w(u(w))
+            .h(u(h))
+            .rounded(u(10.))
+            .overflow_hidden()
+            .bg(theme::white_a(0.08))
+            .shadow(kit::shadow(0.6, 10., 30.))
+            .children(cover.map(|c| img(c).size_full().object_fit(ObjectFit::Cover)))
+    }
+
+    fn console_meta(&self) -> String {
+        let mut meta = vec![
+            self.game.source_label.to_string(),
+            if self.game.installed { tr!("Installed").into() } else { tr!("Not installed").into() },
+        ];
+        if self.game.playtime_minutes > 0 {
+            meta.push(tr!("{time} played", time = heronite_data::collection::format_playtime_minutes(self.game.playtime_minutes)));
+        }
+        meta.join(" \u{b7} ")
+    }
+
+    /// Like the app's Settings: the game on top, the groups in a column on
+    /// the left, the shown group's rows on the right.
+    pub(super) fn render_console(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        self.images.update(cx, |im, _| im.frame(window));
+        if self.details_only {
+            return self.render_console_details(window, cx);
+        }
+        let entries = self.console_entries();
+        let at = self.console_entry_at(&entries);
+        let entry = entries.get(at).copied().unwrap_or(Entry { tab: self.tab, lower: self.lower });
+        let layer_open = self.layer.is_open();
+        let nav_focus = self.console_nav && !layer_open;
+        let rows_focus = !self.console_nav && !layer_open;
+        let mut nav = div().flex().flex_col().gap(u(4.)).w(u(320.)).flex_none();
+        for (i, e) in entries.iter().enumerate() {
+            let on = i == at;
+            let focused = on && nav_focus;
+            // A click: back from the rows (B), ↑ ↓ to the entry; on the
+            // focused one, → into it. Passing over an entry shows it while
+            // the column has the focus.
+            let mut pads = if self.console_nav { Vec::new() } else { vec![Pad::B] };
+            pads.extend(crate::console::pointer::along(at, i, Pad::Up, Pad::Down));
+            let hover = if self.console_nav { pads.clone() } else { Vec::new() };
+            if pads.is_empty() {
+                pads.push(Pad::Right);
+            }
+            // A thin gap between the groups: Play and Start, Backups and Saves stay together.
+            let first_of_group = i > 0 && entries[i - 1].tab != e.tab;
+            nav = nav.child(
+                kit::row_base(focused)
+                    .when(first_of_group, |d| d.mt(u(10.)))
+                    .when(!layer_open, |d| d.on_hover_pads(hover).on_pads(pads))
+                    .min_h(u(50.))
+                    .when(on && !focused, |d| d.bg(theme::white_a(0.08)))
+                    .child(crate::ui::icon(e.icon(), u(20.), if focused { theme::console_on_focus() } else { theme::text_muted() }))
+                    .child(div().flex_1().text_size(u(17.)).truncate().child(e.label())),
+            );
+        }
+
+        let body: AnyElement = if entry.lower {
+            match self.panel.as_ref() {
+                Some((panel, _)) => div().flex().flex_col().size_full().child(panel.clone()).into_any_element(),
+                None => div().into_any_element(),
+            }
+        } else if entry.tab == Tab::Saves {
+            self.backups.clone().map(|b| div().size_full().child(b).into_any_element()).unwrap_or_else(|| div().into_any_element())
+        } else {
+            let rows = self.console_rows(cx);
+            let enter = (!layer_open).then_some(&[Pad::Right][..]);
+            self.console_list.render_entered("console-gs", &rows, rows_focus, enter).size_full().into_any_element()
+        };
+
+        let cover = self.console_cover(54., 72., window, cx);
+        let meta = self.console_meta();
+        let top = div()
+            .flex()
+            .flex_none()
+            .items_center()
+            .gap(u(20.))
+            .h(u(112.))
+            .px(u(46.))
+            .child(cover)
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(u(2.))
+                    .flex_1()
+                    .min_w_0()
+                    .child(kit::kicker(tr!("Game settings")))
+                    .child(kit::title(self.title.clone(), 28.).truncate())
+                    .child(div().text_size(u(15.)).text_color(theme::text_muted()).truncate().child(meta)),
+            )
+            .child(kit::clock());
+        let error = (!self.error.is_empty()).then(|| kit::body_text(self.error.clone()).text_color(theme::danger_text()));
+        let hero = self.console_hero(300., window, cx);
+        div()
+            .absolute()
+            .inset_0()
+            .bg(theme::console_bg())
+            .child(hero)
+            .child(
+                div().relative().flex().flex_col().size_full().child(top).child(
+                    div().flex().flex_1().min_h_0().gap(u(40.)).px(u(46.)).pt(u(8.)).pb(u(70.)).child(nav).child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_w_0()
+                            .max_w(u(900.))
+                            .gap(u(6.))
+                            .child(div().pb(u(8.)).child(kit::title(entry.label(), 34.)))
+                            .child(div().flex().flex_col().flex_1().min_h_0().child(body))
+                            .children(error),
+                    ),
+                ),
+            )
+            .children(self.layer.view())
+            .into_any_element()
+    }
+
+    /// "Edit details": the game's art on top with its cover and title, the
+    /// rows under it.
+    fn render_console_details(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let header_h = 330.;
+        let hero = self.console_hero(header_h, window, cx);
+        let cover = self.console_cover(110., 150., window, cx);
+        let meta = self.console_meta();
+        let header = div().relative().flex_none().h(u(header_h)).overflow_hidden().child(hero).child(
+            div().absolute().left(u(46.)).right(u(46.)).bottom(u(16.)).flex().items_end().gap(u(24.)).child(cover).child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(u(4.))
+                    .min_w_0()
+                    .child(kit::kicker(tr!("Edit details")))
+                    .child(kit::title(self.title.clone(), 48.))
+                    .child(div().text_size(u(16.)).text_color(theme::text_muted()).child(meta)),
+            ),
+        );
+        let rows = self.console_rows(cx);
+        let active = !self.layer.is_open();
+        let list = self.console_list.render("console-gs", &rows, active).size_full();
+        let error = (!self.error.is_empty()).then(|| kit::body_text(self.error.clone()).text_color(theme::danger_text()));
+        div()
+            .absolute()
+            .inset_0()
+            .bg(theme::console_bg())
+            .flex()
+            .flex_col()
+            .child(header)
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h_0()
+                    .px(u(46.))
+                    .pt(u(12.))
+                    .pb(u(70.))
+                    .child(div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(list))
+                    .children(error),
+            )
+            .children(self.layer.view())
+            .into_any_element()
+    }
+}
+
+impl PadTarget for GameSettingsDialog {
+    fn on_pad(&mut self, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.layer.pad(pad, window, cx) {
+            cx.notify();
+            return true;
+        }
+        // The backups' keyboard and backup menu keep B and the bumpers.
+        if let (Tab::Saves, Some(view), false, false) = (self.tab, self.backups.clone(), self.lower, self.console_nav) {
+            if view.read(cx).captures(pad) {
+                return view.update(cx, |v, cx| v.on_pad(pad, window, cx));
+            }
+        }
+        if self.details_only {
+            if pad == Pad::B {
+                // What the details have pending is saved first.
+                self.close(cx);
+                return true;
+            }
+            return self.console_rows_pad(pad, window, cx);
+        }
+        let entries = self.console_entries();
+        let at = self.console_entry_at(&entries);
+        let n = entries.len();
+        if matches!(pad, Pad::LB | Pad::RB) {
+            if n > 1 {
+                let next = if pad == Pad::RB { (at + 1) % n } else { (at + n - 1) % n };
+                self.console_show(entries[next], window, cx);
+            }
+            return true;
+        }
+        // The left column: ↑ ↓ show an entry, → or A go into its rows.
+        if self.console_nav {
+            match pad {
+                Pad::Up if at > 0 => self.console_show(entries[at - 1], window, cx),
+                Pad::Down if at + 1 < n => self.console_show(entries[at + 1], window, cx),
+                Pad::Up | Pad::Down => {}
+                Pad::Right | Pad::A => {
+                    self.console_nav = false;
+                    self.console_sync(cx);
+                }
+                Pad::B => self.close(cx),
+                _ => return false,
+            }
+            cx.notify();
+            return true;
+        }
+        let used = if self.lower {
+            self.panel.clone().is_some_and(|(p, _)| p.update(cx, |p, cx| p.on_pad(pad, window, cx)))
+        } else if self.tab == Tab::Saves {
+            self.backups.clone().is_some_and(|v| v.update(cx, |v, cx| v.on_pad(pad, window, cx)))
+        } else if pad == Pad::B && self.tab == Tab::Start && self.close_action_editor(cx) {
+            true
+        } else {
+            self.console_rows_pad(pad, window, cx)
+        };
+        // ◀ or B the rows don't use go back to the left column.
+        if !used && matches!(pad, Pad::Left | Pad::B) {
+            self.console_nav = true;
+            self.console_sync(cx);
+            cx.notify();
+            return true;
+        }
+        used
+    }
+
     fn hints(&self, cx: &App) -> Vec<Hint> {
         if let Some(h) = self.layer.hints(cx) {
             return h;
         }
-        let in_panel = self.has_lower() && (self.lower || !self.has_upper());
-        if let (Tab::Saves, Some(view), false) = (self.tab, &self.backups, in_panel) {
-            let mut h = view.read(cx).hints(cx);
-            h.push(hint(Btn::Bumpers, tr!("Tabs")));
+        let rows = || vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change"))];
+        if self.details_only {
+            let mut h = rows();
             h.push(hint(Btn::B, tr!("Done")));
             return h;
         }
-        if in_panel {
-            if let Some((panel, _)) = &self.panel {
-                let mut h = panel.read(cx).hints(cx);
-                h.push(hint(Btn::Bumpers, tr!("Tabs")));
-                h.push(hint(Btn::B, tr!("Done")));
-                return h;
-            }
+        if self.console_nav {
+            return vec![hint(Btn::A, tr!("Open")), hint(Btn::B, tr!("Done"))];
         }
-        vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change")), hint(Btn::Bumpers, tr!("Tabs")), hint(Btn::B, tr!("Done"))]
+        let mut h = match (self.lower, self.tab, &self.panel, &self.backups) {
+            (true, _, Some((panel, _)), _) => panel.read(cx).hints(cx),
+            (false, Tab::Saves, _, Some(view)) => view.read(cx).hints(cx),
+            _ => rows(),
+        };
+        h.push(hint(Btn::B, tr!("Back")));
+        h
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{entries_of, Entry, Tab};
+
+    #[test]
+    fn start_and_saves_get_their_own_block_then_the_panel() {
+        let tabs = [Tab::Start, Tab::Graphics, Tab::Saves];
+        let entries = entries_of(&tabs, |t| matches!(t, Tab::Start | Tab::Saves), |t| t != Tab::Saves);
+        let e = |tab, lower| Entry { tab, lower };
+        assert_eq!(entries, vec![e(Tab::Start, false), e(Tab::Start, true), e(Tab::Graphics, true), e(Tab::Saves, false)]);
+        assert_eq!(entries[0].label(), "Play");
+        assert_eq!(entries[3].label(), "Backups");
     }
 }
