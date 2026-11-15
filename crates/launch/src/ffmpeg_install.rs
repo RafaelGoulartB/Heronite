@@ -84,6 +84,8 @@ pub fn ensure(paths: &DataPaths, tools: &[Tool], net: &dyn Net, cancel: Cancel) 
     let dir = ffmpeg::data_bin_dir(paths);
     let missing: Vec<Tool> = tools.iter().copied().filter(|t| ffmpeg::find_in(*t, path_var.clone(), &dir).is_none()).collect();
     if missing.is_empty() {
+        // Put there some other way meanwhile (copied in, restored): found from now on.
+        ffmpeg::forget();
         return Ok(());
     }
     let assets = assets_for(std::env::consts::OS, std::env::consts::ARCH).ok_or_else(|| {

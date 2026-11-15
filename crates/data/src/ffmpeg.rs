@@ -13,6 +13,7 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use crate::paths::DataPaths;
@@ -58,23 +59,35 @@ pub fn data_bin(paths: &DataPaths, tool: Tool) -> PathBuf {
 
 /// Per tool: `None` = not looked for yet, `Some(None)` = not there.
 static FOUND: Mutex<[Option<Option<PathBuf>>; 2]> = Mutex::new([None, None]);
+/// Bumped by [`forget`]: a lookup that started before is not kept.
+static EPOCH: AtomicU64 = AtomicU64::new(0);
 
 /// `tool` on the `PATH`, else in this data folder's `tools/bin`.
 pub fn find(tool: Tool) -> Option<PathBuf> {
-    let mut found = FOUND.lock().unwrap_or_else(|e| e.into_inner());
-    match &found[tool.index()] {
-        Some(Some(p)) if p.is_file() => return Some(p.clone()),
-        Some(None) => return None,
-        _ => {}
-    }
+    let epoch = {
+        let found = FOUND.lock().unwrap_or_else(|e| e.into_inner());
+        match &found[tool.index()] {
+            Some(Some(p)) if p.is_file() => return Some(p.clone()),
+            Some(None) => return None,
+            _ => {}
+        }
+        EPOCH.load(Ordering::SeqCst)
+    };
+    // Looked for without the lock: a slow `PATH` folder (a network drive)
+    // never holds up another thread asking meanwhile.
     let p = find_in(tool, std::env::var_os("PATH"), &data_bin_dir(&DataPaths::detect()));
-    found[tool.index()] = Some(p.clone());
+    let mut found = FOUND.lock().unwrap_or_else(|e| e.into_inner());
+    if EPOCH.load(Ordering::SeqCst) == epoch {
+        found[tool.index()] = Some(p.clone());
+    }
     p
 }
 
 /// Makes the next [`find`] look again (ffmpeg was just downloaded).
 pub fn forget() {
-    *FOUND.lock().unwrap_or_else(|e| e.into_inner()) = [None, None];
+    let mut found = FOUND.lock().unwrap_or_else(|e| e.into_inner());
+    EPOCH.fetch_add(1, Ordering::SeqCst);
+    *found = [None, None];
 }
 
 /// `tool` in the folders of `path_var` (a `PATH`; its empty or relative
