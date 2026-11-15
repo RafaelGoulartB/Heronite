@@ -339,7 +339,10 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             cx.stop_propagation();
             let a = match hotkey_press(&ev.keystroke, false) {
                 HotkeyPress::Set(a) => a,
-                HotkeyPress::Leave => return d.leave_hotkey_field(window, cx),
+                HotkeyPress::Leave => {
+                    d.screenshots.hotkey_refused = None;
+                    return d.leave_hotkey_field(window, cx);
+                }
                 HotkeyPress::NeedsModifier(a) => {
                     d.screenshots.hotkey_refused = Some(needs_modifier_text(&a.replace("CommandOrControl", "Ctrl")));
                     return cx.notify();

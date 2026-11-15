@@ -16,8 +16,9 @@ pub enum HotkeyPress {
     Clear,
     /// Esc or Tab alone: the keyboard leaves the field, which keeps its value.
     Leave,
-    /// A key that is a shortcut only with a modifier (a letter, Enter…): it
-    /// would take the key from every program. The accelerator it would be.
+    /// A key that is a shortcut only with Ctrl, Alt or the logo key (a
+    /// letter, Enter…, alone or with Shift): it would take the key, or its
+    /// capital, from every program. The accelerator it would be.
     NeedsModifier(String),
     /// A modifier alone, or a key no global shortcut can have.
     Ignore,
@@ -35,16 +36,19 @@ pub fn hotkey_press(ks: &Keystroke, clearable: bool) -> HotkeyPress {
         "backspace" | "delete" if plain && clearable => return HotkeyPress::Clear,
         _ => {}
     }
+    // Shift alone still types (a capital, a symbol) or edits (Shift Enter, a
+    // selection with Shift and an arrow): it is no modifier for this.
+    let types = !(m.control || m.alt || m.platform);
     match accelerator_from_keystroke(ks) {
         None => HotkeyPress::Ignore,
-        Some(a) if plain && !works_alone(&a) => HotkeyPress::NeedsModifier(a),
+        Some(a) if types && !works_alone(a.rsplit('+').next().unwrap_or(&a)) => HotkeyPress::NeedsModifier(a),
         Some(a) => HotkeyPress::Set(a),
     }
 }
 
-/// Whether a key without Ctrl, Alt, Shift or the logo key can be a global
-/// shortcut: one no program needs typed (F1–F24, Print Screen, Pause, Scroll
-/// Lock), so taking it everywhere costs nothing.
+/// Whether a key without Ctrl, Alt or the logo key (alone or with Shift) can
+/// be a global shortcut: one no program needs typed (F1–F24, Print Screen,
+/// Pause, Scroll Lock), so taking it everywhere costs nothing.
 pub fn works_alone(key: &str) -> bool {
     let k = key.to_ascii_lowercase();
     let f_key = k.strip_prefix('f').and_then(|n| n.parse::<u8>().ok()).is_some_and(|n| (1..=24).contains(&n));
@@ -54,7 +58,7 @@ pub fn works_alone(key: &str) -> bool {
 /// What a shortcut field says when a key needs a modifier.
 pub fn needs_modifier_text(key: &str) -> String {
     let logo = if cfg!(windows) { "Win" } else { "Super" };
-    tr!("{key} needs Ctrl, Alt, Shift or {logo} with it; only the F keys, Print Screen and Pause work alone.", key, logo)
+    tr!("{key} needs Ctrl, Alt or {logo} with it; only the F keys, Print Screen and Pause work alone or with just Shift.", key, logo)
 }
 
 /// Electron-style accelerator from a key press (`acceleratorFromKey`), or
@@ -143,6 +147,17 @@ mod tests {
         assert_eq!(press("space", false), HotkeyPress::NeedsModifier("Space".into()));
         assert_eq!(press("enter", false), HotkeyPress::NeedsModifier("Enter".into()));
         assert_eq!(press("backspace", false), HotkeyPress::NeedsModifier("Backspace".into()));
+    }
+
+    #[test]
+    fn shift_alone_is_not_enough_for_keys_that_type() {
+        assert_eq!(press("shift-a", false), HotkeyPress::NeedsModifier("Shift+A".into()));
+        assert_eq!(press("shift-enter", false), HotkeyPress::NeedsModifier("Shift+Enter".into()));
+        assert_eq!(press("shift-space", false), HotkeyPress::NeedsModifier("Shift+Space".into()));
+        assert_eq!(press("shift-up", false), HotkeyPress::NeedsModifier("Shift+Up".into()));
+        assert_eq!(press("shift-backspace", true), HotkeyPress::NeedsModifier("Shift+Backspace".into()));
+        assert_eq!(press("shift-f2", false), HotkeyPress::Set("Shift+F2".into()));
+        assert_eq!(press("ctrl-shift-a", false), HotkeyPress::Set("CommandOrControl+Shift+A".into()));
     }
 
     #[test]

@@ -23,5 +23,5 @@
   "The command palette in a small window of its own: open it from anywhere with a key, type a few letters and press Enter to play, without opening Heronite.": "Die Befehlspalette in einem eigenen kleinen Fenster: von überall mit einer Taste öffnen, ein paar Buchstaben tippen und Enter drücken, um zu spielen, ohne Heronite zu öffnen.",
   "Where the desktop takes no shortcut from Heronite, bind a key to this command in its keyboard settings. It also starts Heronite when it is not running: {command}": "Wo der Desktop keine Tastenkürzel von Heronite annimmt, belege in seinen Tastatureinstellungen eine Taste mit diesem Befehl. Er startet Heronite auch, wenn es nicht läuft: {command}",
   "{key} already opens the quick launcher.": "{key} öffnet bereits den Schnellstarter.",
-  "{key} needs Ctrl, Alt, Shift or {logo} with it; only the F keys, Print Screen and Pause work alone.": "{key} braucht Strg, Alt, Umschalt oder {logo} dazu; nur die F-Tasten, Druck und Pause funktionieren allein."
+  "{key} needs Ctrl, Alt or {logo} with it; only the F keys, Print Screen and Pause work alone or with just Shift.": "{key} braucht Strg, Alt oder {logo} dazu; nur die F-Tasten, Druck und Pause funktionieren allein oder nur mit Umschalt."
 }

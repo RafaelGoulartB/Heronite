@@ -90,7 +90,10 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
                 let accelerator = match hotkey_press(&ev.keystroke, true) {
                     HotkeyPress::Set(a) => a,
                     HotkeyPress::Clear => String::new(),
-                    HotkeyPress::Leave => return d.leave_hotkey_field(window, cx),
+                    HotkeyPress::Leave => {
+                        d.quick_launch.taken = None;
+                        return d.leave_hotkey_field(window, cx);
+                    }
                     HotkeyPress::NeedsModifier(a) => {
                         d.quick_launch.taken = Some(needs_modifier_text(&shown_accelerator(&a)));
                         return cx.notify();

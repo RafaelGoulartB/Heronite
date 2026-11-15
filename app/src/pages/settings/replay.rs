@@ -636,7 +636,10 @@ fn keyboard_row(d: &SettingsPage, p: &ReplayPrefs, window: &Window, cx: &mut Con
                 let accelerator = match hotkey_press(&ev.keystroke, true) {
                     HotkeyPress::Set(a) => a,
                     HotkeyPress::Clear => String::new(),
-                    HotkeyPress::Leave => return d.leave_hotkey_field(window, cx),
+                    HotkeyPress::Leave => {
+                        d.replay.hotkey_taken = None;
+                        return d.leave_hotkey_field(window, cx);
+                    }
                     HotkeyPress::NeedsModifier(a) => {
                         d.replay.hotkey_taken = Some(needs_modifier_text(&shown_accelerator(&a)));
                         return cx.notify();
