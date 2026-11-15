@@ -8,18 +8,20 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::tr;
 
+use super::shortcuts::{self, Shortcut};
 use super::SettingsPage;
 use crate::icons::Icon;
 use crate::overlay::HotkeyState;
 use crate::theme;
 use crate::ui::controls::{button, button_sm, caption, card, row, ButtonKind};
-use crate::ui::fields::{accelerator_from_key, hotkey_box, labeled, meta_text};
+use crate::ui::fields::{hotkey_box, hotkey_press, labeled, meta_text, needs_modifier_text, HotkeyPress};
 use crate::ui::icon;
 
 pub struct State {
     /// The shortcut field.
     hotkey: FocusHandle,
-    /// The combination last pressed in it is another shortcut's.
+    /// Why the combination last pressed in it was refused (another
+    /// shortcut's, or a key that needs a modifier).
     taken: Option<String>,
     /// What a key bound in the desktop's settings runs (Linux).
     command: Option<String>,
@@ -58,23 +60,6 @@ pub(super) fn shown(cx: &App) -> Option<String> {
     (!a.is_empty()).then(|| shown_accelerator(&a))
 }
 
-/// What else uses `accelerator` (the overlay's, the screenshot's or the
-/// replay's shortcut).
-fn taken_by(d: &SettingsPage, accelerator: &str, cx: &App) -> Option<String> {
-    let o = &d.overlay.prefs;
-    let s = &d.settings.screenshots;
-    let key = shown_accelerator(accelerator);
-    if o.enabled && o.keyboard_shortcut && o.keyboard_accelerator.eq_ignore_ascii_case(accelerator) {
-        Some(tr!("{key} already opens the overlay.", key))
-    } else if s.capture_enabled && s.capture_accelerator.eq_ignore_ascii_case(accelerator) {
-        Some(tr!("{key} already takes a screenshot.", key))
-    } else if super::replay::accelerator(d, cx).is_some_and(|r| r.eq_ignore_ascii_case(&key)) {
-        Some(tr!("{key} already saves the replay.", key))
-    } else {
-        None
-    }
-}
-
 /// One step of "How it works": a key or an icon, then what happens.
 fn step(lead: AnyElement, text: &'static str) -> Div {
     div()
@@ -100,17 +85,23 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     };
     let field = hotkey_box(
         div().id("quick-launch-hotkey").track_focus(&d.quick_launch.hotkey).cursor_pointer().on_key_down(cx.listener(
-            |d, ev: &KeyDownEvent, _, cx| {
+            |d, ev: &KeyDownEvent, window, cx| {
                 cx.stop_propagation();
-                let k = &ev.keystroke;
-                let plain = !(k.modifiers.control || k.modifiers.alt || k.modifiers.shift || k.modifiers.platform);
-                let accelerator = if plain && matches!(k.key.as_str(), "backspace" | "delete") {
-                    String::new()
-                } else {
-                    let Some(a) = accelerator_from_key(ev) else { return };
-                    a
+                let accelerator = match hotkey_press(&ev.keystroke, true) {
+                    HotkeyPress::Set(a) => a,
+                    HotkeyPress::Clear => String::new(),
+                    HotkeyPress::Leave => {
+                        d.quick_launch.taken = None;
+                        return d.leave_hotkey_field(window, cx);
+                    }
+                    HotkeyPress::NeedsModifier(a) => {
+                        d.quick_launch.taken = Some(needs_modifier_text(&shown_accelerator(&a)));
+                        return cx.notify();
+                    }
+                    HotkeyPress::Ignore => return,
                 };
-                d.quick_launch.taken = (!accelerator.is_empty()).then(|| taken_by(d, &accelerator, cx)).flatten();
+                d.quick_launch.taken =
+                    (!accelerator.is_empty()).then(|| shortcuts::taken_by(d, Shortcut::QuickLaunch, &accelerator, cx)).flatten();
                 if d.quick_launch.taken.is_none() {
                     set_accelerator(accelerator, cx);
                 }

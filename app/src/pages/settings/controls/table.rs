@@ -20,10 +20,11 @@ use super::pad::Part;
 use super::{console_button, glyph, toggle_selected, Show, GUIDE};
 use crate::console::theme_rows::console_button_name;
 use crate::icons::Icon;
+use crate::pages::settings::shortcuts::{self, Shortcut};
 use crate::pages::settings::{overlay, replay, screenshots, Section, SettingsPage};
 use crate::theme;
 use crate::ui::controls::{button_sm, mini_checkbox, ButtonKind};
-use crate::ui::fields::accelerator_from_key;
+use crate::ui::fields::{hotkey_press, needs_modifier_text, HotkeyPress};
 use crate::ui::icon;
 
 /// Widths of the controller and keyboard columns.
@@ -382,22 +383,12 @@ fn key_on(d: &SettingsPage, key: Key, cx: &App) -> bool {
 
 /// What else already uses `accelerator`.
 fn key_taken(d: &SettingsPage, key: Key, pressed: &str, cx: &App) -> Option<String> {
-    // The replay's key comes back as shown ("Ctrl"), the others as saved.
-    let shown = pressed.replace("CommandOrControl", "Ctrl");
-    let same = |other: Key| {
-        other != key
-            && key_on(d, other, cx)
-            && accelerator(d, other, cx).is_some_and(|a| a.replace("CommandOrControl", "Ctrl").eq_ignore_ascii_case(&shown))
+    let own = match key {
+        Key::Overlay => Shortcut::Overlay,
+        Key::Shot => Shortcut::Screenshot,
+        Key::Replay => Shortcut::Replay,
     };
-    if same(Key::Overlay) && d.overlay.prefs.enabled {
-        Some(tr!("{key} already opens the overlay.", key = &shown))
-    } else if same(Key::Shot) {
-        Some(tr!("{key} already takes a screenshot.", key = &shown))
-    } else if same(Key::Replay) {
-        Some(tr!("{key} already saves the replay.", key = &shown))
-    } else {
-        None
-    }
+    shortcuts::taken_by(d, own, pressed, cx)
 }
 
 /// Saves the key recorded for `key`.
@@ -468,18 +459,19 @@ fn key_popover(d: &SettingsPage, key: Key, cx: &mut Context<SettingsPage>) -> Di
         }))
         .on_key_down(cx.listener(move |d, ev: &KeyDownEvent, _, cx| {
             cx.stop_propagation();
-            let k = &ev.keystroke;
-            let plain = !(k.modifiers.control || k.modifiers.alt || k.modifiers.shift || k.modifiers.platform);
-            if plain && k.key == "escape" {
-                close_edit(d, cx);
-                return;
-            }
-            if plain && key == Key::Replay && matches!(k.key.as_str(), "backspace" | "delete") {
-                replay::set_accelerator(d, String::new(), cx);
-                close_edit(d, cx);
-                return;
-            }
-            let Some(a) = accelerator_from_key(ev) else { return };
+            let a = match hotkey_press(&ev.keystroke, key == Key::Replay) {
+                HotkeyPress::Set(a) => a,
+                HotkeyPress::Leave => return close_edit(d, cx),
+                HotkeyPress::Clear => {
+                    replay::set_accelerator(d, String::new(), cx);
+                    return close_edit(d, cx);
+                }
+                HotkeyPress::NeedsModifier(a) => {
+                    d.controls.key_error = Some(needs_modifier_text(&a.replace("CommandOrControl", "Ctrl")));
+                    return cx.notify();
+                }
+                HotkeyPress::Ignore => return,
+            };
             match key_taken(d, key, &a, cx) {
                 Some(why) => {
                     d.controls.key_error = Some(why);

@@ -13,12 +13,13 @@ use heronite_i18n::{tr, trn};
 use heronite_overlay::input::Controller;
 use heronite_platform::{supported, Feature};
 
+use super::shortcuts::{self, Shortcut};
 use super::SettingsPage;
 use crate::overlay::{labels, HotkeyState};
 use crate::pages::PageCtx;
 use crate::theme;
 use crate::ui::controls::{caption, card, row, tabs, toggle_row, with_sub_rows};
-use crate::ui::fields::{accelerator_from_key, hotkey_box, labeled, meta_text, select_field};
+use crate::ui::fields::{hotkey_box, hotkey_press, labeled, meta_text, needs_modifier_text, select_field, HotkeyPress};
 
 pub struct State {
     pub(super) prefs: OverlayPrefs,
@@ -26,6 +27,8 @@ pub struct State {
     controllers: Option<Vec<Controller>>,
     /// The keyboard shortcut field.
     hotkey: FocusHandle,
+    /// Why the combination last pressed in it was refused.
+    hotkey_refused: Option<String>,
     /// The menu of the screenshot button is open.
     button_open: bool,
 }
@@ -37,7 +40,7 @@ impl State {
             cx.observe(&service, |_, _, cx| cx.notify()).detach();
         }
         // A tiny file in the app's config folder.
-        Self { prefs: OverlayPrefs::load(&ctx.app), controllers: None, hotkey: cx.focus_handle(), button_open: false }
+        Self { prefs: OverlayPrefs::load(&ctx.app), controllers: None, hotkey: cx.focus_handle(), hotkey_refused: None, button_open: false }
     }
 }
 
@@ -267,6 +270,9 @@ pub(super) fn console_apply_replay(d: &mut SettingsPage, outcome: &crate::consol
 }
 
 fn hotkey_status(d: &SettingsPage, cx: &App) -> Option<(String, bool)> {
+    if let Some(why) = &d.overlay.hotkey_refused {
+        return Some((why.clone(), true));
+    }
     let p = &d.overlay.prefs;
     if !p.enabled || !p.keyboard_shortcut {
         return None;
@@ -314,11 +320,25 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let focused = d.overlay.hotkey.is_focused(window);
     let hotkey = hotkey_box(
         div().id("overlay-hotkey").track_focus(&d.overlay.hotkey).cursor_pointer().on_key_down(cx.listener(
-            |d, ev: &KeyDownEvent, _, cx| {
+            |d, ev: &KeyDownEvent, window, cx| {
                 cx.stop_propagation();
-                if let Some(a) = accelerator_from_key(ev) {
+                let a = match hotkey_press(&ev.keystroke, false) {
+                    HotkeyPress::Set(a) => a,
+                    HotkeyPress::Leave => {
+                        d.overlay.hotkey_refused = None;
+                        return d.leave_hotkey_field(window, cx);
+                    }
+                    HotkeyPress::NeedsModifier(a) => {
+                        d.overlay.hotkey_refused = Some(needs_modifier_text(&a.replace("CommandOrControl", "Ctrl")));
+                        return cx.notify();
+                    }
+                    HotkeyPress::Clear | HotkeyPress::Ignore => return,
+                };
+                d.overlay.hotkey_refused = shortcuts::taken_by(d, Shortcut::Overlay, &a, cx);
+                if d.overlay.hotkey_refused.is_none() {
                     update(d, cx, |p| p.keyboard_accelerator = a);
                 }
+                cx.notify();
             },
         )),
         p.keyboard_accelerator.clone(),

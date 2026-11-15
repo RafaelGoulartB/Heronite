@@ -56,6 +56,7 @@ mod saves_restore;
 mod screenshots;
 mod search;
 mod section;
+mod shortcuts;
 mod storage;
 pub mod sysinfo;
 mod updates;
