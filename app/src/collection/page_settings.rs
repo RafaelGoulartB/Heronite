@@ -38,7 +38,12 @@ impl CollectionView {
     /// (`Tab::Game`) always opens the drawer.
     pub(super) fn show_game_settings(&mut self, key: &str, game: Game, tab: Tab, window: &mut Window, cx: &mut Context<Self>) {
         let vw = f32::from(crate::ui::content_size(window).width);
-        if tab != Tab::Game && self.selected.as_deref() == Some(key) && self.page_fits(vw) {
+        if tab != Tab::Game && self.page_fits(vw) {
+            // Another game's (its context menu): the page shows the selected game, so select it.
+            if self.selected.as_deref() != Some(key) {
+                self.select(SharedString::from(key.to_string()), true);
+                self.reveal_selected();
+            }
             if let Some(page) = self.page_settings.as_ref().filter(|p| p.key.as_ref() == key) {
                 page.view.update(cx, |v, cx| v.show_tab(tab, window, cx));
                 return;

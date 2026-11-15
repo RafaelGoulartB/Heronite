@@ -23,6 +23,12 @@ use crate::ui::fields::{new_input, search_box};
 const ASIDE_FROM_W: f32 = 1000.;
 const ASIDE_W: f32 = 400.;
 
+/// The width the top bar needs on one line with `tabs` tabs: about 105 px a
+/// tab, then "Changed", the search and "Back to game".
+fn bar_width(tabs: usize) -> f32 {
+    tabs as f32 * 105. + 560.
+}
+
 pub(super) struct PageState {
     search: Entity<InputState>,
     query: String,
@@ -176,7 +182,7 @@ impl GameSettingsDialog {
     /// The top bar: the groups, "Changed · N", the search and "Back to game".
     fn page_bar(&mut self, cx: &mut Context<Self>) -> Div {
         let Some(page) = self.page.as_ref() else { return div() };
-        let (on, search) = (page.changed_only, page.search.clone());
+        let (on, search, width) = (page.changed_only, page.search.clone(), page.width);
         let n = self.panel.as_ref().map_or(0, |(p, _)| p.read(cx).changed_settings(cx).len());
         let changed = div()
             .id("gs-changed")
@@ -202,16 +208,20 @@ impl GameSettingsDialog {
                 }
             }));
         let back = action_button("gs-back", ButtonKind::Glass, tr!("Back to game"), true, cx.listener(|this, _, _, cx| this.close(cx)));
-        let tabs = div().flex_1().min_w_0().when(self.filtering(), |d| d.opacity(0.5)).child(self.tab_bar(cx));
-        div()
+        let tabs = div().when(self.filtering(), |d| d.opacity(0.5)).child(self.tab_bar(cx));
+        let controls = div()
             .flex()
             .items_center()
             .gap(px(10.))
-            .pb(px(14.))
-            .child(tabs)
             .child(changed)
             .child(div().w(px(240.)).flex_none().child(search_box(&search)))
-            .child(back)
+            .child(back);
+        // The tabs and the controls on one line when both fit, else the
+        // controls go under the tabs.
+        if width < bar_width(self.tab_list().len()) {
+            return div().flex().flex_col().items_start().gap(px(10.)).pb(px(14.)).child(tabs).child(controls);
+        }
+        div().flex().items_center().justify_between().gap(px(10.)).pb(px(14.)).child(tabs).child(controls)
     }
 
     pub(super) fn render_page(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {

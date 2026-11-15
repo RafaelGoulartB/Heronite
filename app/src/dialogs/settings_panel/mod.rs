@@ -185,6 +185,9 @@ pub struct SettingsPanel {
     /// "How the game starts" sits in its own column beside the settings (the
     /// game page), not at the end of Start.
     preview_aside: bool,
+    /// A reset changed settings that inputs show: they are filled again at
+    /// the next render (which has the window).
+    inputs_stale: bool,
     /// The rarely used settings of the group drawn that the game left alone
     /// (filled while it is drawn, for the count of that link).
     folded: std::cell::RefCell<Vec<&'static str>>,
@@ -335,6 +338,7 @@ impl SettingsPanel {
             // `HERONITE_DEBUG_SHOW_RARE=1`: the rarely used settings start shown.
             show_rare: crate::env::flag("HERONITE_DEBUG_SHOW_RARE"),
             preview_aside: false,
+            inputs_stale: false,
             folded: Default::default(),
             tool_busy: None,
             winetricks: None,
@@ -753,6 +757,9 @@ pub(super) fn value_text(v: Option<&Value>) -> String {
 impl Render for SettingsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_steam_inputs(window, cx);
+        if std::mem::take(&mut self.inputs_stale) {
+            self.reload_inputs(window, cx);
+        }
         if crate::console::active() {
             return self.render_console(window, cx);
         }

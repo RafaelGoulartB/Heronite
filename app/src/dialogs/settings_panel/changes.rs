@@ -318,6 +318,8 @@ impl SettingsPanel {
         if !plain.is_empty() {
             self.set_all(plain, cx);
         }
+        // The text fields still show the old values until filled again.
+        self.inputs_stale = true;
         self.notice = None;
         self.confirm_reset = false;
         cx.notify();
