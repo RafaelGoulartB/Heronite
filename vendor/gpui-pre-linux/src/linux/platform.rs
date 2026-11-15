@@ -315,6 +315,11 @@ impl LinuxPlatform {
         self.connection.borrow().show_cursor()
     }
 
+    /// Heronite: see [`crate::set_activation_token`].
+    pub(crate) fn set_activation_token_now(&self, token: Option<String>) {
+        self.connection.borrow().set_activation_token(token)
+    }
+
     /// Creates the platform, headless until `run` connects it in its initial mode.
     pub(crate) fn new(allowed_modes: WindowingModes) -> Self {
         let startup = StartupEnvironment {

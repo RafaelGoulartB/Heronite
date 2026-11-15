@@ -13,8 +13,13 @@ use gpui_kit::*;
 
 use crate::collection::palette::PaletteView;
 
-/// Opens the window with the view `build` makes.
-pub(super) fn open<V: Render>(cx: &mut App, build: impl Fn(&mut Window, &mut App) -> Entity<V>) -> anyhow::Result<AnyWindowHandle> {
+/// Opens the window with the view `build` makes. `activation_token`: the
+/// xdg-activation token of the process that asked for it (see [`activated`]).
+pub(super) fn open<V: Render>(
+    cx: &mut App,
+    activation_token: Option<String>,
+    build: impl Fn(&mut Window, &mut App) -> Entity<V>,
+) -> anyhow::Result<AnyWindowHandle> {
     let size = PaletteView::launcher_size();
     #[cfg(target_os = "linux")]
     if crate::overlay::window::supported() && crate::env::value("HERONITE_DEBUG_QUICK_LAUNCH").is_none() {
@@ -43,14 +48,38 @@ pub(super) fn open<V: Render>(cx: &mut App, build: impl Fn(&mut Window, &mut App
         focus: true,
         ..Default::default()
     };
-    let handle = cx.open_window(options, |window, cx| {
-        window.set_window_title("Heronite");
-        build(window, cx)
+    let handle = activated(activation_token, || {
+        cx.open_window(options, |window, cx| {
+            window.set_window_title("Heronite");
+            build(window, cx)
+        })
     })?;
     #[cfg(windows)]
     finish(cx, handle.into());
     cx.activate(true);
     Ok(handle.into())
+}
+
+/// Linux (Wayland): `open` activates the window it opens with `token`, the
+/// one the process that forwarded the request was started with (the
+/// desktop's key binding, `xdg-open` for `heronite://quick-launch`). The
+/// keyboard is a focus a compositor that prevents focus stealing (GNOME)
+/// only gives with a token: without one the launcher opens behind the
+/// focused window, and typing goes to that one. A layer surface has the
+/// keyboard anyway, so only the normal window gets it.
+#[cfg(target_os = "linux")]
+fn activated<T>(token: Option<String>, open: impl FnOnce() -> T) -> T {
+    let Some(token) = token else { return open() };
+    gpui_linux::set_activation_token(Some(token));
+    let opened = open();
+    // Not used when the window did not open: no later window takes it.
+    gpui_linux::set_activation_token(None);
+    opened
+}
+
+#[cfg(not(target_os = "linux"))]
+fn activated<T>(_token: Option<String>, open: impl FnOnce() -> T) -> T {
+    open()
 }
 
 /// Windows: no frame around the panel (see `overlay_window::drop_frame`),

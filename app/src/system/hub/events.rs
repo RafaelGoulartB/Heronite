@@ -253,7 +253,7 @@ pub(super) fn on_message(cx: &mut App, msg: Message) {
     }
     if msg.quick_launch {
         // An older instance reads this as a plain start and shows its window.
-        crate::quick_launch::toggle(cx);
+        crate::quick_launch::toggle_with(cx, msg.activation_token.clone());
         if msg.launch.is_none() && msg.open_client.is_none() {
             return;
         }

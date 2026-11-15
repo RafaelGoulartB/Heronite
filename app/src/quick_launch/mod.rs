@@ -73,22 +73,28 @@ fn background(cx: &mut App, work: impl FnOnce() + Send + 'static) {
     .detach();
 }
 
-/// Opens the launcher, or closes it when it is open (its shortcut and
-/// `heronite://quick-launch`).
+/// Opens the launcher, or closes it when it is open (its shortcut).
 pub fn toggle(cx: &mut App) {
+    toggle_with(cx, None);
+}
+
+/// [`toggle`] for `heronite://quick-launch` and `--quick-launch` through the
+/// socket, with the xdg-activation token of the process that asked (Wayland:
+/// the window takes the focus with it).
+pub fn toggle_with(cx: &mut App, activation_token: Option<String>) {
     if is_open() {
         close(cx);
     } else {
-        open(cx);
+        open_with(cx, "", None, activation_token);
     }
 }
 
 /// Opens the launcher (or gives it the keyboard again).
 pub fn open(cx: &mut App) {
-    open_with(cx, "", None);
+    open_with(cx, "", None, None);
 }
 
-fn open_with(cx: &mut App, query: &str, keys: Option<String>) {
+fn open_with(cx: &mut App, query: &str, keys: Option<String>, activation_token: Option<String>) {
     let open = OPEN.with(|o| o.borrow().as_ref().map(|o| o.handle));
     if let Some(handle) = open {
         if handle.update(cx, |_, window, _| window.activate_window()).is_ok() {
@@ -109,7 +115,7 @@ fn open_with(cx: &mut App, query: &str, keys: Option<String>) {
     if crate::overlay::window::exclusive_fullscreen() {
         return;
     }
-    match window::open(cx, move |window, cx| cx.new(|cx| QuickLauncher::new(&query, keys.clone(), window, cx))) {
+    match window::open(cx, activation_token, move |window, cx| cx.new(|cx| QuickLauncher::new(&query, keys.clone(), window, cx))) {
         Ok(handle) => {
             log::info!("quick launcher opened");
             watch_close(cx);
@@ -164,7 +170,8 @@ pub fn debug_requested() -> bool {
 /// the debug hook with its query and keys).
 pub fn open_at_start(cx: &mut App) {
     let query = crate::env::value("HERONITE_DEBUG_QUICK_LAUNCH").filter(|q| q != "-").unwrap_or_default();
-    open_with(cx, &query, crate::env::value("HERONITE_DEBUG_QUICK_LAUNCH_KEYS"));
+    // A first window takes the start's own token (GPUI does that).
+    open_with(cx, &query, crate::env::value("HERONITE_DEBUG_QUICK_LAUNCH_KEYS"), None);
     // It did not open (a game in exclusive fullscreen, no window): a start
     // made only for it must not stay with nothing on screen.
     if !is_open() {
