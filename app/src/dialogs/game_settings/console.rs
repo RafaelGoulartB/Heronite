@@ -262,6 +262,10 @@ impl GameSettingsDialog {
         let s = kit::scale();
         let scale = window.scale_factor();
         let vw = f32::from(crate::ui::content_size(window).width);
+        let vh = f32::from(crate::ui::content_size(window).height);
+        // The settings get a shorter header than "Edit details": their rows need the height.
+        let header_h = if self.details_only { 330. } else { 210. };
+        let (cover_w, cover_h, title_size) = if self.details_only { (110., 150., 48.) } else { (80., 108., 36.) };
         let (hero_chain, _) = self.art_chain(ArtKind::Hero);
         let hero = if hero_chain.is_empty() {
             None
@@ -273,7 +277,7 @@ impl GameSettingsDialog {
         let cover = if cover_chain.is_empty() {
             None
         } else {
-            self.images.update(cx, |im, _| im.get("gs-console-cover", cover_chain, 110. * s * scale, 150. * s * scale))
+            self.images.update(cx, |im, _| im.get("gs-console-cover", cover_chain, cover_w * s * scale, cover_h * s * scale))
         };
 
         let tabs = self.tab_list();
@@ -291,7 +295,7 @@ impl GameSettingsDialog {
         let header = div()
             .relative()
             .flex_none()
-            .h(u(330.))
+            .h(u(header_h))
             .overflow_hidden()
             .children(hero.map(|h| img(h).absolute().inset_0().size_full().object_fit(ObjectFit::Cover)))
             .child(div().absolute().inset_0().bg(linear_gradient(
@@ -311,8 +315,8 @@ impl GameSettingsDialog {
                     .child(
                         div()
                             .flex_none()
-                            .w(u(110.))
-                            .h(u(150.))
+                            .w(u(cover_w))
+                            .h(u(cover_h))
                             .rounded(u(12.))
                             .overflow_hidden()
                             .bg(theme::white_a(0.08))
@@ -326,15 +330,22 @@ impl GameSettingsDialog {
                             .gap(u(4.))
                             .min_w_0()
                             .child(kit::kicker(if self.details_only { tr!("Edit details") } else { tr!("Game settings") }))
-                            .child(kit::title(self.title.clone(), 48.))
+                            .child(kit::title(self.title.clone(), title_size))
                             .child(div().text_size(u(16.)).text_color(theme::text_muted()).child(meta.join(" \u{b7} "))),
                     ),
             );
 
         let lower = self.has_lower().then(|| self.panel.as_ref().map(|(p, _)| p.clone())).flatten();
+        // The height under the header and the tabs; the upper block takes what
+        // its rows need of it (Play and a few actions), at most 45%.
+        let body_h = vh - (header_h + 64. + 70.) * s;
+        let mut upper_h = body_h * 0.45;
         let upper: Option<AnyElement> = match self.tab {
             Tab::Game | Tab::Start => {
                 let rows = self.console_rows(cx);
+                let headers = rows.iter().filter(|r| r.value == crate::console::list::Value::Header).count();
+                let need = ((rows.len() - headers) as f32 * 60. + headers as f32 * 36. + 30.) * s;
+                upper_h = upper_h.min(need).max(120. * s);
                 let active = !self.layer.is_open() && !self.lower;
                 Some(self.console_list.render("console-gs", &rows, active).size_full().into_any_element())
             }
@@ -347,7 +358,7 @@ impl GameSettingsDialog {
                 .flex_col()
                 .size_full()
                 .gap(u(10.))
-                .child(div().flex_none().h(relative(0.45)).child(up))
+                .child(div().flex_none().h(px(upper_h)).child(up))
                 .child(div().flex().flex_col().flex_1().min_h_0().child(panel))
                 .into_any_element(),
             (Some(up), None) => up,
