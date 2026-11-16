@@ -202,7 +202,7 @@ impl CollectionView {
                     let backup = if !enabled {
                         Backup::Off
                     } else {
-                        match last_backup(&paths, &game.title, known_steam.as_deref()) {
+                        match last_backup(&paths, &game.title, known_steam.as_deref(), &game.runner) {
                             Some(b) => Backup::At(b.at),
                             None => Backup::Never,
                         }

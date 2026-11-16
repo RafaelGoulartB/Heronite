@@ -175,6 +175,37 @@ pub(super) fn resolve_title(env: &LudusaviEnv, binary: &str, game: &LudusaviGame
     game.title.clone()
 }
 
+/// The names Ludusavi may know an emulated game by. The emulator manifests
+/// suffix the platform, because one title can exist on several systems
+/// ("Turbo Goose Racer (RetroArch)", "… (PS2)"), while the Collection
+/// keeps the bare title. Empty for anything the manifests do not cover.
+pub(crate) fn emulator_names(runner: &str, title: &str) -> Vec<String> {
+    let title = title.trim();
+    if title.is_empty() || title.ends_with(')') {
+        return Vec::new();
+    }
+    // Ryujinx keeps every save in numbered folders, so its manifest has one
+    // entry for the emulator rather than one per game.
+    if runner == "ryujinx" {
+        return vec!["Ryujinx (all saves)".to_string()];
+    }
+    let suffixes: &[&str] = match runner {
+        "retroarch" => &["RetroArch"],
+        "duckstation" => &["PS1"],
+        "pcsx2" => &["PS2"],
+        "rpcs3" => &["PS3"],
+        "shadps4" => &["PS4"],
+        "ppsspp" => &["PSP"],
+        "vita3k" => &["Vita"],
+        "dolphin" => &["GameCube", "Wii"],
+        "cemu" => &["Wii U"],
+        "azahar" => &["3DS"],
+        "scummvm" => &["ScummVM"],
+        _ => return Vec::new(),
+    };
+    suffixes.iter().map(|suffix| format!("{title} ({suffix})")).collect()
+}
+
 /// `backupLudusaviForGame`.
 pub fn backup_for_game(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) -> LudusaviBackupResult {
     backup_for_game_within(env, game, reason, AFTER_PLAY_WAIT)
@@ -258,6 +289,28 @@ fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) ->
     let mut result = run_backup(&game_name)?;
     let mut payload = parse_json(&result.stdout);
     let mut total = total_games(&payload);
+
+    // A secondary manifest may name an emulated game after its platform
+    // ("… (RetroArch)"), which the library title does not carry. The bare
+    // title is tried first, because that is the primary manifest's convention;
+    // only when it found nothing are the suffixed names tried. A suffixed name
+    // without saves leaves no backup behind, so the order is safe.
+    if total == 0 {
+        for name in emulator_names(&game.runner, &game.title) {
+            if name == game_name {
+                continue;
+            }
+            let attempt = run_backup(&name)?;
+            let attempt_payload = parse_json(&attempt.stdout);
+            if total_games(&attempt_payload) > 0 {
+                game_name = name;
+                result = attempt;
+                payload = attempt_payload;
+                total = total_games(&payload);
+                break;
+            }
+        }
+    }
 
     if result.code != 0 && total == 0 && (game.steam_app_id.as_deref().is_some_and(|s| !s.is_empty()) || game.runner == "gog") {
         game_name = resolve_title(env, &binary, game);
@@ -563,5 +616,69 @@ mod tests {
         assert_eq!(title, "Ludusavi");
         assert_eq!(body, format!("Saved G to {}", join("/backups", "G")));
         assert!(notification(&LudusaviBackupResult::default(), "G").is_none());
+    }
+
+    #[test]
+    fn emulator_manifests_suffix_the_platform() {
+        assert_eq!(emulator_names("retroarch", "Turbo Goose Racer"), ["Turbo Goose Racer (RetroArch)"]);
+        assert_eq!(emulator_names("dolphin", "Moon Cheese Caper"), ["Moon Cheese Caper (GameCube)", "Moon Cheese Caper (Wii)"]);
+        assert_eq!(emulator_names("pcsx2", "Robot Gardener 2"), ["Robot Gardener 2 (PS2)"]);
+        assert_eq!(emulator_names("ryujinx", "Anything"), ["Ryujinx (all saves)"]);
+        assert!(emulator_names("sideload", "Control").is_empty());
+        assert!(emulator_names("retroarch", "Already (RetroArch)").is_empty());
+    }
+
+    #[test]
+    fn emulated_game_is_backed_up_under_the_manifest_name() {
+        let _l = guard_lock();
+        let (_d, paths) = setup(ENABLED);
+        let name = "Turbo Goose Racer (RetroArch)";
+        let reply = format!(r#"{{"overall":{{"totalGames":1}},"games":{{"{name}":{{}}}}}}"#);
+        let runner = Fake {
+            replies: vec![(
+                format!("backup --force --api --no-cloud-sync --path /backups --format zip --compression zstd {name}"),
+                out(&reply, "", 0),
+            )],
+            ..Default::default()
+        };
+        let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        let game =
+            LudusaviGame { app_name: "g".into(), title: "Turbo Goose Racer".into(), runner: "retroarch".into(), ..Default::default() };
+        let r = backup_for_game(&env, &game, BackupReason::Auto);
+        assert!(r.ran, "{r:?}");
+        assert_eq!(r.game_name.as_deref(), Some(name));
+        assert_eq!(r.backup_path, Some(join("/backups", name)));
+        let calls = runner.calls.lock().unwrap();
+        let backups: Vec<_> = calls.iter().filter(|c| c[0] == "backup").collect();
+        assert_eq!(backups.len(), 2, "{calls:?}");
+        assert_eq!(backups[0].last().unwrap(), "Turbo Goose Racer");
+        assert_eq!(backups[1].last().unwrap(), name);
+    }
+
+    #[test]
+    fn a_platform_without_saves_falls_through_to_the_next_one() {
+        let _l = guard_lock();
+        let (_d, paths) = setup(ENABLED);
+        let wii = "Moon Cheese Caper (Wii)";
+        let reply = format!(r#"{{"overall":{{"totalGames":1}},"games":{{"{wii}":{{}}}}}}"#);
+        let runner = Fake {
+            replies: vec![(
+                format!("backup --force --api --no-cloud-sync --path /backups --format zip --compression zstd {wii}"),
+                out(&reply, "", 0),
+            )],
+            ..Default::default()
+        };
+        let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        let game = LudusaviGame { app_name: "g".into(), title: "Moon Cheese Caper".into(), runner: "dolphin".into(), ..Default::default() };
+        let r = backup_for_game(&env, &game, BackupReason::Auto);
+        assert!(r.ran, "{r:?}");
+        assert_eq!(r.game_name.as_deref(), Some(wii));
+        let calls = runner.calls.lock().unwrap();
+        let backups: Vec<_> = calls.iter().filter(|c| c[0] == "backup").collect();
+        assert_eq!(backups.len(), 3, "{calls:?}");
+        assert_eq!(backups[0].last().unwrap(), "Moon Cheese Caper");
+        assert_eq!(backups[2].last().unwrap(), wii);
     }
 }

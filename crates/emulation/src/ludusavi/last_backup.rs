@@ -26,9 +26,10 @@ pub struct LastBackup {
     pub at: SystemTime,
 }
 
-/// Looks up the backup folder of a game by title, then by Steam app id.
+/// Looks up the backup folder of a game by title — and, for an emulated game,
+/// by the platform-suffixed names its manifest uses — then by Steam app id.
 /// `None` when Ludusavi is off, has no backup root, or has no such game.
-pub fn last_backup(paths: &DataPaths, title: &str, steam_app_id: Option<&str>) -> Option<LastBackup> {
+pub fn last_backup(paths: &DataPaths, title: &str, steam_app_id: Option<&str>, runner: &str) -> Option<LastBackup> {
     let settings = heronite_data::settings::load(paths).ok()?.ludusavi;
     if !settings.enabled {
         return None;
@@ -41,7 +42,7 @@ pub fn last_backup(paths: &DataPaths, title: &str, steam_app_id: Option<&str>) -
         let binary = super::detect::resolve_binary(&probe, Some(settings.binary_path.as_str()));
         let config = super::detect::windows_config_file(&probe, binary.as_deref());
         let root = backup_root(settings.use_installed_config, &settings.backup_path, Some(Path::new(&config)), &probe.home())?;
-        return find_in(&root, title, steam_app_id);
+        return find_for(&root, title, steam_app_id, runner);
     }
     let home = std::env::var_os("HOME");
     let config = ludusavi_config_path(std::env::var_os("XDG_CONFIG_HOME"), home.as_deref());
@@ -51,7 +52,7 @@ pub fn last_backup(paths: &DataPaths, title: &str, steam_app_id: Option<&str>) -
         config.as_deref(),
         &home.map(|h| h.to_string_lossy().into_owned()).unwrap_or_default(),
     )?;
-    find_in(&root, title, steam_app_id)
+    find_for(&root, title, steam_app_id, runner)
 }
 
 /// `$XDG_CONFIG_HOME/ludusavi/config.yaml`, else `~/.config/ludusavi/config.yaml`.
@@ -159,6 +160,20 @@ pub(super) fn find_in(root: &Path, title: &str, steam_app_id: Option<&str>) -> O
     RootFolders::read(root, steam_app_id)?.find(title)
 }
 
+/// [`find_in`] under the title, then under the names the emulator manifests
+/// use for it ("Turbo Goose Racer (RetroArch)").
+fn find_for(root: &Path, title: &str, steam_app_id: Option<&str>, runner: &str) -> Option<LastBackup> {
+    if let Some(found) = find_in(root, title, steam_app_id) {
+        return Some(found);
+    }
+    for name in super::backup::emulator_names(runner, title) {
+        if let Some(found) = find_in(root, &name, steam_app_id) {
+            return Some(found);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,6 +227,16 @@ mod tests {
     #[test]
     fn missing_root_is_none() {
         assert!(find_in(Path::new("/nonexistent/ludusavi-root"), "Game", None).is_none());
+    }
+
+    #[test]
+    fn finds_an_emulated_games_suffixed_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        game(tmp.path(), "Turbo Goose Racer (RetroArch)", Some("name: Turbo Goose Racer (RetroArch)\n"));
+        let b = find_for(tmp.path(), "Turbo Goose Racer", None, "retroarch").unwrap();
+        assert_eq!(b.game_name, "Turbo Goose Racer (RetroArch)");
+        assert!(find_for(tmp.path(), "Turbo Goose Racer", None, "sideload").is_none());
+        assert!(find_for(Path::new("/nonexistent/ludusavi-root"), "Game", None, "retroarch").is_none());
     }
 
     #[test]
