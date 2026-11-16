@@ -35,6 +35,7 @@ pub fn last_backup(paths: &DataPaths, title: &str, steam_app_id: Option<&str>, e
     if !settings.enabled {
         return None;
     }
+    let engine = super::backup::emulator_engine(paths, emulator_id);
     if cfg!(windows) {
         // No `HOME` there: the user's folder, and Ludusavi's config where
         // the program found (or set in Settings) keeps it.
@@ -43,7 +44,7 @@ pub fn last_backup(paths: &DataPaths, title: &str, steam_app_id: Option<&str>, e
         let binary = super::detect::resolve_binary(&probe, Some(settings.binary_path.as_str()));
         let config = super::detect::windows_config_file(&probe, binary.as_deref());
         let root = backup_root(settings.use_installed_config, &settings.backup_path, Some(Path::new(&config)), &probe.home())?;
-        return find_for(&root, title, steam_app_id, emulator_id);
+        return find_for(&root, title, steam_app_id, engine.as_deref());
     }
     let home = std::env::var_os("HOME");
     let config = ludusavi_config_path(std::env::var_os("XDG_CONFIG_HOME"), home.as_deref());
@@ -53,7 +54,7 @@ pub fn last_backup(paths: &DataPaths, title: &str, steam_app_id: Option<&str>, e
         config.as_deref(),
         &home.map(|h| h.to_string_lossy().into_owned()).unwrap_or_default(),
     )?;
-    find_for(&root, title, steam_app_id, emulator_id)
+    find_for(&root, title, steam_app_id, engine.as_deref())
 }
 
 /// `$XDG_CONFIG_HOME/ludusavi/config.yaml`, else `~/.config/ludusavi/config.yaml`.
@@ -163,11 +164,11 @@ pub(super) fn find_in(root: &Path, title: &str, steam_app_id: Option<&str>) -> O
 
 /// [`find_in`] under the title, then under the names the emulator manifests
 /// use for it ("Turbo Goose Racer (RetroArch)").
-fn find_for(root: &Path, title: &str, steam_app_id: Option<&str>, emulator_id: Option<&str>) -> Option<LastBackup> {
+fn find_for(root: &Path, title: &str, steam_app_id: Option<&str>, engine: Option<&str>) -> Option<LastBackup> {
     if let Some(found) = find_in(root, title, steam_app_id) {
         return Some(found);
     }
-    for name in super::backup::emulator_names(emulator_id, title) {
+    for name in super::backup::emulator_names(engine, title) {
         if let Some(found) = find_in(root, &name, steam_app_id) {
             return Some(found);
         }

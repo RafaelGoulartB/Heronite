@@ -7,6 +7,7 @@ use anyhow::Result;
 use heronite_data::models::{LocalGameMeta, LocalMetaFile};
 use heronite_data::{json_store, settings, DataPaths};
 use heronite_i18n::tr;
+use heronite_launch::emulators::EmulatorsFile;
 use heronite_launch::probe::Probe;
 use heronite_launch::settings::{load_game_settings, GlobalSettings};
 use serde::{Deserialize, Serialize};
@@ -56,8 +57,8 @@ pub struct LudusaviGame {
     pub steam_app_id: Option<String>,
     #[serde(default)]
     pub store_game_id: Option<String>,
-    /// Catalog id of the emulator that runs the game (`retroarch`, `pcsx2`);
-    /// `None` when the game is not emulated.
+    /// Id of the user's emulator that runs the game (an `emulators.json`
+    /// entry, the meta's `emulatorId`); `None` when the game is not emulated.
     #[serde(default)]
     pub emulator_id: Option<String>,
 }
@@ -186,19 +187,28 @@ pub(super) fn resolve_title(env: &LudusaviEnv, binary: &str, game: &LudusaviGame
     game.title.clone()
 }
 
-/// The names Ludusavi may know an emulated game by. The emulator manifests
-/// suffix the platform, because one title can exist on several systems
+/// The catalog id (`retroarch`, `pcsx2`) of the user's emulator `emulator_id`;
+/// a custom emulator is recognised by its name or program.
+pub(crate) fn emulator_engine(paths: &DataPaths, emulator_id: Option<&str>) -> Option<String> {
+    let id = emulator_id.filter(|id| !id.is_empty())?;
+    let emulators: EmulatorsFile = json_store::read(&paths.emulators()).ok()?;
+    emulators.get(id).map(crate::save_states::engine_id_for)
+}
+
+/// The names Ludusavi may know an emulated game by, from the catalog id of
+/// its emulator ([`emulator_engine`]). The emulator manifests suffix the
+/// platform, because one title can exist on several systems
 /// ("Turbo Goose Racer (RetroArch)", "… (PS2)"), while the Collection
 /// keeps the bare title. Empty for anything the manifests do not cover.
 ///
 /// Ryujinx is left out on purpose: its manifest has one entry for every
 /// Switch save, so restoring it from one game would roll back all of them.
-pub(crate) fn emulator_names(emulator_id: Option<&str>, title: &str) -> Vec<String> {
+pub(crate) fn emulator_names(engine: Option<&str>, title: &str) -> Vec<String> {
     let title = title.trim();
-    if title.is_empty() || title.ends_with(')') {
+    if title.is_empty() {
         return Vec::new();
     }
-    let suffixes: &[&str] = match emulator_id.unwrap_or_default() {
+    let suffixes: &[&str] = match engine.unwrap_or_default() {
         "retroarch" => &["RetroArch"],
         "duckstation" => &["PS1"],
         "pcsx2" => &["PS2"],
@@ -212,7 +222,7 @@ pub(crate) fn emulator_names(emulator_id: Option<&str>, title: &str) -> Vec<Stri
         "scummvm" => &["ScummVM"],
         _ => return Vec::new(),
     };
-    suffixes.iter().map(|suffix| format!("{title} ({suffix})")).collect()
+    suffixes.iter().filter(|suffix| !title.ends_with(&format!("({suffix})"))).map(|suffix| format!("{title} ({suffix})")).collect()
 }
 
 /// `backupLudusaviForGame`.
@@ -305,7 +315,8 @@ fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) ->
     // only when it found nothing are the suffixed names tried. A suffixed name
     // without saves leaves no backup behind, so the order is safe.
     if total == 0 {
-        for name in emulator_names(game.emulator_id.as_deref(), &game.title) {
+        let engine = emulator_engine(env.paths, game.emulator_id.as_deref());
+        for name in emulator_names(engine.as_deref(), &game.title) {
             if name == game_name {
                 continue;
             }
@@ -635,6 +646,33 @@ mod tests {
         assert!(emulator_names(Some("ryujinx"), "Anything").is_empty());
         assert!(emulator_names(None, "Control").is_empty());
         assert!(emulator_names(Some("retroarch"), "Already (RetroArch)").is_empty());
+        assert_eq!(emulator_names(Some("pcsx2"), "Robot Gardener (2004)"), ["Robot Gardener (2004) (PS2)"]);
+    }
+
+    /// Adds a user emulator to `emulators.json`, under a generated id like
+    /// the import writes into the meta.
+    fn seed_emulator(paths: &DataPaths, id: &str, definition_id: &str, name: &str) {
+        json_store::update::<EmulatorsFile, _>(&paths.emulators(), |f| {
+            f.emulators.push(heronite_launch::emulators::UserEmulator {
+                id: id.into(),
+                definition_id: definition_id.into(),
+                name: name.into(),
+                ..Default::default()
+            });
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn the_catalog_id_comes_from_the_users_emulator() {
+        let (_d, paths) = setup(ENABLED);
+        seed_emulator(&paths, "7d0c2f1e", "retroarch", "RetroArch");
+        seed_emulator(&paths, "a91b44c3", "custom", "Dolphin");
+        assert_eq!(emulator_engine(&paths, Some("7d0c2f1e")).as_deref(), Some("retroarch"));
+        assert_eq!(emulator_engine(&paths, Some("a91b44c3")).as_deref(), Some("dolphin"));
+        assert_eq!(emulator_engine(&paths, Some("missing")), None);
+        assert_eq!(emulator_engine(&paths, None), None);
     }
 
     fn emulated_meta(launch_kind: &str, emulator_id: &str) -> LocalGameMeta {
@@ -649,9 +687,9 @@ mod tests {
 
     #[test]
     fn the_emulator_comes_from_an_emulated_games_meta() {
-        assert_eq!(LudusaviGame::emulator_of(Some(&emulated_meta("emulator", "pcsx2"))).as_deref(), Some("pcsx2"));
+        assert_eq!(LudusaviGame::emulator_of(Some(&emulated_meta("emulator", "7d0c2f1e"))).as_deref(), Some("7d0c2f1e"));
         // A game turned into a plain executable keeps the stale id in its meta.
-        assert_eq!(LudusaviGame::emulator_of(Some(&emulated_meta("executable", "pcsx2"))), None);
+        assert_eq!(LudusaviGame::emulator_of(Some(&emulated_meta("executable", "7d0c2f1e"))), None);
         assert_eq!(LudusaviGame::emulator_of(Some(&emulated_meta("emulator", ""))), None);
         assert_eq!(LudusaviGame::emulator_of(None), None);
     }
@@ -670,10 +708,11 @@ mod tests {
             ..Default::default()
         };
         json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |f| {
-            f.games.insert("g".into(), emulated_meta("emulator", "retroarch"));
+            f.games.insert("g".into(), emulated_meta("emulator", "7d0c2f1e"));
             Ok(())
         })
         .unwrap();
+        seed_emulator(&paths, "7d0c2f1e", "retroarch", "RetroArch");
         let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
         let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
         // As a session ends: emulated games are sideloaded, the emulator is in the meta.
@@ -708,9 +747,10 @@ mod tests {
             app_name: "g".into(),
             title: "Moon Cheese Caper".into(),
             runner: "sideload".into(),
-            emulator_id: Some("dolphin".into()),
+            emulator_id: Some("a91b44c3".into()),
             ..Default::default()
         };
+        seed_emulator(&paths, "a91b44c3", "custom", "Dolphin");
         let r = backup_for_game(&env, &game, BackupReason::Auto);
         assert!(r.ran, "{r:?}");
         assert_eq!(r.game_name.as_deref(), Some(wii));
