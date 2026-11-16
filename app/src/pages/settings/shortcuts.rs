@@ -1,6 +1,7 @@
 //! The app's global keyboard shortcuts seen together, so every shortcut
 //! field (Overlay, Screenshots, Replay, Quick launcher and the Controller
-//! table) refuses a key another one already has, whichever is set first.
+//! table) refuses a key another one already has, whichever is set first,
+//! and a key Heronite itself answers (Ctrl K, the command palette).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -63,9 +64,20 @@ fn clash(own: Shortcut, pressed: &str, on: &[(Shortcut, String)]) -> Option<Shor
     on.iter().find(|(s, a)| *s != own && normalized(a) == pressed).map(|(s, _)| *s)
 }
 
-/// Why `pressed` cannot be `own`'s shortcut: another one has it.
+/// Whether `pressed` is Ctrl K, which opens the command palette in the main
+/// window: a global shortcut takes the keys before any window sees them, so
+/// the palette would never open again.
+fn opens_the_palette(pressed: &str) -> bool {
+    normalized(pressed) == "ctrl+k"
+}
+
+/// Why `pressed` cannot be `own`'s shortcut: another one has it, or it is
+/// Heronite's own Ctrl K.
 pub(super) fn taken_by(d: &SettingsPage, own: Shortcut, pressed: &str, cx: &App) -> Option<String> {
     let key = pressed.replace("CommandOrControl", "Ctrl");
+    if opens_the_palette(pressed) {
+        return Some(tr!("{key} already opens the command palette in Heronite.", key));
+    }
     clash(own, pressed, &in_use(d, cx)).map(|other| match other {
         Shortcut::Overlay => tr!("{key} already opens the overlay.", key),
         Shortcut::Screenshot => tr!("{key} already takes a screenshot.", key),
@@ -90,7 +102,7 @@ impl SettingsPage {
 
 #[cfg(test)]
 mod tests {
-    use super::{clash, normalized, Shortcut};
+    use super::{clash, normalized, opens_the_palette, Shortcut};
 
     fn on() -> Vec<(Shortcut, String)> {
         vec![
@@ -127,6 +139,17 @@ mod tests {
         let only_overlay = vec![(Shortcut::Overlay, "CommandOrControl+Shift+G".to_string())];
         assert_eq!(clash(Shortcut::Overlay, "F10", &only_overlay), None);
         assert_eq!(clash(Shortcut::QuickLaunch, "F10", &only_overlay), None);
+    }
+
+    #[test]
+    fn ctrl_k_is_the_command_palettes() {
+        // As the fields save it, and in other spellings.
+        for pressed in ["CommandOrControl+K", "Ctrl+K", "control+k"] {
+            assert!(opens_the_palette(pressed), "{pressed}");
+        }
+        for pressed in ["CommandOrControl+Shift+K", "Alt+K", "Ctrl+Alt+K", "CommandOrControl+Alt+Space", "K"] {
+            assert!(!opens_the_palette(pressed), "{pressed}");
+        }
     }
 
     #[test]
