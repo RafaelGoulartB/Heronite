@@ -15,7 +15,7 @@ use heronite_data::anticheat::{self, AntiCheatInfo};
 use heronite_data::models::LocalGameSession;
 use heronite_data::timeline::{build_timeline, TimelineDay};
 use heronite_data::{ratings, settings, CollectionGame};
-use heronite_emulation::ludusavi::last_backup;
+use heronite_emulation::ludusavi::{last_backup, LudusaviGame};
 use heronite_metadata::{protondb, sources, Endpoints, Http};
 
 use super::open_links::{game_folders, FolderKind};
@@ -176,6 +176,7 @@ impl CollectionView {
         let paths = self.data_paths.clone();
         let cache = self.app_paths.cache.join("protondb");
         let emulated = game.launch_kind.as_deref() == Some("emulator");
+        let emulator_id = LudusaviGame::emulator_of(game.meta.as_deref());
         // The game's own Steam id, else the one the metadata found.
         let known_steam = [game.steam_app_id.as_deref(), game.metadata.as_ref().and_then(|m| m.steam_app_id.as_deref())]
             .into_iter()
@@ -202,7 +203,7 @@ impl CollectionView {
                     let backup = if !enabled {
                         Backup::Off
                     } else {
-                        match last_backup(&paths, &game.title, known_steam.as_deref()) {
+                        match last_backup(&paths, &game.title, known_steam.as_deref(), emulator_id.as_deref()) {
                             Some(b) => Backup::At(b.at),
                             None => Backup::Never,
                         }
