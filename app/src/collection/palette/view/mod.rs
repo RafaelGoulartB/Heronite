@@ -187,7 +187,9 @@ impl PaletteView {
 
     fn reveal_selected(&mut self) {
         let Some((top, bottom)) = self.selected_span() else { return };
-        let view_h = self.content_h().min(LIST_MAX_H);
+        // The list as drawn: shorter than its most in a short window.
+        let drawn = f32::from(self.scroll.bounds().size.height);
+        let view_h = if drawn > 0. { drawn } else { self.content_h().min(LIST_MAX_H) };
         let shown = f32::from(-self.scroll.offset().y);
         let new = if top < shown {
             top
@@ -265,6 +267,22 @@ impl PaletteView {
                 self.reveal_selected();
             }
         }
+    }
+
+    /// The same rows with fresh facts (a game started or ended): the main
+    /// list and a game's actions shown (`game_entries`, by the host) are
+    /// replaced in place; the text typed, the filter and the selected row stay.
+    pub fn refresh_entries(&mut self, entries: Rc<Vec<Entry>>, game_entries: Option<Vec<Entry>>, cx: &mut Context<Self>) {
+        let kept = self.selected_entry().map(|e| e.id.clone());
+        self.entries = entries;
+        if let (Some(g), Some(v)) = (self.game.as_mut(), game_entries) {
+            g.entries = Rc::new(v);
+        }
+        self.results = self.rank();
+        let ids: Vec<SharedString> = self.results.items().map(|i| self.entry(i).id.clone()).collect();
+        self.selected = reselect(&ids, kept.as_ref(), self.selected);
+        self.reveal_selected();
+        cx.notify();
     }
 
     /// What the main list knows of the game under `key`.
@@ -376,5 +394,31 @@ impl PaletteView {
     #[allow(dead_code)]
     pub fn listed(&self) -> Vec<String> {
         self.results.items().map(|i| self.entry(i).title.to_string()).collect()
+    }
+}
+
+/// The row to select in `ids` (the rows listed) after they were made again:
+/// the one that was selected (`kept`, by id) where it still is, else the
+/// same place, within the list.
+fn reselect(ids: &[SharedString], kept: Option<&SharedString>, old: usize) -> usize {
+    kept.and_then(|k| ids.iter().position(|id| id == k)).unwrap_or(old.min(ids.len().saturating_sub(1)))
+}
+
+#[cfg(test)]
+mod tests {
+    // Not `super::*`: GPUI's own `test` macro would shadow `#[test]`.
+    use super::reselect;
+    use gpui_kit::SharedString;
+
+    #[test]
+    fn the_selected_row_stays_selected_when_the_rows_are_made_again() {
+        let ids: Vec<SharedString> = ["game:a", "game:b:primary", "game:c"].into_iter().map(SharedString::from).collect();
+        // Found where it is now.
+        assert_eq!(reselect(&ids, Some(&"game:b:primary".into()), 0), 1);
+        // Gone (the settings row of a game that started): the same place.
+        assert_eq!(reselect(&ids, Some(&"game:b:settings".into()), 2), 2);
+        // Past the end of a shorter list: its last row.
+        assert_eq!(reselect(&ids, Some(&"gone".into()), 7), 2);
+        assert_eq!(reselect(&[], None, 3), 0);
     }
 }

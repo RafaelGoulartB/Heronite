@@ -125,6 +125,14 @@ fn open_with(cx: &mut App, query: &str, keys: Option<String>, activation_token: 
     }
 }
 
+/// The games running changed (one started or ended): an open launcher
+/// shows Play or Stop, and Enter does it, by the new state.
+pub fn running_changed(cx: &mut App) {
+    let Some(handle) = OPEN.with(|o| o.borrow().as_ref().and_then(|o| o.handle.downcast::<QuickLauncher>())) else { return };
+    let running = crate::system::running_games(cx);
+    handle.update(cx, |this, _, cx| this.set_running(running, cx)).ok();
+}
+
 /// Closes the launcher; the app quits when it was started only for it and
 /// nothing else is left (no tray, no game).
 pub fn close(cx: &mut App) {

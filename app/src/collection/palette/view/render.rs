@@ -214,14 +214,12 @@ impl Render for PaletteView {
             .flex()
             .flex_col()
             .flex_none()
+            .min_h_0()
             .w(px(PANEL_W))
             .px(px(8.))
             .py(px(LIST_PAD))
             .overflow_y_scroll()
             .track_scroll(&self.scroll);
-        // Beside the pane the list keeps its height, so the panel does not
-        // change size as the results do.
-        list = if pane { list.h(px(LIST_MAX_H)) } else { list.max_h(px(LIST_MAX_H)) };
         if self.results.count() == 0 {
             list = list.child(
                 div()
@@ -324,7 +322,19 @@ impl Render for PaletteView {
                 }),
             )
             .child(input_row)
-            .child(div().flex().flex_none().min_h_0().child(list).when(pane, |d| d.child(preview)))
+            // The list's height is its row's, which gives way first when the
+            // window is short: the input and the footer always show. Beside
+            // the pane it keeps its height, so the panel does not change size
+            // as the results do.
+            .child(
+                div()
+                    .flex()
+                    .flex_shrink_1()
+                    .min_h_0()
+                    .map(|d| if pane { d.h(px(LIST_MAX_H)) } else { d.max_h(px(LIST_MAX_H)) })
+                    .child(list)
+                    .when(pane, |d| d.child(preview)),
+            )
             .child(footer);
 
         let slide = self.mode == Mode::InApp;

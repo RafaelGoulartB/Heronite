@@ -101,4 +101,15 @@ mod tests {
         let opens: Vec<_> = verbs.iter().filter(|e| !runs_alone(e)).map(|e| e.title.to_string()).collect();
         assert_eq!(opens, ["Control settings", "Control log", "Show Control in Heronite"]);
     }
+
+    #[test]
+    fn a_game_that_starts_keeps_its_first_action_now_to_stop_it() {
+        let primary = |playing| game_level("Control", &bits(true, playing)).into_iter().next().unwrap();
+        let (before, after) = (primary(false), primary(true));
+        // The same row (the launcher keeps it selected), now Stop.
+        assert_eq!(before.id, after.id);
+        assert_eq!((before.title.as_ref(), after.title.as_ref()), ("Play Control", "Stop Control"));
+        assert_eq!(chosen(&after.act, Some(&bits(true, true))), Chosen::Stop("k".into()));
+        assert_eq!(chosen(&before.act, Some(&bits(true, false))), Chosen::Play("k".into()));
+    }
 }
