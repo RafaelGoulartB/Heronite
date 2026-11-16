@@ -40,6 +40,8 @@ pub(crate) fn library_entries(lib: &Library, playing: &dyn Fn(&str) -> bool) -> 
         };
         if let Some(bits) = e.game.as_mut() {
             bits.card = Some(Rc::new(card));
+            bits.store_page = heronite_data::details_url::details_url(g).is_some();
+            bits.status_id = g.status_id.clone();
         }
         v.push(e);
     }
