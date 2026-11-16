@@ -207,6 +207,7 @@ impl SaveBackupsView {
                 runner: game.runner.clone(),
                 steam_app_id: game.steam_launch_id.clone(),
                 store_game_id: game.meta.as_ref().and_then(|m| m.store_game_id.clone()),
+                emulator_id: LudusaviGame::emulator_of(game.meta.as_deref()),
             },
             run_kind,
             installed: game.installed,

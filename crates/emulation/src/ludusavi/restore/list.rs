@@ -169,7 +169,7 @@ pub fn list_backups(env: &LudusaviEnv, tool: &Tool, game: &LudusaviGame, picked:
         roots.iter_mut().map(|r| r.as_mut()?.find(&game.title).map(|b| (b.game_name, b.dir))).collect();
     // Emulated games: the folder carries the platform suffix the emulator
     // manifests use ("… (RetroArch)"), not the bare title.
-    for name in emulator_names(&game.runner, &game.title) {
+    for name in emulator_names(game.emulator_id.as_deref(), &game.title) {
         if found.iter().all(Option::is_some) {
             break;
         }
@@ -332,8 +332,13 @@ mod tests {
         let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
         let paths = DataPaths::at(d.path());
         let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
-        let game =
-            LudusaviGame { app_name: "g".into(), title: "Turbo Goose Racer".into(), runner: "retroarch".into(), ..Default::default() };
+        let game = LudusaviGame {
+            app_name: "g".into(),
+            title: "Turbo Goose Racer".into(),
+            runner: "sideload".into(),
+            emulator_id: Some("retroarch".into()),
+            ..Default::default()
+        };
         let found = list_backups(&env, &tool, &game, None);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].game_name.as_deref(), Some("Turbo Goose Racer (RetroArch)"));

@@ -336,6 +336,7 @@ impl CollectionView {
             // `steamAppIdFromMeta`: only Steam-launched games.
             steam_app_id: game.steam_launch_id.clone(),
             store_game_id: game.meta.as_ref().and_then(|m| m.store_game_id.clone()),
+            emulator_id: LudusaviGame::emulator_of(game.meta.as_deref()),
         };
         let view = cx.new(|cx| LudusaviBackupDialog::new(ctx, target, Arc::new(SystemRunner::default()), cx));
         self.open_dialog(view, cx);

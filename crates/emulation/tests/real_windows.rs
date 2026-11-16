@@ -85,7 +85,7 @@ fn backs_up_restores_and_undoes_with_the_real_program() {
     assert!(r.ran, "{r:?}");
     assert_eq!(r.game_name.as_deref(), Some(GAME));
     assert_eq!(r.backup_path.as_deref().map(|p| p.replace('\\', "/")), Some(format!("{}/{GAME}", slashes(&backups))));
-    let last = last_backup(&paths, GAME, None, "sideload").expect("the last backup is found in the folder");
+    let last = last_backup(&paths, GAME, None, None).expect("the last backup is found in the folder");
     assert_eq!(last.game_name, GAME);
 
     // After play (a session long enough).
