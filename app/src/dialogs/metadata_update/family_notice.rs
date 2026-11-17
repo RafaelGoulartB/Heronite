@@ -179,9 +179,9 @@ pub fn notice(id: &str, cx: &App) -> Option<Div> {
                     .into_any_element()
             };
             let text = if n.can_download {
-                words::lacking(family, lacking)
+                words::lacking(family, lacking, words::whole_covers())
             } else {
-                format!("{} {}", words::lacking(family, lacking), words::no_source(family))
+                format!("{} {}", words::lacking(family, lacking, words::whole_covers()), words::no_source(family))
             };
             (text, vec![first])
         }
@@ -192,7 +192,7 @@ pub fn notice(id: &str, cx: &App) -> Option<Div> {
         .text_color(theme::text_muted())
         .cursor_pointer()
         .hover(|s| s.text_color(theme::text_bright()))
-        .child(if download.is_some() { tr!("Hide") } else { tr!("Keep the crop") })
+        .child(if download.is_some() || words::whole_covers() { tr!("Hide") } else { tr!("Keep the crop") })
         .on_click(|_, _, cx| hub(cx).update(cx, |h, cx| h.dismiss_notice(cx)));
     Some(
         div()

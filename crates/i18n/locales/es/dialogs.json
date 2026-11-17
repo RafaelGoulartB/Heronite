@@ -556,5 +556,19 @@
   "Low resolution": "Baja resolución",
   "Your picture from Covers is shown instead": "Se muestra en su lugar tu imagen de Portadas",
   "as “{title}”": "como “{title}”",
-  "Set in Covers": "Elegida en Portadas"
+  "Set in Covers": "Elegida en Portadas",
+  "{n} game shows its background or tall cover instead of a wide one": "{n} juego muestra su fondo o su portada vertical en lugar de una panorámica",
+  "{n} games show their background or tall cover instead of a wide one": "{n} juegos muestran su fondo o su portada vertical en lugar de una panorámica",
+  "{n} game shows its tall cover instead of a square one": "{n} juego muestra su portada vertical en lugar de una cuadrada",
+  "{n} games show their tall cover instead of a square one": "{n} juegos muestran su portada vertical en lugar de una cuadrada",
+  "{n} game has no wide cover. It shows its background or tall cover, whole, until one is downloaded.": "{n} juego no tiene portada panorámica. Muestra su fondo o su portada vertical, enteros, hasta que se descargue una.",
+  "{n} games have no wide cover. They show their background or tall cover, whole, until one is downloaded.": "{n} juegos no tienen portada panorámica. Muestran su fondo o su portada vertical, enteros, hasta que se descargue una.",
+  "{n} game has no square cover. It shows its tall cover, whole, until one is downloaded.": "{n} juego no tiene portada cuadrada. Muestra su portada vertical entera hasta que se descargue una.",
+  "{n} games have no square cover. They show their tall cover, whole, until one is downloaded.": "{n} juegos no tienen portada cuadrada. Muestran su portada vertical entera hasta que se descargue una.",
+  "The background, whole": "El fondo, entero",
+  "The tall cover, whole": "La portada vertical, entera",
+  "Whole · now": "Entera · ahora",
+  "Shown whole: the picture is square": "Se muestra entera: la imagen es cuadrada",
+  "Shown whole: the picture is wide": "Se muestra entera: la imagen es panorámica",
+  "Shown whole: the picture is tall": "Se muestra entera: la imagen es vertical"
 }

@@ -196,8 +196,8 @@ fn covers_notice<H: Host>(before: &ConsoleTheme, after: &ConsoleTheme, cx: &mut 
         }
         let text = match (lack.can_download, fill) {
             (true, true) => words::downloading(family, n),
-            (true, false) => format!("{} {}", words::lacking(family, n), tr!("Download them in Settings \u{2192} Metadata.")),
-            (false, _) => format!("{} {}", words::lacking(family, n), words::no_source(family)),
+            (true, false) => format!("{} {}", words::lacking(family, n, false), tr!("Download them in Settings \u{2192} Metadata.")),
+            (false, _) => format!("{} {}", words::lacking(family, n, false), words::no_source(family)),
         };
         this.update(cx, |h, cx| {
             if let Some(st) = h.theme_state() {

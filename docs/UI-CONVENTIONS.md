@@ -273,7 +273,16 @@ the selected cover, measured on an 8×12 copy in `collection/look.rs`, or one of
 darkened on the light one until it reads, or "From the desktop"); never write the accent's RGB at a call site
 (`theme::accent_alpha(a)`). **High contrast** raises `text_muted`, `text_dim`, borders, separators and
 `theme::contrast_a(a)` for faint text over art. **Font** (`theme::font_body()` / `font_heading()`: Cabin + Rubik,
-Rubik, or `.SystemUIFont`). **Density** Compact halves the list and grid gaps (`list_metrics`). Covers: **Corners**
+Rubik, or `.SystemUIFont`). **Density** Compact halves the list and grid gaps (`list_metrics`). Covers: **Cover fit**
+(`coverFit`, under the Cover aspect: Crop, the default, fills the cover's place; Whole cover draws the whole picture in its
+own shape, never cut nor stretched, centred in the place of a grid or Focus card and of a related game, and on the bottom
+of the Focus panel's and the drawer's place. Covers side by side look alike (`whole_cover::Shelf`): a picture takes the
+family of its shape (`picture_size::family_of`), and the covers of one family on a row (of the grid, the Focus covers or
+related games) share one height, the tallest that lets the widest of them fit its place. A row of 2:3 covers in 2:3
+places is as large as with Crop; a 3:4 or 5:7 box brings its row's tall covers down to its height and only their widths
+differ; square and wide covers keep their own heights. The ring, shadow, badges, tick and play bar follow the picture's
+box; `collection/whole_cover.rs`),
+**Corners**
 (radius 2 / 6 / 12), **Under the cover** (playtime or the sort value, playtime, last played, status with its colour,
 title, nothing; `data::chosen_caption`), **Favourite star**, **Store icon** (`coverStores`: the logos of the
 game's stores in a dark chip at the bottom-left (a ROM's emulator icon instead, `emulators::icon`), first in the row of the category tags, above the strip; each store
@@ -398,7 +407,7 @@ rows, the covers' size (Small fits one more per row, Large one less; `focusCover
 in Grid the cover size, what goes under the covers (Nothing, Title, Info, Title and info; `gridLabel`, Info being
 Appearance's "Under the cover" line) and "Open details on select" (`gridOpenOnSelect`; off, a double click or Enter
 opens the drawer); then, in both, the covers' look, the same settings as Appearance (Cover aspect, where Banner
-draws each game's wide cover, else its background, else its tall cover cropped, with the notice below it, Corners, Density, Under the pointer, Favourite star, Store icon); then "More in Appearance" and
+draws each game's wide cover, else its background, else its tall cover cropped, with the notice below it, Cover fit, Corners, Density, Under the pointer, Favourite star, Store icon); then "More in Appearance" and
 "Reset to defaults" (the mode's options and the covers' look; dimmed when all are at their default). Header menus
 open on click or after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves; the view options open
 on click only and close on a click outside, Esc or a change of mode. The ☰ menu (`nav.rs`) is a list:
@@ -781,7 +790,9 @@ Square (1:1) and Wide (16:9). Each view asks for the family it draws: the grid a
 IGDB, GOG and DVD Tall, Square Square, Banner Wide), the game page, lists and drawer always the tall one, and a Console
 mode theme the shape of its tiles (a theme with the Xbox layout all three). A game with no picture of that shape does
 not go without: a wide view takes its background, else its tall cover, and a square one its tall cover, cropped to the
-shape ("cropped" in every screen, an amber dot or bar). A family is *in use* when some view draws it and *kept* when
+shape ("cropped" in every screen, an amber dot or bar; with Cover fit on Whole cover nothing is cropped, so the same
+places say where the picture comes from instead: "The tall cover, whole", "borrowed", "Shown whole: the
+picture is square", and the aspect notice's "Keep the crop" becomes "Hide"; `words::shown_whole`: only for a family the desktop alone draws, since Console mode always crops). A family is *in use* when some view draws it and *kept* when
 it is in use or the user keeps it anyway (`keepCoverFamilies`); only the kept families are stored, so only they have a
 field in a fetch, a tick in "Update metadata", a row in the one-game Metadata and a slot in "Covers", and a family
 in use is always kept. A cropped cover is a choice of the aspect, not a defect: it is counted per family

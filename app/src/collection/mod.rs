@@ -84,6 +84,7 @@ mod view_menu;
 mod view_mode;
 mod view_options;
 mod welcome;
+mod whole_cover;
 pub use load::{discard_preload, preload_library};
 pub(crate) use open_links::open_install_folder_of;
 pub use screenshots::screenshots_global;

@@ -556,5 +556,19 @@
   "Low resolution": "Basse résolution",
   "Your picture from Covers is shown instead": "Votre image définie dans Jaquettes s’affiche à la place",
   "as “{title}”": "sous le nom « {title} »",
-  "Set in Covers": "Définie dans Jaquettes"
+  "Set in Covers": "Définie dans Jaquettes",
+  "{n} game shows its background or tall cover instead of a wide one": "{n} jeu affiche son arrière-plan ou sa jaquette haute à la place d’une jaquette large",
+  "{n} games show their background or tall cover instead of a wide one": "{n} jeux affichent leur arrière-plan ou leur jaquette haute à la place d’une jaquette large",
+  "{n} game shows its tall cover instead of a square one": "{n} jeu affiche sa jaquette haute à la place d’une jaquette carrée",
+  "{n} games show their tall cover instead of a square one": "{n} jeux affichent leur jaquette haute à la place d’une jaquette carrée",
+  "{n} game has no wide cover. It shows its background or tall cover, whole, until one is downloaded.": "{n} jeu n’a pas de jaquette large. Son arrière-plan ou sa jaquette haute s’affiche en entier en attendant le téléchargement d’une jaquette large.",
+  "{n} games have no wide cover. They show their background or tall cover, whole, until one is downloaded.": "{n} jeux n’ont pas de jaquette large. Leur arrière-plan ou leur jaquette haute s’affiche en entier en attendant le téléchargement de jaquettes larges.",
+  "{n} game has no square cover. It shows its tall cover, whole, until one is downloaded.": "{n} jeu n’a pas de jaquette carrée. Sa jaquette haute s’affiche en entier en attendant le téléchargement d’une jaquette carrée.",
+  "{n} games have no square cover. They show their tall cover, whole, until one is downloaded.": "{n} jeux n’ont pas de jaquette carrée. Leurs jaquettes hautes s’affichent en entier en attendant le téléchargement de jaquettes carrées.",
+  "The background, whole": "L’arrière-plan, en entier",
+  "The tall cover, whole": "La jaquette haute, en entier",
+  "Whole · now": "En entier · maintenant",
+  "Shown whole: the picture is square": "Affichée en entier : l’image est carrée",
+  "Shown whole: the picture is wide": "Affichée en entier : l’image est large",
+  "Shown whole: the picture is tall": "Affichée en entier : l’image est haute"
 }
