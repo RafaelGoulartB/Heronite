@@ -8,10 +8,9 @@ use gpui_kit::*;
 use heronite_data::appearance::CoverLabel;
 use heronite_data::cover_family::CoverFamily;
 use heronite_data::settings::CoverAspect;
-use heronite_images::Variant;
 
 use super::vm::{CardVm, ListItem};
-use super::{card, list, list_row, CollectionView};
+use super::{card, list, list_row, whole_cover, CollectionView};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{button_sm, ButtonKind};
@@ -75,21 +74,35 @@ impl CollectionView {
     /// The art of a card of the Cover aspect's family for the game `key`:
     /// its own square or wide cover, else (Banner) its background, else its
     /// cover cropped to the card (see `family_art.rs`).
-    fn card_art(&mut self, key: &SharedString, cover_key: &SharedString, w: f32, h: f32, scale: f32) -> (Option<ImageSource>, bool) {
+    /// `whole`: the whole picture, for "Cover fit" → "Whole cover".
+    fn card_art(
+        &mut self,
+        key: &SharedString,
+        cover_key: &SharedString,
+        w: f32,
+        h: f32,
+        scale: f32,
+        whole: bool,
+    ) -> (Option<ImageSource>, bool) {
         let size = ((w * scale).round() as u32, (h * scale).round() as u32);
-        let pick = self.family_art(key, cover_key, self.card_shape.family(), size, 100, "b");
+        let pick = self.family_art(key, cover_key, self.card_shape.family(), size, 100, "b", whole);
         (pick.src, pick.failed)
     }
 
     /// The tall cover's texture for `key` at `w`×`h` logical px (requested
     /// on demand): what every view of the tall family draws.
     pub(super) fn cover(&mut self, key: &SharedString, w: f32, h: f32, scale: f32, priority: i32) -> Option<ImageSource> {
+        self.tall_cover(key, w, h, scale, priority, false)
+    }
+
+    /// [`Self::cover`], or with `whole` the whole picture in its own shape
+    /// inside `w`×`h` (see `whole_cover.rs`).
+    pub(super) fn tall_cover(&mut self, key: &SharedString, w: f32, h: f32, scale: f32, priority: i32, whole: bool) -> Option<ImageSource> {
         let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
-        let id = cover_id(key, w, h, scale);
+        let id = cover_id(key, w, h, scale, whole);
+        let variant = whole_cover::variant(whole).0;
         let chains = &self.cover_chains;
-        self.images
-            .get_or_request(&id, || chains.get(key).cloned().unwrap_or_default(), pw, ph, Variant::Cover, priority)
-            .map(ImageSource::Render)
+        self.images.get_or_request(&id, || chains.get(key).cloned().unwrap_or_default(), pw, ph, variant, priority).map(ImageSource::Render)
     }
 
     fn render_item(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -139,8 +152,13 @@ impl CollectionView {
                 let m = self.list_metrics();
                 let mut row = div().flex().pl(px(m.pad_l)).pr(px(m.pad_r)).gap(px(m.gap_x)).pt(px(pt)).pb(px(pb));
                 let scale = window.scale_factor();
-                for c in cards {
-                    row = row.child(self.render_card(c, scale, cx));
+                let arts: Vec<_> = cards.iter().map(|c| self.card_cover_art(c, scale)).collect();
+                // "Whole cover": the row's covers of a family share a height.
+                let shelf =
+                    whole_cover::on().then(|| whole_cover::Shelf::of(arts.iter().map(|a| a.0.as_ref()), self.card_w, self.cover_h()));
+                for (c, (cover, no_art)) in cards.into_iter().zip(arts) {
+                    let cover_box = shelf.map_or((self.card_w, self.cover_h()), |s| s.cover_box(cover.as_ref()));
+                    row = row.child(self.render_card(c, cover, no_art, cover_box, scale, cx));
                 }
                 row.into_any_element()
             }
@@ -148,19 +166,32 @@ impl CollectionView {
         }
     }
 
-    fn render_card(&mut self, c: Arc<CardVm>, scale: f32, cx: &mut Context<Self>) -> AnyElement {
+    /// The picture of a card, and whether every source of it failed (the
+    /// card then shows the title).
+    fn card_cover_art(&mut self, c: &CardVm, scale: f32) -> (Option<ImageSource>, bool) {
+        let (rw, rh) = self.cover_request();
+        let whole = whole_cover::on();
+        if self.card_shape.family() != CoverFamily::Tall {
+            return self.card_art(&c.key, &c.cover_key, rw, rh, scale, whole);
+        }
+        let cover = self.tall_cover(&c.cover_key, rw, rh, scale, 100, whole);
+        let failed = cover.is_none() && self.images.is_failed(&cover_id(&c.cover_key, rw, rh, scale, whole));
+        (cover, failed)
+    }
+
+    fn render_card(
+        &mut self,
+        c: Arc<CardVm>,
+        cover: Option<ImageSource>,
+        no_art: bool,
+        cover_box: (f32, f32),
+        scale: f32,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let key = c.key.clone();
         let cover_h = self.cover_h();
-        let (rw, rh) = self.cover_request();
-        let (cover, no_art) = if self.card_shape.family() != CoverFamily::Tall {
-            self.card_art(&key, &c.cover_key, rw, rh, scale)
-        } else {
-            let cover = self.cover(&c.cover_key, rw, rh, scale, 100);
-            let failed = cover.is_none() && self.images.is_failed(&cover_id(&c.cover_key, rw, rh, scale));
-            (cover, failed)
-        };
-        let a = theme::appearance();
         let mut look = card_look();
+        let a = theme::appearance();
         // The grid's own choice of what goes under the covers.
         let title = if self.ui.grid_view {
             look.caption = self.ui.grid_label.info();
@@ -177,6 +208,7 @@ impl CollectionView {
                 no_art,
                 width: self.card_w,
                 cover_h,
+                cover_box,
                 title,
                 selected: self.selected.as_ref() == Some(&key),
                 hovered: self.hovered.as_ref() == Some(&key),
@@ -492,8 +524,8 @@ pub(super) fn card_aspect(shape: CoverAspect) -> f32 {
     }
 }
 
-/// Image id of a cover at a size (one texture per size).
-fn cover_id(key: &SharedString, w: f32, h: f32, scale: f32) -> SharedString {
+/// Image id of a cover at a size (one texture per size), cropped or `whole`.
+fn cover_id(key: &SharedString, w: f32, h: f32, scale: f32, whole: bool) -> SharedString {
     let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
-    format!("c:{key}:{pw}x{ph}").into()
+    format!("c:{key}:{pw}x{ph}{}", whole_cover::variant(whole).1).into()
 }
