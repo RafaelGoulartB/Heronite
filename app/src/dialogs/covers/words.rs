@@ -65,9 +65,10 @@ pub fn users(state: &FamilyState) -> String {
         .join(" \u{b7} ")
 }
 
-/// The aspect notice before a download: "238 games have no square cover…".
-pub fn lacking(f: CoverFamily, n: usize) -> String {
-    if whole_covers() {
+/// The aspect notice before a download: "238 games have no square cover…";
+/// `whole`: the views that draw the family show the stand-in whole.
+pub fn lacking(f: CoverFamily, n: usize, whole: bool) -> String {
+    if whole {
         return match f {
             CoverFamily::Wide => trn!(
                 n,
@@ -103,9 +104,10 @@ pub fn downloading(f: CoverFamily, n: usize) -> String {
     }
 }
 
-/// Settings → Metadata, under the families: "238 games show a cropped square cover".
-pub fn cropped(f: CoverFamily, n: usize) -> String {
-    if whole_covers() {
+/// Settings → Metadata, under the families: "238 games show a cropped square cover";
+/// `whole`: the views that draw the family show them whole ([`shown_whole`]).
+pub fn cropped(f: CoverFamily, n: usize, whole: bool) -> String {
+    if whole {
         return match f {
             CoverFamily::Wide => trn!(
                 n,
@@ -135,4 +137,10 @@ pub fn no_source(f: CoverFamily) -> &'static str {
 /// cropped, and the sentences say so.
 pub fn whole_covers() -> bool {
     crate::theme::appearance().whole_covers()
+}
+
+/// The covers of `state`'s family are shown whole: "Whole cover" is on and
+/// only the desktop draws them (Console mode's tiles always crop).
+pub fn shown_whole(state: &FamilyState) -> bool {
+    whole_covers() && state.in_use() && !state.used_by.iter().any(|u| matches!(u, FamilyUser::Console { .. }))
 }

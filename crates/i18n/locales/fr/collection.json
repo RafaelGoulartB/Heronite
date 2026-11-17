@@ -589,5 +589,7 @@
   "{n} shows a crop in Console mode": "{n} est recadré en mode console",
   "{n} show a crop in Console mode": "{n} sont recadrés en mode console",
   "{n} shows a crop on the desktop": "{n} est recadré sur le bureau",
-  "{n} show a crop on the desktop": "{n} sont recadrés sur le bureau"
+  "{n} show a crop on the desktop": "{n} sont recadrés sur le bureau",
+  "{n} shows another picture on the desktop": "{n} affiche une autre image sur le bureau",
+  "{n} show another picture on the desktop": "{n} affichent une autre image sur le bureau"
 }

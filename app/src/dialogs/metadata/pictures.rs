@@ -63,14 +63,8 @@ enum Fit {
     Cropped(CoverFamily),
 }
 
-/// A picture of another shape for `field` is drawn whole, not cropped: a
-/// cover while "Cover fit" is on "Whole cover" (backgrounds always fill).
-fn shown_whole(field: &str) -> bool {
-    CoverFamily::from_field(field).is_some() && theme::appearance().whole_covers()
-}
-
 /// The badge of a picture of `family`, another shape than its field's, when
-/// it is [`shown_whole`].
+/// it is [`MetadataDialog::shown_whole`].
 fn whole_badge(family: CoverFamily) -> &'static str {
     match family {
         CoverFamily::Square => tr!("Shown whole: the picture is square"),
@@ -112,6 +106,13 @@ enum Tone {
 }
 
 impl MetadataDialog {
+    /// A picture of another shape for `field` is drawn whole, not cropped:
+    /// "Cover fit" is on "Whole cover" and the desktop's covers draw the
+    /// field's family (backgrounds, and the other families, crop).
+    fn shown_whole(&self, field: &str) -> bool {
+        theme::appearance().whole_covers() && CoverFamily::from_field(field) == Some(self.ctx.lib.settings.cover_aspect.family())
+    }
+
     /// The size read of `url`: `None` while unknown (not read, or not a
     /// picture whose size can be read).
     fn size_of(&self, url: &str) -> Option<(u32, u32)> {
@@ -178,7 +179,7 @@ impl MetadataDialog {
         let (w, h) = tile_size(field);
         let url = self.value_of(field, &choice.pick);
         let pic = self.thumb(&url, w, h, cx);
-        let off = self.size_of(&url).is_some_and(|s| (fit(field, s) != Fit::Own && !shown_whole(field)) || low_resolution(field, s));
+        let off = self.size_of(&url).is_some_and(|s| (fit(field, s) != Fit::Own && !self.shown_whole(field)) || low_resolution(field, s));
         let source = choice.pick.clone();
         let (hover_field, hover_source) = (field, source.clone());
         let accent: Hsla = theme::accent().into();
@@ -256,7 +257,7 @@ impl MetadataDialog {
             badges = badges.child(match fit(field, s) {
                 Fit::Own => badge(tr!("Own shape").to_string(), Tone::Good),
                 // Shown whole in its own shape: nothing to warn about.
-                Fit::Cropped(f) if shown_whole(field) => badge(whole_badge(f).to_string(), Tone::Info),
+                Fit::Cropped(f) if self.shown_whole(field) => badge(whole_badge(f).to_string(), Tone::Info),
                 Fit::Cropped(CoverFamily::Square) => badge(tr!("Cropped: the picture is square").to_string(), Tone::Warn),
                 Fit::Cropped(CoverFamily::Wide) => badge(tr!("Cropped: the picture is wide").to_string(), Tone::Warn),
                 Fit::Cropped(CoverFamily::Tall) => badge(tr!("Cropped: the picture is tall").to_string(), Tone::Warn),

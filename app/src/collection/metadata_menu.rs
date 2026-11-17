@@ -95,11 +95,14 @@ fn crop_hint(n: usize, families: Option<&CoverFamilies>, family: CoverFamily) ->
     let state = families.map(|f| f.state(family));
     let desktop = state.is_some_and(|s| s.used_by.contains(&FamilyUser::DesktopCovers));
     let console = state.is_some_and(|s| s.used_by.iter().any(|u| matches!(u, FamilyUser::Console { .. })));
-    match (desktop, console) {
+    // "Whole cover": the desktop shows them whole, only Console mode crops.
+    let whole = desktop && crate::theme::appearance().whole_covers();
+    match (desktop && !whole, console) {
         (true, true) => {
             trn!(n, "{n} shows a crop on the desktop and in Console mode", "{n} show a crop on the desktop and in Console mode")
         }
         (false, true) => trn!(n, "{n} shows a crop in Console mode", "{n} show a crop in Console mode"),
+        _ if whole => trn!(n, "{n} shows another picture on the desktop", "{n} show another picture on the desktop"),
         _ => trn!(n, "{n} shows a crop on the desktop", "{n} show a crop on the desktop"),
     }
 }

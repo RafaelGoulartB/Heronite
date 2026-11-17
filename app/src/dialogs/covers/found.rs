@@ -182,7 +182,7 @@ impl CoversDialog {
             return None;
         }
         let text = match look {
-            Look::Cropped(_) if super::words::whole_covers() => tr!("Whole \u{b7} now").to_string(),
+            Look::Cropped(_) if self.shown_whole(self.slot) => tr!("Whole \u{b7} now").to_string(),
             Look::Cropped(_) => tr!("Cropped \u{b7} now").to_string(),
             _ => from.map(|f| tr!("{from} \u{b7} now", from = f)).unwrap_or_else(|| tr!("Now").to_string()),
         };
