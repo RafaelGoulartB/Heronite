@@ -584,5 +584,6 @@
   "Cover fit": "Ajuste de la portada",
   "Crop": "Recortar",
   "Whole cover": "Portada entera",
-  "Whole cover keeps each cover's own shape, centred in its place: console box art stays uncut.": "Portada entera mantiene la forma de cada portada, centrada en su espacio: las cajas de juegos de consola no se recortan."
+  "Whole cover keeps each cover's own shape, centred in its place: console box art stays uncut.": "Portada entera mantiene la forma de cada portada, centrada en su espacio: las cajas de juegos de consola no se recortan.",
+  "{real} with their own · {other} borrowed": "{real} con imagen propia · {other} prestadas"
 }

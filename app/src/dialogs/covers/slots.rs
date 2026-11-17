@@ -136,6 +136,8 @@ impl CoversDialog {
         let what = match info.look {
             Look::NotKept => return tr!("Not kept on this PC").to_string(),
             Look::Missing => tr!("No picture").to_string(),
+            Look::Cropped(CoverOrigin::Background) if words::whole_covers() => tr!("The background, whole").to_string(),
+            Look::Cropped(_) if words::whole_covers() => tr!("The tall cover, whole").to_string(),
             Look::Cropped(CoverOrigin::Background) => tr!("Cropped from the background").to_string(),
             Look::Cropped(_) => tr!("Cropped from the tall cover").to_string(),
             Look::Own => info.from.clone().unwrap_or_default(),

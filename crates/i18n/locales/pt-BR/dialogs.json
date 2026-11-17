@@ -556,5 +556,20 @@
   "Low resolution": "Baixa resolução",
   "Your picture from Covers is shown instead": "A imagem escolhida em Capas aparece no lugar",
   "as “{title}”": "como “{title}”",
-  "Set in Covers": "Definida em Capas"
+  "Set in Covers": "Definida em Capas",
+  "{n} game shows its background or tall cover instead of a wide one": "{n} jogo mostra o fundo ou a capa vertical no lugar de uma panorâmica",
+  "{n} games show their background or tall cover instead of a wide one": "{n} jogos mostram o fundo ou a capa vertical no lugar de uma panorâmica",
+  "{n} game shows its tall cover instead of a square one": "{n} jogo mostra a capa vertical no lugar de uma quadrada",
+  "{n} games show their tall cover instead of a square one": "{n} jogos mostram a capa vertical no lugar de uma quadrada",
+  "{n} game has no wide cover. It shows its background or tall cover, whole, until one is downloaded.": "{n} jogo não tem capa panorâmica. Ele mostra o fundo ou a capa vertical, inteiros, até que uma seja baixada.",
+  "{n} games have no wide cover. They show their background or tall cover, whole, until one is downloaded.": "{n} jogos não têm capa panorâmica. Eles mostram o fundo ou a capa vertical, inteiros, até que uma seja baixada.",
+  "{n} game has no square cover. It shows its tall cover, whole, until one is downloaded.": "{n} jogo não tem capa quadrada. Ele mostra a capa vertical inteira até que uma seja baixada.",
+  "{n} games have no square cover. They show their tall cover, whole, until one is downloaded.": "{n} jogos não têm capa quadrada. Eles mostram a capa vertical inteira até que uma seja baixada.",
+  "The background, whole": "O fundo, inteiro",
+  "The tall cover, whole": "A capa vertical, inteira",
+  "Whole · now": "Inteira · agora",
+  "{family}: from another picture": "{family}: de outra imagem",
+  "Shown whole: the picture is square": "Mostrada inteira: a imagem é quadrada",
+  "Shown whole: the picture is wide": "Mostrada inteira: a imagem é panorâmica",
+  "Shown whole: the picture is tall": "Mostrada inteira: a imagem é vertical"
 }

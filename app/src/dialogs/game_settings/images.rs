@@ -114,6 +114,8 @@ impl GameSettingsDialog {
                     tr!("{family}: not kept", family = name)
                 } else if own {
                     tr!("{family}: own picture", family = name)
+                } else if theme::appearance().whole_covers() {
+                    tr!("{family}: from another picture", family = name)
                 } else {
                     tr!("{family}: cropped", family = name)
                 }

@@ -192,7 +192,7 @@ pub fn notice(id: &str, cx: &App) -> Option<Div> {
         .text_color(theme::text_muted())
         .cursor_pointer()
         .hover(|s| s.text_color(theme::text_bright()))
-        .child(if download.is_some() { tr!("Hide") } else { tr!("Keep the crop") })
+        .child(if download.is_some() || theme::appearance().whole_covers() { tr!("Hide") } else { tr!("Keep the crop") })
         .on_click(|_, _, cx| hub(cx).update(cx, |h, cx| h.dismiss_notice(cx)));
     Some(
         div()

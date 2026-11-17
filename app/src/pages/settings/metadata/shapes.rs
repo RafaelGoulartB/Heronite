@@ -106,7 +106,9 @@ fn family_row(d: &SettingsPage, s: &Shapes, f: CoverFamily, cx: &mut Context<Set
     let (in_use, kept) = (state.in_use(), state.kept());
     let real = s.real[index(f)];
     let crop = if in_use { cropped(d.metadata.attention.as_ref(), f) } else { 0 };
-    let count = if in_use && f != CoverFamily::Tall {
+    let count = if in_use && f != CoverFamily::Tall && theme::appearance().whole_covers() {
+        tr!("{real} with their own \u{b7} {other} borrowed", real, other = crop)
+    } else if in_use && f != CoverFamily::Tall {
         tr!("{real} with their own \u{b7} {cropped} cropped", real, cropped = crop)
     } else {
         tr!("{real} with their own", real)

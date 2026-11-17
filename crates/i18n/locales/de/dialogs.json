@@ -556,5 +556,20 @@
   "Low resolution": "Geringe Auflösung",
   "Your picture from Covers is shown instead": "Stattdessen wird dein Bild aus „Cover“ gezeigt",
   "as “{title}”": "als „{title}“",
-  "Set in Covers": "In „Cover“ gewählt"
+  "Set in Covers": "In „Cover“ gewählt",
+  "{n} game shows its background or tall cover instead of a wide one": "{n} Spiel zeigt seinen Hintergrund oder sein Hochformat-Cover statt eines Breitbild-Covers",
+  "{n} games show their background or tall cover instead of a wide one": "{n} Spiele zeigen ihren Hintergrund oder ihr Hochformat-Cover statt eines Breitbild-Covers",
+  "{n} game shows its tall cover instead of a square one": "{n} Spiel zeigt sein Hochformat-Cover statt eines quadratischen",
+  "{n} games show their tall cover instead of a square one": "{n} Spiele zeigen ihr Hochformat-Cover statt eines quadratischen",
+  "{n} game has no wide cover. It shows its background or tall cover, whole, until one is downloaded.": "{n} Spiel hat kein Breitbild-Cover. Es zeigt seinen Hintergrund oder sein Hochformat-Cover vollständig, bis eines heruntergeladen ist.",
+  "{n} games have no wide cover. They show their background or tall cover, whole, until one is downloaded.": "{n} Spiele haben kein Breitbild-Cover. Sie zeigen ihren Hintergrund oder ihr Hochformat-Cover vollständig, bis eines heruntergeladen ist.",
+  "{n} game has no square cover. It shows its tall cover, whole, until one is downloaded.": "{n} Spiel hat kein quadratisches Cover. Es zeigt sein Hochformat-Cover vollständig, bis eines heruntergeladen ist.",
+  "{n} games have no square cover. They show their tall cover, whole, until one is downloaded.": "{n} Spiele haben kein quadratisches Cover. Sie zeigen ihr Hochformat-Cover vollständig, bis eines heruntergeladen ist.",
+  "The background, whole": "Der Hintergrund, vollständig",
+  "The tall cover, whole": "Das Hochformat-Cover, vollständig",
+  "Whole · now": "Vollständig · jetzt",
+  "{family}: from another picture": "{family}: aus einem anderen Bild",
+  "Shown whole: the picture is square": "Vollständig gezeigt: das Bild ist quadratisch",
+  "Shown whole: the picture is wide": "Vollständig gezeigt: das Bild ist breit",
+  "Shown whole: the picture is tall": "Vollständig gezeigt: das Bild ist hochkant"
 }

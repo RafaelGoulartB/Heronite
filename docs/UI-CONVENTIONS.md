@@ -790,7 +790,9 @@ Square (1:1) and Wide (16:9). Each view asks for the family it draws: the grid a
 IGDB, GOG and DVD Tall, Square Square, Banner Wide), the game page, lists and drawer always the tall one, and a Console
 mode theme the shape of its tiles (a theme with the Xbox layout all three). A game with no picture of that shape does
 not go without: a wide view takes its background, else its tall cover, and a square one its tall cover, cropped to the
-shape ("cropped" in every screen, an amber dot or bar). A family is *in use* when some view draws it and *kept* when
+shape ("cropped" in every screen, an amber dot or bar; with Cover fit on Whole cover nothing is cropped, so the same
+places say where the picture comes from instead: "The tall cover, whole", "from another picture", "borrowed", "Shown whole: the
+picture is square", and the aspect notice's "Keep the crop" becomes "Hide"; `Appearance::whole_covers`). A family is *in use* when some view draws it and *kept* when
 it is in use or the user keeps it anyway (`keepCoverFamilies`); only the kept families are stored, so only they have a
 field in a fetch, a tick in "Update metadata", a row in the one-game Metadata and a slot in "Covers", and a family
 in use is always kept. A cropped cover is a choice of the aspect, not a defect: it is counted per family
