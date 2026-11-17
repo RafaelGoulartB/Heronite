@@ -584,6 +584,6 @@
   "Cover fit": "Encaixe da capa",
   "Crop": "Cortar",
   "Whole cover": "Capa inteira",
-  "Whole cover keeps each cover's own shape, centred in its place: console box art stays uncut.": "Capa inteira mantém o formato de cada capa, centralizada no seu espaço: as caixas de jogos de console não são cortadas.",
+  "Whole cover shows each cover in its own shape, never cut: console box art stays whole.": "Capa inteira mostra cada capa no seu próprio formato, sem cortes: as caixas de jogos de console aparecem inteiras.",
   "{real} with their own · {other} borrowed": "{real} com imagem própria · {other} emprestadas"
 }

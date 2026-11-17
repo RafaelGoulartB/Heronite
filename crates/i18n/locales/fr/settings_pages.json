@@ -584,6 +584,6 @@
   "Cover fit": "Ajustement des jaquettes",
   "Crop": "Rogner",
   "Whole cover": "Jaquette entière",
-  "Whole cover keeps each cover's own shape, centred in its place: console box art stays uncut.": "Jaquette entière garde la forme de chaque jaquette, centrée à sa place : les boîtes des jeux de console ne sont pas rognées.",
+  "Whole cover shows each cover in its own shape, never cut: console box art stays whole.": "Jaquette entière affiche chaque jaquette dans sa propre forme, sans rognage : les boîtes des jeux de console restent entières.",
   "{real} with their own · {other} borrowed": "{real} avec leur propre image · {other} empruntées"
 }

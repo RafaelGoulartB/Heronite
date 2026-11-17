@@ -584,6 +584,6 @@
   "Cover fit": "Cover-Einpassung",
   "Crop": "Zuschneiden",
   "Whole cover": "Ganzes Cover",
-  "Whole cover keeps each cover's own shape, centred in its place: console box art stays uncut.": "Ganzes Cover behält die Form jedes Covers bei, mittig an seinem Platz: Konsolen-Boxcover werden nicht beschnitten.",
+  "Whole cover shows each cover in its own shape, never cut: console box art stays whole.": "Ganzes Cover zeigt jedes Cover in seiner eigenen Form, nie beschnitten: Konsolen-Boxcover bleiben vollständig.",
   "{real} with their own · {other} borrowed": "{real} mit eigenem Bild · {other} geliehen"
 }

@@ -75,7 +75,7 @@ pub(super) fn fit_items() -> [(CoverFit, &'static str); 2] {
 pub(super) fn fit_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
     row(
         tr!("Cover fit"),
-        Some(tr!("Whole cover keeps each cover's own shape, centred in its place: console box art stays uncut.")),
+        Some(tr!("Whole cover shows each cover in its own shape, never cut: console box art stays whole.")),
         choice("cover-fit", &fit_items(), d.appearance.ui.cover_fit, cx, |a, v| a.cover_fit = v),
     )
     .into_any_element()
