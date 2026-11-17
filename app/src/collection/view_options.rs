@@ -13,8 +13,8 @@ use gpui_kit::component::slider::{Slider, SliderEvent, SliderState, SliderValue}
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::{
-    Appearance, BackgroundSource, Corners, CoverHover, Density, InterfaceMode, Section, INTERFACE_BLUR_RANGE, INTERFACE_BLUR_STEP,
-    INTERFACE_OPACITY_RANGE,
+    Appearance, BackgroundSource, Corners, CoverFit, CoverHover, Density, InterfaceMode, Section, INTERFACE_BLUR_RANGE,
+    INTERFACE_BLUR_STEP, INTERFACE_OPACITY_RANGE,
 };
 use heronite_data::models::BackgroundSettings;
 use heronite_data::settings::{self, CoverAspect, PartialBackground};
@@ -195,7 +195,11 @@ impl CollectionView {
                     Density::Comfortable => tr!("Comfortable"),
                     Density::Compact => tr!("Compact"),
                 };
-                (0, Icon::ViewCovers, tr!("Covers"), format!("{shape} · {corners} · {density}").into())
+                let summary = match a.cover_fit {
+                    CoverFit::Crop => format!("{shape} · {corners} · {density}"),
+                    CoverFit::Whole => format!("{shape} · {} · {corners} · {density}", tr!("Whole cover")),
+                };
+                (0, Icon::ViewCovers, tr!("Covers"), summary.into())
             }
             LookGroup::Background => {
                 let picture = pictures().into_iter().find(|(p, ..)| *p == a.background).map_or("", |(_, name, _)| name);
@@ -422,6 +426,7 @@ impl CollectionView {
         let corners = [(Corners::Square, tr!("Square")), (Corners::Soft, tr!("Soft")), (Corners::Round, tr!("Round"))];
         let density = [(Density::Comfortable, tr!("Comfortable")), (Density::Compact, tr!("Compact"))];
         let hover = [(CoverHover::Nothing, tr!("Nothing")), (CoverHover::Lift, tr!("Lift")), (CoverHover::Glow, tr!("Glow"))];
+        let fit = [(CoverFit::Crop, tr!("Crop")), (CoverFit::Whole, tr!("Whole cover"))];
         div()
             .flex()
             .flex_col()
@@ -431,6 +436,10 @@ impl CollectionView {
                 [0, 1].map(|_| div().flex().gap(px(SHAPE_GAP)).children(tiles.by_ref().take(3)))
             }))
             .children(crate::dialogs::metadata_update::family_notice::notice("view-notice", cx))
+            .child(option_row(
+                tr!("Cover fit"),
+                segments("cover-fit", &fit, a.cover_fit, false, cx, |this, v, cx| this.set_look(|a| a.cover_fit = v, cx)),
+            ))
             .child(option_row(
                 tr!("Corners"),
                 segments("cover-corners", &corners, a.cover_corners, false, cx, |this, v, cx| this.set_look(|a| a.cover_corners = v, cx)),
@@ -749,6 +758,7 @@ impl CollectionView {
         let (a, d) = (theme::appearance(), Appearance::DEFAULT);
         let covers = self.card_shape == CoverAspect::default()
             && a.cover_corners == d.cover_corners
+            && a.cover_fit == d.cover_fit
             && a.density == d.density
             && a.cover_hover == d.cover_hover
             && a.cover_badges == d.cover_badges
@@ -806,6 +816,7 @@ impl CollectionView {
             |a| {
                 let d = Appearance::DEFAULT;
                 (a.cover_corners, a.density, a.cover_hover, a.cover_badges) = (d.cover_corners, d.density, d.cover_hover, d.cover_badges);
+                a.cover_fit = d.cover_fit;
                 a.cover_categories = d.cover_categories;
                 a.cover_stores = d.cover_stores;
                 (a.background, a.collection_opacity) = (d.background, d.collection_opacity);

@@ -613,6 +613,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
                 ))
                 .children(aspect_notice.map(|n| n.mb(px(12.))))
                 .into_any_element(),
+            look::fit_row(d, cx),
             toggle_row("grey-uninstalled", tr!("Show uninstalled games in grey"), None, grey)
                 .on_click(cx.listener(move |d, _, _, cx| {
                     let res = settings::save_grey_uninstalled(&d.ctx.data_paths, !grey);
@@ -722,6 +723,8 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
     let aspect = CoverAspect::parse(&d.settings.metadata.cover_aspect);
     let ai = ASPECTS.iter().position(|(x, _)| *x == aspect).unwrap_or(0);
     rows.push(Row::choice("aspect", tr!("Cover aspect"), ASPECTS.iter().map(|(_, l)| SharedString::from(tr(l))).collect(), ai));
+    let (fits, fi) = console_choice(&look::fit_items(), d.appearance.ui.cover_fit);
+    rows.push(Row::choice("cover-fit", tr!("Cover fit"), fits, fi));
     rows.push(Row::toggle("grey", tr!("Show uninstalled games in grey"), d.settings.grey_uninstalled_games));
     rows.extend(console_look_rows(d));
     rows
@@ -831,6 +834,11 @@ fn console_apply_look(
         ("cover-label", i, _) => {
             if let Some(v) = pick(&look::label_items(), i) {
                 look::set_look(d, cx, |a| a.cover_label = v)
+            }
+        }
+        ("cover-fit", i, _) => {
+            if let Some(v) = pick(&look::fit_items(), i) {
+                look::set_look(d, cx, |a| a.cover_fit = v)
             }
         }
         ("cover-hover", i, _) => {

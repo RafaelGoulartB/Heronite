@@ -67,6 +67,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Picture",
             "Covers",
             "Cover aspect",
+            "Cover fit",
             "Show uninstalled games in grey",
             "Corners",
             "Under the cover",

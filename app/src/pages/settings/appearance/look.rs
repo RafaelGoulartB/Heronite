@@ -6,8 +6,8 @@ use gpui_kit::component::slider::Slider;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::{
-    Accent, Appearance, BackgroundSource, CategoryStyle, Corners, CoverHover, CoverLabel, Density, FontChoice, HomeBackground, Motion,
-    Section, StartView, Theme,
+    Accent, Appearance, BackgroundSource, CategoryStyle, Corners, CoverFit, CoverHover, CoverLabel, Density, FontChoice, HomeBackground,
+    Motion, Section, StartView, Theme,
 };
 use heronite_i18n::tr;
 
@@ -65,6 +65,20 @@ pub(super) fn density_items() -> [(Density, &'static str); 2] {
 
 pub(super) fn corner_items() -> [(Corners, &'static str); 3] {
     [(Corners::Square, tr!("Square")), (Corners::Soft, tr!("Soft")), (Corners::Round, tr!("Round"))]
+}
+
+pub(super) fn fit_items() -> [(CoverFit, &'static str); 2] {
+    [(CoverFit::Crop, tr!("Crop")), (CoverFit::Whole, tr!("Whole cover"))]
+}
+
+/// "Cover fit", under the Cover aspect it applies to.
+pub(super) fn fit_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    row(
+        tr!("Cover fit"),
+        Some(tr!("Whole cover keeps each cover's own shape, centred in its place: console box art stays uncut.")),
+        choice("cover-fit", &fit_items(), d.appearance.ui.cover_fit, cx, |a, v| a.cover_fit = v),
+    )
+    .into_any_element()
 }
 
 pub(super) fn hover_items() -> [(CoverHover, &'static str); 3] {

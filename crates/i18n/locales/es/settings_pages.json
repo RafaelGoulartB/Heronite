@@ -580,5 +580,9 @@
   "With no game selected": "Sin ningún juego seleccionado",
   "After Esc, or when the Collection opens with no game selected. A random picture changes every 20 seconds.": "Tras pulsar Esc, o cuando la Colección se abre sin ningún juego seleccionado. Una imagen al azar cambia cada 20 segundos.",
   "Open with the last game selected": "Abrir con el último juego seleccionado",
-  "Off, the Collection opens with no game selected, on the picture chosen for that in Collection background.": "Desactivado, la Colección se abre sin ningún juego seleccionado, con la imagen elegida para ello en Fondo de la Colección."
+  "Off, the Collection opens with no game selected, on the picture chosen for that in Collection background.": "Desactivado, la Colección se abre sin ningún juego seleccionado, con la imagen elegida para ello en Fondo de la Colección.",
+  "Cover fit": "Ajuste de la portada",
+  "Crop": "Recortar",
+  "Whole cover": "Portada entera",
+  "Whole cover keeps each cover's own shape, centred in its place: console box art stays uncut.": "Portada entera mantiene la forma de cada portada, centrada en su espacio: las cajas de juegos de consola no se recortan."
 }

@@ -580,5 +580,9 @@
   "With no game selected": "Sans jeu sélectionné",
   "After Esc, or when the Collection opens with no game selected. A random picture changes every 20 seconds.": "Après Échap ou à l’ouverture de la Collection sans jeu sélectionné. Une image aléatoire change toutes les 20 secondes.",
   "Open with the last game selected": "Ouvrir avec le dernier jeu sélectionné",
-  "Off, the Collection opens with no game selected, on the picture chosen for that in Collection background.": "Si cette option est désactivée, la Collection s’ouvre sans jeu sélectionné, sur l’image choisie à cet effet dans Arrière-plan de la Collection."
+  "Off, the Collection opens with no game selected, on the picture chosen for that in Collection background.": "Si cette option est désactivée, la Collection s’ouvre sans jeu sélectionné, sur l’image choisie à cet effet dans Arrière-plan de la Collection.",
+  "Cover fit": "Ajustement des jaquettes",
+  "Crop": "Rogner",
+  "Whole cover": "Jaquette entière",
+  "Whole cover keeps each cover's own shape, centred in its place: console box art stays uncut.": "Jaquette entière garde la forme de chaque jaquette, centrée à sa place : les boîtes des jeux de console ne sont pas rognées."
 }
