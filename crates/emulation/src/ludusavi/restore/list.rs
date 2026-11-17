@@ -7,9 +7,10 @@ use std::path::{Path, PathBuf};
 use heronite_data::models::LudusaviSettings;
 use serde_json::Value;
 
-use super::super::backup::{emulator_engine, emulator_names, resolve_title};
+use super::super::backup::{emulator_engine, resolve_title};
 use super::super::detect::LudusaviDetected;
 use super::super::last_backup::{backup_root, RootFolders};
+use super::super::titles::emulator_names;
 use super::super::{parse_json, LudusaviEnv, LudusaviGame};
 use super::Tool;
 
@@ -170,7 +171,7 @@ pub fn list_backups(env: &LudusaviEnv, tool: &Tool, game: &LudusaviGame, picked:
     // Emulated games: the folder carries the platform suffix the emulator
     // manifests use ("… (RetroArch)"), not the bare title.
     let engine = emulator_engine(env.paths, game.emulator_id.as_deref());
-    for name in emulator_names(engine.as_deref(), &game.title) {
+    for name in emulator_names(engine.as_deref(), &game.title, game.rom_path.as_deref()) {
         if found.iter().all(Option::is_some) {
             break;
         }
