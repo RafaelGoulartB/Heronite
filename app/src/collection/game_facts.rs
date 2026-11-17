@@ -177,6 +177,7 @@ impl CollectionView {
         let cache = self.app_paths.cache.join("protondb");
         let emulated = game.launch_kind.as_deref() == Some("emulator");
         let emulator_id = LudusaviGame::emulator_of(game.meta.as_deref());
+        let rom_path = LudusaviGame::rom_path_of(game.meta.as_deref());
         // The game's own Steam id, else the one the metadata found.
         let known_steam = [game.steam_app_id.as_deref(), game.metadata.as_ref().and_then(|m| m.steam_app_id.as_deref())]
             .into_iter()
@@ -203,7 +204,7 @@ impl CollectionView {
                     let backup = if !enabled {
                         Backup::Off
                     } else {
-                        match last_backup(&paths, &game.title, known_steam.as_deref(), emulator_id.as_deref()) {
+                        match last_backup(&paths, &game.title, known_steam.as_deref(), emulator_id.as_deref(), rom_path.as_deref()) {
                             Some(b) => Backup::At(b.at),
                             None => Backup::Never,
                         }

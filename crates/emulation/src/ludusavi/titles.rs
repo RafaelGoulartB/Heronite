@@ -28,7 +28,7 @@ fn tags_re() -> Option<&'static Regex> {
 /// Trailing `(...)`/`[...]` groups removed, repeatedly, then trimmed. When
 /// nothing is left, the input comes back untouched, as the generator does
 /// (`re.sub(...).strip() or name`).
-pub(crate) fn strip_trailing_tags(name: &str) -> String {
+fn strip_trailing_tags(name: &str) -> String {
     let Some(re) = tags_re() else { return name.to_string() };
     let stripped = re.replace(name, "");
     let trimmed = stripped.trim();
@@ -39,16 +39,32 @@ pub(crate) fn strip_trailing_tags(name: &str) -> String {
     }
 }
 
+/// The title a ROM file name gives the manifests: its stem — the last segment
+/// of either separator, so a Windows path works on any host — with the
+/// trailing tags the generator strips.
+fn rom_title(rom_path: &str) -> Option<String> {
+    let file = rom_path.rsplit(['/', '\\']).next()?;
+    let stem = file.rsplit_once('.').map_or(file, |(stem, _)| stem);
+    let title = strip_trailing_tags(stem);
+    (!title.trim().is_empty()).then_some(title)
+}
+
 /// The names Ludusavi may know an emulated game by, from the catalog id of its
 /// emulator ([`super::backup::emulator_engine`]). The manifests suffix the
 /// platform, because one title can exist on several systems
 /// ("Turbo Goose Racer (RetroArch)", "… (PS2)"), while the Collection keeps
-/// the bare title; the title is tried as it is and with the trailing tags the
-/// generator strips, so a title holding "(NA)" still matches.
+/// the bare title. The bases are the title as it is, the title with the
+/// trailing tags the generator strips, and the tag-stripped ROM file name:
+/// that last one also covers a title renamed, punctuation-stripped or cut at
+/// 40 characters when the game was added by hand.
 ///
 /// Ryujinx is left out on purpose: its manifest has one entry for every
 /// Switch save, so restoring it from one game would roll back all of them.
-pub(crate) fn emulator_names(engine: Option<&str>, title: &str) -> Vec<String> {
+///
+/// Stripping widens which titles land on one entry — `Game (NES)` and `Game`
+/// both look up `Game (RetroArch)`, as the manifests already group one title
+/// across regions — so restoring that entry restores every file it holds.
+pub(super) fn emulator_names(engine: Option<&str>, title: &str, rom_path: Option<&str>) -> Vec<String> {
     let title = title.trim();
     if title.is_empty() {
         return Vec::new();
@@ -71,6 +87,12 @@ pub(crate) fn emulator_names(engine: Option<&str>, title: &str) -> Vec<String> {
     let mut bases: Vec<&str> = vec![title];
     if stripped != title {
         bases.push(stripped.as_str());
+    }
+    let rom = rom_path.and_then(rom_title);
+    if let Some(rom) = rom.as_deref() {
+        if !bases.contains(&rom) {
+            bases.push(rom);
+        }
     }
     let mut out: Vec<String> = Vec::new();
     for base in bases {
@@ -171,14 +193,14 @@ mod tests {
 
     #[test]
     fn names_try_the_title_and_its_tag_stripped_form() {
-        assert_eq!(emulator_names(Some("retroarch"), "Turbo Goose Racer"), ["Turbo Goose Racer (RetroArch)"]);
+        assert_eq!(emulator_names(Some("retroarch"), "Turbo Goose Racer", None), ["Turbo Goose Racer (RetroArch)"]);
         assert_eq!(
-            emulator_names(Some("retroarch"), "Turbo Goose Racer (NA)"),
+            emulator_names(Some("retroarch"), "Turbo Goose Racer (NA)", None),
             ["Turbo Goose Racer (NA) (RetroArch)", "Turbo Goose Racer (RetroArch)"]
         );
-        assert_eq!(emulator_names(Some("dolphin"), "Moon Cheese Caper"), ["Moon Cheese Caper (GameCube)", "Moon Cheese Caper (Wii)"]);
+        assert_eq!(emulator_names(Some("dolphin"), "Moon Cheese Caper", None), ["Moon Cheese Caper (GameCube)", "Moon Cheese Caper (Wii)"]);
         assert_eq!(
-            emulator_names(Some("dolphin"), "Moon Cheese Caper (NA)"),
+            emulator_names(Some("dolphin"), "Moon Cheese Caper (NA)", None),
             [
                 "Moon Cheese Caper (NA) (GameCube)",
                 "Moon Cheese Caper (NA) (Wii)",
@@ -186,19 +208,64 @@ mod tests {
                 "Moon Cheese Caper (Wii)"
             ]
         );
-        assert_eq!(emulator_names(Some("pcsx2"), "Robot Gardener 2"), ["Robot Gardener 2 (PS2)"]);
-        assert!(emulator_names(Some("ryujinx"), "Anything").is_empty());
-        assert!(emulator_names(None, "Control").is_empty());
-        assert!(emulator_names(Some("retroarch"), "   ").is_empty());
+        assert_eq!(emulator_names(Some("pcsx2"), "Robot Gardener 2", None), ["Robot Gardener 2 (PS2)"]);
+        assert!(emulator_names(Some("ryujinx"), "Anything", None).is_empty());
+        assert!(emulator_names(None, "Control", None).is_empty());
+        // A PC game has no engine, so even a stray ROM in its meta adds nothing.
+        assert!(emulator_names(None, "Control", Some("/roms/stray.sfc")).is_empty());
+        assert!(emulator_names(Some("retroarch"), "   ", None).is_empty());
         // Already suffixed: nothing to add.
-        assert!(emulator_names(Some("retroarch"), "Already (RetroArch)").is_empty());
+        assert!(emulator_names(Some("retroarch"), "Already (RetroArch)", None).is_empty());
         // A trailing tag is tried as-is first, then stripped.
-        assert_eq!(emulator_names(Some("pcsx2"), "Robot Gardener (2004)"), ["Robot Gardener (2004) (PS2)", "Robot Gardener (PS2)"]);
+        assert_eq!(emulator_names(Some("pcsx2"), "Robot Gardener (2004)", None), ["Robot Gardener (2004) (PS2)", "Robot Gardener (PS2)"]);
+    }
+
+    #[test]
+    fn names_try_the_rom_name_when_the_title_differs() {
+        // Renamed title: the ROM still carries the database title.
+        assert_eq!(
+            emulator_names(Some("retroarch"), "MK3", Some("/roms/Great Adventure (NA).sfc")),
+            ["MK3 (RetroArch)", "Great Adventure (RetroArch)"]
+        );
+        // Punctuation `clean_title` deletes from a manual title.
+        assert_eq!(
+            emulator_names(Some("retroarch"), "Game The Sequel", Some("/roms/Game: The Sequel (USA).sfc")),
+            ["Game The Sequel (RetroArch)", "Game: The Sequel (RetroArch)"]
+        );
+        // An underscore ROM name is looked up correctly; the manifest's file
+        // globs may still not match it, which is the manifests' limitation.
+        assert_eq!(
+            emulator_names(Some("retroarch"), "Game Name", Some("/roms/Game_Name.sfc")),
+            ["Game Name (RetroArch)", "Game_Name (RetroArch)"]
+        );
+        // Multi-disc: the disc tag goes with the rest.
+        assert_eq!(
+            emulator_names(Some("retroarch"), "Great Adventure", Some("/roms/Great Adventure (USA) (Disc 2).bin")),
+            ["Great Adventure (RetroArch)"]
+        );
+        // A Windows path on any host: the stem is the last segment either way.
+        assert_eq!(
+            emulator_names(Some("retroarch"), "MK3", Some(r"C:\roms\Great Adventure (NA).sfc")),
+            ["MK3 (RetroArch)", "Great Adventure (RetroArch)"]
+        );
+        // A real ROM-hack name: the version sits after the region, so nothing
+        // strips; the ROM's clean name still reaches the manifest entry.
+        assert_eq!(
+            emulator_names(Some("retroarch"), "Turbo Goose Racer (USA) v1.2", Some("/roms/Turbo Goose Racer (USA).sfc")),
+            ["Turbo Goose Racer (USA) v1.2 (RetroArch)", "Turbo Goose Racer (RetroArch)"]
+        );
+        // The ROM base is not added twice when it equals the stripped title.
+        assert_eq!(
+            emulator_names(Some("retroarch"), "Great Adventure (NA)", Some("/roms/Great Adventure (NA).sfc")),
+            ["Great Adventure (NA) (RetroArch)", "Great Adventure (RetroArch)"]
+        );
+        // No ROM, no third base.
+        assert_eq!(emulator_names(Some("retroarch"), "MK3", None), ["MK3 (RetroArch)"]);
     }
 
     #[test]
     fn candidates_are_unique() {
-        let names = emulator_names(Some("dolphin"), "Moon Cheese Caper (NA)");
+        let names = emulator_names(Some("dolphin"), "Moon Cheese Caper (NA)", None);
         let mut unique = names.clone();
         unique.sort();
         unique.dedup();

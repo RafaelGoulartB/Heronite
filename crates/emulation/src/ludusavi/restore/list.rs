@@ -171,7 +171,7 @@ pub fn list_backups(env: &LudusaviEnv, tool: &Tool, game: &LudusaviGame, picked:
     // Emulated games: the folder carries the platform suffix the emulator
     // manifests use ("… (RetroArch)"), not the bare title.
     let engine = emulator_engine(env.paths, game.emulator_id.as_deref());
-    for name in emulator_names(engine.as_deref(), &game.title) {
+    for name in emulator_names(engine.as_deref(), &game.title, game.rom_path.as_deref()) {
         if found.iter().all(Option::is_some) {
             break;
         }
