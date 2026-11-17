@@ -220,6 +220,7 @@ pub struct Appearance {
     pub font: FontChoice,
     pub density: Density,
     pub cover_corners: Corners,
+    pub cover_fit: CoverFit,
     pub cover_label: CoverLabel,
     /// Favourite and "update available" badges on the covers.
     pub cover_badges: bool,
@@ -280,6 +281,7 @@ impl Appearance {
         font: FontChoice::DEFAULT,
         density: Density::DEFAULT,
         cover_corners: Corners::DEFAULT,
+        cover_fit: CoverFit::DEFAULT,
         cover_label: CoverLabel::DEFAULT,
         cover_badges: false,
         cover_hover: CoverHover::DEFAULT,
@@ -326,6 +328,12 @@ fn clamp((lo, hi): (f32, f32), v: f32) -> f32 {
 }
 
 impl Appearance {
+    /// "Cover fit" → "Whole cover": covers are never cropped, so the
+    /// screens that say a cover is cropped say where it comes from instead.
+    pub fn whole_covers(&self) -> bool {
+        self.cover_fit == CoverFit::Whole
+    }
+
     /// Clamps every number to its range (the blur to its step).
     pub fn normalized(mut self) -> Self {
         self.collection_opacity = clamp(COLLECTION_OPACITY_RANGE, self.collection_opacity).round();
@@ -380,6 +388,7 @@ impl Appearance {
             font: name("font").and_then(FontChoice::parse).unwrap_or_default(),
             density: name("density").and_then(Density::parse).unwrap_or_default(),
             cover_corners: name("coverCorners").and_then(Corners::parse).unwrap_or_default(),
+            cover_fit: name("coverFit").and_then(CoverFit::parse).unwrap_or_default(),
             cover_label: name("coverLabel").and_then(CoverLabel::parse).unwrap_or_default(),
             cover_badges: flag("coverBadges", d.cover_badges),
             cover_hover: name("coverHover").and_then(CoverHover::parse).unwrap_or_default(),
@@ -421,6 +430,7 @@ impl Appearance {
             "font": self.font.as_str(),
             "density": self.density.as_str(),
             "coverCorners": self.cover_corners.as_str(),
+            "coverFit": self.cover_fit.as_str(),
             "coverLabel": self.cover_label.as_str(),
             "coverBadges": self.cover_badges,
             "coverHover": self.cover_hover.as_str(),
@@ -543,6 +553,7 @@ mod tests {
             font: FontChoice::System,
             density: Density::Compact,
             cover_corners: Corners::Round,
+            cover_fit: CoverFit::Whole,
             cover_label: CoverLabel::LastPlayed,
             cover_badges: true,
             cover_hover: CoverHover::Glow,
@@ -578,6 +589,7 @@ mod tests {
         assert_eq!(on_disk["interfaceSolidDesktop"], true);
         assert_eq!(on_disk["collectionOpacity"], 60.0);
         assert_eq!(on_disk["coverLabel"], "lastPlayed");
+        assert_eq!(on_disk["coverFit"], "whole");
         assert_eq!(on_disk["coverStores"], true);
         assert_eq!(on_disk["coverStoresAll"], false);
         assert_eq!(on_disk["coverStoresHideGrouped"], true);
@@ -586,6 +598,14 @@ mod tests {
         assert_eq!(on_disk["autoView"], true);
         assert_eq!(on_disk["autoViewWidth"], 1600.0);
         assert_eq!(on_disk["quickToolbarControls"], true);
+    }
+
+    #[test]
+    fn cover_fit_crops_unless_asked_for_the_whole_cover() {
+        for value in [json!({}), json!({"coverFit": "stretch"}), json!({"coverFit": null})] {
+            assert_eq!(Appearance::from_value(&value).cover_fit, CoverFit::Crop);
+        }
+        assert_eq!(Appearance::from_value(&json!({"coverFit": "whole"})).cover_fit, CoverFit::Whole);
     }
 
     #[test]
