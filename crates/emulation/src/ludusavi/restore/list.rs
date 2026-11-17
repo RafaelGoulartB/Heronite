@@ -7,9 +7,10 @@ use std::path::{Path, PathBuf};
 use heronite_data::models::LudusaviSettings;
 use serde_json::Value;
 
-use super::super::backup::{emulator_engine, emulator_names, resolve_title};
+use super::super::backup::{emulator_engine, resolve_title};
 use super::super::detect::LudusaviDetected;
 use super::super::last_backup::{backup_root, RootFolders};
+use super::super::titles::emulator_names;
 use super::super::{parse_json, LudusaviEnv, LudusaviGame};
 use super::Tool;
 

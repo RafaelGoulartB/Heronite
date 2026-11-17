@@ -17,6 +17,7 @@ use super::commands::{
 };
 use super::detect::detect_ludusavi;
 use super::runner::{CommandOutput, CommandRunner, LUDUSAVI_TIMEOUT};
+use super::titles::emulator_names;
 use crate::iso::iso_now;
 use crate::pathutil::join;
 use crate::settings_ext::{record_ludusavi_backup, LudusaviRecord};
@@ -193,36 +194,6 @@ pub(crate) fn emulator_engine(paths: &DataPaths, emulator_id: Option<&str>) -> O
     let id = emulator_id.filter(|id| !id.is_empty())?;
     let emulators: EmulatorsFile = json_store::read(&paths.emulators()).ok()?;
     emulators.get(id).map(crate::save_states::engine_id_for)
-}
-
-/// The names Ludusavi may know an emulated game by, from the catalog id of
-/// its emulator ([`emulator_engine`]). The emulator manifests suffix the
-/// platform, because one title can exist on several systems
-/// ("Turbo Goose Racer (RetroArch)", "… (PS2)"), while the Collection
-/// keeps the bare title. Empty for anything the manifests do not cover.
-///
-/// Ryujinx is left out on purpose: its manifest has one entry for every
-/// Switch save, so restoring it from one game would roll back all of them.
-pub(crate) fn emulator_names(engine: Option<&str>, title: &str) -> Vec<String> {
-    let title = title.trim();
-    if title.is_empty() {
-        return Vec::new();
-    }
-    let suffixes: &[&str] = match engine.unwrap_or_default() {
-        "retroarch" => &["RetroArch"],
-        "duckstation" => &["PS1"],
-        "pcsx2" => &["PS2"],
-        "rpcs3" => &["PS3"],
-        "shadps4" => &["PS4"],
-        "ppsspp" => &["PSP"],
-        "vita3k" => &["Vita"],
-        "dolphin" => &["GameCube", "Wii"],
-        "cemu" => &["Wii U"],
-        "azahar" => &["3DS"],
-        "scummvm" => &["ScummVM"],
-        _ => return Vec::new(),
-    };
-    suffixes.iter().filter(|suffix| !title.ends_with(&format!("({suffix})"))).map(|suffix| format!("{title} ({suffix})")).collect()
 }
 
 /// `backupLudusaviForGame`.
@@ -636,17 +607,6 @@ mod tests {
         assert_eq!(title, "Ludusavi");
         assert_eq!(body, format!("Saved G to {}", join("/backups", "G")));
         assert!(notification(&LudusaviBackupResult::default(), "G").is_none());
-    }
-
-    #[test]
-    fn emulator_manifests_suffix_the_platform() {
-        assert_eq!(emulator_names(Some("retroarch"), "Turbo Goose Racer"), ["Turbo Goose Racer (RetroArch)"]);
-        assert_eq!(emulator_names(Some("dolphin"), "Moon Cheese Caper"), ["Moon Cheese Caper (GameCube)", "Moon Cheese Caper (Wii)"]);
-        assert_eq!(emulator_names(Some("pcsx2"), "Robot Gardener 2"), ["Robot Gardener 2 (PS2)"]);
-        assert!(emulator_names(Some("ryujinx"), "Anything").is_empty());
-        assert!(emulator_names(None, "Control").is_empty());
-        assert!(emulator_names(Some("retroarch"), "Already (RetroArch)").is_empty());
-        assert_eq!(emulator_names(Some("pcsx2"), "Robot Gardener (2004)"), ["Robot Gardener (2004) (PS2)"]);
     }
 
     /// Adds a user emulator to `emulators.json`, under a generated id like

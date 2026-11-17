@@ -168,7 +168,7 @@ fn find_for(root: &Path, title: &str, steam_app_id: Option<&str>, engine: Option
     if let Some(found) = find_in(root, title, steam_app_id) {
         return Some(found);
     }
-    for name in super::backup::emulator_names(engine, title) {
+    for name in super::titles::emulator_names(engine, title) {
         if let Some(found) = find_in(root, &name, steam_app_id) {
             return Some(found);
         }
