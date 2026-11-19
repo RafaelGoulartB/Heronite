@@ -8,7 +8,9 @@
 //!   `MANGOHUD_CONFIGFILE`) followed by the limit, in
 //!   `$XDG_RUNTIME_DIR/heronite/mangohud/<app>.conf`. Whether the HUD shows
 //!   (`no_display`) moves into it too, so the overlay can hide and show it;
-//!   hidden, MangoHud still limits the game.
+//!   hidden, MangoHud still limits the game. The Steam Linux Runtime's
+//!   container (umu runs Proton in it) has a `$XDG_RUNTIME_DIR` of its own,
+//!   so the launch has it mount that folder (`PRESSURE_VESSEL_FILESYSTEMS_RO`).
 //! - gamescope reads the `GAMESCOPE_FPS_LIMIT` atom of its X root whenever
 //!   it changes (the Steam Deck's quick menu sets it); `-r` sets the same
 //!   limit. Setting the atom needs X, so the overlay does it
@@ -28,6 +30,8 @@ use crate::probe::Probe;
 
 const MANGOHUD_CONFIG: &str = "MANGOHUD_CONFIG";
 const MANGOHUD_CONFIGFILE: &str = "MANGOHUD_CONFIGFILE";
+/// Read by pressure-vessel: extra paths to mount read-only (`:`-separated).
+const CONTAINER_RO: &str = "PRESSURE_VESSEL_FILESYSTEMS_RO";
 /// The line our part of MangoHud's config file starts with.
 const OURS: &str = "# Heronite: the game's FPS limit, changed by the in-game overlay";
 
@@ -155,6 +159,7 @@ pub fn prepare(cmd: &mut Command, app_name: &str, probe: &dyn Probe) -> Option<L
         cmd.env.insert(MANGOHUD_CONFIG.into(), "read_cfg".into());
     }
     cmd.env.insert(MANGOHUD_CONFIGFILE.into(), file.to_string_lossy().into_owned());
+    share_with_container(cmd, &file, probe);
     Some(live)
 }
 
@@ -169,6 +174,19 @@ pub fn set_mangohud(live: &LiveFps, limit: u32, hud: bool) -> Result<(), String>
     // Written in place: MangoHud watches this path for changes.
     let limit = limits.then_some(limit);
     std::fs::write(file, config_text(base, limit, *smooth, hud)).map_err(|e| e.to_string())
+}
+
+/// A game in the Steam Linux Runtime's container (umu's Proton) sees a
+/// `$XDG_RUNTIME_DIR` of its own, without our file: MangoHud would start with
+/// its defaults and the overlay could not show or hide it. The container
+/// mounts the folder (read-only: MangoHud only reads it), so each rewrite
+/// reaches it. Only pressure-vessel reads the variable.
+fn share_with_container(cmd: &mut Command, file: &Path, probe: &dyn Probe) {
+    let Some(dir) = file.parent().map(|d| d.to_string_lossy().into_owned()) else { return };
+    let existing = [cmd.env.get(CONTAINER_RO).cloned().or_else(|| probe.env_var(CONTAINER_RO))];
+    if let Some(v) = crate::shared_folders::container_env(&[dir], &existing) {
+        cmd.env.insert(CONTAINER_RO.into(), v);
+    }
 }
 
 fn yes() -> bool {
@@ -264,6 +282,26 @@ mod tests {
         set_mangohud(&live, 30, true).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
         assert!(text.ends_with("fps_limit=30\nfps_limit_method=early\nno_display=0\n"), "shown again, same limit");
+    }
+
+    // Unix paths: `C:` would split the `:`-separated list.
+    #[cfg(unix)]
+    #[test]
+    fn the_steam_runtime_container_sees_the_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("run/heronite/mangohud").to_string_lossy().into_owned();
+        let umu = ["--dlsym", "/usr/bin/gamemoderun", "/tools/umu/umu_run.py", "/games/game.exe"];
+        let mut c = cmd("/usr/bin/mangohud", &umu, &[("MANGOHUD_CONFIG", "read_cfg,no_display=1")]);
+        prepare(&mut c, "g", &probe(tmp.path())).unwrap();
+        assert_eq!(c.env["PRESSURE_VESSEL_FILESYSTEMS_RO"], dir);
+        // The user's own folders stay first, ours is not added twice.
+        let mut c = cmd("/usr/bin/mangohud", &umu, &[("PRESSURE_VESSEL_FILESYSTEMS_RO", &format!("/srv:{dir}"))]);
+        prepare(&mut c, "g", &probe(tmp.path())).unwrap();
+        assert_eq!(c.env["PRESSURE_VESSEL_FILESYSTEMS_RO"], format!("/srv:{dir}"));
+        let inherited = probe(tmp.path()).with_env("PRESSURE_VESSEL_FILESYSTEMS_RO", "/data");
+        let mut c = cmd("/usr/bin/mangohud", &umu, &[]);
+        prepare(&mut c, "g", &inherited).unwrap();
+        assert_eq!(c.env["PRESSURE_VESSEL_FILESYSTEMS_RO"], format!("/data:{dir}"));
     }
 
     #[test]
