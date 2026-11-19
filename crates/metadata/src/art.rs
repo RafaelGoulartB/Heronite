@@ -62,13 +62,21 @@ fn remove_managed(paths: &DataPaths, url: Option<&str>) {
     }
 }
 
-/// `hydrate`: keeps only art whose file exists, with normalized URLs.
+/// `hydrate`: keeps only art whose file exists, with normalized URLs. A
+/// logo written by hand (a web address, a path, a file outside the art
+/// folder) stays as it is: `heronite_data::console_art` reads those too.
 fn hydrate(paths: &DataPaths, art: Option<&CollectionGameArt>) -> CollectionGameArt {
     let mut next = CollectionGameArt::default();
     let Some(art) = art else { return next };
     for kind in ArtKind::ALL {
-        if let Some(p) = file_from_url(paths, kind.of_art(art)).filter(|p| p.exists()) {
+        let value = kind.of_art(art).filter(|v| !v.is_empty());
+        let file = file_from_url(paths, value);
+        // A missing file of the art folder resolves to nothing: its URL says it.
+        let managed = value.is_some_and(|v| v.starts_with("localart://art/")) || file.as_deref().is_some_and(|p| is_managed(paths, p));
+        if let Some(p) = file.filter(|p| p.exists() && (managed || kind != ArtKind::Logo)) {
             *kind.of_art_mut(&mut next) = Some(display_url(paths, &p));
+        } else if let Some(v) = value.filter(|_| kind == ArtKind::Logo && !managed) {
+            *kind.of_art_mut(&mut next) = Some(v.to_owned());
         }
     }
     next
@@ -290,6 +298,40 @@ mod tests {
         assert_eq!(raw["games"]["sideload:other"], json!({"heroUrl": "x"}));
         let left: Vec<_> = fs::read_dir(paths.art_dir().join("sideload_steam_9")).unwrap().collect();
         assert!(left.is_empty());
+    }
+
+    #[test]
+    fn a_logo_has_its_own_slot_and_one_written_by_hand_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("cfg"));
+        fs::create_dir_all(paths.local_library()).unwrap();
+        let src = dir.path().join("pic.png");
+        fs::write(&src, png()).unwrap();
+
+        // Another picture of the game keeps the logo set by hand, a web
+        // address or a file of the user's.
+        let own = format!("file://{}", src.display());
+        for logo in ["https://example.org/logo.png", own.as_str()] {
+            fs::write(paths.art(), json!({"games": {"sideload:g": {"logoUrl": logo}}}).to_string()).unwrap();
+            let art = set_collection_game_art(&paths, "sideload", "g", ArtKind::Cover, src.to_str().unwrap()).unwrap();
+            assert_eq!(art.logo_url.as_deref(), Some(logo));
+            let raw = json_store::read_value(&paths.art()).unwrap();
+            assert_eq!(raw["games"]["sideload:g"]["logoUrl"], logo);
+        }
+
+        let art = set_collection_game_art(&paths, "sideload", "g", ArtKind::Logo, src.to_str().unwrap()).unwrap();
+        let url = art.logo_url.clone().unwrap();
+        assert!(url.starts_with("localart://art/sideload_g/logo-"), "{url}");
+        let file = paths.resolve_localart(&url, None).unwrap();
+        assert!(file.exists());
+        let art = clear_collection_game_art(&paths, "sideload", "g", ArtKind::Logo).unwrap();
+        assert!(art.logo_url.is_none() && art.cover_url.is_some());
+        assert!(!file.exists(), "its file goes with it");
+
+        // A logo of the art folder whose file is gone is dropped, like a cover.
+        let art = set_collection_game_art(&paths, "sideload", "g", ArtKind::Logo, src.to_str().unwrap()).unwrap();
+        fs::remove_file(paths.resolve_localart(art.logo_url.as_deref().unwrap(), None).unwrap()).unwrap();
+        assert!(get_collection_game_art(&paths, "sideload", "g").unwrap().logo_url.is_none());
     }
 
     #[test]

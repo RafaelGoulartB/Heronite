@@ -130,7 +130,8 @@ impl GameSettingsDialog {
     fn console_info_rows(&self, cx: &App) -> Vec<Row> {
         match self.tab {
             Tab::Game => {
-                let custom = self.art.cover_url.is_some() || self.art.hero_url.is_some();
+                // "Use the default images" resets the logo too.
+                let custom = self.art.cover_url.is_some() || self.art.hero_url.is_some() || self.art.logo_url.is_some();
                 let d = &self.details;
                 let form = self.read_form(cx);
                 let dirty = form != self.initial;

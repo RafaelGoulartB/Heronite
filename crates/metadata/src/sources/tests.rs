@@ -98,6 +98,10 @@ fn cover_families_by_source() {
     assert_eq!(gives("cover"), ["igdb", "steam", "store", "lutris", "playnite", "launchbox", "steamgriddb", "libretro", "webimages"]);
     // No background: its screenshots are 240 to 512 px wide.
     assert!(!gives("hero").contains(&"libretro"));
+    // Logos: the pictures sources that have them; Steam's and the stores'
+    // official ones are console mode's own, ahead of this field.
+    assert_eq!(gives("logo"), ["launchbox", "steamgriddb", "libretro"]);
+    assert_eq!(reg.field_order(&MetadataSettings::default(), "logo"), ["steamgriddb", "launchbox", "libretro"]);
 }
 
 /// `heronite_data::settings` keeps the ids of the default priorities and of
@@ -258,7 +262,7 @@ fn libretro_is_for_the_emulated_games_of_platforms_with_a_folder() {
     assert_eq!((d.kind, d.needs, d.network, d.searchable, d.hidden), (SourceKind::Pictures, Needs::Nothing, true, false, false));
     assert!(d.options.is_empty() && d.download.is_none() && d.also_for.is_none() && !d.manual_only && d.asked == Asked::Always);
     // No background: its screenshots are small; they are the Store media's last resort.
-    assert_eq!(d.provides, ["cover", "coverSquare", "coverWide", STORE_MEDIA]);
+    assert_eq!(d.provides, ["cover", "coverSquare", "coverWide", "logo", STORE_MEDIA]);
     assert_eq!(d.finds_by, [MatchedBy::ExactTitle, MatchedBy::FuzzyTitle]);
     assert_eq!(d.leads_for, Some(AppliesTo::Emulated));
     let game = |platform: Option<&str>, emulated: bool| SourceGame {

@@ -618,6 +618,7 @@ fn counts_for_two_thousand_games_read_each_file_once() {
                 md["series"] = json!("s");
                 md["criticScore"] = json!(80);
                 md["coverUrl"] = json!("https://c");
+                md["logoUrl"] = json!("https://l");
                 md["ageRatings"] = json!([{"system": "esrb", "rating": "T"}]);
                 for list in ["developers", "publishers", "genres", "themes", "gameModes", "platforms", "features"] {
                     md[list] = json!(["x"]);

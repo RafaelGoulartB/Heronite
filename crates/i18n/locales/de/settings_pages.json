@@ -571,7 +571,7 @@
   "Download the database ({size})": "Datenbank herunterladen ({size})",
   "Nothing is downloaded before you ask. The database stays on this PC and is refreshed {every} while this source is on.": "Nichts wird heruntergeladen, bevor du es willst. Die Datenbank bleibt auf diesem PC und wird {every} aktualisiert, solange diese Quelle an ist.",
   "The last download failed: {error}": "Der letzte Download ist fehlgeschlagen: {error}",
-  "The box art RetroArch uses (thumbnails.libretro.com), found by each game's dump file name on its platform. No key or account. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Heronite is not affiliated with libretro.": "Die Cover, die RetroArch verwendet (thumbnails.libretro.com), gefunden über den Dateinamen des Dumps jedes Spiels auf seiner Plattform. Ohne Schlüssel oder Konto. Die Cover behalten ihr Format: Boxen im Querformat füllen das Breitbild-Cover, CD-Hüllen das quadratische. Heronite ist nicht mit libretro verbunden.",
+  "The box art RetroArch uses (thumbnails.libretro.com), found by each game's dump file name on its platform, and the logo beside it when the platform has logos. No key or account. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Heronite is not affiliated with libretro.": "Die Cover, die RetroArch verwendet (thumbnails.libretro.com), gefunden über den Dateinamen des Dumps jedes Spiels auf seiner Plattform, und das Logo daneben, wenn die Plattform Logos hat. Ohne Schlüssel oder Konto. Die Cover behalten ihr Format: Boxen im Querformat füllen das Breitbild-Cover, CD-Hüllen das quadratische. Heronite ist nicht mit libretro verbunden.",
   "Could not be loaded": "Konnte nicht geladen werden",
   "Stopped after errors": "Nach Fehlern gestoppt",
   "Same as the background": "Wie der Hintergrund",
@@ -585,5 +585,6 @@
   "Crop": "Zuschneiden",
   "Whole cover": "Ganzes Cover",
   "Whole cover shows each cover in its own shape, never cut: console box art stays whole.": "Ganzes Cover zeigt jedes Cover in seiner eigenen Form, nie beschnitten: Konsolen-Boxcover bleiben vollständig.",
-  "{real} with their own · {other} borrowed": "{real} mit eigenem Bild · {other} geliehen"
+  "{real} with their own · {other} borrowed": "{real} mit eigenem Bild · {other} geliehen",
+  "Logos": "Logos"
 }

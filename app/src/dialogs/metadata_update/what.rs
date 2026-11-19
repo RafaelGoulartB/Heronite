@@ -19,8 +19,9 @@ use crate::ui::icon;
 /// none of them goes to the last one.
 const DETAILS: [&str; 10] =
     ["description", "releaseDate", "developers", "publishers", "genres", "themes", "gameModes", "platforms", "series", "features"];
-/// The pictures: a cover per family (those not kept are left out), then the background.
-const PICTURES: [&str; 4] = ["cover", "coverSquare", "coverWide", "hero"];
+/// The pictures: a cover per family (those not kept are left out), the
+/// background, then the logo.
+const PICTURES: [&str; 5] = ["cover", "coverSquare", "coverWide", "hero", "logo"];
 
 /// `kept`: the cover families this installation keeps.
 fn columns(kept: &[CoverFamily]) -> [(&'static str, Vec<String>); 3] {

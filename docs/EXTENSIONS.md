@@ -52,6 +52,7 @@ description = "Games from Example DB, the database of example games."   # the "a
 # description releaseDate developers publishers genres themes gameModes
 # platforms series features criticScore ageRatings
 # cover (the tall cover) coverSquare coverWide hero (the background)
+# logo (the title on a transparent background, for console mode)
 fields = ["description", "releaseDate", "genres", "cover", "hero"]
 
 [applies]                        # optional: every game, always asked
@@ -90,7 +91,8 @@ default = "us"
   user's settings for it are kept under this id: keep it for ever.
 - **kind**: a *details* source takes part in deciding which game a game is
   (an unsure match of its sends the game to review). A *pictures* source
-  provides pictures only (`cover`, `coverSquare`, `coverWide`, `hero`).
+  provides pictures only (`cover`, `coverSquare`, `coverWide`, `hero`,
+  `logo`).
   An *extras* source fills facts beside the others; its match is used when
   it is sure, or the same game the details sources found, and it never
   sends a game to review.
@@ -226,7 +228,8 @@ Every key is optional; what the manifest does not provide is left out.
     { kind: "cover", url: "https://images.example.net/c.jpg" },               // the tall cover
     { kind: "cover", shape: "square", url: "https://images.example.net/s.jpg" },
     { kind: "cover", shape: "wide", url: "https://images.example.net/w.jpg" },
-    { kind: "background", url: "https://images.example.net/b.jpg", adult: true }
+    { kind: "background", url: "https://images.example.net/b.jpg", adult: true },
+    { kind: "logo", url: "https://images.example.net/l.png" }                 // transparent around the title
   ],
   extras: {}                   // reserved for a later version of the contract; ignored
 }

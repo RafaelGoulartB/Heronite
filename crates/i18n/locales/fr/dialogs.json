@@ -570,5 +570,10 @@
   "Whole · now": "En entier · maintenant",
   "Shown whole: the picture is square": "Affichée en entier : l’image est carrée",
   "Shown whole: the picture is wide": "Affichée en entier : l’image est large",
-  "Shown whole: the picture is tall": "Affichée en entier : l’image est haute"
+  "Shown whole: the picture is tall": "Affichée en entier : l’image est haute",
+  "No logo": "Pas de logo",
+  "Shown instead of the name in console mode": "Affiché à la place du nom en mode console",
+  "Console mode shows the name instead": "Le mode console affiche le nom à la place",
+  "Set in Images": "Défini dans Images",
+  "Your logo from Images is shown instead": "Votre logo défini dans Images s’affiche à la place"
 }

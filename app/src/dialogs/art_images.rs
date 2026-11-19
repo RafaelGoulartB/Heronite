@@ -55,9 +55,19 @@ impl DialogImages {
 
     /// Texture of `chain` fitted to `w`×`h` logical px (loaded on demand).
     pub fn get(&mut self, id: &str, chain: Vec<ImageRef>, w: f32, h: f32) -> Option<ImageSource> {
+        self.request(id, chain, w, h, Variant::Cover)
+    }
+
+    /// Texture of a logo of `chain` inside `w`×`h` logical px, whole and
+    /// transparent around it (draw it with [`logo_picture`]).
+    pub fn get_logo(&mut self, id: &str, chain: Vec<ImageRef>, w: f32, h: f32) -> Option<ImageSource> {
+        self.request(id, chain, w, h, Variant::Fit { ink: None })
+    }
+
+    fn request(&mut self, id: &str, chain: Vec<ImageRef>, w: f32, h: f32, variant: Variant) -> Option<ImageSource> {
         let (pw, ph) = ((w * self.scale).round().max(1.) as u32, (h * self.scale).round().max(1.) as u32);
         let key: SharedString = format!("{id}:{pw}x{ph}").into();
-        self.store.get_or_request(&key, || chain, pw, ph, Variant::Cover, 100).map(ImageSource::Render)
+        self.store.get_or_request(&key, || chain, pw, ph, variant, 100).map(ImageSource::Render)
     }
 }
 
@@ -88,6 +98,16 @@ pub fn picture(src: Option<ImageSource>) -> Div {
     let d = div().relative().overflow_hidden().bg(crate::theme::recess_a(0.28));
     match src {
         Some(src) => d.child(img(src).absolute().inset_0().size_full().object_fit(ObjectFit::Cover)),
+        None => d,
+    }
+}
+
+/// A logo whole inside its box, on console mode's background (where it
+/// shows): most logos are light, made for dark art.
+pub fn logo_picture(src: Option<ImageSource>) -> Div {
+    let d = div().relative().overflow_hidden().bg(crate::theme::console_bg()).p(px(10.));
+    match src {
+        Some(src) => d.child(img(src).size_full().object_fit(ObjectFit::Contain)),
         None => d,
     }
 }

@@ -571,7 +571,7 @@
   "Download the database ({size})": "Télécharger la base de données ({size})",
   "Nothing is downloaded before you ask. The database stays on this PC and is refreshed {every} while this source is on.": "Rien n’est téléchargé sans votre demande. La base de données reste sur ce PC et est actualisée {every} tant que cette source est activée.",
   "The last download failed: {error}": "Le dernier téléchargement a échoué : {error}",
-  "The box art RetroArch uses (thumbnails.libretro.com), found by each game's dump file name on its platform. No key or account. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Heronite is not affiliated with libretro.": "Les jaquettes utilisées par RetroArch (thumbnails.libretro.com), trouvées grâce au nom du fichier dump de chaque jeu sur sa plateforme. Sans clé ni compte. Les jaquettes conservent leur format : les boîtes horizontales remplissent la jaquette large et les boîtiers CD la jaquette carrée. Heronite n’est pas affilié à libretro.",
+  "The box art RetroArch uses (thumbnails.libretro.com), found by each game's dump file name on its platform, and the logo beside it when the platform has logos. No key or account. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Heronite is not affiliated with libretro.": "Les jaquettes utilisées par RetroArch (thumbnails.libretro.com), trouvées grâce au nom du fichier dump de chaque jeu sur sa plateforme, et le logo à côté quand la plateforme a des logos. Sans clé ni compte. Les jaquettes conservent leur format : les boîtes horizontales remplissent la jaquette large et les boîtiers CD la jaquette carrée. Heronite n’est pas affilié à libretro.",
   "Could not be loaded": "Chargement impossible",
   "Stopped after errors": "Arrêté après des erreurs",
   "Same as the background": "Identique à l’arrière-plan",
@@ -585,5 +585,6 @@
   "Crop": "Rogner",
   "Whole cover": "Jaquette entière",
   "Whole cover shows each cover in its own shape, never cut: console box art stays whole.": "Jaquette entière affiche chaque jaquette dans sa propre forme, sans rognage : les boîtes des jeux de console restent entières.",
-  "{real} with their own · {other} borrowed": "{real} avec leur propre image · {other} empruntées"
+  "{real} with their own · {other} borrowed": "{real} avec leur propre image · {other} empruntées",
+  "Logos": "Logos"
 }

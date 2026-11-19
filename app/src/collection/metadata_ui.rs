@@ -227,7 +227,9 @@ impl CollectionView {
     /// when `HERONITE_DEBUG_MULTI` made one; see `MetadataUpdate::debug_state`);
     /// `metadata` the selected game's "Metadata" (asking the sources),
     /// `metadata:<state>` the same over a made-up preview; `review[:<state>]`
-    /// a made-up "Review matches"; `covers[:<state>]` a made-up "Covers".
+    /// a made-up "Review matches"; `covers[:<state>]` a made-up "Covers";
+    /// `webimage[:<field>]` the web image search for a picture (`logo`,
+    /// `hero`...; the desktop's cover by default).
     pub(super) fn open_metadata_debug(&mut self, which: &str, window: &mut Window, cx: &mut Context<Self>) {
         match which {
             "metadata" => self.open_metadata(window, cx),
@@ -237,11 +239,12 @@ impl CollectionView {
             "gamesettings" => self.open_game_settings_tab(GameTab::Game, window, cx),
             "gamesettings:details" => self.open_game_settings_tab(GameTab::Game, window, cx),
             "gamesettings:launch" => self.open_game_settings_tab(GameTab::Actions, window, cx),
-            "webimage" => {
+            w if w == "webimage" || w.starts_with("webimage:") => {
+                let kind = w.strip_prefix("webimage:").and_then(heronite_metadata::ArtKind::from_field);
                 let Some(key) = self.selected.clone() else { return };
                 let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(&key)) else { return };
                 let view = cx.new(|cx| GameSettingsDialog::new(ctx, game, GameTab::Game, window, cx));
-                view.update(cx, |v, cx| v.debug_open_web(window, cx));
+                view.update(cx, |v, cx| v.debug_open_web(kind, window, cx));
                 self.open_dialog(view, cx);
             }
             w if w == "wizard" || w.starts_with("wizard:") => {

@@ -342,7 +342,12 @@ impl CollectionView {
             "metadata" | "gamesettings" | "gamesettings:details" | "gamesettings:launch" | "webimage" | "wizard" | "review" | "covers" => {
                 self.open_metadata_debug(which.as_str(), window, cx)
             }
-            w if w.starts_with("wizard:") || w.starts_with("metadata:") || w.starts_with("review:") || w.starts_with("covers:") => {
+            w if w.starts_with("wizard:")
+                || w.starts_with("metadata:")
+                || w.starts_with("review:")
+                || w.starts_with("covers:")
+                || w.starts_with("webimage:") =>
+            {
                 self.open_metadata_debug(w, window, cx)
             }
             // "Get more sources" (`sources:<id>` picks that entry) and the

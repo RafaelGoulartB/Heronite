@@ -443,13 +443,14 @@ pub fn covers_from_steamgrid(http: &Http, api_key: &str, sgdb_id: i64) -> Result
 /// Where SteamGridDB keeps a kind of picture and the sizes that are that
 /// kind: grids by dimension for the covers (portrait for the tall one, the
 /// square sizes, the 460x215 header and its double), heroes for a
-/// background (any size, as ranked).
+/// background and logos for a logo (any size, as ranked).
 fn steamgrid_query(kind: ArtKind) -> (&'static str, &'static str) {
     match kind {
         ArtKind::Cover => ("grids", "600x900,342x482,660x930"),
         ArtKind::CoverSquare => ("grids", "512x512,1024x1024"),
         ArtKind::CoverWide => ("grids", "460x215,920x430"),
         ArtKind::Hero => ("heroes", ""),
+        ArtKind::Logo => ("logos", ""),
     }
 }
 
@@ -462,7 +463,7 @@ fn steamgrid_art(http: &Http, api_key: &str, game_id: i64, kind: ArtKind) -> Res
 
 /// SteamGridDB's art of the first game matching `title`, for the image
 /// search: the grids of a cover family ([`ArtKind::cover`]), heroes for a
-/// background, in the order SteamGridDB ranks them.
+/// background, logos for a logo, in the order SteamGridDB ranks them.
 pub fn steamgrid_images(http: &Http, api_key: &str, title: &str, kind: ArtKind) -> Result<Vec<WebImage>> {
     let Some(game_id) = sgdb_search_first_id(http, api_key, title)? else { return Ok(Vec::new()) };
     steamgrid_art(http, api_key, game_id, kind)

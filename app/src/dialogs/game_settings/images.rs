@@ -1,5 +1,5 @@
 //! The Images tab: custom cover (of the family the desktop draws, with the
-//! state of the others and "All covers…") and background, web and
+//! state of the others and "All covers…"), background and logo, web and
 //! screenshot pickers.
 
 use gpui_kit::prelude::*;
@@ -7,13 +7,13 @@ use gpui_kit::*;
 use heronite_data::collection::Game;
 use heronite_data::cover_family::CoverFamily;
 use heronite_data::models::{CollectionGameArt, CollectionGameMetadata};
-use heronite_data::{art, ArtContext};
+use heronite_data::{art, console_art, ArtContext};
 use heronite_i18n::tr;
 use heronite_images::ImageRef;
 use heronite_metadata::ArtKind;
 
 use super::{Busy, GameSettingsDialog, Nested};
-use crate::dialogs::art_images::{chain_for_url, picture};
+use crate::dialogs::art_images::{chain_for_url, logo_picture, picture};
 use crate::dialogs::covers::{words, CoversDialog};
 use crate::dialogs::screenshot_art::ScreenshotArtDialog;
 use crate::dialogs::web_image::{ArtEvent, WebImageDialog};
@@ -178,7 +178,7 @@ impl GameSettingsDialog {
         cx.notify();
     }
 
-    /// `HERONITE_DEBUG_SET_ART=<cover|hero|coverSquare|coverWide>:<file>@<ms>`:
+    /// `HERONITE_DEBUG_SET_ART=<cover|hero|coverSquare|coverWide|logo>:<file>@<ms>`:
     /// after `ms`, sets that image as if picked with "Change" (fixtures only:
     /// it writes the art).
     pub(super) fn debug_set_art(&mut self, cx: &mut Context<Self>) {
@@ -257,9 +257,10 @@ impl GameSettingsDialog {
         cx.notify();
     }
 
-    /// Public so debug hooks can open the web image picker directly.
-    pub fn debug_open_web(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_web(ArtKind::cover(self.desktop_family()), window, cx);
+    /// Public so debug hooks can open the web image picker directly: for
+    /// `kind`, else for the cover the desktop draws.
+    pub fn debug_open_web(&mut self, kind: Option<ArtKind>, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_web(kind.unwrap_or(ArtKind::cover(self.desktop_family())), window, cx);
     }
 
     /// Custom image first, then what the game shows without one (for a
@@ -271,6 +272,14 @@ impl GameSettingsDialog {
         match kind {
             ArtKind::Cover => chain.extend(self.default_cover.iter().cloned()),
             ArtKind::Hero => chain.extend(self.default_hero.iter().cloned()),
+            ArtKind::Logo => {
+                // What console mode shows without one: the official logos,
+                // then the fetched one (pure: the loader skips what is missing).
+                let home = dirs::home_dir();
+                let sources = console_art::default_logo_sources(&self.ctx.data_paths, shots.as_deref(), home.as_deref(), &self.game);
+                let rest: Vec<ImageRef> = crate::images::logo_chain(&sources).into_iter().filter(|r| !chain.contains(r)).collect();
+                chain.extend(rest);
+            }
             other => {
                 let family = other.family().expect("a cover");
                 let (tall, stage) = (self.art_chain(ArtKind::Cover).0, self.art_chain(ArtKind::Hero).0);
@@ -282,19 +291,30 @@ impl GameSettingsDialog {
     }
 
     fn art_slot(&mut self, kind: ArtKind, cx: &mut Context<Self>) -> Div {
-        let is_cover = kind != ArtKind::Hero;
-        let rounded = if is_cover { 10. } else { 12. };
+        let is_cover = kind.family().is_some();
+        let rounded = if kind == ArtKind::Hero { 12. } else { 10. };
         let (chain, custom_url) = self.art_chain(kind);
+        let listed = !chain.is_empty();
         // Requested at the size the Collection uses; shown scaled into the card.
         let (w, h, show_w, show_h) = match kind {
             ArtKind::Cover => (132., 198., 92., 138.),
             ArtKind::CoverSquare => (168., 168., 118., 118.),
             ArtKind::CoverWide => (256., 144., 176., 99.),
             ArtKind::Hero => (840., 271., HERO_W, HERO_W * 271. / 840.),
+            // The inside of the box: the logo keeps a margin.
+            ArtKind::Logo => (180., 60., 200., 80.),
         };
         let key = chain.first().map(|r| format!("{r:?}")).unwrap_or_default();
-        let src = if chain.is_empty() { None } else { self.images.update(cx, |im, _| im.get(&format!("gs:{key}"), chain, w, h)) };
-        let preview = picture(src)
+        let src = match (listed, kind) {
+            (false, _) => None,
+            (true, ArtKind::Logo) => self.images.update(cx, |im, _| im.get_logo(&format!("gs-logo:{key}"), chain, w, h)),
+            (true, _) => self.images.update(cx, |im, _| im.get(&format!("gs:{key}"), chain, w, h)),
+        };
+        // Steam's logo is listed for every game with a Steam id, and many
+        // have none: a logo is there once one of the chain has loaded.
+        let has_picture = custom_url.is_some() || src.is_some();
+        let preview = if kind == ArtKind::Logo { logo_picture(src) } else { picture(src) };
+        let preview = preview
             .w(px(show_w))
             .h(px(show_h))
             .flex_none()
@@ -304,7 +324,11 @@ impl GameSettingsDialog {
             .into_any_element();
 
         let busy = self.busy.is_some();
-        let tag = if is_cover { "cover" } else { "hero" };
+        let tag = match kind {
+            ArtKind::Hero => "hero",
+            ArtKind::Logo => "logo",
+            _ => "cover",
+        };
         let busy_this = self.busy == Some(Busy::Art(kind));
         let mut actions = div().flex().flex_wrap().gap(px(8.)).child(action_button(
             SharedString::from(format!("gs-{tag}-change")),
@@ -320,7 +344,7 @@ impl GameSettingsDialog {
             !busy,
             cx.listener(move |this, _, window, cx| this.open_web(kind, window, cx)),
         ));
-        if !is_cover {
+        if kind == ArtKind::Hero {
             actions = actions.child(action_button(
                 "gs-hero-shot",
                 ButtonKind::Glass,
@@ -358,10 +382,17 @@ impl GameSettingsDialog {
                 )
         });
         let title = match (custom_url.is_some(), kind.family().filter(|f| *f != CoverFamily::Tall)) {
+            (false, _) if kind == ArtKind::Logo && !has_picture => tr!("No logo").to_string(),
             (true, None) => tr!("Custom image").to_string(),
             (false, None) => tr!("Default image").to_string(),
             (true, Some(f)) => tr!("Custom image \u{b7} {family}", family = words::family_name(f)),
             (false, Some(f)) => tr!("Default image \u{b7} {family}", family = words::family_name(f)),
+        };
+        let note = match kind {
+            ArtKind::Hero => tr!("Shown behind the game in Collection"),
+            ArtKind::Logo if has_picture => tr!("Shown instead of the name in console mode"),
+            ArtKind::Logo => tr!("Console mode shows the name instead"),
+            _ => tr!("Shown on the game card"),
         };
         let copy = div()
             .flex()
@@ -370,23 +401,20 @@ impl GameSettingsDialog {
             .min_w_0()
             .gap(px(3.))
             .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(title))
-            .child(div().mb(px(10.)).text_size(px(12.)).text_color(theme::text_dim()).child(if is_cover {
-                tr!("Shown on the game card")
-            } else {
-                tr!("Shown behind the game in Collection")
-            }))
+            .child(div().mb(px(10.)).text_size(px(12.)).text_color(theme::text_dim()).child(note))
             .children(others)
             .child(actions);
-        if is_cover {
-            div().flex().items_center().gap(px(16.)).py(px(14.)).child(preview).child(copy)
-        } else {
+        if kind == ArtKind::Hero {
             div().flex().flex_col().gap(px(14.)).py(px(14.)).child(preview).child(copy)
+        } else {
+            div().flex().items_center().gap(px(16.)).py(px(14.)).child(preview).child(copy)
         }
     }
 
     pub(super) fn images_tab(&mut self, cx: &mut Context<Self>) -> Div {
         let cover = self.art_slot(ArtKind::cover(self.desktop_family()), cx);
         let hero = self.art_slot(ArtKind::Hero, cx);
+        let logo = self.art_slot(ArtKind::Logo, cx);
         div()
             .flex()
             .flex_col()
@@ -395,5 +423,7 @@ impl GameSettingsDialog {
             .child(card([cover.into_any_element()]))
             .child(caption(tr!("Background")))
             .child(card([hero.into_any_element()]))
+            .child(caption(tr!("Logo")))
+            .child(card([logo.into_any_element()]))
     }
 }
