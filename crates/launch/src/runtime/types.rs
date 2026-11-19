@@ -94,9 +94,9 @@ pub struct HandoffConfig {
     /// How long the game has to show up after the hand-off.
     pub wait: Duration,
     /// The same for a Microsoft Store game (`plan::Handoff::package`): its
-    /// launcher and anti-cheat can take longer before the game runs. Shorter
-    /// than [`CHECKPOINT_INTERVAL`], so a game that never showed up has no
-    /// play time saved meanwhile.
+    /// launcher and anti-cheat can take longer before the game runs. With
+    /// `soon`, shorter than [`CHECKPOINT_INTERVAL`], so a game that never
+    /// showed up has no play time saved meanwhile.
     pub package_wait: Duration,
     /// Gone this long: the game is over (a game restarting itself shows up
     /// again within it).

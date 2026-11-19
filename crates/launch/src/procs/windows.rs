@@ -209,11 +209,14 @@ mod tests {
     #[test]
     fn a_game_is_found_through_a_link_to_its_folder() {
         let dir = tempfile::tempdir().unwrap();
-        let real = dir.path().join("XboxGames").join("Game").join("Content");
+        // The temp folder's long name (not `RUNNER~1`): the program is named
+        // by the path it was started from.
+        let root = heronite_platform::disks::canonical(dir.path()).unwrap();
+        let real = root.join("XboxGames").join("Game").join("Content");
         std::fs::create_dir_all(&real).unwrap();
         let system = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
         std::fs::copy(Path::new(&system).join("System32").join("ping.exe"), real.join("game.exe")).unwrap();
-        let link = dir.path().join("WindowsApps").join("Studio.Game_1.0.0.0_x64__abc");
+        let link = root.join("WindowsApps").join("Studio.Game_1.0.0.0_x64__abc");
         std::fs::create_dir_all(link.parent().unwrap()).unwrap();
         // A junction, as Windows makes them; no privilege needed.
         let made = std::process::Command::new("cmd").arg("/C").arg("mklink").arg("/J").arg(&link).arg(&real).output().unwrap();

@@ -197,16 +197,15 @@ fn a_game_another_launcher_hands_to_its_open_window_is_followed() {
     let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
     assert!(elapsed >= Duration::from_millis(600));
 
-    // A game that never shows up: the session ends after the wait and says
-    // so; the wait is not play time.
+    // A game that never shows up: the session ends after the wait, which is
+    // not play time. Lutris may have run the game itself, briefly: no warning.
     r.launcher.launch(request("lutris_12", LaunchPlan::Native(plan.clone()))).unwrap();
     assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "lutris_12".into() });
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
     let asked = Instant::now();
     r.spawner.finish(1, 0);
-    let LaunchEvent::Status { message, warning: true, .. } = next(&r.rx) else { panic!("no warning") };
-    assert!(message.contains("lutris_12 title"), "{message}");
-    let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
+    let ev = next(&r.rx);
+    let LaunchEvent::Exited { elapsed, .. } = ev else { panic!("{ev:?}") };
     assert!(asked.elapsed() >= Duration::from_millis(400), "waited for the game");
     assert!(elapsed < Duration::from_millis(400), "{elapsed:?}");
 
@@ -278,7 +277,9 @@ fn a_store_game_is_followed_by_its_package() {
     r.procs.start(904, "Other.exe", None);
     r.procs.set_package_pids("Studio.Other_abc", &[904]);
     r.spawner.finish(1, 1);
-    let LaunchEvent::Status { warning: true, .. } = next(&r.rx) else { panic!("no warning") };
+    // The command only asked Windows: the game was lost, and the user is told.
+    let LaunchEvent::Status { message, warning: true, .. } = next(&r.rx) else { panic!("no warning") };
+    assert!(message.contains("xbox_game title"), "{message}");
     let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
     assert!(elapsed < Duration::from_secs(2), "the wait is not play time: {elapsed:?}");
 }

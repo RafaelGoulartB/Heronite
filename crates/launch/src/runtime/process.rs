@@ -320,8 +320,12 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
             match follow_handoff(shared, control, handoff, log) {
                 Followed::Aborted => aborted = true,
                 Followed::Ended => {}
-                // A stop while waiting is the user's doing, not a game Heronite lost.
-                Followed::Unseen(waited) if control.kill.load(Ordering::SeqCst) => unseen = waited,
+                // A stop while waiting is the user's doing, not a game Heronite
+                // lost. A command that is not only a request may have run the
+                // game itself, briefly: its time is counted already.
+                Followed::Unseen(waited) if control.kill.load(Ordering::SeqCst) || !(handoff.exit_ignored || handoff.package.is_some()) => {
+                    unseen = waited
+                }
                 Followed::Unseen(waited) => {
                     unseen = waited;
                     status(Notice::warn(
