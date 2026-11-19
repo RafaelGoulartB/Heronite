@@ -40,6 +40,7 @@ impl CoversDialog {
         }
         self.slot = slot;
         self.source = None;
+        self.style = None;
         self.error.clear();
         self.search(cx);
         cx.notify();

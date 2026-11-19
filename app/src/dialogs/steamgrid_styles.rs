@@ -12,7 +12,7 @@ use crate::theme;
 
 /// SteamGridDB's styles in the order its site lists them (grids, heroes,
 /// then logos); a style it adds later comes after them.
-const ORDER: [&str; 9] = ["alternate", "blurred", "white_logo", "no_logo", "material", "official", "white", "black", "custom"];
+const ORDER: [&str; 9] = ["alternate", "blurred", "white_logo", "material", "no_logo", "official", "white", "black", "custom"];
 
 /// The name of a SteamGridDB style; one not known is shown as SteamGridDB names it.
 pub fn label(style: &str) -> SharedString {
@@ -96,7 +96,7 @@ pub fn row<V: 'static>(
         return None;
     }
     let shown = shown(images, picked);
-    let total: usize = styles.iter().map(|(_, n)| n).sum();
+    let total = images.len();
     let all = {
         let pick = pick.clone();
         pill(SharedString::from(format!("{id}-all")), shown.is_none())
@@ -142,6 +142,9 @@ mod tests {
         let counts = counts(&images);
         let got: Vec<(&str, usize)> = counts.iter().map(|(s, n)| (s.as_str(), *n)).collect();
         assert_eq!(got, [("alternate", 2), ("white_logo", 1), ("material", 1), ("future", 1)]);
+        let both = [img("no_logo"), img("material")];
+        let order: Vec<String> = super::counts(&both).into_iter().map(|(s, _)| s).collect();
+        assert_eq!(order, ["material", "no_logo"]);
     }
 
     #[test]

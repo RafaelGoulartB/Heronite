@@ -91,8 +91,12 @@ impl CoversDialog {
     }
 
     /// Lists SteamGridDB's pictures of `style` alone (`None`: of every
-    /// style). What was picked is no longer: the list changed.
+    /// style; not while a picture is saved). What was picked is no longer: the list changed.
     fn show_style(&mut self, style: Option<String>, cx: &mut Context<Self>) {
+        // What is picked is being saved: it stays picked.
+        if self.busy.is_some() {
+            return;
+        }
         self.style = style;
         self.visible = PAGE;
         self.selected = None;
