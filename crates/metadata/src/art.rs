@@ -71,7 +71,8 @@ fn hydrate(paths: &DataPaths, art: Option<&CollectionGameArt>) -> CollectionGame
     for kind in ArtKind::ALL {
         let value = kind.of_art(art).filter(|v| !v.is_empty());
         let file = file_from_url(paths, value);
-        let managed = file.as_deref().is_some_and(|p| is_managed(paths, p));
+        // A missing file of the art folder resolves to nothing: its URL says it.
+        let managed = value.is_some_and(|v| v.starts_with("localart://art/")) || file.as_deref().is_some_and(|p| is_managed(paths, p));
         if let Some(p) = file.filter(|p| p.exists() && (managed || kind != ArtKind::Logo)) {
             *kind.of_art_mut(&mut next) = Some(display_url(paths, &p));
         } else if let Some(v) = value.filter(|_| kind == ArtKind::Logo && !managed) {
@@ -326,6 +327,11 @@ mod tests {
         let art = clear_collection_game_art(&paths, "sideload", "g", ArtKind::Logo).unwrap();
         assert!(art.logo_url.is_none() && art.cover_url.is_some());
         assert!(!file.exists(), "its file goes with it");
+
+        // A logo of the art folder whose file is gone is dropped, like a cover.
+        let art = set_collection_game_art(&paths, "sideload", "g", ArtKind::Logo, src.to_str().unwrap()).unwrap();
+        fs::remove_file(paths.resolve_localart(art.logo_url.as_deref().unwrap(), None).unwrap()).unwrap();
+        assert!(get_collection_game_art(&paths, "sideload", "g").unwrap().logo_url.is_none());
     }
 
     #[test]
