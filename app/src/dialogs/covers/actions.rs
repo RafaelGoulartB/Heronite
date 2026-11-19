@@ -92,6 +92,7 @@ impl CoversDialog {
             app_name: self.game.app_name.clone(),
             runner: self.runner.clone(),
             title: self.game.title.clone(),
+            steam_app_id: self.game.steam_app_id.clone(),
             ..Default::default()
         };
         let words = typed.clone();

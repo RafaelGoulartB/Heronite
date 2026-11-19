@@ -12,7 +12,7 @@ use heronite_data::collection::Game;
 use heronite_data::models::CollectionGameArt;
 use heronite_i18n::tr;
 use heronite_images::ImageRef;
-use heronite_metadata::{ArtImages, ArtKind, MetadataService, WebImage};
+use heronite_metadata::{ArtImages, ArtKind, MetadataApplyArgs, MetadataService, WebImage};
 
 use super::art_images::{logo_picture, picture, DialogImages};
 use super::metadata_wizard::hub;
@@ -56,6 +56,10 @@ pub struct WebImageDialog {
     images: Entity<DialogImages>,
     app_name: String,
     runner: String,
+    /// The game's title and Steam app id: SteamGridDB's art is of the game
+    /// it was matched with while the search is for it.
+    title: String,
+    steam_app_id: Option<String>,
     kind: ArtKind,
     query: Entity<InputState>,
     transparent: bool,
@@ -104,6 +108,8 @@ impl WebImageDialog {
             images,
             app_name: game.app_name.clone(),
             runner,
+            title,
+            steam_app_id: game.steam_app_id.clone(),
             kind,
             query,
             // A logo is a picture with nothing around the title.
@@ -135,8 +141,15 @@ impl WebImageDialog {
         self.visible_steamgrid = STEAMGRID_PAGE;
         self.visible_web = PAGE_SIZE;
         let (service, kind, transparent) = (self.service.clone(), self.kind, self.transparent);
+        let game = MetadataApplyArgs {
+            app_name: self.app_name.clone(),
+            runner: self.runner.clone(),
+            title: self.title.clone(),
+            steam_app_id: self.steam_app_id.clone(),
+            ..Default::default()
+        };
         cx.spawn(async move |this, cx| {
-            let res = cx.background_spawn(async move { service.search_art_images(&term, kind, transparent) }).await;
+            let res = cx.background_spawn(async move { service.search_game_images(&game, &term, kind, transparent) }).await;
             this.update(cx, |this, cx| {
                 if this.request != id {
                     return;
