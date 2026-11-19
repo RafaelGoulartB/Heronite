@@ -294,7 +294,7 @@ impl GameSettingsDialog {
         let is_cover = kind.family().is_some();
         let rounded = if kind == ArtKind::Hero { 12. } else { 10. };
         let (chain, custom_url) = self.art_chain(kind);
-        let has_picture = !chain.is_empty();
+        let listed = !chain.is_empty();
         // Requested at the size the Collection uses; shown scaled into the card.
         let (w, h, show_w, show_h) = match kind {
             ArtKind::Cover => (132., 198., 92., 138.),
@@ -305,11 +305,14 @@ impl GameSettingsDialog {
             ArtKind::Logo => (180., 60., 200., 80.),
         };
         let key = chain.first().map(|r| format!("{r:?}")).unwrap_or_default();
-        let src = match (has_picture, kind) {
+        let src = match (listed, kind) {
             (false, _) => None,
             (true, ArtKind::Logo) => self.images.update(cx, |im, _| im.get_logo(&format!("gs-logo:{key}"), chain, w, h)),
             (true, _) => self.images.update(cx, |im, _| im.get(&format!("gs:{key}"), chain, w, h)),
         };
+        // Steam's logo is listed for every game with a Steam id, and many
+        // have none: a logo is there once one of the chain has loaded.
+        let has_picture = custom_url.is_some() || src.is_some();
         let preview = if kind == ArtKind::Logo { logo_picture(src) } else { picture(src) };
         let preview = preview
             .w(px(show_w))
