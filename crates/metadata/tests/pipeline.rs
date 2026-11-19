@@ -623,7 +623,7 @@ fn art_image_search_adds_steamgriddb_apart_when_a_key_is_set() {
         "/sgdb/api/v2/grids/game/77" => {
             assert_eq!(req.query("dimensions").as_deref(), Some("600x900,342x482,660x930"));
             assert_eq!(req.query("nsfw").as_deref(), Some("false"), "adult pictures only when the settings keep them");
-            assert_eq!(req.query("types"), None, "covers: still ones only");
+            assert_eq!(req.query("types").as_deref(), Some("static"), "covers: still ones only");
             assert_eq!(req.query("page"), None, "one page: no total said");
             Resp::json(json!({"success": true, "data": [
                 {"url": "https://cdn2.steamgriddb.com/grid/a.png", "thumb": "https://cdn2.steamgriddb.com/thumb/a.png", "width": 600, "height": 900},

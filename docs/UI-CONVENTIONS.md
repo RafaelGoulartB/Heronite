@@ -295,7 +295,8 @@ keep it. **Picture** behind the Collection (`look::stage_source`: the game's art
 cover blurred, the Solid tint, or a picture copied to `AppPaths::custom_background()`), with a slideshow of the
 screenshots every 20 s. **Animated backgrounds** (under the two pictures, off by default, `animatedBackgrounds`): a
 background that is a video (WebM, MP4, MKV, MOV; a game's background may be one, `heronite_metadata::util::VIDEO_EXT`)
-or an animated GIF, PNG or WebP (`heronite_images::animation`) plays behind the Collection (`collection/live_stage.rs`):
+or an animated GIF or PNG (`heronite_images::animation`; an animated WebP stays on its first frame: ffmpeg loops it
+badly, and older ones cannot decode it) plays behind the Collection (`collection/live_stage.rs`):
 ffmpeg (`heronite_media::stream`, `fill` + `looped`) at 24 fps into the still stage's small raster
 (`heronite_images::stage_frame_size`, at most 640 wide), with the still stage's blur and colour done by ffmpeg (`gblur`,
 `eq`) and only the roll-off on its reading thread (`backdrop_frame_rolloff`): about 6% of one core while it plays (35%

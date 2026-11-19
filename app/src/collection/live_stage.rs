@@ -141,9 +141,10 @@ impl CollectionView {
         }
         let opts = heronite_images::Opts::new(PathBuf::new(), None);
         let (w, h, scale) = heronite_images::stage_frame_size(target.0, target.1, blur, MAX_W, &opts);
-        // The still's id names the file's version too (your own picture is
-        // always copied to the same path).
-        let key = format!("{still_id}|{}|{w}x{h}", path.display());
+        // The picture names the file's version too (your own picture is
+        // always copied to the same path); the frame's size changes in steps,
+        // not with every pixel of a window being resized.
+        let key = format!("{picture}|{}|{w}x{h}|{blur}|{saturation}|{rolloff}", path.display());
         if self.live.playing.as_ref().map(|p| &p.key) != Some(&key) {
             self.stop_live_stage();
             self.start_live_stage(key, path, (w, h), Look { blur: blur * scale, saturation, rolloff }, cx);

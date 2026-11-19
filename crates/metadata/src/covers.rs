@@ -468,10 +468,7 @@ const STEAMGRID_PAGES_AT_ONCE: usize = 5;
 fn steamgrid_page(http: &Http, api_key: &str, game_id: i64, kind: ArtKind, (adult, animated): (bool, bool), page: u64) -> Result<Value> {
     let (path, dimensions) = steamgrid_query(kind);
     let page = page.to_string();
-    let mut params = vec![("nsfw", if adult { "any" } else { "false" })];
-    if animated {
-        params.push(("types", "static,animated"));
-    }
+    let mut params = vec![("nsfw", if adult { "any" } else { "false" }), ("types", if animated { "static,animated" } else { "static" })];
     if !dimensions.is_empty() {
         params.push(("dimensions", dimensions));
     }
