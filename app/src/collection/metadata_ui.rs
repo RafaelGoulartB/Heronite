@@ -124,9 +124,14 @@ impl CollectionView {
     }
 
     /// `HERONITE_DEBUG_DIALOG=covers[:<state>]`: "Covers" of the selected
-    /// game over made-up searches (see the dialog's `fake.rs`).
+    /// game over made-up searches (see the dialog's `fake.rs`);
+    /// `covers:live`: the dialog itself, searching for real.
     fn open_covers_debug(&mut self, state: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(key) = self.selected.clone() else { return };
+        if state == "live" {
+            self.open_covers_for(&key, window, cx);
+            return;
+        }
         let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(&key)) else { return };
         let thumbs: Vec<String> = self
             .lib

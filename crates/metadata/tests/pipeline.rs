@@ -622,6 +622,8 @@ fn art_image_search_adds_steamgriddb_apart_when_a_key_is_set() {
         }
         "/sgdb/api/v2/grids/game/77" => {
             assert_eq!(req.query("dimensions").as_deref(), Some("600x900,342x482,660x930"));
+            assert_eq!(req.query("nsfw").as_deref(), Some("false"), "adult pictures only when the settings keep them");
+            assert_eq!(req.query("page"), None, "one page: no total said");
             Resp::json(json!({"success": true, "data": [
                 {"url": "https://cdn2.steamgriddb.com/grid/a.png", "thumb": "https://cdn2.steamgriddb.com/thumb/a.png", "width": 600, "height": 900},
                 {"url": "https://cdn2.steamgriddb.com/grid/b.png", "width": 342, "height": 482}
@@ -661,6 +663,106 @@ fn art_image_search_adds_steamgriddb_apart_when_a_key_is_set() {
     let transparent = svc.search_art_images(&q, ArtKind::Cover, true).unwrap();
     assert_eq!((transparent.steamgrid.len(), transparent.web.len()), (0, 6));
     assert_eq!(server.count(|r| r.path().starts_with("/sgdb/")), before);
+}
+
+/// A SteamGridDB grid answer of `count` pictures numbered from `from`, of
+/// `total` in pages of 50.
+fn sgdb_grids(from: usize, count: usize, total: usize) -> Value {
+    let data: Vec<Value> = (from..from + count)
+        .map(|i| json!({"url": format!("https://cdn2.steamgriddb.com/grid/{i}.png"), "width": 600, "height": 900}))
+        .collect();
+    json!({"success": true, "page": from / 50, "total": total, "limit": 50, "data": data})
+}
+
+fn sgdb_key(paths: &DataPaths) {
+    fs::create_dir_all(paths.global_config().parent().unwrap()).unwrap();
+    fs::write(paths.global_config(), r#"{"defaultSettings":{"steamGridDbApiKey":"K"},"version":"v0"}"#).unwrap();
+}
+
+#[test]
+fn art_image_search_lists_every_steamgriddb_page_and_adult_pictures_when_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    let server = Server::start(move |req| match req.path() {
+        p if p.starts_with("/sgdb/api/v2/search/autocomplete/") => {
+            Resp::json(json!({"success": true, "data": [{"id": 77, "name": "Portal 2"}]}))
+        }
+        "/sgdb/api/v2/grids/game/77" => match req.query("page").as_deref() {
+            None => Resp::json(sgdb_grids(0, 50, 120)),
+            Some("1") => Resp::json(sgdb_grids(50, 50, 120)),
+            Some("2") => Resp::json(sgdb_grids(100, 20, 120)),
+            _ => Resp::status(404),
+        },
+        _ => Resp::status(404),
+    });
+    let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());
+    sgdb_key(&paths);
+    let q = web_images_query("Portal 2");
+    let grids = svc.search_art_images(&q, ArtKind::Cover, false).unwrap().steamgrid;
+    assert_eq!(grids.len(), 120, "the three pages SteamGridDB has");
+    let urls: Vec<&str> = grids.iter().map(|g| g.image_url.as_str()).collect();
+    assert_eq!(
+        (urls[0], urls[50], urls[119]),
+        (
+            "https://cdn2.steamgriddb.com/grid/0.png",
+            "https://cdn2.steamgriddb.com/grid/50.png",
+            "https://cdn2.steamgriddb.com/grid/119.png"
+        )
+    );
+    let asked = |nsfw: &str| server.count(|r| r.path() == "/sgdb/api/v2/grids/game/77" && r.query("nsfw").as_deref() == Some(nsfw));
+    assert_eq!((asked("false"), asked("any")), (3, 0));
+
+    heronite_data::settings::update_metadata(&paths, |m| m.allow_adult_covers = true).unwrap();
+    assert_eq!(svc.search_art_images(&q, ArtKind::Cover, false).unwrap().steamgrid.len(), 120);
+    assert_eq!((asked("false"), asked("any")), (3, 3), "adult pictures asked for too");
+}
+
+#[test]
+fn a_game_s_art_search_takes_its_steamgriddb_match_then_its_steam_id_then_the_title() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    let grid = |id: i64| json!({"success": true, "data": [{"url": format!("https://cdn2.steamgriddb.com/grid/of-{id}.png"), "width": 600, "height": 900}]});
+    let server = Server::start(move |req| match req.path() {
+        // The title search finds another game (a soundtrack, a demo).
+        p if p.starts_with("/sgdb/api/v2/search/autocomplete/") => {
+            Resp::json(json!({"success": true, "data": [{"id": 1, "name": "Portal 2 Soundtrack"}]}))
+        }
+        "/sgdb/api/v2/games/steam/620" => Resp::json(json!({"success": true, "data": {"id": 2254, "name": "Portal 2"}})),
+        p => match p.strip_prefix("/sgdb/api/v2/grids/game/").and_then(|id| id.parse().ok()) {
+            Some(id) => Resp::json(grid(id)),
+            None => Resp::status(404),
+        },
+    });
+    let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());
+    sgdb_key(&paths);
+    let first = |images: ArtImages| images.steamgrid.first().map(|g| g.image_url.clone()).unwrap_or_default();
+    let game = MetadataApplyArgs {
+        app_name: "portal2".into(),
+        runner: "sideload".into(),
+        title: "Portal 2".into(),
+        steam_app_id: Some("620".into()),
+        ..Default::default()
+    };
+    let q = web_images_query("Portal 2");
+
+    // By its Steam id.
+    assert_eq!(first(svc.search_game_images(&game, &q, ArtKind::Cover, false).unwrap()), "https://cdn2.steamgriddb.com/grid/of-2254.png");
+    assert_eq!(server.count(|r| r.path().starts_with("/sgdb/api/v2/search/")), 0);
+
+    // Another title typed: another game, by its title.
+    let other = web_images_query("Portal");
+    assert_eq!(first(svc.search_game_images(&game, &other, ArtKind::Cover, false).unwrap()), "https://cdn2.steamgriddb.com/grid/of-1.png");
+
+    // The SteamGridDB game the record was matched with comes first.
+    let mut md = heronite_metadata::util::blank_metadata("portal2", "sideload");
+    record::set_source_match(&mut md, "steamgriddb", SourceMatch { id: "5245".into(), ..Default::default() }, None);
+    heronite_metadata::store::upsert_game_metadata(&paths, md).unwrap();
+    let steam_asked = server.count(|r| r.path() == "/sgdb/api/v2/games/steam/620");
+    assert_eq!(first(svc.search_game_images(&game, &q, ArtKind::Cover, false).unwrap()), "https://cdn2.steamgriddb.com/grid/of-5245.png");
+    assert_eq!(server.count(|r| r.path() == "/sgdb/api/v2/games/steam/620"), steam_asked);
+
+    // Without the game: the title search, as before.
+    assert_eq!(first(svc.search_art_images(&q, ArtKind::Cover, false).unwrap()), "https://cdn2.steamgriddb.com/grid/of-1.png");
 }
 
 fn web_images_query(title: &str) -> String {

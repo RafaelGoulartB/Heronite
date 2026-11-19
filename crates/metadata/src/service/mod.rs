@@ -331,14 +331,39 @@ impl MetadataService {
     /// the cover family ([`ArtKind::cover`]): SteamGridDB gives grids of
     /// that shape and the web search favours it.
     pub fn search_art_images(&self, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
+        self.search_art_images_of(None, query, kind, transparent)
+    }
+
+    /// [`search_art_images`](Self::search_art_images) for `game`: while the
+    /// query is for its title, SteamGridDB's art is of the SteamGridDB game it
+    /// was matched with, else of its Steam app id, before a search by title.
+    pub fn search_game_images(&self, game: &MetadataApplyArgs, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
+        self.search_art_images_of(Some(game), query, kind, transparent)
+    }
+
+    /// What the SteamGridDB search knows of `game`: its title, Steam app id
+    /// and the SteamGridDB game its record was matched with.
+    fn steamgrid_hint(&self, game: &MetadataApplyArgs) -> covers::SteamGridHint {
+        let current = get_game_metadata(&self.paths, &game.runner, &game.app_name).ok().flatten();
+        let view = self.source_game(&self.sources(), game, current.as_ref());
+        let steamgrid_id =
+            current.as_ref().and_then(|md| crate::record::source_match(md, ids::STEAMGRIDDB)).and_then(|m| m.id.parse().ok());
+        covers::SteamGridHint { title: game.title.clone(), steam_app_id: view.steam_app_id, steamgrid_id }
+    }
+
+    fn search_art_images_of(&self, game: Option<&MetadataApplyArgs>, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
         let key = if transparent && kind != ArtKind::Logo { None } else { covers::steamgrid_key_if_on(&self.paths) };
         let title = web_images::title_of_query(query);
+        let hint = key.as_ref().and(game).map(|g| self.steamgrid_hint(g));
+        // Adult pictures only where the settings keep them.
+        let adult = key.is_some() && self.metadata_settings().allow_adult_covers;
         let (sgdb, web) = std::thread::scope(|s| {
             let sgdb = s.spawn(|| match key.as_deref() {
-                Some(key) if !title.is_empty() => covers::steamgrid_images(&self.http, key, &title, kind).unwrap_or_else(|e| {
-                    log::warn!("SteamGridDB image search failed for \"{title}\": {e:#}");
-                    Vec::new()
-                }),
+                Some(key) if !title.is_empty() => covers::steamgrid_images(&self.http, key, &title, hint.as_ref(), kind, adult)
+                    .unwrap_or_else(|e| {
+                        log::warn!("SteamGridDB image search failed for \"{title}\": {e:#}");
+                        Vec::new()
+                    }),
                 _ => Vec::new(),
             });
             let web = self.search_web_images_shaped(query, transparent, kind.family());
