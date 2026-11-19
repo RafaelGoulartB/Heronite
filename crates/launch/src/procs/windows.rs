@@ -49,6 +49,25 @@ fn under(path: &Path, folder: &str) -> bool {
     !folder.is_empty() && (path == folder || path.starts_with(&format!("{folder}\\")))
 }
 
+/// `folder` and, when it is a link, the folder it leads to: Windows names a
+/// program by its real path, and a GDK game's folder under `WindowsApps` is
+/// a link to `<drive>\XboxGames\<game>\Content`.
+fn folder_and_real(folder: &str) -> Vec<String> {
+    let mut out = vec![folder.to_string()];
+    if let Ok(real) = heronite_platform::disks::canonical(Path::new(folder)) {
+        let real = real.to_string_lossy().into_owned();
+        if !under(Path::new(&real), folder) {
+            out.push(real);
+        }
+    }
+    out
+}
+
+/// `path` is in one of `folders` (see [`folder_and_real`]).
+fn under_any(path: &Path, folders: &[String]) -> bool {
+    folders.iter().any(|f| under(path, f))
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SystemProcs;
 
@@ -113,11 +132,22 @@ impl Procs for SystemProcs {
 
     fn game_pids(&self, _prefix: Option<&str>, folder: Option<&str>) -> Vec<u32> {
         let Some(folder) = folder else { return Vec::new() };
+        let folders = folder_and_real(folder);
         let me = std::process::id();
         os::snapshot()
             .into_iter()
             .filter(|p| p.pid > 4 && p.pid != me)
-            .filter(|p| os::exe_path(p.pid).is_some_and(|exe| under(&exe, folder)))
+            .filter(|p| os::exe_path(p.pid).is_some_and(|exe| under_any(&exe, &folders)))
+            .map(|p| p.pid)
+            .collect()
+    }
+
+    fn package_pids(&self, family: &str) -> Vec<u32> {
+        let me = std::process::id();
+        os::snapshot()
+            .into_iter()
+            .filter(|p| p.pid > 4 && p.pid != me)
+            .filter(|p| os::package_family(p.pid).is_some_and(|f| f.eq_ignore_ascii_case(family)))
             .map(|p| p.pid)
             .collect()
     }
@@ -130,12 +160,13 @@ impl Procs for SystemProcs {
         // Without Wine every program is a Windows one: the whole PC, the
         // ones running from `folder` told apart by where their program is.
         let me = std::process::id();
+        let folders = folder.map(folder_and_real).unwrap_or_default();
         os::snapshot()
             .into_iter()
             .filter(|p| p.pid > 4 && p.pid != me)
             .map(|p| {
                 let exe = os::exe_path(p.pid);
-                let from_folder = folder.is_some_and(|f| exe.as_deref().is_some_and(|e| under(e, f)));
+                let from_folder = exe.as_deref().is_some_and(|e| under_any(e, &folders));
                 let path = exe.map(|e| e.to_string_lossy().into_owned()).unwrap_or_default();
                 WinProgram { pid: p.pid, name: p.name.to_lowercase(), path, from_folder }
             })
@@ -171,6 +202,37 @@ mod tests {
         assert!(SystemProcs.prefix_programs("", None).iter().all(|p| !p.from_folder));
         let _ = child.kill();
         let _ = child.wait();
+    }
+
+    /// A GDK game's folder under `WindowsApps` is a link to the folder its
+    /// programs run from: the game is found through the link.
+    #[test]
+    fn a_game_is_found_through_a_link_to_its_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("XboxGames").join("Game").join("Content");
+        std::fs::create_dir_all(&real).unwrap();
+        let system = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+        std::fs::copy(Path::new(&system).join("System32").join("ping.exe"), real.join("game.exe")).unwrap();
+        let link = dir.path().join("WindowsApps").join("Studio.Game_1.0.0.0_x64__abc");
+        std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+        // A junction, as Windows makes them; no privilege needed.
+        let made = std::process::Command::new("cmd").arg("/C").arg("mklink").arg("/J").arg(&link).arg(&real).output().unwrap();
+        assert!(made.status.success(), "{made:?}");
+        let mut child = std::process::Command::new(real.join("game.exe"))
+            .args(["-n", "30", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let link = link.to_string_lossy().into_owned();
+        let found = SystemProcs.game_pids(None, Some(&link)).contains(&child.id());
+        let from_folder = SystemProcs.prefix_programs("", Some(&link)).iter().any(|p| p.pid == child.id() && p.from_folder);
+        // Not from a package: a test runs none.
+        let packaged = SystemProcs.package_pids("Studio.Game_abc").contains(&child.id());
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(found, "found from the link's folder");
+        assert!(from_folder);
+        assert!(!packaged);
     }
 
     #[test]

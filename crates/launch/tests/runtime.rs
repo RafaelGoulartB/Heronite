@@ -45,6 +45,7 @@ fn fast_cfg() -> LauncherConfig {
             // and then the game it handed on is not followed at all.
             soon: Duration::from_secs(10),
             wait: Duration::from_millis(400),
+            package_wait: Duration::from_secs(2),
             gone: Duration::from_millis(60),
             ..Default::default()
         },
@@ -196,13 +197,18 @@ fn a_game_another_launcher_hands_to_its_open_window_is_followed() {
     let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
     assert!(elapsed >= Duration::from_millis(600));
 
-    // A game that never shows up: the session ends after the wait.
+    // A game that never shows up: the session ends after the wait and says
+    // so; the wait is not play time.
     r.launcher.launch(request("lutris_12", LaunchPlan::Native(plan.clone()))).unwrap();
     assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "lutris_12".into() });
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    let asked = Instant::now();
     r.spawner.finish(1, 0);
+    let LaunchEvent::Status { message, warning: true, .. } = next(&r.rx) else { panic!("no warning") };
+    assert!(message.contains("lutris_12 title"), "{message}");
     let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
-    assert!(elapsed >= Duration::from_millis(400), "{elapsed:?}");
+    assert!(asked.elapsed() >= Duration::from_millis(400), "waited for the game");
+    assert!(elapsed < Duration::from_millis(400), "{elapsed:?}");
 
     // The launcher failed: nothing is waited for (no made-up play time), not
     // even a game that is there. A game following a failed launcher would keep
@@ -235,6 +241,65 @@ fn a_hand_off_whose_exit_code_says_nothing_is_followed() {
     let LaunchEvent::Exited { elapsed, exit, .. } = next(&r.rx) else { panic!() };
     assert!(elapsed >= Duration::from_millis(500));
     assert_eq!(exit.unwrap().code, Some(0), "not a failed launch");
+}
+
+/// A Store game is found by the package its programs run from, wherever
+/// they are (a GDK game's folder is a link to another one), and has longer
+/// to show up than other games handed on.
+#[test]
+fn a_store_game_is_followed_by_its_package() {
+    let r = rig();
+    let mut plan = process_plan("explorer.exe", &[r"shell:AppsFolder\Studio.Game_abc!Game"]);
+    plan.handoff = Some(Handoff {
+        folder: Some("/games/xbox".into()),
+        package: Some("Studio.Game_abc".into()),
+        exit_ignored: true,
+        ..Default::default()
+    });
+    r.launcher.launch(request("xbox_game", LaunchPlan::Native(plan.clone()))).unwrap();
+    assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "xbox_game".into() });
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.spawner.finish(0, 1);
+    std::thread::sleep(Duration::from_millis(600));
+    assert!(r.launcher.is_running("xbox_game"), "still waiting past the wait for other games");
+    r.procs.start(903, "Game-Win64-Shipping.exe", None);
+    r.procs.set_package_pids("Studio.Game_abc", &[903]);
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(r.launcher.is_running("xbox_game"));
+    r.procs.exit(903);
+    let LaunchEvent::Exited { elapsed, exit, .. } = next(&r.rx) else { panic!("no warning expected") };
+    assert!(elapsed >= Duration::from_millis(900), "{elapsed:?}");
+    assert_eq!(exit.unwrap().code, Some(0));
+
+    // Another package's programs are not the game's.
+    r.launcher.launch(request("xbox_game", LaunchPlan::Native(plan))).unwrap();
+    assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "xbox_game".into() });
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.procs.start(904, "Other.exe", None);
+    r.procs.set_package_pids("Studio.Other_abc", &[904]);
+    r.spawner.finish(1, 1);
+    let LaunchEvent::Status { warning: true, .. } = next(&r.rx) else { panic!("no warning") };
+    let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
+    assert!(elapsed < Duration::from_secs(2), "the wait is not play time: {elapsed:?}");
+}
+
+/// Stopped before the game showed up: nothing was lost, no warning, and the
+/// wait is not play time.
+#[test]
+fn a_stop_while_waiting_for_a_handed_on_game_is_not_a_lost_game() {
+    let r = rig();
+    let mut plan = process_plan("explorer.exe", &[r"shell:AppsFolder\Studio.Game_abc!Game"]);
+    plan.handoff = Some(Handoff { package: Some("Studio.Game_abc".into()), exit_ignored: true, ..Default::default() });
+    r.launcher.launch(request("xbox_game", LaunchPlan::Native(plan))).unwrap();
+    assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "xbox_game".into() });
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.spawner.finish(0, 1);
+    std::thread::sleep(Duration::from_millis(500));
+    r.launcher.stop("xbox_game");
+    let ev = next(&r.rx);
+    let LaunchEvent::Exited { elapsed, stopped, .. } = ev else { panic!("{ev:?}") };
+    assert!(stopped);
+    assert!(elapsed < Duration::from_millis(500), "{elapsed:?}");
 }
 
 #[test]

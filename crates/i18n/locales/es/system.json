@@ -39,6 +39,7 @@
   "Filter {kind}: {value}": "Filtrar {kind}: {value}",
   "Folder, capture shortcut, preview cache": "Carpeta, atajo de captura, caché de miniaturas",
   "Folders, cache, copy settings": "Carpetas, caché, copiar ajustes",
+  "Heronite could not find {title} running, so this session's play time was not counted": "Heronite no encontró {title} en ejecución, así que el tiempo de esta sesión no se contó",
   "Language, folders, the tray, shortcuts and where Wine and Proton are looked for.": "Idioma, carpetas, la bandeja, accesos directos y dónde se buscan Wine y Proton.",
   "Folders, tray, Wine and Proton lookup": "Carpetas, bandeja del sistema, búsqueda de Wine y Proton",
   "Game defaults": "Valores por defecto",
