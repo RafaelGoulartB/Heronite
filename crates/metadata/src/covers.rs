@@ -463,13 +463,13 @@ const STEAMGRID_PAGES_AT_ONCE: usize = 5;
 /// One page (`0` first) of SteamGridDB's art of `kind` of its game
 /// `game_id`. `adult`: pictures it flags as adult too (it leaves them out
 /// unless asked).
-fn steamgrid_page(http: &Http, api_key: &str, game_id: i64, kind: ArtKind, adult: bool, page: u64) -> Result<Value> {
+/// `animated`: animated pictures too (SteamGridDB gives still ones alone
+/// unless asked; see [`parse_steamgrid_images`]).
+fn steamgrid_page(http: &Http, api_key: &str, game_id: i64, kind: ArtKind, (adult, animated): (bool, bool), page: u64) -> Result<Value> {
     let (path, dimensions) = steamgrid_query(kind);
     let page = page.to_string();
     let mut params = vec![("nsfw", if adult { "any" } else { "false" })];
-    // The image search lists animated backgrounds too (marked, see
-    // [`parse_steamgrid_images`]); SteamGridDB gives still ones alone unless asked.
-    if kind == ArtKind::Hero {
+    if animated {
         params.push(("types", "static,animated"));
     }
     if !dimensions.is_empty() {
@@ -492,16 +492,16 @@ fn steamgrid_page_count(body: &Value) -> u64 {
 /// The first page of SteamGridDB's art of `kind` (no adult pictures, no
 /// animated ones), as ranked: what a fetch picks from.
 fn steamgrid_art(http: &Http, api_key: &str, game_id: i64, kind: ArtKind) -> Result<Vec<WebImage>> {
-    let mut images = parse_steamgrid_images(&steamgrid_page(http, api_key, game_id, kind, false, 0)?);
-    images.retain(|i| !i.animated);
-    Ok(images)
+    Ok(parse_steamgrid_images(&steamgrid_page(http, api_key, game_id, kind, (false, false), 0)?))
 }
 
 /// Every page of SteamGridDB's art of `kind` of its game `game_id` (up to
 /// [`STEAMGRID_MAX_PAGES`]), in its order. A later page that fails is left
 /// out; the first one failing is the error.
 fn steamgrid_all_art(http: &Http, api_key: &str, game_id: i64, kind: ArtKind, adult: bool) -> Result<Vec<WebImage>> {
-    let first = steamgrid_page(http, api_key, game_id, kind, adult, 0)?;
+    // The image search lists animated backgrounds too, marked.
+    let asked = (adult, kind == ArtKind::Hero);
+    let first = steamgrid_page(http, api_key, game_id, kind, asked, 0)?;
     let mut images = parse_steamgrid_images(&first);
     let pages = steamgrid_page_count(&first);
     let later: Vec<u64> = (1..pages).collect();
@@ -509,7 +509,7 @@ fn steamgrid_all_art(http: &Http, api_key: &str, game_id: i64, kind: ArtKind, ad
     for batch in later.chunks(STEAMGRID_PAGES_AT_ONCE) {
         std::thread::scope(|s| {
             let handles: Vec<_> =
-                batch.iter().map(|&p| (p, s.spawn(move || steamgrid_page(http, api_key, game_id, kind, adult, p)))).collect();
+                batch.iter().map(|&p| (p, s.spawn(move || steamgrid_page(http, api_key, game_id, kind, asked, p)))).collect();
             rest.extend(handles.into_iter().map(|(p, h)| (p, h.join().unwrap_or_else(|_| Err(anyhow!("SteamGridDB page panicked"))))));
         });
     }

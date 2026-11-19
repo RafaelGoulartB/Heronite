@@ -41,7 +41,8 @@ impl CollectionView {
         let rolloff = if theme::is_light() { 0. } else { self.rolloff };
         let id: SharedString = format!("s:{key}:{source}:{pw}x{ph}:{blur}:{sat}:{rolloff}").into();
         let empty = chain.is_empty();
-        let live_chain = chain.clone();
+        let picture = format!("{key}:{source}");
+        let live_chain = theme::appearance().animated_backgrounds.then(|| chain.clone());
         let ready = self.images.get_or_request(&id, || chain, pw, ph, Variant::Backdrop { blur_px: blur, saturation: sat, rolloff }, 1000);
         if let Some(img) = ready {
             // The texture's id names the animation: a new picture fades in.
@@ -49,8 +50,9 @@ impl CollectionView {
         } else if empty {
             self.shown_stage = None;
         }
-        // A moving one fades in over its still first frame, and back.
-        if let Some(live) = self.live_stage(&id, &live_chain, (pw, ph), (blur, sat, rolloff), window, cx) {
+        // A moving one: its frames in place of the still, under its id.
+        if let Some(live) = self.live_stage(&id, &picture, live_chain.as_deref().unwrap_or(&[]), (pw, ph), (blur, sat, rolloff), window, cx)
+        {
             return Some(live);
         }
         self.shown_stage.as_ref().map(|(k, img)| (k.clone(), ImageSource::Render(img.clone())))

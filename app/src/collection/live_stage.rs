@@ -41,8 +41,9 @@ const UNSEEN: Duration = Duration::from_millis(1500);
 
 #[derive(Default)]
 pub(super) struct LiveStage {
-    /// The file each background plays, by the picture's id and its first
-    /// file (`None`: a still picture), found off the UI thread once.
+    /// The file each background plays, by the picture (its game and
+    /// source, not its size or look) and its first file (`None`: a still
+    /// picture), found off the UI thread once.
     known: HashMap<(String, Option<PathBuf>), Option<PathBuf>>,
     asking: HashSet<(String, Option<PathBuf>)>,
     /// Files ffmpeg could not play this session: they stay still.
@@ -102,14 +103,16 @@ impl CollectionView {
         }
     }
 
-    /// The moving stage for the picture `still_id` of `chain` drawn at
-    /// `target` (physical px) with the stage's look, while it plays; `None`
-    /// draws the still one. Starts or stops it as the settings and the
-    /// window allow.
+    /// The moving stage for the picture `still_id` (`picture`: the same
+    /// without its size and look) of `chain` drawn at `target` (physical px)
+    /// with the stage's look, while it plays; `None` draws the still one.
+    /// Starts or stops it as the settings and the window allow. Its frames
+    /// keep the still's id: the stage swaps them in place, with no fade.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn live_stage(
         &mut self,
         still_id: &SharedString,
+        picture: &str,
         chain: &[ImageRef],
         target: (u32, u32),
         (blur, saturation, rolloff): (f32, f32, f32),
@@ -121,7 +124,11 @@ impl CollectionView {
             self.stop_live_stage();
             return None;
         }
-        let path = self.live_path(still_id, chain, cx)?;
+        // A still picture (or one not known yet) stops what played before.
+        let Some(path) = self.live_path(picture, chain, cx) else {
+            self.stop_live_stage();
+            return None;
+        };
         let active = window.is_window_active() || crate::env::flag("HERONITE_DEBUG_LIVE_STAGE");
         if !active && self.live.activation.is_none() {
             self.live.wants_activation = true;
@@ -134,29 +141,32 @@ impl CollectionView {
         }
         let opts = heronite_images::Opts::new(PathBuf::new(), None);
         let (w, h, scale) = heronite_images::stage_frame_size(target.0, target.1, blur, MAX_W, &opts);
-        let key = format!("{}|{w}x{h}|{blur}|{saturation}|{rolloff}", path.display());
+        // The still's id names the file's version too (your own picture is
+        // always copied to the same path).
+        let key = format!("{still_id}|{}|{w}x{h}", path.display());
         if self.live.playing.as_ref().map(|p| &p.key) != Some(&key) {
             self.stop_live_stage();
             self.start_live_stage(key, path, (w, h), Look { blur: blur * scale, saturation, rolloff }, cx);
         }
         let frame = self.live.playing.as_ref()?.frame.clone()?;
-        Some((format!("{still_id}:live").into(), ImageSource::Render(frame)))
+        Some((still_id.clone(), ImageSource::Render(frame)))
     }
 
     /// The file `chain` plays (its first file, when it moves), once known;
     /// asks for it off the UI thread the first time.
-    fn live_path(&mut self, still_id: &SharedString, chain: &[ImageRef], cx: &mut Context<Self>) -> Option<PathBuf> {
+    fn live_path(&mut self, picture: &str, chain: &[ImageRef], cx: &mut Context<Self>) -> Option<PathBuf> {
         let first = chain.iter().find_map(|c| match c {
             ImageRef::File(p) => Some(p.clone()),
             _ => None,
         });
-        let id = (still_id.to_string(), first);
+        let id = (picture.to_owned(), first);
         if let Some(known) = self.live.known.get(&id) {
             return known.clone();
         }
         if self.live.asking.insert(id.clone()) {
             let chain = chain.to_vec();
-            let ask_ffmpeg = self.live.ffmpeg.is_none();
+            // Again while not found: it may have been installed since.
+            let ask_ffmpeg = self.live.ffmpeg != Some(true);
             cx.spawn(async move |this, cx| {
                 let (moving, ffmpeg) = cx
                     .background_spawn(async move {
@@ -198,11 +208,14 @@ impl CollectionView {
             filter: Some(look_filter(&look)),
         };
         let frames = slot.clone();
+        let mut count = 0u64;
         let stream = Stream::start(spec, move |ev| match ev {
             StreamEvent::Frame(mut f) => {
                 heronite_images::backdrop_frame_rolloff(&mut f, look.rolloff);
+                count += 1;
                 let was_empty = frames.lock().unwrap_or_else(|e| e.into_inner()).replace(f).is_none();
-                if was_empty {
+                // Also once a second while nothing draws, so an unseen background stops.
+                if was_empty || count.is_multiple_of(u64::from(FPS)) {
                     let _ = tx.unbounded_send(None);
                 }
             }
@@ -275,12 +288,19 @@ fn moving_file(chain: &[ImageRef]) -> Option<PathBuf> {
     for c in chain {
         let path = match c {
             ImageRef::File(p) => p.clone(),
-            ImageRef::Find { .. } => c.local_path()?,
+            ImageRef::Find { .. } => match c.local_path() {
+                Some(p) => p,
+                // Not there: the loader goes on to the next one too.
+                None => continue,
+            },
             // A picture from the web comes before any file after it.
             ImageRef::Url(_) => return None,
         };
         if path.is_file() {
-            return heronite_images::animation::file_motion(&path).is_some().then_some(path);
+            // An animated WebP stays still: ffmpeg loops it badly (one pass,
+            // then it spins) and older ones cannot decode it at all.
+            let motion = heronite_images::animation::file_motion(&path);
+            return motion.filter(|m| *m != heronite_images::animation::Motion::WebP).map(|_| path);
         }
     }
     None
@@ -312,5 +332,9 @@ mod tests {
         assert_eq!(moving_file(&[file(&still), file(&video)]), None, "a still picture first");
         assert_eq!(moving_file(&[ImageRef::Url("https://x/a.jpg".into()), file(&video)]), None);
         assert_eq!(moving_file(&[]), None);
+        // An animated WebP (VP8X, animation flag) stays still.
+        let webp = dir.path().join("hero.webp");
+        std::fs::write(&webp, [b"RIFF\0\0\0\0WEBPVP8X".as_slice(), &[10, 0, 0, 0, 0x02, 0, 0, 0]].concat()).unwrap();
+        assert_eq!(moving_file(&[file(&webp)]), None);
     }
 }

@@ -288,8 +288,10 @@ impl CoversDialog {
         if self.fake.is_none() {
             let urls: Vec<String> = {
                 let found = self.found();
-                let unsized_ =
-                    listed.iter().filter_map(|i| found.get(*i)).filter(|f| resolution_label(f.image.width, f.image.height).is_none());
+                let unsized_ = listed
+                    .iter()
+                    .filter_map(|i| found.get(*i))
+                    .filter(|f| !f.image.animated && resolution_label(f.image.width, f.image.height).is_none());
                 unsized_.map(|f| f.image.image_url.clone()).collect()
             };
             self.sizes.update(cx, |s, cx| s.ask(urls, cx));
