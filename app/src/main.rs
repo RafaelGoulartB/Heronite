@@ -334,12 +334,12 @@ fn env_logger_init() {
 }
 
 /// Whether a record is logged: our crates at the chosen `level`, third-party
-/// crates at warn (zbus/wgpu/naga are very chatty at info/debug). GPUI's
-/// renderer is the exception: at info it only lists the GPUs it found and the
-/// one it picked, once per GPU context, which is what a report of a slow
-/// interface needs.
+/// crates at warn (zbus/wgpu/naga are very chatty at info/debug). GPUI's GPU
+/// choice is the exception: at info it names the compositor's GPU, the GPUs
+/// it found and the one it picked, once per GPU context, which is what a
+/// report of a slow interface needs.
 fn log_enabled(target: &str, record: log::Level, level: log::LevelFilter) -> bool {
-    let ours = target.starts_with("heronite") || target.starts_with("gpui_wgpu::wgpu_context");
+    let ours = target.starts_with("heronite") || target == "gpui_wgpu::wgpu_context" || target == "gpui_linux::gpu";
     record <= if ours { level } else { level.min(log::LevelFilter::Warn) }
 }
 
@@ -351,6 +351,8 @@ mod log_filter_tests {
     #[test]
     fn gpu_choice_is_logged_but_other_crates_stay_at_warn() {
         assert!(log_enabled("gpui_wgpu::wgpu_context", Level::Info, LevelFilter::Info));
+        assert!(log_enabled("gpui_linux::gpu", Level::Info, LevelFilter::Info));
+        assert!(!log_enabled("gpui_linux::linux::platform", Level::Info, LevelFilter::Info));
         assert!(!log_enabled("gpui_wgpu::wgpu_context", Level::Debug, LevelFilter::Info));
         assert!(!log_enabled("gpui_wgpu::wgpu_renderer", Level::Info, LevelFilter::Info));
         assert!(!log_enabled("wgpu_core::device", Level::Info, LevelFilter::Info));

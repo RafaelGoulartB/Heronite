@@ -1027,6 +1027,14 @@ impl WaylandConnection {
         })?;
 
         let compositor_gpu = detect_compositor_gpu();
+        log::info!(
+            target: "gpui_linux::gpu",
+            "compositor GPU: {}",
+            compositor_gpu.map_or("unknown".into(), |gpu| format!(
+                "vendor={:#06x}, device={:#06x}",
+                gpu.vendor_id, gpu.device_id
+            ))
+        );
         let gpu_context = Rc::new(RefCell::new(None));
 
         let (frame_ping, frame_ping_source) =
