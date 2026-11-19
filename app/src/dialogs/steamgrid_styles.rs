@@ -133,7 +133,7 @@ mod tests {
     use heronite_metadata::WebImage;
 
     fn img(style: &str) -> WebImage {
-        WebImage { image_url: format!("u-{style}"), thumb_url: String::new(), width: 0, height: 0, style: style.into() }
+        WebImage { image_url: format!("u-{style}"), thumb_url: String::new(), width: 0, height: 0, style: style.into(), animated: false }
     }
 
     #[test]

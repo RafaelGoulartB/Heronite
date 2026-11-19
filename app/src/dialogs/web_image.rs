@@ -55,6 +55,8 @@ pub enum ArtEvent {
 pub struct WebImageDialog {
     service: Arc<MetadataService>,
     images: Entity<DialogImages>,
+    /// Where "Turn on" (animated backgrounds) saves the appearance.
+    app: heronite_data::AppPaths,
     app_name: String,
     runner: String,
     /// The game's title and Steam app id: SteamGridDB's art is of the game
@@ -109,6 +111,7 @@ impl WebImageDialog {
         let mut this = Self {
             service,
             images,
+            app: ctx.app.clone(),
             app_name: game.app_name.clone(),
             runner,
             title,
@@ -306,7 +309,7 @@ impl WebImageDialog {
                 }
                 cx.notify();
             }))
-            .child(preview.w(px(tw)).h(px(th)))
+            .child(super::animated_art::marked(preview.w(px(tw)).h(px(th)), image.animated))
             .children(size.map(|s| div().text_size(px(12.)).text_color(theme::text_dim()).child(s)))
     }
 }
@@ -381,6 +384,12 @@ impl Render for WebImageDialog {
                 kind_label
             )))
             .child(toolbar)
+            .when(self.kind == ArtKind::Hero, |d| {
+                let any = self.results.steamgrid.iter().any(|i| i.animated);
+                d.child(super::animated_art::hint("wi-animated", any, cx, |this: &mut Self, cx| {
+                    super::animated_art::turn_on(&this.app, cx)
+                }))
+            })
             .child(grid);
         if !self.error.is_empty() {
             body = body.child(

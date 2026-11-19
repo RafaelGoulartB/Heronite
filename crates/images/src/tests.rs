@@ -397,3 +397,54 @@ fn find_looks_in_subfolders_and_skips_missing() {
     let d = load_fit(&chain, 15, 15, &o).unwrap();
     assert_eq!((d.width, d.height), (15, 5));
 }
+
+#[test]
+fn a_video_loads_as_the_frame_its_reader_gives() {
+    fn red_frame(path: &std::path::Path) -> Option<Vec<u8>> {
+        assert!(path.extension().is_some_and(|e| e == "webm"), "called for the video only");
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(16, 9, image::Rgba([255, 0, 0, 255])).write_to(&mut out, image::ImageFormat::Png).ok()?;
+        Some(out.into_inner())
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let clip = dir.path().join("clip.webm");
+    // EBML header, then nothing a picture decoder could read.
+    std::fs::write(&clip, [0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]).unwrap();
+    let mut o = opts(dir.path());
+    o.thumbs_dir = None;
+    // No frame reader: a video is not a picture.
+    assert!(load_cover(&[ImageRef::File(clip.clone())], 8, 8, &o).is_err());
+    o.video_still = Some(red_frame);
+    let d = load_cover(&[ImageRef::File(clip.clone())], 8, 8, &o).unwrap();
+    assert_eq!((d.width, d.height), (8, 8));
+    assert!(d.bgra.chunks(4).all(|px| px == [0, 0, 255, 255]), "the red frame");
+
+    // A video from the web: its download, kept in the cache, gives the frame.
+    let url = "https://cdn2.steamgriddb.com/hero_thumb/a.webm";
+    let cached = cache_path(&o.images_cache_dir, url);
+    std::fs::create_dir_all(cached.parent().unwrap()).unwrap();
+    std::fs::copy(&clip, &cached).unwrap();
+    fn red_frame_of_any(path: &std::path::Path) -> Option<Vec<u8>> {
+        assert!(path.exists());
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(16, 9, image::Rgba([255, 0, 0, 255])).write_to(&mut out, image::ImageFormat::Png).ok()?;
+        Some(out.into_inner())
+    }
+    o.video_still = Some(red_frame_of_any);
+    let d = load_cover(&[ImageRef::Url(url.into())], 8, 8, &o).unwrap();
+    assert!(d.bgra.chunks(4).all(|px| px == [0, 0, 255, 255]), "the red frame of the downloaded video");
+    o.video_still = None;
+    assert!(load_cover(&[ImageRef::Url(url.into())], 8, 8, &o).is_err(), "no frame reader: not a picture");
+}
+
+#[test]
+fn a_video_frame_gets_the_backdrop_look() {
+    // A white frame: the roll-off brings its highlights down like a picture's.
+    let mut frame = Decoded { width: 32, height: 18, bgra: vec![255; 32 * 18 * 4] };
+    backdrop_frame_rolloff(&mut frame, 1.0);
+    let (knee, cap) = backdrop_knee_cap(1.0);
+    assert!(cap < 1. && knee < 1.);
+    assert!(frame.bgra.chunks(4).all(|px| px[0] < 255 && px[3] == 255), "highlights rolled off, still opaque");
+    let (w, h, s) = stage_frame_size(3428, 1402, 10.3, 640, &Opts::new(std::path::PathBuf::new(), None));
+    assert!(w <= 640 && h <= 262 && s < 0.19, "{w}x{h} at {s}");
+}

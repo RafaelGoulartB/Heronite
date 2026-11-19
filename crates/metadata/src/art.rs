@@ -12,7 +12,7 @@ use heronite_i18n::tr;
 
 use crate::http::Http;
 use crate::types::ArtKind;
-use crate::util::{folder_name, local_art_url, normalize_ext, now_ms, sniff_image_ext, ALLOWED_EXT};
+use crate::util::{art_ext_allowed, folder_name, local_art_url, normalize_ext, now_ms, sniff_image_ext};
 
 const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 const DOWNLOAD_UA: &str = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0";
@@ -145,7 +145,7 @@ pub fn set_collection_game_art(
     }
     .ok_or_else(|| anyhow!(tr!("Image not found: {path}", path = source_path)))?;
     let ext = normalize_ext(&resolved.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_default());
-    if !ALLOWED_EXT.contains(&ext.as_str()) {
+    if !art_ext_allowed(kind, &ext) {
         bail!(tr!("Unsupported image type: {kind}", kind = if ext.is_empty() { tr!("unknown") } else { &ext }));
     }
     if !resolved.exists() {
@@ -172,14 +172,16 @@ fn ext_from_url(url: &str, content_type: &str) -> String {
     url::Url::parse(url).ok().and_then(|u| Path::new(u.path()).extension().map(|e| normalize_ext(&e.to_string_lossy()))).unwrap_or_default()
 }
 
-fn download_image_bytes(http: &Http, url: &str) -> Result<(Vec<u8>, String)> {
+/// Downloads a picture for `kind` (a video too for the background: an
+/// animated one) and the extension its bytes say.
+fn download_image_bytes(http: &Http, url: &str, kind: ArtKind) -> Result<(Vec<u8>, String)> {
     if !(url.starts_with("http://") || url.starts_with("https://") || url.to_lowercase().starts_with("http")) {
         bail!(tr!("Image URL must be http(s)"));
     }
     let resp = http
         .get(url)
         .header("User-Agent", DOWNLOAD_UA)
-        .header("Accept", "image/avif,image/webp,image/png,image/jpeg,image/gif,*/*;q=0.8")
+        .header("Accept", "image/avif,image/webp,image/png,image/jpeg,image/gif,video/webm,video/mp4,*/*;q=0.8")
         .header("Referer", "https://duckduckgo.com/")
         .timeout_secs(25)
         .max_bytes(MAX_IMAGE_BYTES)
@@ -187,8 +189,16 @@ fn download_image_bytes(http: &Http, url: &str) -> Result<(Vec<u8>, String)> {
     if resp.status != 200 {
         bail!("HTTP {}", resp.status);
     }
-    let ext = sniff_image_ext(&resp.body, true).map(str::to_owned).unwrap_or_else(|| ext_from_url(url, &resp.content_type));
-    if ext.is_empty() || !ALLOWED_EXT.contains(&ext.as_str()) {
+    let video = heronite_images::animation::is_video(&resp.body).then(|| {
+        if resp.body.starts_with(&[0x1a, 0x45, 0xdf, 0xa3]) {
+            "webm"
+        } else {
+            "mp4"
+        }
+    });
+    let ext =
+        video.or_else(|| sniff_image_ext(&resp.body, true)).map(str::to_owned).unwrap_or_else(|| ext_from_url(url, &resp.content_type));
+    if ext.is_empty() || !art_ext_allowed(kind, &ext) {
         bail!(tr!("Unsupported image type: {kind}", kind = if ext.is_empty() { tr!("unknown") } else { &ext }));
     }
     if resp.body.len() < 32 {
@@ -210,7 +220,7 @@ pub fn set_collection_game_art_from_url(
 ) -> Result<CollectionGameArt> {
     let mut last: Option<anyhow::Error> = None;
     for url in [Some(image_url), thumb_url].into_iter().flatten().filter(|u| !u.is_empty()) {
-        match download_image_bytes(http, url) {
+        match download_image_bytes(http, url, kind) {
             Ok((bytes, ext)) => {
                 let dest = dest_file(paths, runner, app_name, kind, &ext)?;
                 fs::write(&dest, bytes)?;
@@ -359,6 +369,18 @@ mod tests {
         remove_all_collection_game_art(&paths, "sideload", "g").unwrap();
         assert!(json_store::read_value(&paths.art()).unwrap()["games"].get("sideload:g").is_none());
         assert_eq!(fs::read_dir(paths.art_dir().join("sideload_g")).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn a_video_can_be_a_background_but_not_a_cover() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("cfg"));
+        let clip = dir.path().join("clip.WebM");
+        fs::write(&clip, [0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0]).unwrap();
+        let art = set_collection_game_art(&paths, "sideload", "g", ArtKind::Hero, clip.to_str().unwrap()).unwrap();
+        assert!(art.hero_url.as_deref().is_some_and(|u| u.ends_with(".webm")), "{art:?}");
+        let e = set_collection_game_art(&paths, "sideload", "g", ArtKind::Cover, clip.to_str().unwrap()).unwrap_err();
+        assert_eq!(e.to_string(), "Unsupported image type: webm");
     }
 
     #[test]

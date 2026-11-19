@@ -12,6 +12,7 @@
 
 pub mod achievements;
 pub mod add_game;
+pub mod animated_art;
 pub mod art_images;
 pub mod batch_edit;
 pub mod client_settings;

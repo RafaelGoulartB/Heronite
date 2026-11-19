@@ -586,5 +586,14 @@
   "Whole cover": "Ganzes Cover",
   "Whole cover shows each cover in its own shape, never cut: console box art stays whole.": "Ganzes Cover zeigt jedes Cover in seiner eigenen Form, nie beschnitten: Konsolen-Boxcover bleiben vollständig.",
   "{real} with their own · {other} borrowed": "{real} mit eigenem Bild · {other} geliehen",
-  "Logos": "Logos"
+  "Logos": "Logos",
+  "Animated": "Animiert",
+  "Animated backgrounds": "Animierte Hintergründe",
+  "Animations are not on Full (Text and motion), so backgrounds stay still.": "Animationen stehen nicht auf Voll (Text und Bewegung), daher bleiben Hintergründe stehen.",
+  "Backgrounds can move: pick a video file of your own, or an animated one when there is one. Animated backgrounds are off.": "Hintergründe können sich bewegen: Wähle ein eigenes Video oder einen animierten, wenn es einen gibt. Animierte Hintergründe sind aus.",
+  "Backgrounds can move: those marked Animated, or a video file of your own. Animated backgrounds are off, so they show still.": "Hintergründe können sich bewegen: die als Animiert markierten oder ein eigenes Video. Animierte Hintergründe sind aus, daher stehen sie still.",
+  "Pictures marked Animated move behind the Collection. A video file of your own can too.": "Als Animiert markierte Bilder bewegen sich hinter der Sammlung. Ein eigenes Video ebenso.",
+  "Plays a background that is a video or an animated picture: your own picture, a game's background, or one marked Animated in Covers → Background. Off, it shows its first frame. Pauses while a game runs or Heronite is in the background.": "Spielt einen Hintergrund ab, der ein Video oder ein animiertes Bild ist: dein eigenes Bild, den Hintergrund eines Spiels oder einen als Animiert markierten unter Cover → Hintergrund. Aus zeigt er sein erstes Bild. Pausiert, solange ein Spiel läuft oder Heronite im Hintergrund ist.",
+  "Turn on": "Einschalten",
+  "ffmpeg, which plays them, was not found, so backgrounds stay still.": "ffmpeg, das sie abspielt, wurde nicht gefunden, daher bleiben Hintergründe stehen."
 }

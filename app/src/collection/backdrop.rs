@@ -12,8 +12,9 @@ use crate::theme;
 
 impl CollectionView {
     /// Current stage texture: the selected game's (the Home's picture with
-    /// none selected), or the previous one while it loads.
-    pub(super) fn stage_image(&mut self, window: &Window) -> Option<(SharedString, ImageSource)> {
+    /// none selected), or the previous one while it loads; a background
+    /// that moves while it plays (`live_stage.rs`).
+    pub(super) fn stage_image(&mut self, window: &Window, cx: &mut Context<Self>) -> Option<(SharedString, ImageSource)> {
         let picked = if !self.stage_enabled {
             None
         } else if let Some(key) = self.selected.clone() {
@@ -40,12 +41,17 @@ impl CollectionView {
         let rolloff = if theme::is_light() { 0. } else { self.rolloff };
         let id: SharedString = format!("s:{key}:{source}:{pw}x{ph}:{blur}:{sat}:{rolloff}").into();
         let empty = chain.is_empty();
+        let live_chain = chain.clone();
         let ready = self.images.get_or_request(&id, || chain, pw, ph, Variant::Backdrop { blur_px: blur, saturation: sat, rolloff }, 1000);
         if let Some(img) = ready {
             // The texture's id names the animation: a new picture fades in.
-            self.shown_stage = Some((id, img));
+            self.shown_stage = Some((id.clone(), img));
         } else if empty {
             self.shown_stage = None;
+        }
+        // A moving one fades in over its still first frame, and back.
+        if let Some(live) = self.live_stage(&id, &live_chain, (pw, ph), (blur, sat, rolloff), window, cx) {
+            return Some(live);
         }
         self.shown_stage.as_ref().map(|(k, img)| (k.clone(), ImageSource::Render(img.clone())))
     }

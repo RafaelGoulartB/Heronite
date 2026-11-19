@@ -86,6 +86,8 @@ pub struct State {
     /// The "Under the cover" and background picture selects are open.
     label_open: bool,
     picture_open: bool,
+    /// ffmpeg is there to play animated backgrounds (looked for when the page opens).
+    ffmpeg: bool,
     /// The "With no game selected" select is open.
     home_open: bool,
     /// The Collection background's finer sliders (blur, colour intensity,
@@ -199,12 +201,16 @@ impl State {
             preview: None,
             preview_task: None,
             preview_light: theme::is_light(),
-            opts: Opts::new(ctx.data_paths.images_cache_dir(), Some(ctx.app.thumbs_dir())),
+            opts: Opts {
+                video_still: Some(heronite_media::stills::video_still),
+                ..Opts::new(ctx.data_paths.images_cache_dir(), Some(ctx.app.thumbs_dir()))
+            },
             aspect_open: false,
             notice_watch: None,
             label_open: false,
             picture_open: false,
             home_open: false,
+            ffmpeg: heronite_media::stream::available(),
             more_background: false,
             profiles: None,
             profiles_task: None,
@@ -486,6 +492,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     if a.enabled {
         rows.push(look::picture_row(d, cx));
         rows.push(look::home_row(d, cx));
+        rows.push(look::animated_row(d, cx));
         let a = &d.appearance;
         let more = a.more_background;
         let mut extra = Vec::new();

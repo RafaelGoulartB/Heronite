@@ -246,6 +246,9 @@ pub struct Appearance {
     pub background_slideshow: bool,
     /// What shows behind the Collection while no game is selected.
     pub home_background: HomeBackground,
+    /// A background that is a video or an animated picture plays (off by
+    /// default: its first frame shows still). Only with Motion "Full".
+    pub animated_backgrounds: bool,
     pub motion: Motion,
     pub start_view: StartView,
     /// The Collection opens with the last game selected (else with none, on
@@ -293,6 +296,7 @@ impl Appearance {
         background: BackgroundSource::DEFAULT,
         background_slideshow: false,
         home_background: HomeBackground::DEFAULT,
+        animated_backgrounds: false,
         motion: Motion::DEFAULT,
         start_view: StartView::DEFAULT,
         open_with_game: true,
@@ -400,6 +404,7 @@ impl Appearance {
             background: name("background").and_then(BackgroundSource::parse).unwrap_or_default(),
             background_slideshow: flag("backgroundSlideshow", d.background_slideshow),
             home_background: name("homeBackground").and_then(HomeBackground::parse).unwrap_or_default(),
+            animated_backgrounds: flag("animatedBackgrounds", d.animated_backgrounds),
             motion: name("motion").and_then(Motion::parse).unwrap_or_default(),
             start_view: name("startView").and_then(StartView::parse).unwrap_or_default(),
             open_with_game: flag("openWithGame", d.open_with_game),
@@ -442,6 +447,7 @@ impl Appearance {
             "background": self.background.as_str(),
             "backgroundSlideshow": self.background_slideshow,
             "homeBackground": self.home_background.as_str(),
+            "animatedBackgrounds": self.animated_backgrounds,
             "motion": self.motion.as_str(),
             "startView": self.start_view.as_str(),
             "openWithGame": self.open_with_game,
@@ -565,6 +571,7 @@ mod tests {
             background: BackgroundSource::Screenshot,
             background_slideshow: true,
             home_background: HomeBackground::RandomScreenshot,
+            animated_backgrounds: true,
             motion: Motion::Reduced,
             start_view: StartView::Grid,
             open_with_game: false,
@@ -577,6 +584,8 @@ mod tests {
         let on_disk = json_store::read_value(&p.appearance()).unwrap();
         assert_eq!(on_disk["future"], json!([1]));
         assert_eq!(on_disk["interfaceMode"], "solid");
+        assert_eq!(on_disk["animatedBackgrounds"], true);
+        const { assert!(!Appearance::DEFAULT.animated_backgrounds, "off unless turned on") };
         assert_eq!(on_disk["interfaceSolidTint"], "midnight");
         assert_eq!(on_disk["interfaceSolidTintLight"], "frost");
         assert_eq!(on_disk["theme"], "system");

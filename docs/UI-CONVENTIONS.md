@@ -293,7 +293,19 @@ whole interface, on top of the screen's scale; "Follow the system" takes `GDK_DP
 text size (Wayland) or Windows' text size. Its slider applies when let go. A window choice like the layout: profiles
 keep it. **Picture** behind the Collection (`look::stage_source`: the game's art, one of its screenshots, its
 cover blurred, the Solid tint, or a picture copied to `AppPaths::custom_background()`), with a slideshow of the
-screenshots every 20 s. **Animations**: Full, Reduced (`theme::fades()` only: the stage cross-fade and covers fading
+screenshots every 20 s. **Animated backgrounds** (under the two pictures, off by default, `animatedBackgrounds`): a
+background that is a video (WebM, MP4, MKV, MOV; a game's background may be one, `heronite_metadata::util::VIDEO_EXT`)
+or an animated GIF, PNG or WebP (`heronite_images::animation`) plays behind the Collection (`collection/live_stage.rs`):
+ffmpeg (`heronite_media::stream`, `fill` + `looped`) at 24 fps into the still stage's small raster
+(`heronite_images::stage_frame_size`, at most 640 wide), with the still stage's blur and colour done by ffmpeg (`gblur`,
+`eq`) and only the roll-off on its reading thread (`backdrop_frame_rolloff`): about 6% of one core while it plays (35%
+with the blur on the frames). One slot, the newest frame drawn, as the trailers. It stops (its first frame
+shows) with Motion other than Full, while Heronite is not the active window, a game runs or a trailer plays, the stage
+is not drawn, or the window has not drawn for 1.5 s; a file ffmpeg cannot play stays still for the session. Off, or
+without ffmpeg, every video is drawn as its first frame wherever a picture is (`Opts::video_still` =
+`heronite_media::stills::video_still`, also for a WebM downloaded from the web). Under the switch a line says why one
+stays still (Motion not Full, ffmpeg not found). `HERONITE_DEBUG_LIVE_STAGE=1` plays it in an inactive window
+(captures). **Animations**: Full, Reduced (`theme::fades()` only: the stage cross-fade and covers fading
 in) or Off (`theme::animations()` is false; `HERONITE_NO_ANIMATIONS` forces Off). **Open the Collection in** (last
 used, Focus, Grid; applied once at start), **Reset widths** (`PageEvent::ResetPanelWidths`), **Game sections** (order
 and visibility of Screenshots, Overview, Details, Timeline, Related in `focus::body`; in two columns Details stays on
@@ -763,7 +775,7 @@ pictures source, has no row there), `change` (the same with "Change" open),
 plain `metadata` asks the sources for real, and `HERONITE_DEBUG_METADATA_CHANGE=<source id>` (with it) opens "Change" on
 that source with the real search.
 `HERONITE_DEBUG_DIALOG=covers[:<state>]` opens the selected game's "Covers" over made-up searches (pictures the
-Collection already has; nothing asked or written; `covers:live` searches for real, and `HERONITE_DEBUG_SGDB_STYLE=<style>`
+Collection already has; nothing asked or written; `covers:live[:<slot>]` searches for real, on that slot, and `HERONITE_DEBUG_SGDB_STYLE=<style>`
 opens it, or `webimage`, on that SteamGridDB style): no state opens on the family the desktop draws, `tall`, `square`,
 `wide`, `background` on that slot, `none` (nothing found), `busy` (searching), `saving` (a picture being
 downloaded), `error` (its download failed). `HERONITE_DEBUG_ASPECT_NOTICE=offer[:wide]|started[:wide]` shows the
@@ -812,7 +824,10 @@ picture", then "used on the desktop", "used in Console mode" or both ("kept, not
 family); the dot is green for a picture of its own, amber for a crop and grey for none. A family that is not kept reads
 "Not kept on this PC" with a grey dot and "Keep this shape" under it, which keeps it at once ("Saving…") and picks its
 slot. A click on a card picks the slot. Right: for the picked slot, "Square pictures found · 9 from 2 sources" (or
-"Backgrounds found") and a search field (the game's title; Enter searches), then, when more than one source found pictures, a pill per source with its mark and count after "All 90" (a click lists that source's pictures alone, without the one shown now; another slot lists all again), then, while SteamGridDB's pictures are listed and have two styles or more, "Style" and a pill per SteamGridDB style with its count after "All" (`dialogs/steamgrid_styles.rs`, the same row as Game settings → Search images has under "SteamGridDB": a click lists that style's pictures alone and counts SteamGridDB's pill with them, another slot lists every style again; SteamGridDB's animated pictures are never asked for, the app shows still pictures only), then the picture the slot shows now first,
+"Backgrounds found") and a search field (the game's title; Enter searches), then, when more than one source found pictures, a pill per source with its mark and count after "All 90" (a click lists that source's pictures alone, without the one shown now; another slot lists all again), then, while SteamGridDB's pictures are listed and have two styles or more, "Style" and a pill per SteamGridDB style with its count after "All" (`dialogs/steamgrid_styles.rs`, the same row as Game settings → Search images has under "SteamGridDB": a click lists that style's pictures alone and counts SteamGridDB's pill with them, another slot lists every style again; SteamGridDB's animated pictures are asked for the Background slot only: marked "Animated" on their tile
+(`dialogs/animated_art.rs`), they are their WebM preview, a few hundred KB, drawn still by its first frame; for the
+Background slot a line under the title and search field, as in Search images of a background, says backgrounds can move,
+with "Turn on" while Animated backgrounds is off), then the picture the slot shows now first,
 labelled "{source} · now" or "Cropped · now", and what SteamGridDB (first) and the web found for that shape, each with its
 source's mark, its name (LaunchBox: the region) and, dimmed under it, its resolution ("1024 × 1024"; the size the source gave, else read from the picture's first bytes, `art_images::PictureSizes`, and nothing while unknown; the picture shown now has it too), 15 at a time with "Load more"; a search already made is not asked again on the way
 back, "Searching…" shows while it runs, "No pictures found. Try another search." when nothing came, and a failure in red

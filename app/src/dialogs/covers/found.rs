@@ -17,6 +17,7 @@ use heronite_metadata::WebImage;
 
 use super::slots::{Look, Slot};
 use super::{Busy, CoversDialog};
+use crate::dialogs::animated_art;
 use crate::dialogs::art_images::first_address;
 use crate::dialogs::steamgrid_styles as styles;
 use crate::icons::Icon;
@@ -219,7 +220,7 @@ impl CoversDialog {
             .w(px(w + 12.))
             .cursor_pointer()
             .when(!selected, |d| d.hover(|s| s.border_color(theme::ink_a(0.3))))
-            .child(pic)
+            .child(animated_art::marked(pic, image.animated))
             .child(self.tile_label(Some(source), name, resolution))
             .on_click(cx.listener(move |this, ev: &ClickEvent, _, cx| {
                 if this.busy.is_some() {
@@ -338,7 +339,9 @@ impl CoversDialog {
         let total = found.len();
         // What a source gave no size of is read from the picture itself.
         if !self.loading && self.fake.is_none() {
-            let unsized_ = found.iter().take(self.visible).filter(|(_, (_, _, im))| resolution_label(im.width, im.height).is_none());
+            // An animated one is a WebM: no size in its first bytes.
+            let unsized_ =
+                found.iter().take(self.visible).filter(|(_, (_, _, im))| !im.animated && resolution_label(im.width, im.height).is_none());
             let urls: Vec<String> = unsized_.map(|(_, (_, _, im))| im.image_url.clone()).collect();
             self.sizes.update(cx, |s, cx| s.ask(urls, cx));
         }
@@ -379,6 +382,11 @@ impl CoversDialog {
         });
         let pills = self.source_pills(cx);
         let style_pills = self.style_pills(cx);
-        col.child(head).children(pills).children(style_pills).child(grid).children(error)
+        // Backgrounds can move: said where one is picked.
+        let animated = (self.slot == Slot::Background && !self.loading).then(|| {
+            let any = self.results.steamgrid.iter().any(|i| i.animated);
+            animated_art::hint("cv-animated", any, cx, |this: &mut Self, cx| animated_art::turn_on(&this.ctx.app, cx))
+        });
+        col.child(head).children(animated).children(pills).children(style_pills).child(grid).children(error)
     }
 }

@@ -208,6 +208,13 @@ pub(crate) fn trim_kept(app: &heronite_data::AppPaths, limit_mb: u32) {
     cache::trim(&root(app), u64::from(limit_mb) << 20, None);
 }
 
+impl CollectionView {
+    /// A trailer is playing (an animated background waits for it).
+    pub(super) fn media_playing(&self) -> bool {
+        self.media.player.as_ref().is_some_and(|p| p.stream.is_some())
+    }
+}
+
 fn shown() -> bool {
     crate::theme::appearance().sections.shown(Section::Media)
 }
@@ -679,6 +686,9 @@ impl CollectionView {
             fps: FPS,
             sound,
             volume,
+            fill: false,
+            looped: false,
+            filter: None,
         };
         p.stream = Some(Stream::start(spec, move |ev| match ev {
             StreamEvent::Frame(f) => {
