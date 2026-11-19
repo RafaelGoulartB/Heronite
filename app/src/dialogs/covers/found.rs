@@ -18,6 +18,7 @@ use heronite_metadata::WebImage;
 use super::slots::{Look, Slot};
 use super::{Busy, CoversDialog};
 use crate::dialogs::art_images::first_address;
+use crate::dialogs::steamgrid_styles as styles;
 use crate::icons::Icon;
 use crate::pages::settings::metadata_labels as labels;
 use crate::theme;
@@ -52,11 +53,13 @@ pub(super) struct Found<'a> {
 
 impl CoversDialog {
     /// Every picture found for the slot: the game's boxes from LaunchBox
-    /// first, then SteamGridDB's and the web's.
+    /// first, then SteamGridDB's (of the style picked) and the web's.
     pub(super) fn found(&self) -> Vec<Found<'_>> {
         let r = &self.results;
+        let style = self.style_shown();
         let launchbox = r.launchbox.iter().map(|c| Found { source: LAUNCHBOX, region: &c.region, image: &c.image });
-        let sgdb = r.steamgrid.iter().map(|image| Found { source: ids::STEAMGRIDDB, region: "", image });
+        let sgdb =
+            r.steamgrid.iter().filter(|i| styles::keeps(i, style)).map(|image| Found { source: ids::STEAMGRIDDB, region: "", image });
         let web = r.web.iter().map(|image| Found { source: ids::WEB_IMAGES, region: "", image });
         launchbox.chain(sgdb).chain(web).collect()
     }
@@ -64,7 +67,9 @@ impl CoversDialog {
     /// The sources that found pictures, in the grid's order, and how many each.
     pub(super) fn source_counts(&self) -> Vec<(&'static str, usize)> {
         let r = &self.results;
-        [(LAUNCHBOX, r.launchbox.len()), (ids::STEAMGRIDDB, r.steamgrid.len()), (ids::WEB_IMAGES, r.web.len())]
+        let style = self.style_shown();
+        let sgdb = r.steamgrid.iter().filter(|i| styles::keeps(i, style)).count();
+        [(LAUNCHBOX, r.launchbox.len()), (ids::STEAMGRIDDB, sgdb), (ids::WEB_IMAGES, r.web.len())]
             .into_iter()
             .filter(|(_, n)| *n > 0)
             .collect()
@@ -78,6 +83,29 @@ impl CoversDialog {
     /// find none there: then every source is).
     pub(super) fn source_shown(&self) -> Option<&'static str> {
         self.source.filter(|id| self.source_counts().iter().any(|(s, _)| s == id))
+    }
+
+    /// The SteamGridDB style picked, while its pictures have it.
+    pub(super) fn style_shown(&self) -> Option<&str> {
+        styles::shown(&self.results.steamgrid, self.style.as_deref())
+    }
+
+    /// Lists SteamGridDB's pictures of `style` alone (`None`: of every
+    /// style). What was picked is no longer: the list changed.
+    fn show_style(&mut self, style: Option<String>, cx: &mut Context<Self>) {
+        self.style = style;
+        self.visible = PAGE;
+        self.selected = None;
+        cx.notify();
+    }
+
+    /// SteamGridDB's style pills, while its pictures are listed and have two
+    /// styles or more.
+    fn style_pills(&self, cx: &mut Context<Self>) -> Option<Div> {
+        if self.loading || self.source_shown().is_some_and(|id| id != ids::STEAMGRIDDB) {
+            return None;
+        }
+        styles::row("cv-style", &self.results.steamgrid, self.style.as_deref(), cx, |this: &mut Self, style, cx| this.show_style(style, cx))
     }
 
     /// Lists the pictures of `source` alone (`None`: of every source). A
@@ -102,28 +130,7 @@ impl CoversDialog {
         }
         let shown = self.source_shown();
         let total: usize = counts.iter().map(|(_, n)| n).sum();
-        let pill = |id: SharedString, on: bool| {
-            div()
-                .id(id)
-                .flex()
-                .flex_none()
-                .items_center()
-                .gap(px(6.))
-                .px(px(10.))
-                .py(px(4.))
-                .rounded_full()
-                .border_1()
-                .text_size(px(12.))
-                .whitespace_nowrap()
-                .cursor_pointer()
-                .when(on, |d| d.bg(theme::accent_tint()).border_color(theme::accent_tint_border()).text_color(theme::text_primary()))
-                .when(!on, |d| {
-                    d.border_color(theme::ink_a(0.08))
-                        .text_color(theme::text_muted())
-                        .hover(|s| s.bg(theme::ink_a(0.06)).text_color(theme::text_bright()))
-                })
-        };
-        let count = |n: usize| div().text_color(theme::text_dim()).child(n.to_string());
+        let (pill, count) = (|id: SharedString, on: bool| styles::pill(id, on), styles::count);
         let mut row = div().flex().flex_wrap().items_center().gap(px(6.)).child(
             pill("cv-source-all".into(), shown.is_none())
                 .child(tr!("All"))
@@ -367,6 +374,7 @@ impl CoversDialog {
                 .child(self.error.clone())
         });
         let pills = self.source_pills(cx);
-        col.child(head).children(pills).child(grid).children(error)
+        let style_pills = self.style_pills(cx);
+        col.child(head).children(pills).children(style_pills).child(grid).children(error)
     }
 }

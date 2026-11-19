@@ -79,6 +79,9 @@ pub struct CoversDialog {
     selected: Option<usize>,
     /// The source whose pictures alone are listed; `None`: every source.
     source: Option<&'static str>,
+    /// The SteamGridDB style whose pictures alone are listed (of its
+    /// pictures); `None`: every style.
+    style: Option<String>,
     loading: bool,
     busy: Option<Busy>,
     error: String,
@@ -162,6 +165,8 @@ impl CoversDialog {
             visible: found::PAGE,
             selected: None,
             source: None,
+            // `HERONITE_DEBUG_SGDB_STYLE=<style>`: opens on that SteamGridDB style (captures).
+            style: crate::env::value("HERONITE_DEBUG_SGDB_STYLE"),
             loading: false,
             busy: None,
             error: String::new(),

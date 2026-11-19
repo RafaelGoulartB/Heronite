@@ -44,7 +44,7 @@ impl Fake {
         let image = |i: usize, big: bool| {
             let url = self.thumbs[i % self.thumbs.len()].clone();
             let (w, h) = if big { (w, h) } else { (w / 2, h / 2) };
-            WebImage { image_url: url.clone(), thumb_url: url, width: w, height: h }
+            WebImage { image_url: url.clone(), thumb_url: url, width: w, height: h, style: String::new() }
         };
         let launchbox = ["North America", "Europe", "Japan"]
             .iter()

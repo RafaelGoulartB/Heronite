@@ -647,7 +647,7 @@ pub fn steamgrid_pictures(http: &Http, api_key: &str, game_id: i64, kinds: &[Art
     }
 }
 
-/// The `data` of a grids/heroes answer: `url`, `thumb`, `width`, `height`.
+/// The `data` of a grids/heroes answer: `url`, `thumb`, `width`, `height`, `style`.
 fn parse_steamgrid_images(body: &Value) -> Vec<WebImage> {
     let size = |v: &Value, key: &str| v.get(key).and_then(Value::as_u64).map_or(0, |n| n.min(u32::MAX as u64) as u32);
     body.get("data")
@@ -657,7 +657,8 @@ fn parse_steamgrid_images(body: &Value) -> Vec<WebImage> {
         .filter_map(|img| {
             let image_url = img.get("url").and_then(Value::as_str).filter(|u| u.starts_with("http"))?.to_owned();
             let thumb_url = img.get("thumb").and_then(Value::as_str).filter(|u| u.starts_with("http")).unwrap_or(&image_url).to_owned();
-            Some(WebImage { image_url, thumb_url, width: size(img, "width"), height: size(img, "height") })
+            let style = img.get("style").and_then(Value::as_str).unwrap_or_default().to_owned();
+            Some(WebImage { image_url, thumb_url, width: size(img, "width"), height: size(img, "height"), style })
         })
         .collect()
 }
@@ -816,6 +817,13 @@ mod tests {
 
     fn fixture(name: &str) -> Value {
         serde_json::from_str(&std::fs::read_to_string(format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn steamgriddb_pictures_keep_their_style() {
+        let images = parse_steamgrid_images(&fixture("sgdb_grids_square.json"));
+        let styles: Vec<&str> = images.iter().map(|i| i.style.as_str()).collect();
+        assert_eq!(styles, ["alternate", "material"]);
     }
 
     #[test]
