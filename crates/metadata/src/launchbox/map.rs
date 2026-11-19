@@ -197,7 +197,7 @@ pub fn choices(
             let (width, height) = size(img).unwrap_or((0, 0));
             let off_shape = kind.family().is_some_and(|f| width == 0 || family_of(width, height) != f);
             let url = image_url(images_base, &img.file);
-            let image = WebImage { thumb_url: url.clone(), image_url: url, width, height };
+            let image = WebImage { thumb_url: url.clone(), image_url: url, width, height, style: String::new() };
             (off_shape, rank(img), img.kind, RegionImage { region: img.region.clone(), image })
         })
         .collect();

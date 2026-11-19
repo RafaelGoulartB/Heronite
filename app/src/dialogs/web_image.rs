@@ -16,6 +16,7 @@ use heronite_metadata::{ArtImages, ArtKind, MetadataApplyArgs, MetadataService, 
 
 use super::art_images::{logo_picture, picture, DialogImages};
 use super::metadata_wizard::hub;
+use super::steamgrid_styles;
 use super::DialogCtx;
 use crate::icons::Icon;
 use crate::theme;
@@ -66,6 +67,8 @@ pub struct WebImageDialog {
     results: ArtImages,
     /// Images listed in each section before its "Load more".
     visible_steamgrid: usize,
+    /// The SteamGridDB style whose images alone are listed; `None`: every style.
+    style: Option<String>,
     visible_web: usize,
     selected: Option<(Source, usize)>,
     loading: bool,
@@ -116,6 +119,8 @@ impl WebImageDialog {
             transparent: kind == ArtKind::Logo,
             results: ArtImages::default(),
             visible_steamgrid: STEAMGRID_PAGE,
+            // `HERONITE_DEBUG_SGDB_STYLE=<style>`: opens on that SteamGridDB style (captures).
+            style: crate::env::value("HERONITE_DEBUG_SGDB_STYLE"),
             visible_web: PAGE_SIZE,
             selected: None,
             loading: false,
@@ -172,15 +177,29 @@ impl WebImageDialog {
         cx.notify();
     }
 
-    fn images(&self, from: Source) -> &[WebImage] {
+    /// A section's images: SteamGridDB's of the style picked, the web's.
+    fn images(&self, from: Source) -> Vec<&WebImage> {
         match from {
-            Source::SteamGrid => &self.results.steamgrid,
-            Source::Web => &self.results.web,
+            Source::SteamGrid => {
+                let style = steamgrid_styles::shown(&self.results.steamgrid, self.style.as_deref());
+                self.results.steamgrid.iter().filter(|i| steamgrid_styles::keeps(i, style)).collect()
+            }
+            Source::Web => self.results.web.iter().collect(),
         }
     }
 
+    /// Lists SteamGridDB's images of `style` alone (`None`: of every style).
+    fn show_style(&mut self, style: Option<String>, cx: &mut Context<Self>) {
+        self.style = style;
+        self.visible_steamgrid = STEAMGRID_PAGE;
+        if self.selected.is_some_and(|(from, _)| from == Source::SteamGrid) {
+            self.selected = None;
+        }
+        cx.notify();
+    }
+
     fn confirm(&mut self, pick: Option<(Source, usize)>, cx: &mut Context<Self>) {
-        let Some(image) = pick.or(self.selected).and_then(|(from, i)| self.images(from).get(i)).cloned() else { return };
+        let Some(image) = pick.or(self.selected).and_then(|(from, i)| self.images(from).get(i).copied().cloned()) else { return };
         if self.saving {
             return;
         }
@@ -225,6 +244,14 @@ impl WebImageDialog {
         for i in 0..total.min(visible) {
             tiles = tiles.child(self.tile(from, i, tw, th, cx));
         }
+        let styles = (from == Source::SteamGrid)
+            .then(|| {
+                steamgrid_styles::row("wi-style", &self.results.steamgrid, self.style.as_deref(), cx, |this: &mut Self, style, cx| {
+                    this.show_style(style, cx)
+                })
+            })
+            .flatten()
+            .map(|row| row.pb(px(10.)));
         let more = (visible < total).then(|| {
             div().flex().justify_center().pt(px(10.)).child(
                 button(SharedString::from(format!("wi-more-{}", from.id())), ButtonKind::Glass, tr!("Load more")).min_w(px(192.)).on_click(
@@ -238,7 +265,16 @@ impl WebImageDialog {
                 ),
             )
         });
-        Some(div().flex().flex_col().pb(px(8.)).when(titled, |d| d.child(caption(title).mt(px(4.)))).child(tiles).children(more))
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .pb(px(8.))
+                .when(titled, |d| d.child(caption(title).mt(px(4.))))
+                .children(styles)
+                .child(tiles)
+                .children(more),
+        )
     }
 
     fn tile(&mut self, from: Source, i: usize, tw: f32, th: f32, cx: &mut Context<Self>) -> Stateful<Div> {
