@@ -571,7 +571,7 @@
   "Download the database ({size})": "Baixar o banco de dados ({size})",
   "Nothing is downloaded before you ask. The database stays on this PC and is refreshed {every} while this source is on.": "Nada é baixado antes de você pedir. O banco de dados fica neste PC e é atualizado {every} enquanto esta fonte estiver ativada.",
   "The last download failed: {error}": "O último download falhou: {error}",
-  "The box art RetroArch uses (thumbnails.libretro.com), found by each game's dump file name on its platform. No key or account. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Heronite is not affiliated with libretro.": "As capas que o RetroArch usa (thumbnails.libretro.com), encontradas pelo nome de arquivo do dump de cada jogo na sua plataforma. Sem chave nem conta. Cada capa mantém seu formato: caixas em paisagem preenchem a capa panorâmica e as caixas de CD a quadrada. O Heronite não tem vínculo com a libretro.",
+  "The box art RetroArch uses (thumbnails.libretro.com), found by each game's dump file name on its platform, and the logo beside it when the platform has logos. No key or account. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Heronite is not affiliated with libretro.": "As capas que o RetroArch usa (thumbnails.libretro.com), encontradas pelo nome de arquivo do dump de cada jogo na sua plataforma, e o logo ao lado delas quando a plataforma tem logos. Sem chave nem conta. Cada capa mantém seu formato: caixas em paisagem preenchem a capa panorâmica e as caixas de CD a quadrada. O Heronite não tem vínculo com a libretro.",
   "Could not be loaded": "Não foi possível carregar",
   "Stopped after errors": "Parada após erros",
   "Same as the background": "Igual ao plano de fundo",
@@ -585,5 +585,6 @@
   "Crop": "Cortar",
   "Whole cover": "Capa inteira",
   "Whole cover shows each cover in its own shape, never cut: console box art stays whole.": "Capa inteira mostra cada capa no seu próprio formato, sem cortes: as caixas de jogos de console aparecem inteiras.",
-  "{real} with their own · {other} borrowed": "{real} com imagem própria · {other} emprestadas"
+  "{real} with their own · {other} borrowed": "{real} com imagem própria · {other} emprestadas",
+  "Logos": "Logos"
 }

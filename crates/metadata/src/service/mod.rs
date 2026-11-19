@@ -325,13 +325,13 @@ impl MetadataService {
     }
 
     /// The art picker's image search: SteamGridDB's art when it is on and an
-    /// API key is set (not for transparent images, which it does not have)
-    /// and the web's (when on), apart. A failing SteamGridDB only leaves its part empty; the web's
+    /// API key is set (not for transparent images, which it does not have,
+    /// but for its logos) and the web's (when on), apart. A failing SteamGridDB only leaves its part empty; the web's
     /// results leave out the images SteamGridDB already gave. `kind` names
     /// the cover family ([`ArtKind::cover`]): SteamGridDB gives grids of
     /// that shape and the web search favours it.
     pub fn search_art_images(&self, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
-        let key = if transparent { None } else { covers::steamgrid_key_if_on(&self.paths) };
+        let key = if transparent && kind != ArtKind::Logo { None } else { covers::steamgrid_key_if_on(&self.paths) };
         let title = web_images::title_of_query(query);
         let (sgdb, web) = std::thread::scope(|s| {
             let sgdb = s.spawn(|| match key.as_deref() {

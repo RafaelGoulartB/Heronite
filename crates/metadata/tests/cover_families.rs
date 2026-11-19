@@ -40,6 +40,7 @@ fn sgdb(req: &Req, base: &str) -> Resp {
                 fixture("sgdb_grids_tall.json")
             }
         }
+        p if p.starts_with("/logos/game/") => fixture("sgdb_logos.json"),
         _ => return Resp::raw_json(r#"{"success":false,"errors":["Game not found"]}"#.into()),
     };
     Resp::raw_json(body.replace("https://cdn2.steamgriddb.com", &format!("{base}/img")))
@@ -185,12 +186,15 @@ fn steamgriddb_and_steam_give_covers_by_family() {
 }
 
 #[test]
-fn a_fetch_with_the_defaults_never_asks_steamgriddb() {
+fn a_fetch_with_the_defaults_asks_steamgriddb_for_the_logo_only() {
     let s = setup(&[]);
     let done = s.svc.run_bulk_metadata(&BulkArgs::fill_missing(vec![portal(), plain()]), &|_| {});
     assert!(done.results.iter().any(|r| r.outcome == GameOutcome::Updated));
-    assert_eq!(sgdb_requests(&s.server), 0);
+    assert!(sgdb_requests(&s.server) > 0);
+    assert_eq!(s.server.count(|r| r.path().starts_with("/sgdb/api/v2/grids/") || r.path().starts_with("/sgdb/api/v2/heroes/")), 0);
     let md = get(&s.svc, "steam_620");
+    assert_eq!(md.field_sources["logo"], "steamgriddb");
+    assert!(md.logo_url.is_some());
     assert!(md.cover_square_url.is_none() && md.cover_wide_url.is_none());
     assert!(!md.field_sources.contains_key("coverWide"));
     assert_eq!(md.field_sources["cover"], "igdb", "the tall cover as before");
@@ -359,10 +363,10 @@ fn removing_a_game_deletes_its_family_files() {
     }
     let fetched = s.paths.metadata_art_dir().join("sideload_plain");
     fs::create_dir_all(&fetched).unwrap();
-    for name in ["cover.png", "cover-square.png", "cover-wide.png"] {
+    for name in ["cover.png", "cover-square.png", "cover-wide.png", "logo.png"] {
         fs::write(fetched.join(name), png()).unwrap();
     }
-    assert_eq!(fs::read_dir(s.paths.art_dir().join("sideload_plain")).unwrap().count(), 4);
+    assert_eq!(fs::read_dir(s.paths.art_dir().join("sideload_plain")).unwrap().count(), ArtKind::ALL.len());
     heronite_metadata::remove::remove_collection_game(&s.paths, &heronite_metadata::remove::ShortcutDirs::none(), "plain", "sideload")
         .unwrap();
     assert_eq!(fs::read_dir(s.paths.art_dir().join("sideload_plain")).unwrap().count(), 0);
@@ -385,14 +389,14 @@ fn a_game_only_steamgriddb_finds_counts_as_found_by_no_source() {
     assert!(saved.description.is_none() && !saved.field_sources.contains_key("description"));
     assert_eq!(s.svc.bulk_counts(std::slice::from_ref(&elsewhere)).unwrap().failed_last_time, 1, "failed last time, tried again in a week");
 
-    // A job asking for everything: marked the same way, and the picture is
-    // what changed.
+    // A job asking for everything: marked the same way, and the pictures
+    // are what changed.
     let s = setup(&["square"]);
     let done = s.svc.run_bulk_metadata(&BulkArgs::fill_missing(vec![elsewhere.clone()]), &|_| {});
     assert_eq!(done.results[0].outcome, GameOutcome::Updated);
     assert_eq!(
         done.results[0].changes.iter().map(|c| (c.field.as_str(), c.source.as_str())).collect::<Vec<_>>(),
-        [("coverSquare", "steamgriddb")]
+        [("logo", "steamgriddb"), ("coverSquare", "steamgriddb")]
     );
     let md = get(&s.svc, "elsewhere");
     assert_eq!(md.fetch_error.as_deref(), Some("No metadata sources returned data"));

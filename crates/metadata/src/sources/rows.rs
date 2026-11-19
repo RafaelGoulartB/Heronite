@@ -287,7 +287,7 @@ mod tests {
         assert!(libretro.options.is_empty() && libretro.download.is_none() && !libretro.can_test && !libretro.reorderable);
         assert_eq!(
             libretro.fields.iter().map(|f| f.field.as_str()).collect::<Vec<_>>(),
-            ["cover", "coverSquare", "coverWide", STORE_MEDIA]
+            ["cover", "coverSquare", "coverWide", "logo", STORE_MEDIA]
         );
         // A pictures source's covers are not switched per field; its Store media are.
         assert_eq!(libretro.fields.iter().filter(|f| f.switchable).map(|f| f.field.as_str()).collect::<Vec<_>>(), [STORE_MEDIA]);

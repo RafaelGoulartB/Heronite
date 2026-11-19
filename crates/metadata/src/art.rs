@@ -62,13 +62,18 @@ fn remove_managed(paths: &DataPaths, url: Option<&str>) {
     }
 }
 
-/// `hydrate`: keeps only art whose file exists, with normalized URLs.
+/// `hydrate`: keeps only art whose file exists, with normalized URLs. A
+/// logo written by hand as a web address or a path stays as it is
+/// (`heronite_data::console_art` reads those too).
 fn hydrate(paths: &DataPaths, art: Option<&CollectionGameArt>) -> CollectionGameArt {
     let mut next = CollectionGameArt::default();
     let Some(art) = art else { return next };
     for kind in ArtKind::ALL {
-        if let Some(p) = file_from_url(paths, kind.of_art(art)).filter(|p| p.exists()) {
+        let value = kind.of_art(art).filter(|v| !v.is_empty());
+        if let Some(p) = file_from_url(paths, value).filter(|p| p.exists()) {
             *kind.of_art_mut(&mut next) = Some(display_url(paths, &p));
+        } else if let Some(v) = value.filter(|v| kind == ArtKind::Logo && !v.starts_with("localart:") && !v.starts_with("file:")) {
+            *kind.of_art_mut(&mut next) = Some(v.to_owned());
         }
     }
     next
@@ -290,6 +295,31 @@ mod tests {
         assert_eq!(raw["games"]["sideload:other"], json!({"heroUrl": "x"}));
         let left: Vec<_> = fs::read_dir(paths.art_dir().join("sideload_steam_9")).unwrap().collect();
         assert!(left.is_empty());
+    }
+
+    #[test]
+    fn a_logo_has_its_own_slot_and_one_written_by_hand_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("cfg"));
+        fs::create_dir_all(paths.local_library()).unwrap();
+        fs::write(paths.art(), r#"{"games": {"sideload:g": {"logoUrl": "https://example.org/logo.png"}}}"#).unwrap();
+        let src = dir.path().join("pic.png");
+        fs::write(&src, png()).unwrap();
+
+        // Another picture of the game keeps the logo set by hand.
+        let art = set_collection_game_art(&paths, "sideload", "g", ArtKind::Cover, src.to_str().unwrap()).unwrap();
+        assert_eq!(art.logo_url.as_deref(), Some("https://example.org/logo.png"));
+        let raw = json_store::read_value(&paths.art()).unwrap();
+        assert_eq!(raw["games"]["sideload:g"]["logoUrl"], "https://example.org/logo.png");
+
+        let art = set_collection_game_art(&paths, "sideload", "g", ArtKind::Logo, src.to_str().unwrap()).unwrap();
+        let url = art.logo_url.clone().unwrap();
+        assert!(url.starts_with("localart://art/sideload_g/logo-"), "{url}");
+        let file = paths.resolve_localart(&url, None).unwrap();
+        assert!(file.exists());
+        let art = clear_collection_game_art(&paths, "sideload", "g", ArtKind::Logo).unwrap();
+        assert!(art.logo_url.is_none() && art.cover_url.is_some());
+        assert!(!file.exists(), "its file goes with it");
     }
 
     #[test]

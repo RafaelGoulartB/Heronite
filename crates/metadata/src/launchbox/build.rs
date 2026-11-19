@@ -201,10 +201,10 @@ impl Writer<'_> {
             return Ok(());
         }
         let region = r.text("Region").unwrap_or("");
-        // Box fronts: one per region; screenshots: the first few of any
-        // region; the others: one per game.
+        // Box fronts and logos: one per region; screenshots: the first few
+        // of any region; the others: one per game.
         let slot = match kind {
-            ImageKind::BoxFront | ImageKind::BoxFrontReconstructed => region.to_owned(),
+            ImageKind::BoxFront | ImageKind::BoxFrontReconstructed | ImageKind::ClearLogo => region.to_owned(),
             ImageKind::Background | ImageKind::Square => String::new(),
             ImageKind::Screenshot => {
                 let count = self.screenshots.entry(game).or_default();

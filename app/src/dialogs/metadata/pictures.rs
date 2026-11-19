@@ -74,6 +74,10 @@ fn whole_badge(family: CoverFamily) -> &'static str {
 }
 
 fn fit(field: &str, (w, h): (u32, u32)) -> Fit {
+    // A logo is drawn whole, whatever its shape.
+    if field == "logo" {
+        return Fit::Own;
+    }
     match family_of(w, h) {
         f if f == shape_of(field) => Fit::Own,
         f => Fit::Cropped(f),
@@ -81,7 +85,10 @@ fn fit(field: &str, (w, h): (u32, u32)) -> Fit {
 }
 
 fn low_resolution(field: &str, (w, h): (u32, u32)) -> bool {
-    if field == "hero" {
+    if field == "logo" {
+        // Drawn small, and often wide and short.
+        w < LOW_COVER
+    } else if field == "hero" {
         w < LOW_BACKGROUND
     } else {
         w.min(h) < LOW_COVER
@@ -123,7 +130,7 @@ impl MetadataDialog {
     pub(super) fn read_sizes(&mut self, cx: &mut Context<Self>) {
         let Some(p) = &self.preview else { return };
         let mut urls: Vec<String> = Vec::new();
-        for field in ["cover", "coverSquare", "coverWide", "hero"] {
+        for field in ["cover", "coverSquare", "coverWide", "hero", "logo"] {
             let values = p.candidates.iter().map(|c| super::format_value(Some(&c.metadata), field));
             for url in values.chain(std::iter::once(super::format_value(p.current.as_ref(), field))) {
                 if !url.is_empty() && !self.sizes.contains_key(&url) && !urls.contains(&url) {
@@ -178,7 +185,7 @@ impl MetadataDialog {
     fn picture_tile(&mut self, field: &'static str, choice: &Choice, picked: bool, frozen: bool, cx: &mut Context<Self>) -> Stateful<Div> {
         let (w, h) = tile_size(field);
         let url = self.value_of(field, &choice.pick);
-        let pic = self.thumb(&url, w, h, cx);
+        let pic = if field == "logo" { self.logo_thumb(&url, w, h, cx) } else { self.thumb(&url, w, h, cx) };
         let off = self.size_of(&url).is_some_and(|s| (fit(field, s) != Fit::Own && !self.shown_whole(field)) || low_resolution(field, s));
         let source = choice.pick.clone();
         let (hover_field, hover_source) = (field, source.clone());
@@ -267,10 +274,13 @@ impl MetadataDialog {
             }
         }
         if self.custom_art(field) {
+            let (text, tip) = if field == "logo" {
+                (tr!("Set in Images"), tr!("Your logo from Images is shown instead"))
+            } else {
+                (tr!("Set in Covers"), tr!("Your picture from Covers is shown instead"))
+            };
             badges = badges.child(
-                badge(tr!("Set in Covers").to_string(), Tone::Info)
-                    .id(SharedString::from(format!("md-custom-{field}")))
-                    .tooltip(crate::ui::tooltip(tr!("Your picture from Covers is shown instead"))),
+                badge(text.to_string(), Tone::Info).id(SharedString::from(format!("md-custom-{field}"))).tooltip(crate::ui::tooltip(tip)),
             );
         }
         let size_text = match (size, self.sizes.contains_key(&url)) {

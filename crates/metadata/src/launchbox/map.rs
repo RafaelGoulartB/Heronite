@@ -161,17 +161,20 @@ pub fn record(
     let shaped = |family: CoverFamily| front.filter(|_| box_family == Some(family)).map(url);
     md.cover_square_url = shaped(CoverFamily::Square).or_else(|| pick(&game.images, &[ImageKind::Square], regions).map(url));
     md.cover_wide_url = shaped(CoverFamily::Wide);
+    md.logo_url = pick(&game.images, &[ImageKind::ClearLogo], regions).map(url);
     md
 }
 
 /// The pictures of `game` the Covers dialog offers for a picture of
 /// `kind`: every region's box art for a cover (and LaunchBox's square art
-/// for the square one), the backgrounds for a background.
+/// for the square one), the backgrounds for a background, the logos for a
+/// logo.
 pub fn pictures_for(game: &LbGame, kind: ArtKind) -> Vec<&LbImage> {
     let kinds: &[ImageKind] = match kind {
         ArtKind::Hero => &[ImageKind::Background],
         ArtKind::CoverSquare => &[ImageKind::BoxFront, ImageKind::BoxFrontReconstructed, ImageKind::Square],
         ArtKind::Cover | ArtKind::CoverWide => &[ImageKind::BoxFront, ImageKind::BoxFrontReconstructed],
+        ArtKind::Logo => &[ImageKind::ClearLogo],
     };
     game.images.iter().filter(|i| kinds.contains(&i.kind)).collect()
 }

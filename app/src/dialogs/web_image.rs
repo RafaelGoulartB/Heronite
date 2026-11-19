@@ -1,6 +1,6 @@
 //! `CollectionWebImageDialog`: search images (SteamGridDB with an API key,
-//! then the web: DuckDuckGo, Bing, Google) and use one as the game's cover or
-//! background.
+//! then the web: DuckDuckGo, Bing, Google) and use one as the game's cover,
+//! background or logo.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -14,7 +14,7 @@ use heronite_i18n::tr;
 use heronite_images::ImageRef;
 use heronite_metadata::{ArtImages, ArtKind, MetadataService, WebImage};
 
-use super::art_images::{picture, DialogImages};
+use super::art_images::{logo_picture, picture, DialogImages};
 use super::metadata_wizard::hub;
 use super::DialogCtx;
 use crate::icons::Icon;
@@ -74,7 +74,11 @@ impl EventEmitter<ArtEvent> for WebImageDialog {}
 
 pub fn default_query(title: &str, kind: ArtKind) -> String {
     let name = title.split_whitespace().collect::<Vec<_>>().join(" ");
-    let suffix = if kind == ArtKind::Hero { "wallpaper" } else { "cover" };
+    let suffix = match kind {
+        ArtKind::Hero => "wallpaper",
+        ArtKind::Logo => "logo",
+        _ => "cover",
+    };
     if name.is_empty() {
         suffix.to_string()
     } else {
@@ -102,7 +106,8 @@ impl WebImageDialog {
             runner,
             kind,
             query,
-            transparent: false,
+            // A logo is a picture with nothing around the title.
+            transparent: kind == ArtKind::Logo,
             results: ArtImages::default(),
             visible_steamgrid: STEAMGRID_PAGE,
             visible_web: PAGE_SIZE,
@@ -227,7 +232,10 @@ impl WebImageDialog {
         let image = self.images(from)[i].clone();
         let selected = self.selected == Some((from, i));
         let chain = vec![ImageRef::Url(image.thumb_url.clone())];
-        let src = self.images.update(cx, |im, _| im.get(&format!("wi:{}", image.thumb_url), chain, tw, th));
+        let id = format!("wi:{}", image.thumb_url);
+        let logo = self.kind == ArtKind::Logo;
+        let src = self.images.update(cx, |im, _| if logo { im.get_logo(&id, chain, tw, th) } else { im.get(&id, chain, tw, th) });
+        let preview = if logo { logo_picture(src) } else { picture(src) };
         let size = (image.width > 0 && image.height > 0).then(|| format!("{}\u{d7}{}px", image.width, image.height));
         div()
             .id(SharedString::from(format!("wi-item-{}-{i}", from.id())))
@@ -249,7 +257,7 @@ impl WebImageDialog {
                 }
                 cx.notify();
             }))
-            .child(picture(src).w(px(tw)).h(px(th)))
+            .child(preview.w(px(tw)).h(px(th)))
             .children(size.map(|s| div().text_size(px(12.)).text_color(theme::text_dim()).child(s)))
     }
 }
@@ -257,12 +265,16 @@ impl WebImageDialog {
 impl Render for WebImageDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.images.update(cx, |im, _| im.frame(window));
-        let kind_label = if self.kind == ArtKind::Hero { tr!("Background") } else { tr!("Cover") };
+        let kind_label = match self.kind {
+            ArtKind::Hero => tr!("Background"),
+            ArtKind::Logo => tr!("Logo"),
+            _ => tr!("Cover"),
+        };
         // Thumbnails in the shape of what is picked.
         let (tw, th) = match self.kind {
             ArtKind::Cover => (120., 180.),
             ArtKind::CoverSquare => (150., 150.),
-            ArtKind::CoverWide | ArtKind::Hero => (240., 90.),
+            ArtKind::CoverWide | ArtKind::Hero | ArtKind::Logo => (240., 90.),
         };
 
         let toolbar = div()
