@@ -284,10 +284,7 @@ fn env_logger_init() {
     }
     impl log::Log for L {
         fn enabled(&self, m: &log::Metadata) -> bool {
-            // Our crates at the chosen level, third-party crates at warn
-            // (zbus/wgpu/naga are very chatty at info/debug).
-            let ours = m.target().starts_with("heronite");
-            m.level() <= if ours { self.level } else { self.level.min(log::LevelFilter::Warn) }
+            log_enabled(m.target(), m.level(), self.level)
         }
         fn log(&self, r: &log::Record) {
             if !self.enabled(r.metadata()) {
@@ -334,4 +331,30 @@ fn env_logger_init() {
         log::error!(target: "heronite_app", "panic: {info}");
         default_hook(info);
     }));
+}
+
+/// Whether a record is logged: our crates at the chosen `level`, third-party
+/// crates at warn (zbus/wgpu/naga are very chatty at info/debug). GPUI's
+/// renderer is the exception: at info it only lists the GPUs it found and the
+/// one it picked, once per GPU context, which is what a report of a slow
+/// interface needs.
+fn log_enabled(target: &str, record: log::Level, level: log::LevelFilter) -> bool {
+    let ours = target.starts_with("heronite") || target.starts_with("gpui_wgpu::wgpu_context");
+    record <= if ours { level } else { level.min(log::LevelFilter::Warn) }
+}
+
+#[cfg(test)]
+mod log_filter_tests {
+    use super::log_enabled;
+    use log::{Level, LevelFilter};
+
+    #[test]
+    fn gpu_choice_is_logged_but_other_crates_stay_at_warn() {
+        assert!(log_enabled("gpui_wgpu::wgpu_context", Level::Info, LevelFilter::Info));
+        assert!(!log_enabled("gpui_wgpu::wgpu_context", Level::Debug, LevelFilter::Info));
+        assert!(!log_enabled("gpui_wgpu::wgpu_renderer", Level::Info, LevelFilter::Info));
+        assert!(!log_enabled("wgpu_core::device", Level::Info, LevelFilter::Info));
+        assert!(log_enabled("wgpu_core::device", Level::Warn, LevelFilter::Info));
+        assert!(log_enabled("heronite_app", Level::Info, LevelFilter::Info));
+    }
 }
