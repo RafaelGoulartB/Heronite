@@ -753,10 +753,18 @@ fn a_game_s_art_search_takes_its_steamgriddb_match_then_its_steam_id_then_the_ti
     let other = web_images_query("Portal");
     assert_eq!(first(svc.search_game_images(&game, &other, ArtKind::Cover, false).unwrap()), "https://cdn2.steamgriddb.com/grid/of-1.png");
 
-    // The SteamGridDB game the record was matched with comes first.
-    let mut md = heronite_metadata::util::blank_metadata("portal2", "sideload");
-    record::set_source_match(&mut md, "steamgriddb", SourceMatch { id: "5245".into(), ..Default::default() }, None);
-    heronite_metadata::store::upsert_game_metadata(&paths, md).unwrap();
+    // A SteamGridDB game the record only guessed by its title: the Steam id beats it.
+    let matched = |by: MatchedBy| {
+        let mut md = heronite_metadata::util::blank_metadata("portal2", "sideload");
+        let m = SourceMatch { id: "5245".into(), matched_by: Some(by), ..Default::default() };
+        record::set_source_match(&mut md, "steamgriddb", m, None);
+        heronite_metadata::store::upsert_game_metadata(&paths, md).unwrap();
+    };
+    matched(MatchedBy::FuzzyTitle);
+    assert_eq!(first(svc.search_game_images(&game, &q, ArtKind::Cover, false).unwrap()), "https://cdn2.steamgriddb.com/grid/of-2254.png");
+
+    // The SteamGridDB game the record was surely matched with comes first.
+    matched(MatchedBy::ExactTitle);
     let steam_asked = server.count(|r| r.path() == "/sgdb/api/v2/games/steam/620");
     assert_eq!(first(svc.search_game_images(&game, &q, ArtKind::Cover, false).unwrap()), "https://cdn2.steamgriddb.com/grid/of-5245.png");
     assert_eq!(server.count(|r| r.path() == "/sgdb/api/v2/games/steam/620"), steam_asked);

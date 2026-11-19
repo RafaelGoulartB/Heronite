@@ -342,12 +342,16 @@ impl MetadataService {
     }
 
     /// What the SteamGridDB search knows of `game`: its title, Steam app id
-    /// and the SteamGridDB game its record was matched with.
+    /// and the SteamGridDB game its record was surely matched with (not a
+    /// fuzzy title guess, which a Steam id beats).
     fn steamgrid_hint(&self, game: &MetadataApplyArgs) -> covers::SteamGridHint {
         let current = get_game_metadata(&self.paths, &game.runner, &game.app_name).ok().flatten();
         let view = self.source_game(&self.sources(), game, current.as_ref());
-        let steamgrid_id =
-            current.as_ref().and_then(|md| crate::record::source_match(md, ids::STEAMGRIDDB)).and_then(|m| m.id.parse().ok());
+        let steamgrid_id = current
+            .as_ref()
+            .and_then(|md| crate::record::source_match(md, ids::STEAMGRIDDB))
+            .filter(|m| m.is_sure())
+            .and_then(|m| m.id.parse().ok());
         covers::SteamGridHint { title: game.title.clone(), steam_app_id: view.steam_app_id, steamgrid_id }
     }
 
