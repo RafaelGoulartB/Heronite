@@ -406,7 +406,7 @@ metadata. The options (`view_options.rs`, 300px, scrolling when the window is sh
 rows, the covers' size (Small fits one more per row, Large one less; `focusCoverSize`) and the game sections shown;
 in Grid the cover size, what goes under the covers (Nothing, Title, Info, Title and info; `gridLabel`, Info being
 Appearance's "Under the cover" line) and "Open details on select" (`gridOpenOnSelect`; off, a double click or Enter
-opens the drawer); then, in both, the covers' look, the same settings as Appearance (Cover aspect, where Banner
+opens the drawer and plays); then, in both, the covers' look, the same settings as Appearance (Cover aspect, where Banner
 draws each game's wide cover, else its background, else its tall cover cropped, with the notice below it, Cover fit, Corners, Density, Under the pointer, Favourite star, Store icon); then "More in Appearance" and
 "Reset to defaults" (the mode's options and the covers' look; dimmed when all are at their default). Header menus
 open on click or after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves; the view options open
@@ -492,7 +492,8 @@ reaching into it next to the title and meta line, then the focus panel's own pie
 card), three tiles (Played, Last played, Sessions) and the details stacked in one column (`focus::stacked_details`),
 ending in "Open game page" (back to the Focus view). Keys while nothing floats over it: arrows move the selection
 (the drawer follows), Enter plays an installed game, Esc closes the drawer (the selection stays; selecting a game opens
-it again). The Focus list takes the same arrows and Enter (play an installed game). `ui-state.json` keeps `gridView`, `gridCoverWidth`, `gridLabel` (read from the older `gridTitles` when missing) and `gridOpenOnSelect`. Console mode is not affected.
+it again). A double click on a card does what Enter does (Steam's library does the same); not while selecting several
+games. The Focus list takes the same arrows, Enter and double click (play an installed game). `ui-state.json` keeps `gridView`, `gridCoverWidth`, `gridLabel` (read from the older `gridTitles` when missing) and `gridOpenOnSelect`. Console mode is not affected.
 
 **Focus list as rows** (`collection/list_row.rs`, by user decision): in the Focus view the Focus mode's options in the
 header (also in the palette) turn the list into one game per row, 44px tall: a 26px

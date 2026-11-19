@@ -279,8 +279,8 @@ impl CollectionView {
     fn card_listeners(&self, key: &SharedString, cx: &mut Context<Self>) -> (OnClick, OnHover, OnClick) {
         let (k1, k2, k3) = (key.clone(), key.clone(), key.clone());
         (
-            Box::new(cx.listener(move |this, ev: &ClickEvent, _, cx| {
-                this.card_clicked(k1.clone(), ev);
+            Box::new(cx.listener(move |this, ev: &ClickEvent, window, cx| {
+                this.card_clicked(k1.clone(), ev, window, cx);
                 cx.notify();
             })),
             Box::new(cx.listener(move |this, hovered: &bool, _, cx| {
