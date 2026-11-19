@@ -313,9 +313,27 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     // Only a launcher that took the request (exit 0) handed the game on; one
     // that failed is a failed launch, not a game to wait for.
     let handed_on = exit.is_some_and(|e| e.code == Some(0));
+    // Waiting for a game that never showed up is not play time.
+    let mut unseen = Duration::ZERO;
     if let Some(handoff) = plan.handoff.as_ref().filter(|_| handed_on && !aborted && !control.kill.load(Ordering::SeqCst)) {
         if spawned.elapsed() < shared.cfg.handoff.soon {
-            aborted = follow_handoff(shared, control, handoff, log);
+            match follow_handoff(shared, control, handoff, log) {
+                Followed::Aborted => aborted = true,
+                Followed::Ended => {}
+                // A stop while waiting is the user's doing, not a game Heronite
+                // lost. A command that is not only a request may have run the
+                // game itself, briefly: its time is counted already.
+                Followed::Unseen(waited) if control.kill.load(Ordering::SeqCst) || !(handoff.exit_ignored || handoff.package.is_some()) => {
+                    unseen = waited
+                }
+                Followed::Unseen(waited) => {
+                    unseen = waited;
+                    status(Notice::warn(
+                        format!("The game did not show up within {} s: this session's play time is not counted", waited.as_secs()),
+                        tr!("Heronite could not find {title} running, so this session's play time was not counted", title = req.title),
+                    ));
+                }
+            }
         }
     }
     if aborted {
@@ -342,7 +360,7 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         }
     }
     // The session ends here; saving to the cloud is not playtime.
-    let elapsed = control.played();
+    let elapsed = control.played().saturating_sub(unseen);
     if !aborted {
         if let Some(script) = &plan.after_script {
             run_script(shared, control, &*services.probe, script, log, &status);
@@ -445,21 +463,36 @@ impl Steps {
     }
 }
 
+/// How following a handed-off game ended (see [`follow_handoff`]).
+enum Followed {
+    /// Tracking was aborted meanwhile.
+    Aborted,
+    /// The game ran and is gone, or a stop ended it.
+    Ended,
+    /// The game never showed up: given up, or stopped, after this long.
+    Unseen(Duration),
+}
+
 /// Follows a game another launcher took over (see [`Handoff`]): waits for it
-/// to show up, then until it is gone. A stop ends its processes. Returns
-/// true when tracking was aborted meanwhile.
+/// to show up, then until it is gone. A stop ends its processes.
 ///
 /// [`Handoff`]: crate::plan::Handoff
-fn follow_handoff(shared: &Shared, control: &Control, handoff: &crate::plan::Handoff, log: &Arc<GameLog>) -> bool {
+fn follow_handoff(shared: &Shared, control: &Control, handoff: &crate::plan::Handoff, log: &Arc<GameLog>) -> Followed {
     let started = Instant::now();
+    let wait = if handoff.package.is_some() { shared.cfg.handoff.package_wait } else { shared.cfg.handoff.wait };
     let mut seen = false;
     let mut gone_since: Option<Instant> = None;
     let mut terminated_at: Option<Instant> = None;
     loop {
         if control.abort.load(Ordering::SeqCst) {
-            return true;
+            return Followed::Aborted;
         }
-        let pids = shared.procs.game_pids(handoff.prefix.as_deref(), handoff.folder.as_deref());
+        let mut pids = shared.procs.game_pids(handoff.prefix.as_deref(), handoff.folder.as_deref());
+        if let Some(family) = handoff.package.as_deref() {
+            pids.extend(shared.procs.package_pids(family));
+            pids.sort_unstable();
+            pids.dedup();
+        }
         if control.kill.load(Ordering::SeqCst) {
             let sig = match terminated_at {
                 None => {
@@ -475,7 +508,7 @@ fn follow_handoff(shared: &Shared, control: &Control, handoff: &crate::plan::Han
                 }
             }
             if pids.is_empty() || sig == Some(crate::procs::Sig::Kill) {
-                return false;
+                return if seen { Followed::Ended } else { Followed::Unseen(started.elapsed()) };
             }
         } else if !pids.is_empty() {
             if !seen {
@@ -485,10 +518,10 @@ fn follow_handoff(shared: &Shared, control: &Control, handoff: &crate::plan::Han
             gone_since = None;
         } else if seen {
             if gone_since.get_or_insert_with(Instant::now).elapsed() >= shared.cfg.handoff.gone {
-                return false;
+                return Followed::Ended;
             }
-        } else if started.elapsed() > shared.cfg.handoff.wait {
-            return false;
+        } else if started.elapsed() > wait {
+            return Followed::Unseen(started.elapsed());
         }
         control.wake.wait_while(shared.cfg.poll_interval, || !control.abort.load(Ordering::SeqCst) && !control.kill.load(Ordering::SeqCst));
     }
