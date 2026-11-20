@@ -145,29 +145,7 @@ impl SettingsPanel {
         if self.winetricks_open() {
             return self.c_winetricks(cx);
         }
-        let mut v = match self.section {
-            Section::Compatibility if self.is_steam() => self.c_proton(),
-            Section::Performance if self.is_steam() => self.c_steam_other(cx),
-            Section::Launch if self.is_steam() => self.c_steam_advanced(cx),
-            Section::Gpu if self.is_steam() => self.c_steam_gpu(),
-            Section::Compatibility => self.c_wine(cx),
-            Section::Performance => self.c_other(cx),
-            Section::Gpu => self.c_gpu(false),
-            Section::Launch => self.c_advanced(cx),
-            Section::Saves => self.c_saves(cx),
-            Section::Sandbox => self.c_sandbox(),
-            Section::General => match self.global_view {
-                GlobalView::General => self.c_general(cx),
-                GlobalView::Downloads => self.c_downloads(cx),
-                GlobalView::Advanced => vec![self.c_toggle(
-                    "disableLogs",
-                    false,
-                    tr!("Disable logs"),
-                    Some(tr!("Most log writes stop (critical information is always logged)")),
-                    false,
-                )],
-            },
-        };
+        let mut v = self.console_items_at(self.section, self.global_view, cx);
         if let Some(n) = &self.notice {
             v.push(Self::c_info("notice", if n.error { tr!("Problem") } else { tr!("Done") }, n.text.clone()));
         }
@@ -192,6 +170,80 @@ impl SettingsPanel {
             v.insert(0, reset);
         }
         v
+    }
+
+    /// The items of tab `section` (the global panel: of its `view`).
+    fn console_items_at(&self, section: Section, view: GlobalView, cx: &App) -> Vec<Item> {
+        match section {
+            Section::Compatibility if self.is_steam() => self.c_proton(),
+            Section::Performance if self.is_steam() => self.c_steam_other(cx),
+            Section::Launch if self.is_steam() => self.c_steam_advanced(cx),
+            Section::Gpu if self.is_steam() => self.c_steam_gpu(),
+            Section::Compatibility => self.c_wine(cx),
+            Section::Performance => self.c_other(cx),
+            Section::Gpu => self.c_gpu(false),
+            Section::Launch => self.c_advanced(cx),
+            Section::Saves => self.c_saves(cx),
+            Section::Sandbox => self.c_sandbox(),
+            Section::General => match view {
+                GlobalView::General => self.c_general(cx),
+                GlobalView::Downloads => self.c_downloads(cx),
+                GlobalView::Advanced => vec![self.c_toggle(
+                    "disableLogs",
+                    false,
+                    tr!("Disable logs"),
+                    Some(tr!("Most log writes stop (critical information is always logged)")),
+                    false,
+                )],
+            },
+        }
+    }
+
+    /// The rows of tab `section` (the global panel: of its `view`) as console
+    /// mode draws them, without showing them (Settings' Search).
+    pub fn console_rows_of(&self, section: Section, view: GlobalView, cx: &App) -> Vec<Row> {
+        self.console_items_at(section, view, cx).into_iter().map(|i| i.row).collect()
+    }
+
+    /// The rows of tab `section` (the global panel: of its `view`) whose
+    /// setting differs from what a new install has (Settings' Changed): the
+    /// factory defaults, or a switch's own default when they don't have it.
+    /// Only the settings whose default is known for sure are compared.
+    pub fn console_changed_of(&self, section: Section, view: GlobalView, cx: &App) -> Vec<Row> {
+        let factory = heronite_data::game_config::factory_defaults(&self.home);
+        let path = |s: &str| heronite_data::game_config::expand_tilde(s.trim(), &self.home).trim_end_matches(['/', '\\']).to_string();
+        let flag_of = |key: &str, default: bool| factory.get(key).and_then(Value::as_bool).unwrap_or(default);
+        self.console_items_at(section, view, cx)
+            .into_iter()
+            .filter(|i| match &i.act {
+                Act::Toggle(key, default) => self.flag(key, *default) != flag_of(key, *default),
+                Act::Path(key, ..) | Act::Text(key, _) => match factory.get(*key) {
+                    Some(Value::String(base)) => path(&self.text(key)) != path(base),
+                    _ => false,
+                },
+                Act::Choice(_) => match i.row.id.as_ref() {
+                    "c:workers" => self.number("maxWorkers").unwrap_or(0) != factory.get("maxWorkers").and_then(Value::as_i64).unwrap_or(0),
+                    "c:sync" => {
+                        self.flag("enableEsync", true) != flag_of("enableEsync", true)
+                            || self.flag("enableFsync", true) != flag_of("enableFsync", true)
+                    }
+                    _ => false,
+                },
+                _ => false,
+            })
+            .map(|i| i.row)
+            .collect()
+    }
+
+    /// Focuses the row `id` of the tab shown (a Search or Changed result).
+    pub fn console_focus_row(&mut self, id: &str, cx: &App) {
+        let rows: Vec<Row> = self.console_items(cx).into_iter().map(|i| i.row).collect();
+        self.console_list.focus_id(&rows, id);
+    }
+
+    /// Draws the rows as cards (Settings) or on the focus pill.
+    pub fn set_console_style(&mut self, style: crate::console::list::RowStyle) {
+        self.console_list.set_style(style);
     }
 
     fn c_wine(&self, cx: &App) -> Vec<Item> {
@@ -1058,12 +1110,19 @@ impl PadTarget for SettingsPanel {
         if let Some(h) = self.console_layer.hints(cx) {
             return h;
         }
-        let mut v = vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change")), hint(Btn::X, tr!("Clear"))];
+        // What the focused row takes: A or ◀ ▶, X on a text or a path, Y once changed.
         let items = self.console_items(cx);
-        let rows: Vec<Row> = items.into_iter().map(|i| i.row).collect();
-        if self.console_list.focused(&rows).is_some_and(|r| r.changed) {
+        let rows: Vec<Row> = items.iter().map(|i| i.row.clone()).collect();
+        let Some(row) = self.console_list.focused(&rows) else { return Vec::new() };
+        let mut v = Vec::new();
+        if row.changed {
             v.push(hint(Btn::Y, tr!("Reset")));
         }
+        let clears = items.iter().any(|i| i.row.id == row.id && matches!(i.act, Act::Path(..) | Act::Text(..)));
+        if clears && row.enabled {
+            v.push(hint(Btn::X, tr!("Clear")));
+        }
+        v.extend(crate::console::list::hint_for(row));
         v
     }
 }
