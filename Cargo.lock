@@ -3947,6 +3947,7 @@ dependencies = [
  "log",
  "serde_json",
  "tempfile",
+ "x11rb",
 ]
 
 [[package]]

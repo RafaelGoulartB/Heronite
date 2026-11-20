@@ -25,6 +25,8 @@ use heronite_i18n::tr;
 pub(crate) enum GameAction {
     /// Play, Stop or Install: the focus panel's main button.
     Primary,
+    /// Gives the focus to the running game's window ("Back to game").
+    BackToGame,
     /// Play an Epic game with one of its ways to start (`None`: the default).
     PlayWith(Option<heronite_epic::launch_options::LaunchOption>),
     /// Runs one of the actions the user added to the game (by id).
@@ -370,6 +372,11 @@ impl CollectionView {
         self.context_menu = None;
         match action {
             A::Primary => self.install_or_play(key, window, cx),
+            A::BackToGame => {
+                if let Some(app_name) = self.lib.as_ref().and_then(|l| l.get(key)).map(|g| g.app_name.clone()) {
+                    self.back_to_game(&app_name, cx);
+                }
+            }
             A::PlayWith(choice) => self.play_with(key, choice.clone(), cx),
             A::OpenClient => self.open_client_of(key, cx),
             A::User(id) => self.run_user_action(key, id, cx),

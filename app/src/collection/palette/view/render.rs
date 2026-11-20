@@ -36,7 +36,8 @@ impl PaletteView {
             return tr!("open");
         }
         match (&e.act, &e.game) {
-            (Act::SelectGame(_), Some(b)) if b.playing => tr!("stop"),
+            (Act::SelectGame(_), Some(b)) if b.playing && launcher::can_focus_games() => tr!("back to game"),
+            (Act::SelectGame(_), Some(b)) if b.playing => tr!("actions"),
             (Act::SelectGame(_), Some(b)) if b.installed => tr!("play"),
             (Act::SelectGame(_), _) => tr!("show in Heronite"),
             (Act::GameActions(_), _) => tr!("open"),
