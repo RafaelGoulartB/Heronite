@@ -884,6 +884,7 @@ impl CollectionView {
             .when(!label.is_empty(), |d| d.child(kit::wordmark(&label)))
             .when(names.len() > 1 && tab_bar == TabBar::Top, |d| d.child(self.layout_tabs(&names, tab)))
             .when(names.len() > 1 && tab_bar == TabBar::Names, |d| d.child(kit::tab_names(&names, tab)))
+            .children(self.layout_top_filters())
             .when_some(theme.tabs.get(tab).filter(|_| tab_bar == TabBar::Title), |d, t| {
                 let title = kit::tab_title(&tab_label(t), kit::tab_icon(&t.source, t.layout), names.len() > 1);
                 d.child(div().absolute().top_0().bottom_0().left_0().right_0().flex().items_center().justify_center().child(title))

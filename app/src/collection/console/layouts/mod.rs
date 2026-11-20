@@ -185,12 +185,21 @@ impl CollectionView {
         }
     }
 
-    /// The clock of the top bar: Spotlight's larger one, else [`kit::clock`].
+    /// The clock of the top bar: Spotlight's larger one (a Carousel with its
+    /// filters in the bar too), else [`kit::clock`].
     pub(super) fn layout_clock(&self) -> Div {
         match self.spotlight_lift() {
             Some(lift) => spotlight::spotlight_clock(lift),
+            None if self.layout_top_filters().is_some() => spotlight::spotlight_clock(0.),
             None => kit::clock(),
         }
+    }
+
+    /// What a layout puts in the middle of the top bar instead of tabs: a
+    /// single-tab Carousel's filter pills.
+    pub(super) fn layout_top_filters(&self) -> Option<Div> {
+        let (tab, spec) = self.console_shown_tab();
+        (spec.layout == Layout::Carousel && !self.console.results).then(|| self.carousel_bar_pills(tab)).flatten()
     }
 
     /// Whether the wheel moves along a row of covers (Carousel, and

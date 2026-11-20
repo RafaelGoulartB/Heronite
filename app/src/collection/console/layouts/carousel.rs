@@ -2,13 +2,16 @@
 //! and spaced out to each side, all over a glossy floor (each cover's
 //! reflection); the focused game's name, facts and place in the list under
 //! it. ◀ ▶ turn it and LT / RT jump to the previous / next letter (the
-//! letter shows over the covers for a moment); ↑ moves to a row of filter
-//! pills (All, Installed, Favourites, Playing) and ↓ comes back, and with a
-//! single tab LB / RB change the filter from anywhere (kept for the next
-//! time console mode starts; in a theme without a Grid, like Minimal, the
-//! pill and the Filters panel's Show follow each other, see [`pill_for`]).
-//! The covers fan out from the middle when the carousel first shows and
-//! when the filter changes. GPUI has no 3D transforms, so a cover's pose is its size,
+//! letter shows over the covers for a moment); ↑ moves to the filter pills
+//! (Installed, All, Favourites, Playing) and ↓ comes back, and with a single
+//! tab LB / RB change the filter from anywhere (kept for the next time
+//! console mode starts; in a theme without a Grid, like Minimal, the pill and
+//! the Filters panel's Show follow each other, see [`pill_for`]). With a
+//! single tab the pills sit in the top bar between LB and RB, the current
+//! one in a pill (`carousel_bar_pills`). The covers fan out from the middle
+//! when the carousel first shows and when the filter changes; a new game's
+//! name fades in after a short hold, sliding from the side the focus came
+//! from, then its facts and place. GPUI has no 3D transforms, so a cover's pose is its size,
 //! offset, opacity and shade, each cover on a spring of its own distance
 //! from the middle.
 
@@ -16,16 +19,17 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{HeroTitle, KeptFilters, Layout, TabSpec, TileShape, TileSize};
+use heronite_data::console_theme::{HeroTitle, KeptFilters, Layout, TabBar, TabSpec, TileShape, TileSize, CAROUSEL_INSTALLED};
 use heronite_data::CollectionGame;
 use heronite_i18n::{n_, tr};
 use heronite_images::{Variant, REFLECTION_PART};
 
 use super::super::super::CollectionView;
-use super::super::hero::{fitted_title, HeroSize};
+use super::super::hero::{fitted_title, played_time, HeroSize};
 use super::super::sources::{by_title, keys};
 use super::super::tile;
 use super::grid::{jump_letter, letter_of};
+use crate::collection::data::played_ago;
 use crate::console::kit::{self, u};
 use crate::console::look;
 use crate::console::motion;
@@ -34,7 +38,14 @@ use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
 
+/// The pills by id (what `KeptFilters::carousel` keeps), and the order they show in.
 const FILTERS: [&str; 4] = [n_!("All"), n_!("Installed"), n_!("Favourites"), n_!("Playing")];
+const ORDER: [usize; 4] = [CAROUSEL_INSTALLED, 0, 2, 3];
+
+/// Where pill `id` shows in the row.
+fn place_of(id: usize) -> usize {
+    ORDER.iter().position(|&x| x == id).unwrap_or(0)
+}
 
 /// The pill that shows the games of the Grid's Show (index in its `SHOW`)
 /// and Favourites only, if one does: All, Installed, Favourites. Not
@@ -95,7 +106,7 @@ const PILLS_H: f32 = 58.;
 /// and the place in the list) and the space between them, design px.
 const NAME_H: f32 = 40.;
 const LOGO_H: f32 = 72.;
-const FACTS_H: f32 = 26.;
+const FACTS_H: f32 = 46.;
 const PLACE_H: f32 = 30.;
 const INFO_GAP: f32 = 10.;
 /// Room under the info, design px.
@@ -105,10 +116,21 @@ const FAN_MS: u64 = 640;
 const LETTER_MS: u64 = 950;
 /// Width of the line that shows the place in the list, design px.
 const TRACK: f32 = 180.;
+/// A new game under the covers: its name hidden, held, then fading in while
+/// it slides from the side the focus came from; its facts and place after
+/// it (ms, design px). Its place never starts blank, so a held direction
+/// still reads.
+const NAME_HOLD: u64 = 300;
+const NAME_FADE: u64 = 450;
+const SLIDE: f32 = 26.;
+const SLIDE_MS: u64 = 550;
+const REST_HOLD: u64 = NAME_HOLD + 150;
+const REST_FADE: u64 = 300;
+const PLACE_FROM: f32 = 0.35;
 
 #[derive(Default)]
 pub(crate) struct Nav {
-    /// Index in [`FILTERS`].
+    /// The pill's id in [`FILTERS`].
     filter: usize,
     index: usize,
     /// The focus is on the row of pills.
@@ -126,12 +148,12 @@ pub(crate) struct Nav {
 
 impl Nav {
     /// A carousel on the kept pill (one out of range, from an edited file,
-    /// reads as All).
+    /// reads as Installed).
     pub(crate) fn from_kept(k: KeptFilters) -> Self {
-        Self { filter: if k.carousel < FILTERS.len() { k.carousel } else { 0 }, ..Self::default() }
+        Self { filter: if k.carousel < FILTERS.len() { k.carousel } else { CAROUSEL_INSTALLED }, ..Self::default() }
     }
 
-    /// The pill (index in `FILTERS`).
+    /// The pill (its id in `FILTERS`).
     pub(crate) fn filter(&self) -> usize {
         self.filter
     }
@@ -198,11 +220,12 @@ fn turn<E: IntoElement + 'static>(id: impl Into<ElementId>, el: E, target: f32, 
 /// The row of filters: the current one on a soft fill, on the focus pill
 /// while the row has the focus; the row steps back while the covers have it.
 fn filter_pills(tab: usize, filter: usize, focused: bool) -> AnyElement {
-    let row = div().flex_none().flex().justify_center().gap(u(6.)).pt(u(6.)).children(FILTERS.iter().enumerate().map(|(j, label)| {
-        let (on, current) = (focused && j == filter, j == filter);
+    let row = div().flex_none().flex().justify_center().gap(u(6.)).pt(u(6.)).children(ORDER.iter().enumerate().map(|(j, &id)| {
+        let label = FILTERS[id];
+        let (on, current) = (focused && id == filter, id == filter);
         // A click: ↑ to the pills, then ← → to this one.
         let mut pads = if focused { Vec::new() } else { vec![Pad::Up] };
-        pads.extend(pointer::along(filter, j, Pad::Left, Pad::Right));
+        pads.extend(pointer::along(place_of(filter), j, Pad::Left, Pad::Right));
         kit::row_base(on)
             .on_pads(pads)
             .min_h(u(36.))
@@ -212,6 +235,95 @@ fn filter_pills(tab: usize, filter: usize, focused: bool) -> AnyElement {
             .child(div().text_size(u(15.)).font_weight(if current { theme::W_BOLD } else { theme::W_REGULAR }).child(tr(label)))
     }));
     motion::spring(SharedString::from(format!("cr-pills-{tab}")), row, motion::SOFT, focused, |d, k| d.opacity(0.62 + 0.38 * k))
+}
+
+/// The pills in the top bar (a single tab): the names between LB and RB,
+/// centred, the current one in a pill of the focus colour that eases from
+/// one to the next; a ring around it while ↑ has put the focus there. A
+/// click presses LB / RB as far as that pill.
+fn bar_pills(filter: usize, focused: bool) -> Div {
+    let at = place_of(filter);
+    let row = div()
+        .flex()
+        .items_center()
+        .gap(u(4.))
+        .child(kit::glyph(Btn::LB).mr(u(10.)).on_pads([Pad::LB]))
+        .children(ORDER.iter().enumerate().map(|(j, &id)| {
+            let on = id == filter;
+            let label = tr(FILTERS[id]);
+            let pill = div().relative().on_pads(pointer::along(at, j, Pad::LB, Pad::RB));
+            motion::spring(SharedString::from(format!("cr-bar-pill-{id}")), pill, motion::SOFT, on, move |d, k| {
+                let k = k.clamp(0., 1.);
+                let fill: Hsla = theme::console_focus().into();
+                let gap = u(3.5);
+                d.child(div().absolute().inset_0().rounded_full().bg(Hsla { a: fill.a * k, ..fill }))
+                    .when(on && focused, |d| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .top(-gap)
+                                .bottom(-gap)
+                                .left(-gap)
+                                .right(-gap)
+                                .rounded_full()
+                                .border(u(2.))
+                                .border_color(Hsla { a: 0.85, ..fill }),
+                        )
+                    })
+                    .child(
+                        div()
+                            .relative()
+                            .px(u(15.))
+                            .py(u(5.))
+                            .text_size(u(14.5))
+                            .font_weight(if on { theme::W_BOLD } else { theme::W_REGULAR })
+                            .text_color(motion::mix(theme::text_muted(), theme::console_on_focus(), k))
+                            .whitespace_nowrap()
+                            .child(label),
+                    )
+            })
+        }))
+        .child(kit::glyph(Btn::RB).ml(u(10.)).on_pads([Pad::RB]));
+    div().absolute().inset_0().flex().items_center().justify_center().child(row)
+}
+
+/// A new game's line under the covers (`id` names it: the same game never
+/// plays it again): hidden, then after `hold` ms it fades in over `fade` ms
+/// from `from` opacity, sliding `dx` design px over [`SLIDE_MS`] with a
+/// cubic ease-out. Reduced motion keeps the fade; no motion shows it at once.
+fn reveal(id: SharedString, el: Div, hold: u64, fade: u64, dx: f32, from: f32) -> AnyElement {
+    if !motion::on() {
+        return el.into_any_element();
+    }
+    let dx = if motion::reduced() { 0. } else { dx };
+    let total = hold + fade.max(if dx != 0. { SLIDE_MS } else { 0 });
+    el.with_animation(id, Animation::new(Duration::from_millis(total)), move |el, t| {
+        let ms = t * total as f32 - hold as f32;
+        let f = (ms / fade as f32).clamp(0., 1.);
+        let el = el.opacity(from + (1. - from) * (1. - (1. - f) * (1. - f)));
+        if dx == 0. {
+            return el;
+        }
+        let k = (ms / SLIDE_MS as f32).clamp(0., 1.);
+        el.left(u(dx * (1. - k).powi(3)))
+    })
+    .into_any_element()
+}
+
+/// One fact under the name: a small label over its value.
+fn fact(label: &str, value: Div) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .items_center()
+        .gap(u(3.))
+        .child(div().text_size(u(10.)).font_weight(theme::W_BOLD).text_color(theme::text_muted()).child(label.to_uppercase()))
+        .child(value.h(u(21.)).flex().items_center().gap(u(7.)).text_size(u(15.5)).font_weight(theme::W_BOLD).text_color(kit::strong()))
+}
+
+/// A thin bar between two facts.
+fn divider() -> Div {
+    div().flex_none().w(px(1.)).h(u(28.)).mx(u(22.)).bg(kit::ink(0.2))
 }
 
 /// The place in the list: the letter, a short line with a mark that glides
@@ -271,6 +383,75 @@ fn letter_flash(id: SharedString, letter: char) -> AnyElement {
 }
 
 impl CollectionView {
+    /// The carousel's pills sit in the top bar: a single tab (LB / RB are
+    /// theirs), whose bar has no centred title.
+    fn carousel_pills_in_bar(&self) -> bool {
+        let theme = look::theme();
+        theme.tabs.len() < 2 && theme.interface.tab_bar != TabBar::Title
+    }
+
+    /// The pills for the top bar, when the tab on screen is a carousel that
+    /// puts them there.
+    pub(super) fn carousel_bar_pills(&self, tab: usize) -> Option<Div> {
+        if !self.carousel_pills_in_bar() {
+            return None;
+        }
+        let nav = self.console.tab_navs.get(tab).map(|n| &n.carousel);
+        let filter = nav.map_or(CAROUSEL_INSTALLED, |n| n.filter.min(FILTERS.len() - 1));
+        Some(bar_pills(filter, nav.is_some_and(|n| n.pills)))
+    }
+
+    /// Playtime, when it was last played, where it plays and its status,
+    /// each a small label over its value.
+    fn carousel_facts(&self, g: &CollectionGame) -> Div {
+        let dash = || "\u{2014}".to_string();
+        let played = played_time(g).unwrap_or_else(dash);
+        let last = g.last_played.as_deref().and_then(played_ago).unwrap_or_else(|| tr!("Never").to_string());
+        let mut row = div()
+            .flex()
+            .items_center()
+            .child(fact(tr!("Playtime"), div().child(played)))
+            .child(divider())
+            .child(fact(tr!("Last played"), div().child(last)))
+            .child(divider())
+            .child(fact(tr!("Platform"), div().child(g.source_label.to_string())));
+        if let Some((name, colour)) = self.console_status(g) {
+            let dot = div().flex_none().size(u(8.)).rounded_full().bg(kit::tint(colour));
+            row = row.child(divider()).child(fact(tr!("Status"), div().child(dot).child(name)));
+        }
+        row
+    }
+
+    /// The empty carousel: what the pill has none of, and LB / RB for the others.
+    fn carousel_empty(&self, filter: usize) -> Div {
+        let title = match filter {
+            0 => tr!("No games yet"),
+            CAROUSEL_INSTALLED => tr!("No installed games"),
+            2 => tr!("No favourites yet"),
+            _ => tr!("Nothing being played"),
+        };
+        let keys = look::glyphs() == heronite_data::console_theme::Glyphs::Keyboard;
+        div()
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap(u(14.))
+            .child(crate::ui::icon(Icon::GridView, u(40.), theme::text_dim()))
+            .child(kit::title(title, 24.))
+            .when(look::theme().tabs.len() < 2, |d| {
+                d.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(u(8.))
+                        .text_size(u(14.))
+                        .text_color(theme::text_muted())
+                        .child(kit::clickable_glyph(Btn::Bumpers, keys))
+                        .child(tr!("Another filter")),
+                )
+            })
+    }
+
     /// A theme without a Grid (Minimal): the Filters panel drives a grid of
     /// results over the tab, and its Show follows the pill, so the panel
     /// never shows a filter the screen does not (Playing leaves it alone).
@@ -361,14 +542,18 @@ impl CollectionView {
         let focused = all.get(index).cloned();
         self.console_focus_game(focused.clone(), cx);
 
-        let pills = filter_pills(tab, filter, pills_focus);
+        // In the top bar with a single tab, else a row above the covers.
+        let in_bar = self.carousel_pills_in_bar();
+        let pills = (!in_bar).then(|| filter_pills(tab, filter, pills_focus));
+        let pills_h = if in_bar { 0. } else { PILLS_H };
         let Some(focused) = focused else {
+            let empty = motion::fade_in(SharedString::from(format!("cr-empty-{tab}-{filter}")), self.carousel_empty(filter), 260);
             return div()
                 .flex()
                 .flex_col()
                 .size_full()
-                .child(pills)
-                .child(div().flex_1().flex().items_center().justify_center().child(kit::empty(Icon::GridView, tr!("No games match"), "")))
+                .children(pills)
+                .child(div().flex_1().flex().items_center().justify_center().pb(u(60.)).child(empty))
                 .into_any_element();
         };
 
@@ -380,7 +565,7 @@ impl CollectionView {
             + INFO_GAP
             + PLACE_H
             + INFO_PAD;
-        let room = (super::body_height(window, self.hints_visible()) - PILLS_H - info_h) / (1. + FLOOR_ROOM);
+        let room = (super::body_height(window, self.hints_visible()) - pills_h - info_h) / (1. + FLOOR_ROOM);
         let (cw, ch) = cover_size(theme.tiles.shape, theme.tiles.size, self.cover_aspect, vw / k * 0.42, room);
         let (cwp, chp) = (cw * k, ch * k);
         let (pw, ph) = ((cwp * dpr).round() as u32, (chp * dpr).round() as u32);
@@ -508,28 +693,32 @@ impl CollectionView {
                 let size = fitted_title(32., g.title.chars().count());
                 kit::title(g.title.clone(), size).max_w(u(880.)).truncate().into_any_element()
             };
+            let key = g.key.clone();
             // Every line keeps its height whatever the game (a long name
             // shrinks, a status pill is taller than the text), so the
             // covers above never move when the focus does.
             let row = |h: f32| div().flex_none().h(u(h)).flex().items_center().justify_center();
-            let info = div()
+            let id = |part: &str| SharedString::from(format!("cr-{part}-{tab}-{key}"));
+            let name = reveal(id("name"), div().relative().child(name), NAME_HOLD, NAME_FADE, SLIDE * from, 0.);
+            let facts = theme.hero.facts.then(|| {
+                row(FACTS_H).child(reveal(id("facts"), div().relative().child(self.carousel_facts(&g)), REST_HOLD, REST_FADE, 0., 0.))
+            });
+            let place = reveal(id("place"), div().relative().child(place(tab, letter, index, n)), REST_HOLD, REST_FADE, 0., PLACE_FROM);
+            div()
                 .relative()
                 .flex()
                 .flex_col()
                 .items_center()
                 .gap(u(INFO_GAP))
                 .child(row(if logo { LOGO_H } else { NAME_H }).child(name))
-                .when(theme.hero.facts, |d| d.child(row(FACTS_H).child(self.console_fact_line(&g, Self::console_facts(&g), 15.))))
-                .child(row(PLACE_H).child(place(tab, letter, index, n)));
-            // From the side the focus came from, never from blank (held
-            // directions keep it readable).
-            motion::enter_from(SharedString::from(format!("cr-info-{}", g.key)), info, 280, 18. * from, 0., 0.3)
+                .children(facts)
+                .child(row(PLACE_H).child(place))
         });
         div()
             .flex()
             .flex_col()
             .size_full()
-            .child(pills)
+            .children(pills)
             .child(div().flex_1().min_h_0().flex().flex_col().justify_center().pb(u(INFO_PAD)).child(stage).children(info))
             .into_any_element()
     }
@@ -545,9 +734,11 @@ impl CollectionView {
         };
         // A new filter: the focused game stays when it passes it.
         let next_filter = match pad {
-            Pad::Left | Pad::Right if pills => Some((filter as isize + pad.dir()).clamp(0, FILTERS.len() as isize - 1) as usize),
+            Pad::Left | Pad::Right if pills => {
+                Some(ORDER[(place_of(filter) as isize + pad.dir()).clamp(0, ORDER.len() as isize - 1) as usize])
+            }
             // With a single tab the bumpers have nothing else to do.
-            Pad::LB | Pad::RB if theme.tabs.len() < 2 => Some(super::step(filter, FILTERS.len(), pad.dir(), true)),
+            Pad::LB | Pad::RB if theme.tabs.len() < 2 => Some(ORDER[super::step(place_of(filter), ORDER.len(), pad.dir(), true)]),
             _ => None,
         };
         if let Some(next) = next_filter {
@@ -624,12 +815,22 @@ mod tests {
     // `gpui_kit::*` above brings gpui's own `test` macro.
     use core::prelude::v1::test;
 
-    /// A carousel starts on the kept pill; one out of range reads as All.
+    /// A carousel starts on the kept pill; one out of range reads as Installed.
     #[test]
     fn starts_on_the_kept_pill() {
-        assert_eq!(Nav::from_kept(KeptFilters { carousel: 1, ..KeptFilters::default() }).filter, 1);
-        assert_eq!(Nav::from_kept(KeptFilters::default()).filter, 0);
-        assert_eq!(Nav::from_kept(KeptFilters { carousel: FILTERS.len(), ..KeptFilters::default() }).filter, 0);
+        assert_eq!(Nav::from_kept(KeptFilters { carousel: 0, ..KeptFilters::default() }).filter, 0);
+        assert_eq!(Nav::from_kept(KeptFilters::default()).filter, CAROUSEL_INSTALLED);
+        assert_eq!(Nav::from_kept(KeptFilters { carousel: FILTERS.len(), ..KeptFilters::default() }).filter, CAROUSEL_INSTALLED);
+    }
+
+    /// Installed shows first; every pill once, each keeping its id.
+    #[test]
+    fn installed_comes_first() {
+        assert_eq!(FILTERS[ORDER[0]], "Installed");
+        assert_eq!(ORDER.iter().map(|&id| FILTERS[id]).collect::<Vec<_>>(), ["Installed", "All", "Favourites", "Playing"]);
+        for id in 0..FILTERS.len() {
+            assert_eq!(ORDER[place_of(id)], id);
+        }
     }
 
     /// The pill and the Grid's Show + Favourites only translate both ways
