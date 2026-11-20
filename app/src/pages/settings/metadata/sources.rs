@@ -20,6 +20,9 @@ use crate::ui::icon;
 /// columns line up from row to row.
 const AUDIENCE_W: f32 = 160.;
 const STATUS_W: f32 = 132.;
+/// Below this width the rows put who a source is for and where it stands
+/// under its name instead of in columns.
+pub(super) const NARROW_BELOW: f32 = 700.;
 
 /// A details row being dragged to another place.
 pub(super) struct SourceDrag {
@@ -53,7 +56,7 @@ pub(super) fn caption_hint(text: &str, hint: Option<&str>) -> Div {
 }
 
 /// The three cards, each with its caption; a kind with no source is left out.
-pub(super) fn cards(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Vec<AnyElement> {
+pub(super) fn cards(d: &SettingsPage, narrow: bool, cx: &mut Context<SettingsPage>) -> Vec<AnyElement> {
     let kinds = [(SourceKind::Details, tr!("Game details")), (SourceKind::Pictures, tr!("Pictures")), (SourceKind::Extras, tr!("Extras"))];
     let mut out = Vec::new();
     for (kind, title) in kinds {
@@ -69,7 +72,7 @@ pub(super) fn cards(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Vec<Any
                 card = card.child(div().h(px(1.)).w_full().bg(theme::row_separator()));
             }
             let open = d.metadata.open.contains(&r.descriptor.id);
-            card = card.child(row(r, i, movable && r.reorderable, open, cx));
+            card = card.child(row(r, i, movable && r.reorderable, open, narrow, cx));
             if open {
                 let indent = if movable { 18. + 8. + labels::TILE + 12. } else { labels::TILE + 12. };
                 card = card.child(source_body::body(d, r, indent, cx));
@@ -81,7 +84,7 @@ pub(super) fn cards(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Vec<Any
 }
 
 /// A closed row; `place` is its index among the rows of its kind.
-fn row(r: &SourceRow, place: usize, movable: bool, open: bool, cx: &mut Context<SettingsPage>) -> Stateful<Div> {
+fn row(r: &SourceRow, place: usize, movable: bool, open: bool, narrow: bool, cx: &mut Context<SettingsPage>) -> Stateful<Div> {
     let id = r.descriptor.id.clone();
     let name = labels::name(&r.descriptor.name).to_string();
     let dim = |el: Div| if r.enabled { el } else { el.opacity(0.5) };
@@ -111,9 +114,15 @@ fn row(r: &SourceRow, place: usize, movable: bool, open: bool, cx: &mut Context<
                 .children(super::extension::pill(r)),
         )
         .child(div().text_size(px(12.)).text_color(theme::text_dim()).truncate().child(labels::gives(&r.descriptor.provides)));
-    let audience =
-        div().flex_none().w(px(AUDIENCE_W)).text_size(px(12.)).text_color(theme::text_dim()).truncate().child(labels::row_audience(r));
-    let status = div().flex_none().w(px(STATUS_W)).child(labels::status(r.status));
+    let audience = div().text_size(px(12.)).text_color(theme::text_dim()).truncate().child(labels::row_audience(r));
+    let status = labels::status(r.status);
+    // Narrow: who it is for and where it stands on a line under the name.
+    let (what, columns) = if narrow {
+        let line = div().flex().items_center().gap(px(10.)).min_w_0().child(div().flex_none().child(status)).child(audience.min_w_0());
+        (what.child(line), None)
+    } else {
+        (what, Some((audience.flex_none().w(px(AUDIENCE_W)), div().flex_none().w(px(STATUS_W)).child(status))))
+    };
 
     let sw_id = SharedString::from(format!("md-src-on-{id}"));
     let switch = match r.status {
@@ -157,8 +166,7 @@ fn row(r: &SourceRow, place: usize, movable: bool, open: bool, cx: &mut Context<
                 .child(dim(labels::tile(&id, &name))),
         )
         .child(dim(what))
-        .child(dim(audience))
-        .child(dim(status))
+        .when_some(columns, |line, (audience, status)| line.child(dim(audience)).child(dim(status)))
         .child(switch)
         .child(chevron);
     if !movable {

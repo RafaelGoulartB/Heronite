@@ -65,8 +65,10 @@ const INDEX: &[(Section, &[&str])] = &[
             "Behind the Collection",
             "Use the game artwork as page background",
             "Picture",
+            "Animated backgrounds",
             "Covers",
             "Cover aspect",
+            "Cover fit",
             "Show uninstalled games in grey",
             "Corners",
             "Under the cover",
@@ -89,11 +91,21 @@ const INDEX: &[(Section, &[&str])] = &[
             "Switch with the window's width",
             "Panel widths",
             "Game sections",
+            "Store media",
+            "Autoplay trailers",
+            "Video cache",
         ],
     ),
     (
         Section::ConsoleMode,
-        &["The theme in use", "Startup", "Open the app", "Open console mode in fullscreen", "When a controller connects"],
+        &[
+            "The theme in use",
+            "Startup",
+            "Open the app",
+            "Open console mode in fullscreen",
+            "When a controller connects",
+            "Button to enter console mode",
+        ],
     ),
     (
         Section::Downloads,
@@ -181,6 +193,23 @@ const INDEX: &[(Section, &[&str])] = &[
         ],
     ),
     (
+        Section::Controls,
+        &[
+            "Buttons drawn as",
+            "Confirm button",
+            "Open the overlay",
+            "Take a screenshot",
+            "Save the replay",
+            "Mark a moment",
+            "Volume up / down",
+            "Enter console mode",
+            "Overlay open",
+            "Open the game page",
+            "Search and filters",
+            "Jump by letter",
+        ],
+    ),
+    (
         Section::Overlay,
         &[
             "Turn on the overlay",
@@ -219,6 +248,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Clear preview cache",
         ],
     ),
+    (Section::QuickLauncher, &["How it works", "Opening it", "Keyboard shortcut", "Open from a key of the desktop", "Try it"]),
     (
         Section::Replay,
         &[
@@ -453,7 +483,7 @@ fn settings_of(section: Section) -> Vec<Setting> {
         .iter()
         .filter(|(s, _)| *s == section)
         .flat_map(|(_, labels)| labels.iter().copied())
-        .filter(|label| *label != "Guide + X: save the replay" || Section::Replay.available())
+        .filter(|label| *label != "Guide + X: save the replay" && *label != "Save the replay" || Section::Replay.available())
         .map(|label| Setting { label, tab: None })
         .collect();
     if section == Section::Metadata {

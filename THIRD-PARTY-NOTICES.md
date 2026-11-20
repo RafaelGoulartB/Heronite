@@ -23,7 +23,13 @@ Heronite is licensed under the [GNU General Public License v3.0](LICENSE). It in
 |---|---|---|---|
 | [Material Icons](https://github.com/google/material-design-icons), through [`@mui/icons-material`](https://github.com/mui/material-ui/tree/master/packages/mui-icons-material) | every `app/assets/icons/*.svg` with a `0 0 24 24` view box, except `brand-*`, and `moon`, `sun`, `sunrise`, `sunset`, and `emu-*` (the emulators' icons), which were drawn for Heronite (as were `play-circle`, `install-circle`, and `stop-circle`) | Google LLC (icons); Copyright (c) 2014 Call-Em-All (package) | Apache License 2.0 ([`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)); MIT ([`licenses/MIT-mui-icons-material.txt`](licenses/MIT-mui-icons-material.txt)) |
 | [Font Awesome Free](https://fontawesome.com) 6 | `app/assets/icons/fa-*.svg` | Copyright (c) 2024 Fonticons, Inc. | CC BY 4.0 ([`licenses/FontAwesome-Free.txt`](licenses/FontAwesome-Free.txt)) |
-| [Simple Icons](https://simpleicons.org) 16.36.0 | `app/assets/icons/brand-*.svg` (the logos of the stores, Dolphin and RetroArch, path data unchanged) | the Simple Icons contributors; the logos are trademarks of their owners | CC0 1.0 ([`licenses/CC0-1.0-simple-icons.txt`](licenses/CC0-1.0-simple-icons.txt)) |
+| [Simple Icons](https://simpleicons.org) 16.36.0 | `app/assets/icons/brand-*.svg` (the logos of the stores, of the sites the Links section opens, Dolphin and RetroArch, path data unchanged) | the Simple Icons contributors; the logos are trademarks of their owners | CC0 1.0 ([`licenses/CC0-1.0-simple-icons.txt`](licenses/CC0-1.0-simple-icons.txt)) |
+
+## Illustrations
+
+| Illustration | Files | Copyright | License |
+|---|---|---|---|
+| [Xbox Series](https://zacksly.itch.io/xbox-series-button-icons-and-controls), [PS5](https://zacksly.itch.io/ps5-button-icons-and-controls) and [Switch](https://zacksly.itch.io/switch-button-icons-and-controls) Button Icons and Controls | the controllers drawn in Settings → Controller (`app/src/pages/settings/controls/pad/model.rs`: Xbox Series, DualSense, Switch Pro Controller): the outlines of their bodies, shoulder buttons, d-pads, sticks and buttons, without the makers' logos, with triggers added and recoloured | Zacksly | CC BY 3.0 ([`licenses/CC-BY-3.0-Zacksly.txt`](licenses/CC-BY-3.0-Zacksly.txt)) |
 
 ## Libraries in the AppImage
 

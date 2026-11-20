@@ -227,3 +227,49 @@ fn kept_filters_read_leniently() {
     let odd: ConsolePrefs = lenient(json!({ "lastTab": 1, "keptFilters": { "show": "x", "sort": 1, "carousel": 1 } })).unwrap();
     assert_eq!((odd.last_tab, odd.kept_filters), (1, KeptFilters { sort: 1, carousel: 1, ..KeptFilters::default() }));
 }
+
+#[test]
+fn the_controller_options_leave_the_theme_and_keep_what_was_chosen() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+    let write = |v: Value| {
+        std::fs::create_dir_all(paths.console_prefs().parent().unwrap()).unwrap();
+        std::fs::write(paths.console_prefs(), v.to_string()).unwrap();
+    };
+    // New: automatic both.
+    assert_eq!(ConsolePrefs::default().controller, ControllerPrefs { glyphs: Glyphs::Auto, confirm: ConfirmButton::Auto });
+    // A file from before: the east button stays the confirm button; a
+    // theme's Xbox or PlayStation drawing becomes automatic, the keyboard's stays.
+    write(json!({ "theme": { "controls": { "glyphs": "playstation", "swapAb": true, "hints": "off" } } }));
+    let p = ConsolePrefs::load(&paths);
+    assert_eq!(p.controller, ControllerPrefs { glyphs: Glyphs::Auto, confirm: ConfirmButton::East });
+    assert_eq!(p.theme.controls.hints, Hints::Off);
+    write(json!({ "theme": { "controls": { "glyphs": "keyboard" } } }));
+    assert_eq!(ConsolePrefs::load(&paths).controller, ControllerPrefs { glyphs: Glyphs::Keyboard, confirm: ConfirmButton::Auto });
+    // Once saved, its own key wins over what the theme had.
+    write(json!({ "controller": { "glyphs": "nintendo", "confirm": "south" }, "theme": { "controls": { "swapAb": true } } }));
+    assert_eq!(ConsolePrefs::load(&paths).controller, ControllerPrefs { glyphs: Glyphs::Nintendo, confirm: ConfirmButton::South });
+    // A theme no longer carries them.
+    let text = presets::pulse().to_json().unwrap();
+    assert!(!text.contains("glyphs") && !text.contains("swapAb"), "{text}");
+}
+
+#[test]
+fn a_theme_from_before_the_sound_options_gets_the_soft_sound_at_full_volume() {
+    let text = json!({ "format": 1, "controls": { "hints": "off", "sounds": true } }).to_string();
+    let c = ConsoleTheme::from_json(&text).unwrap().controls;
+    assert!(c.sounds);
+    assert_eq!((c.sound_style, c.sound_volume), (SoundStyle::Soft, 100));
+    let text = json!({ "format": 1, "controls": { "soundStyle": "classic", "soundVolume": 40 } }).to_string();
+    let c = ConsoleTheme::from_json(&text).unwrap().controls;
+    assert_eq!((c.sound_style, c.sound_volume), (SoundStyle::Classic, 40));
+}
+
+#[test]
+fn the_sound_style_and_volume_are_repaired() {
+    let text = json!({ "format": 1, "controls": { "soundStyle": "loud", "soundVolume": 0 } }).to_string();
+    let c = ConsoleTheme::from_json(&text).unwrap().normalized().controls;
+    assert_eq!((c.sound_style, c.sound_volume), (SoundStyle::Soft, SOUND_VOLUME.0));
+    let text = json!({ "format": 1, "controls": { "soundVolume": 200 } }).to_string();
+    assert_eq!(ConsoleTheme::from_json(&text).unwrap().normalized().controls.sound_volume, SOUND_VOLUME.1);
+}

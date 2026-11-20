@@ -18,6 +18,7 @@
 //! `image::Frame::new(decoded.into_image_buffer())` (the `image` crate is the
 //! same 0.25 line GPUI uses, so the types are identical).
 
+pub mod animation;
 mod decode;
 mod error;
 mod fetch;
@@ -206,6 +207,10 @@ pub struct Opts {
     pub stage_sharp_max_width: u32,
     /// Target sigma (px) of the blurred stage raster; smaller => fewer pixels.
     pub stage_sigma_out: f32,
+    /// The first frame of the video at a path, as a picture's bytes (PNG):
+    /// a video then loads as that frame wherever a picture would
+    /// ([`animation::is_video`]). `None`: a video is not a picture.
+    pub video_still: Option<fn(&std::path::Path) -> Option<Vec<u8>>>,
 }
 
 impl Opts {
@@ -224,6 +229,7 @@ impl Opts {
             stage_max_width: 960,
             stage_sharp_max_width: 1920,
             stage_sigma_out: 8.0,
+            video_still: None,
         }
     }
 }
@@ -342,6 +348,56 @@ pub fn load(chain: &[ImageRef], target_w: u32, target_h: u32, variant: Variant, 
     Err(ImageError::AllFailed(errors))
 }
 
+/// A file's bytes, or its first frame's when it is a video.
+fn file_bytes(path: &std::path::Path, opts: &Opts) -> Result<Vec<u8>> {
+    // A video can be hundreds of MB: only its first bytes are read here.
+    let mut head = [0u8; 16];
+    let read = {
+        use std::io::Read;
+        std::fs::File::open(path).and_then(|mut f| f.read(&mut head)).unwrap_or(0)
+    };
+    if animation::is_video(&head[..read]) {
+        return video_still(path, opts);
+    }
+    fetch::read_file(path)
+}
+
+/// A downloaded picture's bytes, or its first frame's when it is a video
+/// (SteamGridDB's animated art previews are WebM), read by
+/// [`Opts::video_still`] from the download kept in the cache.
+fn url_picture_bytes(url: &str, opts: &Opts) -> Result<Vec<u8>> {
+    let bytes = fetch::url_bytes(url, opts)?;
+    if !animation::is_video(&bytes) {
+        return Ok(bytes);
+    }
+    drop(bytes);
+    video_still(&cache_path(&opts.images_cache_dir, url), opts)
+}
+
+fn video_still(path: &std::path::Path, opts: &Opts) -> Result<Vec<u8>> {
+    let read = opts.video_still.ok_or_else(|| ImageError::NotAnImage("a video".into()))?;
+    read(path).ok_or_else(|| ImageError::Decode("no frame could be read from the video".into()))
+}
+
+/// The raster a video frame of the stage is drawn at for a `tw`x`th` window
+/// target with `blur_px` of blur: [`Variant::Backdrop`]'s size
+/// ([`geometry::stage_size`]), but at most `max_w` wide even with no blur (a
+/// moving picture is not looked at as closely), and the scale applied.
+pub fn stage_frame_size(tw: u32, th: u32, blur_px: f32, max_w: u32, opts: &Opts) -> (u32, u32, f32) {
+    geometry::stage_size(tw, th, blur_px, opts.stage_max_width.min(max_w), opts.stage_sharp_max_width.min(max_w), opts.stage_sigma_out)
+}
+
+/// Gives a video frame of the stage ([`stage_frame_size`], BGRA, opaque) the
+/// highlights' `rolloff` [`Variant::Backdrop`] gives a picture; its blur and
+/// colour are ffmpeg's (`gblur`, `eq`), done before it reaches here.
+pub fn backdrop_frame_rolloff(frame: &mut Decoded, rolloff: f32) {
+    let px = &mut frame.bgra;
+    fx::swap_rb(px);
+    let (knee, cap) = backdrop_knee_cap(rolloff);
+    fx::compress_highlights(px, knee, cap);
+    fx::swap_rb(px);
+}
+
 fn is_definitive(e: &ImageError) -> bool {
     match e {
         ImageError::NotAnImage(_) | ImageError::Decode(_) => true,
@@ -352,9 +408,9 @@ fn is_definitive(e: &ImageError) -> bool {
 
 fn produce(cand: &ImageRef, tw: u32, th: u32, variant: Variant, opts: &Opts) -> Result<Decoded> {
     let bytes = match cand {
-        ImageRef::File(p) => fetch::read_file(p)?,
-        ImageRef::Url(u) => fetch::url_bytes(u, opts)?,
-        ImageRef::Find { .. } => fetch::read_file(&cand.local_path().ok_or_else(|| ImageError::Io(format!("{cand:?}: not found")))?)?,
+        ImageRef::File(p) => file_bytes(p, opts)?,
+        ImageRef::Url(u) => url_picture_bytes(u, opts)?,
+        ImageRef::Find { .. } => file_bytes(&cand.local_path().ok_or_else(|| ImageError::Io(format!("{cand:?}: not found")))?, opts)?,
     };
     match variant {
         Variant::Fit { ink } => {

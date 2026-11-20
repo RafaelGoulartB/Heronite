@@ -38,9 +38,13 @@ pub fn setup_env_vars(s: &GameSettings, install_path: Option<&str>, probe: &dyn 
     for (k, v) in &s.env_options {
         ret.insert(k.clone(), v.clone());
     }
-    if let Some(a) = s.fps_limit.applied(&Tools::detect(s, probe)).filter(|a| a.by(Method::MangoHud)) {
+    let limit = s.fps_limit.applied(&Tools::detect(s, probe)).filter(|a| a.by(Method::MangoHud));
+    let hud = fps_limit::Hud::of(s.show_mangohud, s.mangohud_hidden);
+    if limit.is_some() || hud == fps_limit::Hud::Hidden {
         let existing = ret.get(MANGOHUD_CONFIG).cloned().or_else(|| probe.env_var(MANGOHUD_CONFIG));
-        ret.insert(MANGOHUD_CONFIG.into(), fps_limit::mangohud_config(&a, s.show_mangohud, existing.as_deref()));
+        if let Some(config) = fps_limit::mangohud_config(limit.as_ref(), hud, existing.as_deref()) {
+            ret.insert(MANGOHUD_CONFIG.into(), config);
+        }
     }
     // Fixes the std::log_error crash in Fall Guys (Heroic does the same).
     if probe.env_var("LD_PRELOAD").is_none() && !ret.contains_key("LD_PRELOAD") {
@@ -547,6 +551,24 @@ mod tests {
         ] {
             assert!(!setup_env_vars(&settings(off), None, &probe).contains_key("MANGOHUD_CONFIG"));
         }
+    }
+
+    #[test]
+    fn mangohud_can_start_hidden() {
+        let probe = FakeProbe::new("/h").with_bin("mangohud", "/usr/bin/mangohud");
+        let hidden = settings(json!({"showMangohud": true, "heroniteMangohudHidden": true}));
+        assert_eq!(setup_env_vars(&hidden, None, &probe)["MANGOHUD_CONFIG"], "read_cfg,no_display=1");
+        assert_eq!(build_wrappers(&hidden, &probe, None).wrappers, ["/usr/bin/mangohud", "--dlsym"]);
+        let limited = settings(json!({"showMangohud": true, "heroniteMangohudHidden": true, "heroniteFpsLimit": "60"}));
+        assert_eq!(setup_env_vars(&limited, None, &probe)["MANGOHUD_CONFIG"], "read_cfg,no_display=1,fps_limit=60");
+        let user = settings(json!({
+            "showMangohud": true, "heroniteMangohudHidden": true,
+            "enviromentOptions": [{"key":"MANGOHUD_CONFIG","value":"fps,frametime"}]
+        }));
+        assert_eq!(setup_env_vars(&user, None, &probe)["MANGOHUD_CONFIG"], "fps,frametime,no_display=1");
+        // Off: the switch alone says nothing.
+        let off = settings(json!({"showMangohud": false, "heroniteMangohudHidden": true}));
+        assert!(!setup_env_vars(&off, None, &probe).contains_key("MANGOHUD_CONFIG"));
     }
 
     #[test]

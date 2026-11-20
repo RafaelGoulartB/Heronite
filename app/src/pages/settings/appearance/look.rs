@@ -6,8 +6,8 @@ use gpui_kit::component::slider::Slider;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::{
-    Accent, Appearance, BackgroundSource, CategoryStyle, Corners, CoverHover, CoverLabel, Density, FontChoice, HomeBackground, Motion,
-    Section, StartView, Theme,
+    Accent, Appearance, BackgroundSource, CategoryStyle, Corners, CoverFit, CoverHover, CoverLabel, Density, FontChoice, HomeBackground,
+    Motion, Section, StartView, Theme,
 };
 use heronite_i18n::tr;
 
@@ -67,6 +67,20 @@ pub(super) fn corner_items() -> [(Corners, &'static str); 3] {
     [(Corners::Square, tr!("Square")), (Corners::Soft, tr!("Soft")), (Corners::Round, tr!("Round"))]
 }
 
+pub(super) fn fit_items() -> [(CoverFit, &'static str); 2] {
+    [(CoverFit::Crop, tr!("Crop")), (CoverFit::Whole, tr!("Whole cover"))]
+}
+
+/// "Cover fit", under the Cover aspect it applies to.
+pub(super) fn fit_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    row(
+        tr!("Cover fit"),
+        Some(tr!("Whole cover shows each cover in its own shape, never cut: console box art stays whole.")),
+        choice("cover-fit", &fit_items(), d.appearance.ui.cover_fit, cx, |a, v| a.cover_fit = v),
+    )
+    .into_any_element()
+}
+
 pub(super) fn hover_items() -> [(CoverHover, &'static str); 3] {
     [(CoverHover::Nothing, tr!("Nothing")), (CoverHover::Lift, tr!("Lift")), (CoverHover::Glow, tr!("Glow"))]
 }
@@ -118,7 +132,76 @@ pub(super) fn section_label(s: Section) -> &'static str {
         Section::Achievements => tr!("Achievements"),
         Section::Timeline => tr!("Timeline"),
         Section::Related => tr!("Related games"),
+        Section::Media => tr!("Store media"),
+        Section::Links => tr!("Links"),
     }
+}
+
+/// Sizes offered for the store videos kept on this PC, in MB (0 = none).
+const VIDEO_CACHE_SIZES: [u32; 5] = [0, 25, 50, 100, 250];
+
+/// Under "Store media": videos, screenshots or both.
+fn media_kinds_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    use heronite_data::settings::StoreMediaKinds;
+    let items = [
+        (StoreMediaKinds::Both, tr!("Both")),
+        (StoreMediaKinds::Videos, tr!("Videos")),
+        (StoreMediaKinds::Screenshots, tr!("Screenshots")),
+    ];
+    let this = cx.entity();
+    let pick = tabs("store-media-kinds", &items, d.settings.store_media_kinds, move |kinds, _, cx| {
+        this.update(cx, |d, cx| {
+            let res = heronite_data::settings::save_store_media_kinds(&d.ctx.data_paths, kinds);
+            d.saved(res, cx);
+        })
+    });
+    div().pl(px(20.)).child(row(tr!("Show"), Some(tr!("The store's trailers, its screenshots, or both.")), pick)).into_any_element()
+}
+
+/// Under "Store media": whether the first trailer plays by itself.
+fn autoplay_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    let on = d.settings.video_autoplay;
+    div()
+        .pl(px(20.))
+        .child(
+            toggle_row(
+                "video-autoplay",
+                tr!("Autoplay trailers"),
+                Some(tr!("The selected game's first trailer starts on its own, muted. Trailers always start muted: turn the sound on from their controls.")),
+                on,
+            )
+            .on_click(cx.listener(move |d, _, _, cx| {
+                let res = heronite_data::settings::save_video_autoplay(&d.ctx.data_paths, !on);
+                d.saved(res, cx);
+            })),
+        )
+        .into_any_element()
+}
+
+/// Under "Store media": how much of the trailers stays on this PC.
+fn video_cache_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    let now = d.settings.video_cache_limit_mb;
+    let labels: Vec<(u32, String)> =
+        VIDEO_CACHE_SIZES.iter().map(|mb| (*mb, if *mb == 0 { tr!("None").to_string() } else { format!("{mb} MB") })).collect();
+    let this = cx.entity();
+    let pick = tabs("video-cache", &labels, now, move |mb, _, cx| {
+        this.update(cx, |d, cx| {
+            let res = heronite_data::settings::save_video_cache_limit(&d.ctx.data_paths, mb);
+            d.saved(res, cx);
+            let app = d.ctx.app.clone();
+            cx.background_spawn(async move { crate::collection::store_media::trim_kept(&app, mb) }).detach();
+        })
+    });
+    div()
+        .pl(px(20.))
+        .child(row(
+            tr!("Video cache"),
+            Some(tr!(
+                "The first seconds of the trailers of the installed games you visit, so they start at once. Trailers are never downloaded whole: the rest streams while they play."
+            )),
+            pick,
+        ))
+        .into_any_element()
 }
 
 /// The Colour card, each choice followed by what depends on it: the theme
@@ -556,6 +639,47 @@ pub(super) fn picture_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> A
     with_sub_rows(picture, rows)
 }
 
+/// "Animated backgrounds" (off by default): what moves, and why one stays
+/// still while it is on.
+pub(super) fn animated_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    let a = d.appearance.ui;
+    let on = a.animated_backgrounds;
+    let switch = toggle_row(
+        "bg-animated",
+        tr!("Animated backgrounds"),
+        Some(tr!(
+            "Plays a background that is a video or an animated picture: your own picture, a game's background, or one marked Animated in Covers → Background. Off, it shows its first frame. Pauses while a game runs or Heronite is in the background."
+        )),
+        on,
+    )
+    .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.animated_backgrounds = !on)))
+    .into_any_element();
+    let mut why_still = Vec::new();
+    if on && a.motion != Motion::Full {
+        why_still.push(tr!("Animations are not on Full (Text and motion), so backgrounds stay still."));
+    }
+    if on && !d.appearance.ffmpeg {
+        why_still.push(tr!("ffmpeg, which plays them, was not found, so backgrounds stay still."));
+    }
+    let notes = why_still
+        .into_iter()
+        .map(|text| {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .py(px(8.))
+                .text_size(px(12.))
+                .line_height(px(16.))
+                .text_color(theme::text_dim())
+                .child(crate::ui::icon(Icon::InfoOutlined, px(14.), theme::text_dim()))
+                .child(text)
+                .into_any_element()
+        })
+        .collect();
+    with_sub_rows(switch, notes)
+}
+
 /// The Collection background picture row's "With no game selected" choice,
 /// with the button that picks its own picture under it.
 pub(super) fn home_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
@@ -741,6 +865,13 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
                 )
                 .into_any_element(),
         );
+        if section == Section::Media && shown {
+            rows.push(media_kinds_row(d, cx));
+            if d.settings.store_media_kinds.videos() {
+                rows.push(autoplay_row(d, cx));
+                rows.push(video_cache_row(d, cx));
+            }
+        }
     }
     card([toolbar, start, with_game, with_sub_rows(switch, width), widths, with_sub_rows(sections_row, rows)])
 }

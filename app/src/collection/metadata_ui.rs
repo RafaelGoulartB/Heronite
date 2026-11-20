@@ -124,9 +124,18 @@ impl CollectionView {
     }
 
     /// `HERONITE_DEBUG_DIALOG=covers[:<state>]`: "Covers" of the selected
-    /// game over made-up searches (see the dialog's `fake.rs`).
+    /// game over made-up searches (see the dialog's `fake.rs`);
+    /// `covers:live[:<slot>]`: the dialog itself, searching for real (on
+    /// that slot: `tall`, `square`, `wide`, `background`).
     fn open_covers_debug(&mut self, state: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(key) = self.selected.clone() else { return };
+        if let Some(slot) = state.strip_prefix("live") {
+            let slot = slot.strip_prefix(':').and_then(crate::dialogs::covers::Slot::parse);
+            let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(&key)) else { return };
+            let view = cx.new(|cx| CoversDialog::new(ctx, game, slot, window, cx));
+            self.open_dialog(view, cx);
+            return;
+        }
         let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(&key)) else { return };
         let thumbs: Vec<String> = self
             .lib
@@ -233,7 +242,9 @@ impl CollectionView {
     /// when `HERONITE_DEBUG_MULTI` made one; see `MetadataUpdate::debug_state`);
     /// `metadata` the selected game's "Metadata" (asking the sources),
     /// `metadata:<state>` the same over a made-up preview; `review[:<state>]`
-    /// a made-up "Review matches"; `covers[:<state>]` a made-up "Covers".
+    /// a made-up "Review matches"; `covers[:<state>]` a made-up "Covers";
+    /// `webimage[:<field>]` the web image search for a picture (`logo`,
+    /// `hero`...; the desktop's cover by default).
     pub(super) fn open_metadata_debug(&mut self, which: &str, window: &mut Window, cx: &mut Context<Self>) {
         match which {
             "metadata" => self.open_metadata(window, cx),
@@ -243,11 +254,12 @@ impl CollectionView {
             "gamesettings" => self.open_game_settings(window, cx),
             "gamesettings:details" => self.open_game_details(window, cx),
             "gamesettings:launch" => self.open_game_settings_tab(GameTab::Start, window, cx),
-            "webimage" => {
+            w if w == "webimage" || w.starts_with("webimage:") => {
+                let kind = w.strip_prefix("webimage:").and_then(heronite_metadata::ArtKind::from_field);
                 let Some(key) = self.selected.clone() else { return };
                 let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(&key)) else { return };
                 let view = cx.new(|cx| GameSettingsDialog::new(ctx, game, GameTab::Game, window, cx));
-                view.update(cx, |v, cx| v.debug_open_web(window, cx));
+                view.update(cx, |v, cx| v.debug_open_web(kind, window, cx));
                 self.open_dialog(view, cx);
             }
             w if w == "wizard" || w.starts_with("wizard:") => {

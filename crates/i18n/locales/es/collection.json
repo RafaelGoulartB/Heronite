@@ -595,5 +595,7 @@
   "Edit details…": "Editar detalles…",
   "Name, images, description, tags": "Nombre, imágenes, descripción, etiquetas",
   "Setup": "Configuración",
-  "Show all": "Mostrar todo"
+  "Show all": "Mostrar todo",
+  "{n} shows another picture on the desktop": "{n} muestra otra imagen en el escritorio",
+  "{n} show another picture on the desktop": "{n} muestran otra imagen en el escritorio"
 }

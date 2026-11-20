@@ -116,6 +116,9 @@ pub struct GameSettingsDialog {
     title: String,
     tab: Tab,
     art: CollectionGameArt,
+    /// Whether the background picked moves (it then says it shows still
+    /// while Animated backgrounds is off).
+    hero_moves: crate::dialogs::animated_art::Moves,
     default_cover: Vec<ImageRef>,
     default_hero: Vec<ImageRef>,
     /// The sources' picture of the family the desktop draws, when not tall.
@@ -227,6 +230,7 @@ impl GameSettingsDialog {
             metadata: game.metadata.clone(),
             tab,
             art: game.art.as_deref().cloned().unwrap_or_default(),
+            hero_moves: Default::default(),
             default_cover,
             default_hero,
             fetched_family,

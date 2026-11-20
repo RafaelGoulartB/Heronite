@@ -220,6 +220,7 @@ pub struct Appearance {
     pub font: FontChoice,
     pub density: Density,
     pub cover_corners: Corners,
+    pub cover_fit: CoverFit,
     pub cover_label: CoverLabel,
     /// Favourite and "update available" badges on the covers.
     pub cover_badges: bool,
@@ -245,6 +246,9 @@ pub struct Appearance {
     pub background_slideshow: bool,
     /// What shows behind the Collection while no game is selected.
     pub home_background: HomeBackground,
+    /// A background that is a video or an animated picture plays (off by
+    /// default: its first frame shows still). Only with Motion "Full".
+    pub animated_backgrounds: bool,
     pub motion: Motion,
     pub start_view: StartView,
     /// The Collection opens with the last game selected (else with none, on
@@ -280,6 +284,7 @@ impl Appearance {
         font: FontChoice::DEFAULT,
         density: Density::DEFAULT,
         cover_corners: Corners::DEFAULT,
+        cover_fit: CoverFit::DEFAULT,
         cover_label: CoverLabel::DEFAULT,
         cover_badges: false,
         cover_hover: CoverHover::DEFAULT,
@@ -291,6 +296,7 @@ impl Appearance {
         background: BackgroundSource::DEFAULT,
         background_slideshow: false,
         home_background: HomeBackground::DEFAULT,
+        animated_backgrounds: false,
         motion: Motion::DEFAULT,
         start_view: StartView::DEFAULT,
         open_with_game: true,
@@ -326,6 +332,12 @@ fn clamp((lo, hi): (f32, f32), v: f32) -> f32 {
 }
 
 impl Appearance {
+    /// "Cover fit" → "Whole cover": covers are never cropped, so the
+    /// screens that say a cover is cropped say where it comes from instead.
+    pub fn whole_covers(&self) -> bool {
+        self.cover_fit == CoverFit::Whole
+    }
+
     /// Clamps every number to its range (the blur to its step).
     pub fn normalized(mut self) -> Self {
         self.collection_opacity = clamp(COLLECTION_OPACITY_RANGE, self.collection_opacity).round();
@@ -380,6 +392,7 @@ impl Appearance {
             font: name("font").and_then(FontChoice::parse).unwrap_or_default(),
             density: name("density").and_then(Density::parse).unwrap_or_default(),
             cover_corners: name("coverCorners").and_then(Corners::parse).unwrap_or_default(),
+            cover_fit: name("coverFit").and_then(CoverFit::parse).unwrap_or_default(),
             cover_label: name("coverLabel").and_then(CoverLabel::parse).unwrap_or_default(),
             cover_badges: flag("coverBadges", d.cover_badges),
             cover_hover: name("coverHover").and_then(CoverHover::parse).unwrap_or_default(),
@@ -391,6 +404,7 @@ impl Appearance {
             background: name("background").and_then(BackgroundSource::parse).unwrap_or_default(),
             background_slideshow: flag("backgroundSlideshow", d.background_slideshow),
             home_background: name("homeBackground").and_then(HomeBackground::parse).unwrap_or_default(),
+            animated_backgrounds: flag("animatedBackgrounds", d.animated_backgrounds),
             motion: name("motion").and_then(Motion::parse).unwrap_or_default(),
             start_view: name("startView").and_then(StartView::parse).unwrap_or_default(),
             open_with_game: flag("openWithGame", d.open_with_game),
@@ -421,6 +435,7 @@ impl Appearance {
             "font": self.font.as_str(),
             "density": self.density.as_str(),
             "coverCorners": self.cover_corners.as_str(),
+            "coverFit": self.cover_fit.as_str(),
             "coverLabel": self.cover_label.as_str(),
             "coverBadges": self.cover_badges,
             "coverHover": self.cover_hover.as_str(),
@@ -432,6 +447,7 @@ impl Appearance {
             "background": self.background.as_str(),
             "backgroundSlideshow": self.background_slideshow,
             "homeBackground": self.home_background.as_str(),
+            "animatedBackgrounds": self.animated_backgrounds,
             "motion": self.motion.as_str(),
             "startView": self.start_view.as_str(),
             "openWithGame": self.open_with_game,
@@ -543,6 +559,7 @@ mod tests {
             font: FontChoice::System,
             density: Density::Compact,
             cover_corners: Corners::Round,
+            cover_fit: CoverFit::Whole,
             cover_label: CoverLabel::LastPlayed,
             cover_badges: true,
             cover_hover: CoverHover::Glow,
@@ -554,18 +571,21 @@ mod tests {
             background: BackgroundSource::Screenshot,
             background_slideshow: true,
             home_background: HomeBackground::RandomScreenshot,
+            animated_backgrounds: true,
             motion: Motion::Reduced,
             start_view: StartView::Grid,
             open_with_game: false,
             auto_view: AutoView { on: true, width: 1600. },
             quick_toolbar_controls: true,
-            sections: Sections::DEFAULT.moved(Section::Related, -5).toggled(Section::Timeline),
+            sections: Sections::DEFAULT.moved(Section::Related, -10).toggled(Section::Timeline).toggled(Section::Media),
         };
         a.save(&p).unwrap();
         assert_eq!(Appearance::load(&p), a);
         let on_disk = json_store::read_value(&p.appearance()).unwrap();
         assert_eq!(on_disk["future"], json!([1]));
         assert_eq!(on_disk["interfaceMode"], "solid");
+        assert_eq!(on_disk["animatedBackgrounds"], true);
+        const { assert!(!Appearance::DEFAULT.animated_backgrounds, "off unless turned on") };
         assert_eq!(on_disk["interfaceSolidTint"], "midnight");
         assert_eq!(on_disk["interfaceSolidTintLight"], "frost");
         assert_eq!(on_disk["theme"], "system");
@@ -578,14 +598,23 @@ mod tests {
         assert_eq!(on_disk["interfaceSolidDesktop"], true);
         assert_eq!(on_disk["collectionOpacity"], 60.0);
         assert_eq!(on_disk["coverLabel"], "lastPlayed");
+        assert_eq!(on_disk["coverFit"], "whole");
         assert_eq!(on_disk["coverStores"], true);
         assert_eq!(on_disk["coverStoresAll"], false);
         assert_eq!(on_disk["coverStoresHideGrouped"], true);
         assert_eq!(on_disk["sections"][0], "related");
-        assert_eq!(on_disk["hiddenSections"], json!(["timeline"]));
+        assert_eq!(on_disk["hiddenSections"], json!(["timeline", "links"]));
         assert_eq!(on_disk["autoView"], true);
         assert_eq!(on_disk["autoViewWidth"], 1600.0);
         assert_eq!(on_disk["quickToolbarControls"], true);
+    }
+
+    #[test]
+    fn cover_fit_crops_unless_asked_for_the_whole_cover() {
+        for value in [json!({}), json!({"coverFit": "stretch"}), json!({"coverFit": null})] {
+            assert_eq!(Appearance::from_value(&value).cover_fit, CoverFit::Crop);
+        }
+        assert_eq!(Appearance::from_value(&json!({"coverFit": "whole"})).cover_fit, CoverFit::Whole);
     }
 
     #[test]

@@ -8,7 +8,8 @@
 //!   an unknown enum value reads as that field's default.
 //! - [`ConsolePrefs`] (`AppPaths::console_prefs()`, `console.json`): the theme
 //!   in use on this machine plus the options that are not part of a theme
-//!   (what to do when a controller connects, how the app opens, idle).
+//!   (what to do when a controller connects, how the app opens, idle, how
+//!   the controller's buttons are drawn and which one confirms).
 //! - [`presets`]: the built-in themes; [`store`]: saved themes, export and
 //!   import.
 //!
@@ -34,6 +35,8 @@ pub const MAX_TABS: usize = 4;
 /// Interface scale, percent.
 pub const SCALE_RANGE: (u16, u16) = (80, 140);
 pub const DIM_MAX: u8 = 90;
+/// Console sounds' volume, percent.
+pub const SOUND_VOLUME: (u8, u8) = (10, 100);
 pub const BLUR_MAX: u8 = 40;
 
 /// The named focus colours (`interface.accent`); anything else is `#rrggbb`.
@@ -188,7 +191,18 @@ str_enum! {
 }
 str_enum! {
     /// How the controller buttons are drawn (Auto follows the connected controller).
-    pub enum Glyphs { Auto = "auto", Xbox = "xbox", PlayStation = "playstation", Nintendo = "nintendo", Deck = "deck", Keyboard = "keyboard" } default Xbox
+    pub enum Glyphs { Auto = "auto", Xbox = "xbox", PlayStation = "playstation", Nintendo = "nintendo", Deck = "deck", Keyboard = "keyboard" } default Auto
+}
+str_enum! {
+    /// The face button that confirms (the other one of south and east goes
+    /// back). `Auto`: east on a Nintendo controller (its A), south on the
+    /// others (Xbox's A, PlayStation's cross).
+    pub enum ConfirmButton { Auto = "auto", South = "south", East = "east" } default Auto
+}
+str_enum! {
+    /// What the navigation sounds are like: `soft` is low and round, `classic`
+    /// the first, higher one.
+    pub enum SoundStyle { Soft = "soft", Classic = "classic" } default Soft
 }
 str_enum! {
     pub enum Hints { Always = "always", Auto = "auto", Off = "off" } default Always
@@ -217,6 +231,35 @@ str_enum! {
 str_enum! {
     pub enum AutoConsole { Off = "off", Ask = "ask", On = "on" } default Off
 }
+str_enum! {
+    /// The button held (1 s) to enter console mode from anywhere, and the one
+    /// the "Ask" notice asks for. `Auto` is the system's: Guide on Linux,
+    /// Back + Start on Windows (XInput does not report Guide). Off unless
+    /// chosen: held during a game started elsewhere (a Steam chord on Guide)
+    /// it would bring console mode over that game.
+    pub enum ConsoleButton {
+        Auto = "auto",
+        Off = "off",
+        Guide = "guide",
+        BackStart = "backStart",
+        Bumpers = "bumpers",
+    } default Off
+}
+
+impl ConsoleButton {
+    /// The ones Settings offers, in its order.
+    pub const CHOICES: [ConsoleButton; 4] = [ConsoleButton::Off, ConsoleButton::Guide, ConsoleButton::BackStart, ConsoleButton::Bumpers];
+
+    /// `Auto` made the system's button.
+    pub fn resolved(self) -> Self {
+        match self {
+            ConsoleButton::Auto if cfg!(windows) => ConsoleButton::BackStart,
+            ConsoleButton::Auto => ConsoleButton::Guide,
+            b => b,
+        }
+    }
+}
+
 str_enum! {
     pub enum OpenIn { Last = "last", Console = "console", Desktop = "desktop" } default Last
 }
@@ -422,19 +465,46 @@ pub struct ColourOptions {
     pub on: String,
 }
 
+/// The theme's hints and sounds. How the buttons are drawn and which one
+/// confirms belong to the controller, not to a theme: [`ControllerPrefs`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ControlOptions {
-    pub glyphs: Glyphs,
     pub hints: Hints,
-    /// Confirm with the east button and go back with the south one.
-    pub swap_ab: bool,
     pub sounds: bool,
+    pub sound_style: SoundStyle,
+    /// Percent, [`SOUND_VOLUME`].
+    pub sound_volume: u8,
 }
 
 impl Default for ControlOptions {
     fn default() -> Self {
-        Self { glyphs: Glyphs::Xbox, hints: Hints::Always, swap_ab: false, sounds: false }
+        Self { hints: Hints::Always, sounds: false, sound_style: SoundStyle::Soft, sound_volume: SOUND_VOLUME.1 }
+    }
+}
+
+/// The controller's options, the same everywhere (console mode, the
+/// overlay, Settings): how its buttons are drawn and which one confirms.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ControllerPrefs {
+    pub glyphs: Glyphs,
+    pub confirm: ConfirmButton,
+}
+
+impl ControllerPrefs {
+    /// What a `console.json` from before [`ConsolePrefs::controller`] had in
+    /// its theme (`theme.controls`): "Confirm with the east button" stays
+    /// on; the drawing becomes automatic unless it was the keyboard's (the
+    /// themes chose Xbox or PlayStation for a look, not for a controller).
+    fn from_old_theme(value: &Value) -> Self {
+        let controls = value.get("theme").and_then(|t| t.get("controls"));
+        let glyphs = match controls.and_then(|c| c.get("glyphs")).and_then(Value::as_str).and_then(Glyphs::parse) {
+            Some(Glyphs::Keyboard) => Glyphs::Keyboard,
+            _ => Glyphs::Auto,
+        };
+        let east = controls.and_then(|c| c.get("swapAb")).and_then(Value::as_bool).unwrap_or(false);
+        Self { glyphs, confirm: if east { ConfirmButton::East } else { ConfirmButton::Auto } }
     }
 }
 
@@ -624,6 +694,7 @@ impl ConsoleTheme {
         self.background.dim = self.background.dim.min(DIM_MAX);
         self.background.blur = self.background.blur.min(BLUR_MAX);
         self.interface.scale = self.interface.scale.clamp(SCALE_RANGE.0, SCALE_RANGE.1);
+        self.controls.sound_volume = self.controls.sound_volume.clamp(SOUND_VOLUME.0, SOUND_VOLUME.1);
         let accent = self.interface.accent.trim();
         if !ACCENT_NAMES.contains(&accent) && parse_hex(accent).is_none() {
             self.interface.accent = "white".into();
@@ -672,6 +743,8 @@ pub struct ConsolePrefs {
     /// they differ).
     pub based_on: String,
     pub auto_console: AutoConsole,
+    /// Held to enter console mode from anywhere (see [`ConsoleButton`]).
+    pub console_button: ConsoleButton,
     pub open_in: OpenIn,
     /// Console mode fills the screen: entering it goes fullscreen and leaving
     /// it switches back (F11 still toggles).
@@ -681,6 +754,9 @@ pub struct ConsolePrefs {
     pub last_tab: usize,
     /// The filter choices console mode starts with next time.
     pub kept_filters: KeptFilters,
+    /// How the controller's buttons are drawn and which one confirms,
+    /// everywhere (not only in console mode).
+    pub controller: ControllerPrefs,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -691,11 +767,13 @@ impl Default for ConsolePrefs {
             theme: presets::default_theme(),
             based_on: presets::DEFAULT.into(),
             auto_console: AutoConsole::Off,
+            console_button: ConsoleButton::Off,
             open_in: OpenIn::Last,
             fullscreen: true,
             idle: Idle::Off,
             last_tab: 0,
             kept_filters: KeptFilters::default(),
+            controller: ControllerPrefs::default(),
             extra: Map::new(),
         }
     }
@@ -722,9 +800,13 @@ impl ConsolePrefs {
         if !value.is_object() {
             return Self::default();
         }
+        let old = value.get("controller").is_none().then(|| ControllerPrefs::from_old_theme(&value));
         match lenient::<ConsolePrefs>(value) {
             Some(mut p) => {
                 p.theme = p.theme.normalized();
+                if let Some(old) = old {
+                    p.controller = old;
+                }
                 p
             }
             None => {

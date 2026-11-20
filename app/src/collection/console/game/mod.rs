@@ -157,6 +157,11 @@ impl CollectionView {
         manage.push(Row::action("x:details", tr!("Edit details")).icon(Icon::Edit).desc(tr!("Name, images, description, tags")));
         manage.push(Row::action("x:ludusavi", tr!("Back up saves (Ludusavi)")).icon(Icon::Save));
         manage.push(
+            Row::action("x:pictures", tr!("Change pictures\u{2026}"))
+                .icon(Icon::Image)
+                .desc(tr!("Covers and backgrounds, from the web or a file")),
+        );
+        manage.push(
             Row::toggle("hidden", tr!("Hidden"), g.hidden).icon(Icon::VisibilityOff).desc(tr!("Hidden games stay out of the library")),
         );
         if g.recent {
@@ -475,6 +480,7 @@ impl CollectionView {
                 "primary" => self.install_or_play(key, window, cx),
                 "x:manual-install" => self.open_manual_install(key, window, cx),
                 "x:ludusavi" => self.open_ludusavi_backup(key, cx),
+                "x:pictures" => self.open_covers_for(key, window, cx),
                 "x:steam-uninstall" => self.open_steam_uninstall(key, window, cx),
                 "x:steam-play" => self.play_with_steam(key, cx),
                 "x:open-client" => self.open_client_of(key, cx),

@@ -114,6 +114,7 @@ pub(crate) const GROUPS: &[Group] = &[
     // Performance.
     g("showFps", P, &["showFps"], n_!("FPS counter")),
     g("showMangohud", P, &["showMangohud"], "MangoHud"),
+    g(fps_limit::KEY_MANGOHUD_HIDDEN, P, &[fps_limit::KEY_MANGOHUD_HIDDEN], n_!("MangoHud starts hidden")),
     t("fps", P, &[fps_limit::KEY_LIMIT, fps_limit::KEY_METHOD, fps_limit::KEY_SMOOTH, fps_limit::KEY_NO_FOCUS], n_!("FPS limit")),
     t("lsfg", P, &lsfg::INHERITED_KEYS, n_!("Lossless Scaling frame generation")),
     g(gpu::KEY_SMOOTH_MOTION, P, &[gpu::KEY_SMOOTH_MOTION], n_!("Smooth Motion")),

@@ -17,6 +17,10 @@
 //! It runs after each library refresh when the launcher has games
 //! legendary does not know yet (so after the login too), and from the Epic
 //! page's button.
+//!
+//! A game updated in the launcher afterwards keeps the old version in
+//! legendary's record, and so an update it already has. [`retake_updated`]
+//! has legendary take it in again, from the same folder, after each refresh.
 
 use std::path::{Path, PathBuf};
 
@@ -34,6 +38,9 @@ pub struct LauncherGame {
     pub app_name: String,
     pub title: String,
     pub install_location: String,
+    /// The version the launcher installed (`AppVersionString`), as legendary
+    /// writes it (the manifest's build version).
+    pub version: String,
 }
 
 /// The launcher's manifests folder on this PC, when it is there (Windows).
@@ -70,6 +77,7 @@ pub fn launcher_games(dir: &Path) -> Vec<LauncherGame> {
             app_name: text(&doc, "AppName"),
             title: Some(text(&doc, "DisplayName")).filter(|t| !t.is_empty()).unwrap_or_else(|| text(&doc, "AppName")),
             install_location: text(&doc, "InstallLocation"),
+            version: text(&doc, "AppVersionString"),
         })
         .collect();
     out.sort_by(|a, b| a.title.cmp(&b.title));
@@ -89,6 +97,100 @@ pub fn importable_from(data_paths: &DataPaths, dir: &Path) -> Vec<LauncherGame> 
         .into_iter()
         .filter(|g| !installed.contains_key(&g.app_name) && metadata.join(format!("{}.json", g.app_name)).is_file())
         .collect()
+}
+
+/// The launcher's games legendary took in whose copy the launcher updated
+/// since: the launcher has the latest version (`assets.json`, as fresh as
+/// the last refresh) and legendary still records an older one. Reads files
+/// only.
+pub fn updated_by_launcher_from(data_paths: &DataPaths, dir: &Path) -> Vec<LauncherGame> {
+    let installed = library::installed_games(data_paths);
+    let assets = json_store::read_value(&data_paths.legendary_config_dir().join("assets.json")).unwrap_or(Value::Null);
+    launcher_games(dir)
+        .into_iter()
+        .filter(|g| {
+            let Some(entry) = installed.get(&g.app_name) else { return false };
+            // Only the latest: a launcher copy older than legendary's (one
+            // Heronite updated) is never taken back.
+            latest_version(&assets, &g.app_name) == Some(g.version.as_str())
+                && text(entry, "version") != g.version
+                && text(entry, "platform") == "Windows"
+                // Linked by `legendary egl-sync`: legendary syncs it itself,
+                // and its uninstall would delete the launcher's manifest.
+                && text(entry, "egl_guid").is_empty()
+                && same_folder(&text(entry, "install_path"), &g.install_location)
+                && !update_in_progress(Path::new(&g.install_location))
+        })
+        .collect()
+}
+
+/// The latest Windows build of `app` in legendary's `assets.json`.
+fn latest_version<'a>(assets: &'a Value, app: &str) -> Option<&'a str> {
+    let list = assets.get("Windows")?.as_array()?;
+    list.iter().find(|a| a.get("app_name").and_then(Value::as_str) == Some(app))?.get("build_version")?.as_str()
+}
+
+/// legendary records the folder through Python's `abspath`, the launcher as
+/// it wrote it: Windows paths ignore case and take either slash.
+fn same_folder(a: &str, b: &str) -> bool {
+    let norm = |p: &str| p.replace('\\', "/").trim_end_matches('/').to_lowercase();
+    !a.is_empty() && norm(a) == norm(b)
+}
+
+/// The launcher is updating the game, or stopped halfway: legendary would
+/// record it as needing a verification (its `import_game` looks at the same
+/// files).
+fn update_in_progress(folder: &Path) -> bool {
+    let store = folder.join(".egstore");
+    store.join("bps").exists() || std::fs::read_dir(store.join("Pending")).is_ok_and(|mut d| d.next().is_some())
+}
+
+/// After a refresh: legendary takes in again the games the launcher updated
+/// ([`updated_by_launcher_from`]), so they stop showing an update they
+/// already have. How many it took. Blocking.
+pub fn retake_updated(data_paths: &DataPaths, legendary: &Legendary) -> usize {
+    manifests_dir().map(|dir| retake(data_paths, legendary, &updated_by_launcher_from(data_paths, &dir))).unwrap_or(0)
+}
+
+/// legendary has no command that rereads a game's version: it forgets the
+/// game, keeping its files (`--skip-uninstaller`: no game uninstaller
+/// runs), then imports it from the same folder like [`import`]. The record
+/// starts over like a first import (a cloud save path is detected again).
+fn retake(data_paths: &DataPaths, legendary: &Legendary, games: &[LauncherGame]) -> usize {
+    let mut taken = 0;
+    for game in games {
+        let app = game.app_name.as_str();
+        log::info!("{app}: the Epic Games Launcher updated it to {}, taking it in again", game.version);
+        let forget = ["uninstall", app, "-y", "--keep-files", "--skip-uninstaller"];
+        // legendary exits with 0 when another of it holds its lock: its record tells.
+        let why = match legendary.run(&forget, &[]) {
+            Ok(_) if !library::installed_games(data_paths).contains_key(app) => None,
+            Ok(out) => Some(out.error_lines()),
+            Err(err) => Some(format!("{err:#}")),
+        };
+        if let Some(why) = why {
+            log::warn!("{app}: legendary kept the old version, trying again on the next refresh: {why}");
+            continue;
+        }
+        let why = match legendary.run(&import_args(game), &[]) {
+            Ok(out) => match library::installed_games(data_paths).get(app) {
+                Some(entry) => {
+                    if text(entry, "version") != game.version {
+                        log::warn!("{app}: legendary read version {} from the game's folder", text(entry, "version"));
+                    }
+                    taken += 1;
+                    continue;
+                }
+                None => {
+                    Some(out.error_lines()).filter(|w| !w.is_empty()).unwrap_or_else(|| format!("legendary exited with {:?}", out.code))
+                }
+            },
+            Err(err) => format!("{err:#}"),
+        };
+        // Not installed now, so the import of new games right after tries again.
+        log::warn!("{app}: legendary did not take the updated game in: {why}");
+    }
+    taken
 }
 
 /// legendary's command line that takes `game` in.
@@ -222,7 +324,7 @@ mod tests {
     }
 
     fn game(app: &str, folder: &str) -> LauncherGame {
-        LauncherGame { app_name: app.into(), title: format!("{app} title"), install_location: folder.into() }
+        LauncherGame { app_name: app.into(), title: format!("{app} title"), install_location: folder.into(), version: "1".into() }
     }
 
     #[test]
@@ -258,6 +360,90 @@ mod tests {
         let (added, r) = import_games(&data_paths, &lg, &[game("Calluna", r"D:\Control")]);
         assert_eq!(added, 0);
         assert!(!r.ok && r.message.contains("Calluna title") && r.message.contains("missing game metadata"), "{}", r.message);
+    }
+
+    /// legendary's `installed.json` is `games`, and `latest` the latest
+    /// Windows build of each app.
+    fn legendary_has(data_paths: &DataPaths, games: Value, latest: &[(&str, &str)]) {
+        let cfg = data_paths.legendary_config_dir();
+        std::fs::create_dir_all(&cfg).unwrap();
+        std::fs::write(cfg.join("installed.json"), games.to_string()).unwrap();
+        let assets: Vec<Value> = latest.iter().map(|(app, v)| json!({"app_name": app, "build_version": v})).collect();
+        std::fs::write(cfg.join("assets.json"), json!({"Windows": assets}).to_string()).unwrap();
+    }
+
+    fn record(folder: &Path, version: &str) -> Value {
+        json!({"version": version, "platform": "Windows", "install_path": folder.to_string_lossy(), "egl_guid": ""})
+    }
+
+    #[test]
+    fn games_the_launcher_updated_to_the_latest_version_are_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifests = dir.path().join("Manifests");
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        let apps = ["Fortnite", "Older", "Same", "Synced", "Elsewhere", "Updating", "Pending"];
+        for app in apps {
+            let version = if app == "Older" { "1" } else { "2" };
+            launcher_install(dir.path(), &manifests, app, app, json!({"AppVersionString": version}));
+        }
+        let at = |app: &str| dir.path().join(app);
+        // The launcher is halfway through an update.
+        std::fs::create_dir_all(at("Updating").join(".egstore").join("bps")).unwrap();
+        std::fs::create_dir_all(at("Pending").join(".egstore").join("Pending")).unwrap();
+        std::fs::write(at("Pending").join(".egstore").join("Pending").join("chunk"), "x").unwrap();
+        // Windows writes the same folder in other ways.
+        let fortnite = at("Fortnite").to_string_lossy().to_uppercase().replace('/', "\\") + "\\";
+        legendary_has(
+            &data_paths,
+            json!({
+                "Fortnite": {"version": "1", "platform": "Windows", "install_path": fortnite, "egl_guid": ""},
+                // Heronite updated it; the launcher's copy is the old one.
+                "Older": record(&at("Older"), "2"),
+                "Same": record(&at("Same"), "2"),
+                "Synced": {"version": "1", "platform": "Windows", "install_path": at("Synced").to_string_lossy(), "egl_guid": "GUIDSynced"},
+                "Elsewhere": record(&dir.path().join("other").join("Elsewhere"), "1"),
+                "Updating": record(&at("Updating"), "1"),
+                "Pending": record(&at("Pending"), "1"),
+            }),
+            &apps.map(|app| (app, "2")),
+        );
+        let names: Vec<String> = updated_by_launcher_from(&data_paths, &manifests).into_iter().map(|g| g.app_name).collect();
+        assert_eq!(names, ["Fortnite"]);
+        // A launcher version that is not the latest one stays as it is.
+        legendary_has(&data_paths, json!({"Fortnite": record(&at("Fortnite"), "1")}), &[("Fortnite", "3")]);
+        assert!(updated_by_launcher_from(&data_paths, &manifests).is_empty());
+    }
+
+    #[test]
+    fn an_updated_game_is_forgotten_with_its_files_and_imported_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        legendary_has(&data_paths, json!({"Calluna": record(Path::new(r"D:\Control"), "1")}), &[("Calluna", "2")]);
+        assert_eq!(library::updates_available(&data_paths), ["Calluna"], "the update the launcher already installed");
+        let imported = r#"{"Calluna": {"version": "2", "platform": "Windows"}}"#;
+        let tool = fake_tool(dir.path())
+            .on(&["uninstall", "Calluna"], Reply::new().write_file("${LEGENDARY_CONFIG_PATH}/installed.json", "{}"))
+            .on(&["import", "Calluna"], Reply::new().write_file("${LEGENDARY_CONFIG_PATH}/installed.json", imported));
+        let lg = Legendary::with_bin(tool.bin(), data_paths.legendary_config_dir());
+        assert_eq!(retake(&data_paths, &lg, &[game("Calluna", r"D:\Control")]), 1);
+        assert!(library::updates_available(&data_paths).is_empty());
+        assert_eq!(
+            tool.calls(),
+            ["uninstall Calluna -y --keep-files --skip-uninstaller", r"import Calluna D:\Control --platform Windows --with-dlcs"]
+        );
+    }
+
+    #[test]
+    fn a_game_legendary_did_not_forget_is_not_imported() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        legendary_has(&data_paths, json!({"Calluna": record(Path::new(r"D:\Control"), "1")}), &[]);
+        // Another legendary holds the lock: it logs and exits with 0.
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().err("[cli] CRITICAL: Failed to acquire installed data lock"));
+        let lg = Legendary::with_bin(tool.bin(), data_paths.legendary_config_dir());
+        assert_eq!(retake(&data_paths, &lg, &[game("Calluna", r"D:\Control")]), 0);
+        assert_eq!(tool.calls().len(), 1, "{:?}", tool.calls());
+        assert!(library::installed_games(&data_paths).contains_key("Calluna"), "the old record stays");
     }
 
     /// Read-only look at this PC's launcher, if it has one:

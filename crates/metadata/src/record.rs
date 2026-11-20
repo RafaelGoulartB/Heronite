@@ -9,6 +9,9 @@
 //! - `lockedFields`: fields no update changes until they are unlocked.
 //! - `noMatch`: the user said no source has this game (under this title):
 //!   automatic updates stop asking until it is fetched by hand or renamed.
+//! - `notOn`: the sources a game the user linked by hand was unlinked from
+//!   ([`unlink`]): "this game is not on that source", so a search by name
+//!   does not find it there again until it is linked by hand.
 
 use heronite_data::models::CollectionGameMetadata;
 use heronite_data::num::JsNum;
@@ -22,9 +25,10 @@ use crate::util::{normalize_title, now_iso};
 pub const SOURCE_MATCHES: &str = "sourceMatches";
 pub const LOCKED_FIELDS: &str = "lockedFields";
 pub const NO_MATCH: &str = "noMatch";
+pub const NOT_ON: &str = "notOn";
 
 const IGDB: &str = "igdb";
-const STEAM: &str = "steam";
+pub(crate) const STEAM: &str = "steam";
 const LUTRIS: &str = "lutris";
 
 /// Which game of a source a record is.
@@ -109,6 +113,7 @@ pub fn set_source_match(md: &mut CollectionGameMetadata, source: &str, m: Source
         LUTRIS => md.lutris_slug = Some(m.id.clone()),
         _ => {}
     }
+    set_not_on(md, source, false);
     let mut all = stored(md);
     all.insert(source.to_owned(), m);
     write(md, SOURCE_MATCHES, &all);
@@ -132,6 +137,47 @@ pub fn clear_source_match(md: &mut CollectionGameMetadata, source: &str) {
         } else {
             write(md, SOURCE_MATCHES, &all);
         }
+    }
+}
+
+/// Takes away the link of a game to `source` that the user made by hand
+/// (or a search by name made): the match, and for Steam the id the record
+/// kept with it (the game's own Steam id, in its library entry, is not the
+/// record's). The game is then marked as not on `source` ([`is_not_on`]),
+/// until the user links it by hand again.
+pub fn unlink(md: &mut CollectionGameMetadata, source: &str) {
+    drop_link(md, source);
+    set_not_on(md, source, true);
+}
+
+/// Forgets the game of `source` the record was linked to (as [`unlink`]), without saying the
+/// game is not on it: the source may find it again.
+pub fn drop_link(md: &mut CollectionGameMetadata, source: &str) {
+    if source == STEAM {
+        md.steam_app_id = None;
+    }
+    clear_source_match(md, source);
+}
+
+/// The sources the user said the game is not on (see [`unlink`]).
+pub fn not_on(md: &CollectionGameMetadata) -> Vec<String> {
+    md.extra.get(NOT_ON).and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default()
+}
+
+pub fn is_not_on(md: &CollectionGameMetadata, source: &str) -> bool {
+    md.extra.get(NOT_ON).and_then(Value::as_array).is_some_and(|list| list.iter().any(|s| s.as_str() == Some(source)))
+}
+
+fn set_not_on(md: &mut CollectionGameMetadata, source: &str, on: bool) {
+    let mut list = not_on(md);
+    list.retain(|s| s != source);
+    if on {
+        list.push(source.to_owned());
+    }
+    if list.is_empty() {
+        md.extra.remove(NOT_ON);
+    } else {
+        write(md, NOT_ON, &list);
     }
 }
 
@@ -253,6 +299,28 @@ mod tests {
         md.lutris_slug = Some("x".into());
         clear_source_match(&mut md, "lutris");
         assert_eq!(md.lutris_slug, None);
+    }
+
+    #[test]
+    fn unlinking_a_page_takes_its_id_with_it() {
+        let mut md = blank_metadata("a", "sideload");
+        let page = SourceMatch { id: "620".into(), pinned: true, ..Default::default() };
+        set_source_match(&mut md, "steam", page, None);
+        assert_eq!(md.steam_app_id.as_deref(), Some("620"));
+        assert_eq!(pinned_ids(&md).get("steam").map(String::as_str), Some("620"));
+        unlink(&mut md, "steam");
+        assert_eq!(md.steam_app_id, None);
+        assert!(source_matches(&md).is_empty() && !md.extra.contains_key(SOURCE_MATCHES));
+        // The game is then not on that source, until it is linked by hand again.
+        assert!(is_not_on(&md, "steam") && !is_not_on(&md, "igdb"));
+        assert_eq!(serde_json::to_value(&md).unwrap()["notOn"], serde_json::json!(["steam"]));
+        let page = SourceMatch { id: "400".into(), pinned: true, ..Default::default() };
+        set_source_match(&mut md, "steam", page, None);
+        assert!(!is_not_on(&md, "steam") && !md.extra.contains_key(NOT_ON));
+        // Clearing a Steam match alone keeps the id: it can be the game's own.
+        md.steam_app_id = Some("7".into());
+        clear_source_match(&mut md, "steam");
+        assert_eq!(md.steam_app_id.as_deref(), Some("7"));
     }
 
     #[test]

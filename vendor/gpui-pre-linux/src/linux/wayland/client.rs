@@ -1355,6 +1355,13 @@ impl WaylandConnection {
         self.0.borrow_mut().restore_cursor_after_hide();
     }
 
+    /// Heronite: the next toplevel activates itself with `token`, as the
+    /// first one does with the startup token (`open_window`). Returns the
+    /// token it replaces.
+    pub(crate) fn replace_activation_token(&self, token: Option<String>) -> Option<String> {
+        std::mem::replace(&mut self.0.borrow_mut().startup_activation_token, token)
+    }
+
     pub(crate) fn is_cursor_visible(&self) -> bool {
         self.0.borrow().cursor_hidden_window.is_none()
     }

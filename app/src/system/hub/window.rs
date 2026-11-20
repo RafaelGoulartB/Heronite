@@ -367,6 +367,36 @@ pub fn has_window(cx: &App) -> bool {
     cx.try_global::<Hub>().is_some_and(|h| h.0.borrow().window.is_some())
 }
 
+/// The console button held, or a controller connecting (`console::summon`):
+/// the window comes out of the tray, or to the front, in console mode.
+pub fn summon_console(cx: &mut App) {
+    let existed = has_window(cx);
+    apply_window_flags(cx, true, false, false);
+    // A window that raises itself may be refused (Hyprland ignores it unless
+    // `focus_on_activate` is on): Hyprland is asked directly. Elsewhere this
+    // does nothing.
+    #[cfg(target_os = "linux")]
+    if existed {
+        cx.background_spawn(async {
+            if let Err(e) = heronite_overlay::game_window::focus(std::process::id()) {
+                log::debug!("console mode: focusing the window: {e}");
+            }
+        })
+        .detach();
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = existed;
+}
+
+/// Console mode is on and its window has the focus.
+pub fn console_in_front(cx: &mut App) -> bool {
+    if !crate::console::active() {
+        return false;
+    }
+    let handle = cx.try_global::<Hub>().and_then(|h| h.0.borrow().window.as_ref().map(|w| w.handle));
+    handle.is_some_and(|h| h.update(cx, |_, window, _| window.is_window_active()).unwrap_or(false))
+}
+
 #[cfg(test)]
 mod tests {
     // Not `super::*`: GPUI's own `test` macro would shadow `#[test]`.

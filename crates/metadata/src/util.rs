@@ -210,6 +210,16 @@ pub fn sniff_image_ext(bytes: &[u8], extended: bool) -> Option<&'static str> {
 
 pub const ALLOWED_EXT: [&str; 6] = ["jpg", "jpeg", "png", "webp", "gif", "avif"];
 
+/// Videos a game's background may be (an animated background): it plays
+/// with "Animated backgrounds" on, else shows its first frame.
+pub const VIDEO_EXT: [&str; 5] = ["webm", "mp4", "mkv", "mov", "m4v"];
+
+/// Whether a file of extension `ext` (normalized) can be the art of `kind`:
+/// a picture, or a video for the background.
+pub fn art_ext_allowed(kind: crate::types::ArtKind, ext: &str) -> bool {
+    ALLOWED_EXT.contains(&ext) || (kind == crate::types::ArtKind::Hero && VIDEO_EXT.contains(&ext))
+}
+
 /// Lowercase extension without the dot; `jpeg` becomes `jpg`.
 pub fn normalize_ext(ext: &str) -> String {
     let v = ext.trim_start_matches('.').to_lowercase();

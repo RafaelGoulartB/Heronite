@@ -45,9 +45,13 @@ fn unescape(s: &str) -> String {
     String::from_utf8(out).unwrap()
 }
 
-/// `System/Name` of a request for a box art, or `None` for anything else.
+/// `System/Name` of a request for a box art (`logo:System/Name` for a
+/// logo), or `None` for anything else.
 fn asked(req: &Req) -> Option<String> {
     let rest = unescape(req.path().strip_prefix(PREFIX)?);
+    if let Some((system, name)) = rest.split_once("/Named_Logos/") {
+        return Some(format!("logo:{system}/{}", name.strip_suffix(".png")?));
+    }
     let (system, name) = rest.split_once("/Named_Boxarts/")?;
     Some(format!("{system}/{}", name.strip_suffix(".png")?))
 }
@@ -62,8 +66,9 @@ struct Mock {
 }
 
 impl Mock {
+    /// The box art asked for.
     fn requests(&self) -> Vec<String> {
-        self.server.log.lock().iter().filter_map(asked).collect()
+        self.server.log.lock().iter().filter_map(asked).filter(|k| !k.starts_with("logo:")).collect()
     }
 }
 
@@ -194,6 +199,29 @@ fn the_dumps_own_name_is_one_request_and_a_sure_match() {
 }
 
 #[test]
+fn the_logo_of_the_box_arts_name_comes_with_it() {
+    let name = "Super Metroid (Japan, USA) (En,Ja)";
+    let game = emulated("nintendo_super_nes", Some("Super Metroid (Japan, USA) (En,Ja).sfc"), "Super Metroid");
+    let s = setup(&[(&format!("{SNES}/{name}"), 512, 357), (&format!("logo:{SNES}/{name}"), 800, 300)], &[]);
+    let md = lookup(&s, &game).into_option().unwrap().metadata;
+    let logo = url(&s, SNES, name).replace("/Named_Boxarts/", "/Named_Logos/");
+    assert_eq!(md.logo_url.as_deref(), Some(logo.as_str()));
+    assert!(md.cover_wide_url.is_some(), "the box art beside it");
+
+    // Only the logo asked: a box art of a shape not asked still names it.
+    let s = setup(&[(&format!("{SNES}/{name}"), 512, 357), (&format!("logo:{SNES}/{name}"), 800, 300)], &[]);
+    let only_logo = SourceGame { fields: Some(vec!["logo".into()]), ..game.clone() };
+    let md = lookup(&s, &only_logo).into_option().unwrap().metadata;
+    let logo = url(&s, SNES, name).replace("/Named_Boxarts/", "/Named_Logos/");
+    assert_eq!(md.logo_url.as_deref(), Some(logo.as_str()));
+    assert!(md.cover_wide_url.is_none() && md.cover_url.is_none());
+
+    // No logo on the server and no cover asked: nothing found.
+    let s = setup(&[(&format!("{SNES}/{name}"), 512, 357)], &[]);
+    assert!(matches!(lookup(&s, &only_logo), Lookup::NotFound));
+}
+
+#[test]
 fn the_characters_the_collection_scrubs_are_replaced_in_the_request() {
     let s = setup(&[("Sega - Mega Drive - Genesis/Sonic _ Knuckles (World)", 512, 731)], &[]);
     let c = lookup(&s, &emulated("sega_genesis", Some("Sonic & Knuckles (World).md"), "Sonic & Knuckles")).into_option().unwrap();
@@ -239,7 +267,7 @@ fn a_shortened_name_is_a_fuzzy_match_and_the_chain_is_ordered() {
 fn the_regions_follow_the_interface_language() {
     use heronite_i18n::Lang;
     // The server has only the German box.
-    for (lang, expected_first) in [(Lang::De, "Germany"), (Lang::PtBr, "Brazil"), (Lang::Es, "Spain")] {
+    for (lang, expected_first) in [(Lang::De, "Germany"), (Lang::PtBr, "Brazil"), (Lang::Es, "Spain"), (Lang::Fr, "France")] {
         let regions = heronite_metadata::libretro::names::regions_for(lang);
         assert_eq!(regions[0], expected_first);
     }

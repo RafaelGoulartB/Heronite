@@ -58,6 +58,7 @@ fn text_of<'a>(md: &'a CollectionGameMetadata, field: &str) -> Option<&'a Option
         "hero" => &md.hero_url,
         "coverSquare" => &md.cover_square_url,
         "coverWide" => &md.cover_wide_url,
+        "logo" => &md.logo_url,
         _ => return None,
     })
 }
@@ -104,6 +105,7 @@ fn set_field(target: &mut CollectionGameMetadata, field: &str, value: FieldValue
         ("hero", FieldValue::Text(v)) => target.hero_url = Some(v),
         ("coverSquare", FieldValue::Text(v)) => target.cover_square_url = Some(v),
         ("coverWide", FieldValue::Text(v)) => target.cover_wide_url = Some(v),
+        ("logo", FieldValue::Text(v)) => target.logo_url = Some(v),
         (AGE_RATINGS, FieldValue::AgeRatings(v)) => target.age_ratings = v,
         (f, FieldValue::List(v)) if list_of(target, f).is_some() => {
             *list_of_mut(target, f).expect("checked") = v;
@@ -161,6 +163,7 @@ fn text_of_mut<'a>(md: &'a mut CollectionGameMetadata, field: &str) -> Option<&'
         "hero" => &mut md.hero_url,
         "coverSquare" => &mut md.cover_square_url,
         "coverWide" => &mut md.cover_wide_url,
+        "logo" => &mut md.logo_url,
         _ => return None,
     })
 }

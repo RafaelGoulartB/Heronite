@@ -22,19 +22,7 @@ impl CollectionView {
     pub(super) fn open_install_folder(&mut self, key: &str, cx: &mut Context<Self>) {
         let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
         let paths = self.data_paths.clone();
-        self.open_external(
-            move || {
-                let folders = game_folders(&paths, &game);
-                let dir = folders
-                    .iter()
-                    .find(|(k, _)| *k != FolderKind::Emulator)
-                    .or(folders.first())
-                    .map(|(_, d)| d.clone())
-                    .ok_or_else(|| tr!("The install folder was not found on this computer.").to_string())?;
-                xdg_open(&dir)
-            },
-            cx,
-        );
+        self.open_external(move || open_install_folder_of(&paths, &game), cx);
     }
 
     /// Opens `dir` (a folder found by [`game_folders`]) in the file manager.
@@ -56,6 +44,11 @@ impl CollectionView {
         );
     }
 
+    /// Opens a web page (a store page, a site about a game) in the browser.
+    pub(super) fn open_url(&mut self, url: String, cx: &mut Context<Self>) {
+        self.open_external(move || xdg_open(&url), cx);
+    }
+
     /// Opens the ProtonDB page of a Steam game in the browser.
     pub(super) fn open_protondb(&mut self, steam_app_id: &str, cx: &mut Context<Self>) {
         let url = protondb_url(steam_app_id);
@@ -71,6 +64,19 @@ impl CollectionView {
         })
         .detach();
     }
+}
+
+/// Opens the install folder of `game` (the ROM's folder for emulated games)
+/// in the file manager. Blocks: call it off the UI thread.
+pub(crate) fn open_install_folder_of(paths: &heronite_data::DataPaths, game: &heronite_data::CollectionGame) -> Result<(), String> {
+    let folders = game_folders(paths, game);
+    let dir = folders
+        .iter()
+        .find(|(k, _)| *k != FolderKind::Emulator)
+        .or(folders.first())
+        .map(|(_, d)| d.clone())
+        .ok_or_else(|| tr!("The install folder was not found on this computer.").to_string())?;
+    xdg_open(&dir)
 }
 
 fn xdg_open(target: impl AsRef<OsStr>) -> Result<(), String> {

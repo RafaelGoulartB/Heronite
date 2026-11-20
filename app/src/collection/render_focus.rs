@@ -35,7 +35,9 @@ impl CollectionView {
         let left = self.focus_left(&vm, &lay, epic_focus, scale, vh, cx);
         let screenshots = self.screenshots_section(cx);
         let timeline = self.timeline_section(&vm.key, lay.main_w, scale, cx);
-        let focus_extras = self.focus_extras(&vm.key, scale, cx);
+        let mut focus_extras = self.focus_extras(&vm.key, scale, cx);
+        focus_extras.media = self.store_media_section(lay.main_w, scale, cx);
+        focus_extras.links = self.links_section(&vm.key, cx);
         // The settings in the page take the body's place (the width beside the left column).
         let page = self.page_settings_body(vw - list_w - lay.left_w - lay.offset - 100., cx);
         focus::focus_panel(
@@ -164,9 +166,10 @@ impl CollectionView {
     /// Covers of the related games (the game's own is in the left column).
     pub(super) fn focus_covers(&mut self, vm: &super::vm::FocusVm, scale: f32) -> HashMap<SharedString, ImageSource> {
         let mut covers: HashMap<SharedString, ImageSource> = HashMap::new();
+        let whole = super::whole_cover::on();
         for g in &vm.related {
             for c in &g.games {
-                if let Some(src) = self.cover(&c.cover_key, focus::RELATED_COVER_W, focus::RELATED_COVER_H, scale, 50) {
+                if let Some(src) = self.tall_cover(&c.cover_key, focus::RELATED_COVER_W, focus::RELATED_COVER_H, scale, 50, whole) {
                     covers.insert(c.cover_key.clone(), src);
                 }
             }

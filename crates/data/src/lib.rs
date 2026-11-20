@@ -1,5 +1,6 @@
 //! Data layer: the files of the data folder (`~/.local/share/heronite`).
 
+pub mod ffmpeg;
 pub mod json_store;
 pub mod models;
 pub mod num;
@@ -31,6 +32,7 @@ pub mod focus;
 pub mod fuzzy;
 pub mod game_actions;
 pub mod game_config;
+pub mod game_links;
 pub mod heronite_ui_import;
 pub mod hltb;
 pub mod install_size;
@@ -45,6 +47,7 @@ pub mod onboarding;
 pub mod organize;
 pub mod overlay_prefs;
 pub mod playtime;
+pub mod quick_launch_prefs;
 pub mod ratings;
 pub mod replay_prefs;
 pub mod screenshot_prefs;

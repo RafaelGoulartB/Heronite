@@ -160,8 +160,8 @@ impl MetadataService {
     }
 
     /// [`start_bulk_metadata`](Self::start_bulk_metadata), with the new
-    /// job's id. The progress alone cannot tell it: right after a job ends
-    /// with others waiting it is that job's `Done`.
+    /// job's id. The progress alone cannot tell it: while another job runs
+    /// it is that job's.
     pub fn start_bulk_job(
         self: &Arc<Self>,
         args: BulkArgs,
@@ -225,6 +225,11 @@ impl MetadataService {
     /// Publishes a job's final progress and takes the next job waiting; with
     /// none, lets the queue go first, so a caller that reacts to `Done` can
     /// start the next job at once.
+    ///
+    /// With a next job, the stored progress is already that job's start: it
+    /// is taken off the queue here, and its own first progress comes only
+    /// after the undo is cleared, so storing the `Done` would show no job
+    /// running and none waiting in between.
     fn finish(&self, mut done: BulkProgress, on_progress: &dyn Fn(&BulkProgress)) -> (BulkProgress, Option<Queued>) {
         let next = {
             let mut jobs = self.jobs.lock();
@@ -233,7 +238,10 @@ impl MetadataService {
             done.queued = jobs.queued();
             // The next job drops this undo as it starts.
             done.can_undo = jobs.undo.is_some() && next.is_none();
-            jobs.progress = done.clone();
+            jobs.progress = match &next {
+                Some(job) => BulkProgress { queued: done.queued.clone(), ..initial(job.id, &job.args) },
+                None => done.clone(),
+            };
             next
         };
         on_progress(&done);

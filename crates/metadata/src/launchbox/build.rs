@@ -12,7 +12,7 @@ use flate2::write::DeflateEncoder;
 use flate2::Compression;
 use rusqlite::{params, Connection, Transaction};
 
-use super::index::{pack_file, Detail, ImageKind, BLOCK, SCHEMA, SCHEMA_AFTER, SCHEMA_VERSION};
+use super::index::{pack_file, Detail, ImageKind, BLOCK, MAX_SCREENSHOTS, SCHEMA, SCHEMA_AFTER, SCHEMA_VERSION};
 use super::parse::{each_record, Record};
 use crate::rom_names::{match_key, strip_extension};
 use crate::sources::download::{Cancelled, DownloadProgress, Phase};
@@ -87,6 +87,8 @@ struct Writer<'t> {
     /// The single pictures kept per game (the background, the square cover)
     /// and the box fronts per region.
     kept: HashSet<(i64, u8, String)>,
+    /// Gameplay screenshots kept per game, up to [`MAX_SCREENSHOTS`].
+    screenshots: HashMap<i64, usize>,
     built: Built,
 }
 
@@ -199,10 +201,19 @@ impl Writer<'_> {
             return Ok(());
         }
         let region = r.text("Region").unwrap_or("");
-        // Box fronts: one per region; the others: one per game.
+        // Box fronts and logos: one per region; screenshots: the first few
+        // of any region; the others: one per game.
         let slot = match kind {
-            ImageKind::BoxFront | ImageKind::BoxFrontReconstructed => region.to_owned(),
+            ImageKind::BoxFront | ImageKind::BoxFrontReconstructed | ImageKind::ClearLogo => region.to_owned(),
             ImageKind::Background | ImageKind::Square => String::new(),
+            ImageKind::Screenshot => {
+                let count = self.screenshots.entry(game).or_default();
+                if *count >= MAX_SCREENSHOTS {
+                    return Ok(());
+                }
+                *count += 1;
+                file.to_owned()
+            }
         };
         if !self.kept.insert((game, kind as u8, slot)) {
             return Ok(());
@@ -260,6 +271,7 @@ pub fn build(archive: &Path, out: &Path, progress: &DownloadProgress) -> Result<
             block: Vec::with_capacity(BLOCK as usize),
             seq: 0,
             kept: HashSet::new(),
+            screenshots: HashMap::new(),
             built: Built::default(),
         };
         let stream =

@@ -4,9 +4,10 @@
 //!
 //! `explorer.exe shell:AppsFolder\<AUMID>` asks the shell to start the
 //! application and returns at once (with exit code 1, whatever happened),
-//! so the session follows the programs running from the package's folder
-//! (a GDK game starts through `gamelaunchhelper.exe` there, which starts the
-//! game). Stopping ends those programs.
+//! so the session follows the programs running from the package (a GDK game
+//! starts through `gamelaunchhelper.exe` there, which starts the game): the
+//! ones Windows says are from it, and the ones whose program is in its
+//! folder. Stopping ends those programs.
 
 use heronite_data::models::{GameInfo, LocalGameMeta};
 use heronite_i18n::tr;
@@ -23,11 +24,10 @@ pub(crate) fn build(probe: &dyn Probe, game: &GameInfo, meta: &LocalGameMeta) ->
         return LaunchPlan::Unavailable(tr!("This game has no launch method").into());
     };
     let folder = game.install.install_path.clone().filter(|f| !f.is_empty() && probe.exists(f));
+    let package = aumid.split_once('!').map(|(family, _)| family.to_string());
     LaunchPlan::Native(ProcessPlan {
         command: Command { program: "explorer.exe".into(), args: vec![format!(r"shell:AppsFolder\{aumid}")], ..Default::default() },
-        // Without the folder there is nothing to follow: the session ends
-        // with the request.
-        handoff: folder.is_some().then(|| Handoff { folder, exit_ignored: true, ..Default::default() }),
+        handoff: Some(Handoff { folder, package, exit_ignored: true, ..Default::default() }),
         notes: vec![format!("Windows starts the game from its package ({aumid})")],
         ..Default::default()
     })
@@ -86,7 +86,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn the_shell_starts_the_package_and_the_session_follows_its_folder() {
+    fn the_shell_starts_the_package_and_the_session_follows_it() {
         let folder = r"C:\XboxGames\Game\Content";
         let probe = FakeProbe::new("/h").with_path(folder);
         let LaunchPlan::Native(p) = plan(&probe, folder, "Studio.Game_abc!Game") else { panic!("not a native plan") };
@@ -94,11 +94,13 @@ mod tests {
         assert_eq!(p.command.args, [r"shell:AppsFolder\Studio.Game_abc!Game"]);
         let h = p.handoff.unwrap();
         assert_eq!(h.folder.as_deref(), Some(folder));
+        assert_eq!(h.package.as_deref(), Some("Studio.Game_abc"));
         assert!(h.exit_ignored && h.client.is_none() && h.prefix.is_none());
 
-        // A folder that is gone: the request still goes, nothing to follow.
+        // A folder that is gone: the game is still found by its package.
         let LaunchPlan::Native(p) = plan(&FakeProbe::new("/h"), folder, "Studio.Game_abc!Game") else { panic!() };
-        assert!(p.handoff.is_none());
+        let h = p.handoff.unwrap();
+        assert_eq!((h.folder, h.package.as_deref()), (None, Some("Studio.Game_abc")));
         assert!(matches!(plan(&probe, folder, "Studio.Game_abc"), LaunchPlan::Unavailable(_)));
     }
 

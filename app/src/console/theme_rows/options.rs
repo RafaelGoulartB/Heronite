@@ -270,17 +270,40 @@ pub(super) static OPTS: &[Opt] = &[
     colour!("colors.muted", n_!("Secondary text"), theme.colors.muted),
     colour!("colors.focus_text", n_!("Text on the focus colour"), theme.colors.focus_text),
     colour!("colors.on", n_!("“On” switches"), theme.colors.on),
-    sel!("controls.glyphs", Controls, n_!("Buttons drawn as"), "", &[], Glyphs, glyphs_name, theme.controls.glyphs),
-    sel!("controls.hints", Controls, n_!("Hint bar"), "", &[], Hints, hints_name, theme.controls.hints),
-    tgl!(
-        "controls.swap_ab",
+    // The controller's, not the theme's: the overlay and Settings follow them too.
+    sel!(
+        "controls.glyphs",
         Controls,
-        n_!("Confirm with the east button"),
-        n_!("The Nintendo way: east confirms, south goes back."),
+        n_!("Buttons drawn as"),
+        n_!("Everywhere: console mode, the overlay and Settings."),
         &[],
-        theme.controls.swap_ab
+        Glyphs,
+        glyphs_name,
+        controller.glyphs
     ),
+    sel!(
+        "controls.confirm",
+        Controls,
+        n_!("Confirm button"),
+        n_!("Automatic: east on Nintendo controllers (their A), south on the others."),
+        &[],
+        ConfirmButton,
+        confirm_name,
+        controller.confirm
+    ),
+    sel!("controls.hints", Controls, n_!("Hint bar"), "", &[], Hints, hints_name, theme.controls.hints),
     tgl!("controls.sounds", Controls, n_!("Navigation sounds"), "", &[], theme.controls.sounds),
+    sel!(
+        "controls.sound_style",
+        Controls,
+        n_!("Sound style"),
+        n_!("Soft is low and round. Classic is the first, higher one."),
+        &[],
+        SoundStyle,
+        sound_style_name,
+        theme.controls.sound_style
+    ),
+    num!("controls.sound_volume", Controls, n_!("Sound volume"), "", 10, 100, 10, "%", u8, theme.controls.sound_volume),
     sel!("game_page", GamePage, n_!("Game page"), "", &[], GamePage, game_page_name, theme.game_page),
     sel!("menu.style", GamePage, n_!("Menu"), "", &[], MenuStyle, menu_style_name, theme.menu.style),
     sel!("menu.side", GamePage, n_!("Side of the menu"), "", &[], Side, side_name, theme.menu.side),
@@ -360,7 +383,29 @@ pub(super) static OPTS: &[Opt] = &[
         &[],
         fullscreen
     ),
-    sel!("startup.auto_console", Startup, n_!("When a controller connects"), "", &[], AutoConsole, auto_console_name, auto_console),
+    sel!(
+        "startup.auto_console",
+        Startup,
+        n_!("When a controller connects"),
+        n_!("Ask shows a notice in the corner of the screen, even with Heronite in the tray."),
+        &[],
+        AutoConsole,
+        auto_console_name,
+        auto_console
+    ),
+    // `Auto` is not offered: it shows as the system's button.
+    Opt {
+        id: "startup.console_button",
+        card: Card::Startup,
+        label: n_!("Button to enter console mode"),
+        desc: n_!("Hold it for a second, from any app. Not while a game runs."),
+        on: &[],
+        kind: Kind::Choice {
+            names: || names(&ConsoleButton::CHOICES, console_button_name),
+            get: |p| index(&ConsoleButton::CHOICES, p.console_button.resolved()),
+            set: |p, i| p.console_button = ConsoleButton::CHOICES[i],
+        },
+    },
     sel!("startup.idle", Startup, n_!("After 5 minutes without input"), "", &[], Idle, idle_name, idle),
 ];
 

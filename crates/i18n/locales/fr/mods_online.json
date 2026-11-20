@@ -1,0 +1,21 @@
+{
+  "Could not reach {host}: {error}": "Impossible de joindre {host} : {error}",
+  "Free Nexus Mods accounts download with the \"Mod manager download\" button on the mod's page": "Les comptes gratuits Nexus Mods téléchargent via le bouton « Mod manager download » sur la page du mod",
+  "Nexus Mods asks to wait: the hourly limit of requests was reached": "Nexus Mods demande de patienter : la limite horaire de requêtes est atteinte",
+  "Nexus Mods collections are not supported yet: install their mods one by one": "Les collections Nexus Mods ne sont pas encore prises en charge : installez leurs mods un par un",
+  "Nexus Mods could not search: {error}": "Échec de la recherche sur Nexus Mods : {error}",
+  "Nexus Mods gave no download link": "Nexus Mods n’a fourni aucun lien de téléchargement",
+  "Nexus Mods refused the API key. Paste it again in Settings → Mods.": "Nexus Mods a refusé la clé API. Collez-la à nouveau dans Paramètres → Mods.",
+  "Not found on {host}": "Introuvable sur {host}",
+  "The download link from Nexus Mods expired or is not valid: use the \"Mod manager download\" button on the mod's page again": "Le lien de téléchargement Nexus Mods a expiré ou n’est pas valide : utilisez à nouveau le bouton « Mod manager download » sur la page du mod",
+  "The download stopped before the end": "Le téléchargement s’est arrêté avant la fin",
+  "The download stopped: {error}": "Le téléchargement s’est arrêté : {error}",
+  "The download was cancelled": "Le téléchargement a été annulé",
+  "This is not a Nexus Mods download link": "Ce lien n’est pas un lien de téléchargement Nexus Mods",
+  "This is not a Thunderstore install link": "Ce lien n’est pas un lien d’installation Thunderstore",
+  "Thunderstore has no version of {name}": "Thunderstore ne propose aucune version de {name}",
+  "{host} answered with HTTP {status}": "{host} a répondu avec le code HTTP {status}",
+  "{host} asks to wait: too many requests": "{host} demande de patienter : trop de requêtes",
+  "{host} refused the request (HTTP {status})": "{host} a refusé la requête (HTTP {status})",
+  "{host} sent an answer Heronite does not understand: {error}": "{host} a envoyé une réponse qu’Heronite ne comprend pas : {error}"
+}

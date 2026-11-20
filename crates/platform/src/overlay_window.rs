@@ -10,17 +10,17 @@ use std::num::NonZeroIsize;
 
 use windows_sys::Win32::Foundation::{GetLastError, SetLastError, HWND, POINT, RECT};
 use windows_sys::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, HMONITOR, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
+    ClientToScreen, GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, HMONITOR, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
 };
 use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentProcessId, GetCurrentThreadId};
 use windows_sys::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{SetActiveWindow, SetFocus};
 use windows_sys::Win32::UI::Shell::{SHQueryUserNotificationState, QUERY_USER_NOTIFICATION_STATE, QUNS_RUNNING_D3D_FULL_SCREEN};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsWindow, SetForegroundWindow,
-    SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_STYLE, HWND_TOPMOST, LWA_ALPHA,
-    SWP_FRAMECHANGED, SWP_NOACTIVATE, SW_SHOWNOACTIVATE, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-    WS_EX_TRANSPARENT, WS_THICKFRAME,
+    BringWindowToTop, GetClientRect, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsWindow,
+    SetForegroundWindow, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_STYLE, HWND_TOPMOST,
+    LWA_ALPHA, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOZORDER, SW_SHOWNOACTIVATE, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_LAYERED,
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_THICKFRAME,
 };
 
 /// Physical monitor coordinates and its logical-to-physical scale.
@@ -31,6 +31,9 @@ pub struct Screen {
     pub width: i32,
     pub height: i32,
     pub scale: f32,
+    /// Physical px the taskbar (or another bar) takes at the bottom: a
+    /// surface placed at the bottom sits above it.
+    pub bottom_inset: i32,
 }
 
 /// The foreground window's monitor, including negative desktop origins.
@@ -67,7 +70,14 @@ fn screen_of(monitor: HMONITOR) -> io::Result<Screen> {
             return Err(io::Error::other(format!("GetDpiForMonitor: HRESULT {hr:#x}")));
         }
         let r = info.rcMonitor;
-        Ok(Screen { left: r.left, top: r.top, width: r.right - r.left, height: r.bottom - r.top, scale: x as f32 / 96. })
+        Ok(Screen {
+            left: r.left,
+            top: r.top,
+            width: r.right - r.left,
+            height: r.bottom - r.top,
+            scale: x as f32 / 96.,
+            bottom_inset: (r.bottom - info.rcWork.bottom).max(0),
+        })
     }
 }
 
@@ -76,12 +86,12 @@ impl Screen {
         self.height as f32 / self.scale
     }
 
-    fn bounds(self, width: f32, height: f32, right: bool, margin: f32) -> RECT {
+    fn bounds(self, width: f32, height: f32, right: bool, bottom: bool, margin: f32) -> RECT {
         let margin = (margin * self.scale).round() as i32;
         let width = ((width * self.scale).round() as i32).min((self.width - 2 * margin).max(1));
         let height = ((height * self.scale).round() as i32).min((self.height - 2 * margin).max(1));
         let left = self.left + if right { self.width - margin - width } else { margin };
-        let top = self.top + margin;
+        let top = self.top + if bottom { (self.height - self.bottom_inset - margin - height).max(margin) } else { margin };
         RECT { left, top, right: left + width, bottom: top + height }
     }
 }
@@ -142,6 +152,7 @@ pub fn show(
     screen: Screen,
     size: (f32, f32),
     right: bool,
+    bottom: bool,
     margin: f32,
     notice: bool,
 ) -> io::Result<Option<FocusReturn>> {
@@ -164,7 +175,7 @@ pub fn show(
         if notice && SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA) == 0 {
             return Err(io::Error::last_os_error());
         }
-        place(hwnd, screen.bounds(size.0, size.1, right, margin))?;
+        place(hwnd, screen.bounds(size.0, size.1, right, bottom, margin))?;
         ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         if notice {
             return Ok(None);
@@ -177,6 +188,62 @@ pub fn show(
         activate(hwnd);
         Ok(NonZeroIsize::new(previous as isize).map(|previous| FocusReturn { panel: handle, previous, previous_pid }))
     }
+}
+
+/// Brings a shown window of this process to the foreground with the keyboard
+/// (as a panel takes it, see [`activate`]). Windows gives the foreground
+/// only to the process that got the last input, so a window opened on a
+/// request from outside (the quick launcher through the socket) is
+/// otherwise shown behind the window that keeps the keyboard. Returns
+/// whether it has the foreground. Call on the window's (the UI) thread.
+pub fn take_foreground(handle: NonZeroIsize) -> io::Result<bool> {
+    let hwnd = handle.get() as HWND;
+    // SAFETY: a live HWND of this process only, on its thread (the caller's).
+    unsafe {
+        let mut pid = 0;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+        if IsWindow(hwnd) == 0 || pid != GetCurrentProcessId() {
+            return Err(io::Error::other("window is not owned by this process"));
+        }
+        Ok(GetForegroundWindow() == hwnd || activate(hwnd))
+    }
+}
+
+/// Takes the frame off a shown GPUI pop-up, keeping its client area where it
+/// is. GPUI creates pop-ups with style 0 (`WS_OVERLAPPED`), to which Windows
+/// adds a caption: GPUI hides the title bar, but the frame stays on the sides
+/// and bottom, and Windows 11 rounds and outlines it around a transparent
+/// window's own (rounded) content.
+pub fn drop_frame(handle: NonZeroIsize) -> io::Result<()> {
+    let hwnd = handle.get() as HWND;
+    // SAFETY: style/placement operations on a live HWND of this process only;
+    // the rectangle and point are locals.
+    unsafe {
+        let mut pid = 0;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+        if IsWindow(hwnd) == 0 || pid != GetCurrentProcessId() {
+            return Err(io::Error::other("window is not owned by this process"));
+        }
+        let frame = (WS_CAPTION | WS_THICKFRAME) as isize;
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+        if style & frame == 0 {
+            return Ok(());
+        }
+        let mut client = RECT::default();
+        if GetClientRect(hwnd, &mut client) == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let mut origin = POINT { x: 0, y: 0 };
+        if ClientToScreen(hwnd, &mut origin) == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        set_style(hwnd, GWL_STYLE, style & !frame)?;
+        let flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED;
+        if SetWindowPos(hwnd, std::ptr::null_mut(), origin.x, origin.y, client.right, client.bottom, flags) == 0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    Ok(())
 }
 
 /// Brings `hwnd`, a window of this thread, to the foreground, and logs what
@@ -288,16 +355,23 @@ mod tests {
 
     #[test]
     fn places_on_negative_origin_display_at_fractional_dpi() {
-        let screen = Screen { left: -2560, top: -200, width: 2560, height: 1440, scale: 1.5 };
+        let screen = Screen { left: -2560, top: -200, width: 2560, height: 1440, scale: 1.5, bottom_inset: 0 };
         assert_eq!(screen.logical_height(), 960.);
-        let r = screen.bounds(440., 912., true, 16.);
+        let r = screen.bounds(440., 912., true, false, 16.);
         assert_eq!((r.left, r.top, r.right, r.bottom), (-684, -176, -24, 1192));
     }
 
     #[test]
     fn caps_surfaces_to_the_selected_monitor() {
-        let screen = Screen { left: 1920, top: 0, width: 800, height: 600, scale: 1. };
-        let r = screen.bounds(1000., 912., false, 16.);
+        let screen = Screen { left: 1920, top: 0, width: 800, height: 600, scale: 1., bottom_inset: 0 };
+        let r = screen.bounds(1000., 912., false, false, 16.);
         assert_eq!((r.left, r.top, r.right, r.bottom), (1936, 16, 2704, 584));
+    }
+
+    #[test]
+    fn a_bottom_surface_sits_above_the_taskbar() {
+        let screen = Screen { left: 0, top: 0, width: 1920, height: 1080, scale: 1., bottom_inset: 48 };
+        let r = screen.bounds(360., 84., true, true, 24.);
+        assert_eq!((r.left, r.top, r.right, r.bottom), (1536, 924, 1896, 1008));
     }
 }

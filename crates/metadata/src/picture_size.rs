@@ -38,6 +38,13 @@ pub fn family_of(width: u32, height: u32) -> CoverFamily {
     }
 }
 
+/// A size as the dialogs caption a picture: `1920 × 1080`. `None` when
+/// either side is 0, which is how the sources say "unknown": nothing is
+/// shown rather than a guess.
+pub fn resolution_label(width: u32, height: u32) -> Option<String> {
+    (width > 0 && height > 0).then(|| format!("{width} \u{d7} {height}"))
+}
+
 /// What the bytes read so far say.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Head {
@@ -287,6 +294,15 @@ mod tests {
         std::fs::write(&path, bytes).unwrap();
         assert_eq!(file_size(&path), Some((600, 900)));
         assert_eq!(file_size(&dir.path().join("missing.png")), None);
+    }
+
+    #[test]
+    fn a_resolution_reads_as_width_by_height() {
+        assert_eq!(resolution_label(1920, 1080).as_deref(), Some("1920 \u{d7} 1080"));
+        assert_eq!(resolution_label(600, 900).as_deref(), Some("600 \u{d7} 900"));
+        assert_eq!(resolution_label(0, 1080), None);
+        assert_eq!(resolution_label(1920, 0), None);
+        assert_eq!(resolution_label(0, 0), None);
     }
 
     #[test]
