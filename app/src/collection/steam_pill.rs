@@ -34,7 +34,7 @@ impl CollectionView {
         let pill = match notice {
             // A faint wash of the warning colour: seen without shouting over
             // the header.
-            SteamNotice::Restart => soft_pill(open)
+            SteamNotice::Restart => soft_pill("hdr-steam", open)
                 .child(icon(Icon::BrandSteam, px(16.), theme::warning()))
                 .child(label(tr!("Restart Steam"), theme::readable(theme::warning()))),
             SteamNotice::Restarting => pill_base("hdr-steam", open)
@@ -45,12 +45,12 @@ impl CollectionView {
     }
 }
 
-/// The restart pill: a faint wash of the warning colour (about half the
-/// update pill's), its border and text.
-fn soft_pill(open: bool) -> Stateful<Div> {
+/// A pill that warns (Steam's restart, ffmpeg missing): a faint wash of the
+/// warning colour (about half the update pill's), its border and text.
+pub(super) fn soft_pill(id: &'static str, open: bool) -> Stateful<Div> {
     let tint = |a: f32| Hsla { a, ..theme::warning().into() };
     div()
-        .id("hdr-steam")
+        .id(id)
         .flex()
         .flex_none()
         .items_center()

@@ -13,6 +13,7 @@ use heronite_images::ImageRef;
 use heronite_metadata::ArtKind;
 
 use super::{Busy, GameSettingsDialog, Nested};
+use crate::dialogs::animated_art;
 use crate::dialogs::art_images::{chain_for_url, logo_picture, picture};
 use crate::dialogs::covers::{words, CoversDialog};
 use crate::dialogs::screenshot_art::ScreenshotArtDialog;
@@ -389,11 +390,18 @@ impl GameSettingsDialog {
             (false, Some(f)) => tr!("Default image \u{b7} {family}", family = words::family_name(f)),
         };
         let note = match kind {
-            ArtKind::Hero => tr!("Shown behind the game in Collection"),
+            ArtKind::Hero => tr!("An image or a video, shown behind the game in Collection"),
             ArtKind::Logo if has_picture => tr!("Shown instead of the name in console mode"),
             ArtKind::Logo => tr!("Console mode shows the name instead"),
             _ => tr!("Shown on the game card"),
         };
+        // A background of its own that moves while they are off: it shows still.
+        let moves = kind == ArtKind::Hero && custom_url.is_some() && {
+            let chain = self.art_chain(ArtKind::Hero).0;
+            self.hero_moves.of(&chain, cx, |d: &mut Self| &mut d.hero_moves)
+        };
+        let still = animated_art::hint("gs-hero-animated", moves, cx, |this: &mut Self, cx| animated_art::turn_on(&this.ctx.app, cx))
+            .map(|h| h.mt(px(10.)));
         let copy = div()
             .flex()
             .flex_col()
@@ -403,7 +411,8 @@ impl GameSettingsDialog {
             .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(title))
             .child(div().mb(px(10.)).text_size(px(12.)).text_color(theme::text_dim()).child(note))
             .children(others)
-            .child(actions);
+            .child(actions)
+            .children(still);
         if kind == ArtKind::Hero {
             div().flex().flex_col().gap(px(14.)).py(px(14.)).child(preview).child(copy)
         } else {

@@ -65,6 +65,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Behind the Collection",
             "Use the game artwork as page background",
             "Picture",
+            "Animated backgrounds",
             "Covers",
             "Cover aspect",
             "Cover fit",

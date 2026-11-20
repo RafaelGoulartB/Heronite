@@ -17,6 +17,7 @@ use heronite_metadata::WebImage;
 
 use super::slots::{Look, Slot};
 use super::{Busy, CoversDialog};
+use crate::dialogs::animated_art;
 use crate::dialogs::art_images::first_address;
 use crate::dialogs::steamgrid_styles as styles;
 use crate::icons::Icon;
@@ -219,7 +220,7 @@ impl CoversDialog {
             .w(px(w + 12.))
             .cursor_pointer()
             .when(!selected, |d| d.hover(|s| s.border_color(theme::ink_a(0.3))))
-            .child(pic)
+            .child(animated_art::marked(pic, image.animated))
             .child(self.tile_label(Some(source), name, resolution))
             .on_click(cx.listener(move |this, ev: &ClickEvent, _, cx| {
                 if this.busy.is_some() {
@@ -338,7 +339,9 @@ impl CoversDialog {
         let total = found.len();
         // What a source gave no size of is read from the picture itself.
         if !self.loading && self.fake.is_none() {
-            let unsized_ = found.iter().take(self.visible).filter(|(_, (_, _, im))| resolution_label(im.width, im.height).is_none());
+            // An animated one is a WebM: no size in its first bytes.
+            let unsized_ =
+                found.iter().take(self.visible).filter(|(_, (_, _, im))| !im.animated && resolution_label(im.width, im.height).is_none());
             let urls: Vec<String> = unsized_.map(|(_, (_, _, im))| im.image_url.clone()).collect();
             self.sizes.update(cx, |s, cx| s.ask(urls, cx));
         }
@@ -379,6 +382,18 @@ impl CoversDialog {
         });
         let pills = self.source_pills(cx);
         let style_pills = self.style_pills(cx);
-        col.child(head).children(pills).children(style_pills).child(grid).children(error)
+        // An animated background picked while they are off: it will show still.
+        let picked_animated =
+            self.slot == Slot::Background && self.selected.and_then(|i| self.found().get(i).map(|f| f.image.animated)) == Some(true);
+        // Nothing picked: the background picked before (a video of your own) says it too.
+        let now_moves = self.slot == Slot::Background && self.selected.is_none() && {
+            let chain = self.info(Slot::Background).map(|i| i.chain.clone()).unwrap_or_default();
+            !chain.is_empty() && self.bg_moves.of(&chain, cx, |d: &mut Self| &mut d.bg_moves)
+        };
+        let picked_animated = picked_animated || now_moves;
+        let animated =
+            animated_art::hint("cv-animated", picked_animated, cx, |this: &mut Self, cx| animated_art::turn_on(&this.ctx.app, cx));
+        // Under the pictures: it never moves the one being clicked.
+        col.child(head).children(pills).children(style_pills).child(grid).children(animated).children(error)
     }
 }

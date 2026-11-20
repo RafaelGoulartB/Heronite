@@ -40,6 +40,14 @@ pub struct StreamSpec {
     pub sound: bool,
     /// Loudness of the sound, `0.0..=1.0`.
     pub volume: f32,
+    /// Fill the frame, cropping what is past it (a background), instead of
+    /// fitting the picture inside with black bars (a trailer).
+    pub fill: bool,
+    /// Play it again and again, with no gap (a background); it never ends.
+    pub looped: bool,
+    /// ffmpeg video filters run on each frame once it has its size (a
+    /// background's blur and colour: faster there than on the frames).
+    pub filter: Option<String>,
 }
 
 #[derive(Debug)]
@@ -149,6 +157,9 @@ fn args(spec: &StreamSpec) -> Vec<String> {
     // A local playlist names files and web addresses side by side.
     let input = |a: &mut Vec<String>, src: &str| {
         a.extend(["-threads", "2", "-protocol_whitelist", "file,http,https,tcp,tls,crypto", "-re"].map(String::from));
+        if spec.looped {
+            a.extend(["-stream_loop".into(), "-1".into()]);
+        }
         if spec.start > 0. {
             a.extend(["-ss".into(), format!("{:.3}", spec.start)]);
         }
@@ -167,7 +178,17 @@ fn args(spec: &StreamSpec) -> Vec<String> {
     a.extend(["-map".into(), "0:v:0".into(), "-an".into(), "-sn".into()]);
     a.extend([
         "-vf".into(),
-        format!("fps={},scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:-1:-1:black", spec.fps.max(1)),
+        {
+            let size = if spec.fill {
+                format!("fps={},scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}", spec.fps.max(1))
+            } else {
+                format!("fps={},scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:-1:-1:black", spec.fps.max(1))
+            };
+            match spec.filter.as_deref().filter(|f| !f.is_empty()) {
+                Some(f) => format!("{size},{f}"),
+                None => size,
+            }
+        },
         "-pix_fmt".into(),
         "bgra".into(),
         "-f".into(),
@@ -267,6 +288,9 @@ mod tests {
             fps: 30,
             sound: false,
             volume: 0.5,
+            fill: false,
+            looped: false,
+            filter: None,
         }
     }
 
@@ -278,6 +302,16 @@ mod tests {
         assert!(!a.contains(&"-ss".to_string()));
         assert!(a.iter().any(|x| x.starts_with("fps=30,scale=854:480:")));
         assert_eq!(a.last().map(String::as_str), Some("pipe:1"));
+    }
+
+    #[test]
+    fn a_background_fills_its_frame_and_loops() {
+        let a = args(&StreamSpec { fill: true, looped: true, filter: Some("gblur=sigma=2".into()), ..spec() });
+        assert!(a.iter().any(|x| x == "fps=30,scale=854:480:force_original_aspect_ratio=increase,crop=854:480,gblur=sigma=2"));
+        let looped = a.iter().position(|x| x == "-stream_loop").unwrap();
+        assert_eq!(a[looped + 1], "-1");
+        assert!(looped < a.iter().position(|x| x == "-i").unwrap(), "an input option");
+        assert!(!args(&spec()).contains(&"-stream_loop".to_string()));
     }
 
     #[test]
@@ -309,6 +343,9 @@ mod tests {
             fps: 10,
             sound: false,
             volume: 0.5,
+            fill: false,
+            looped: false,
+            filter: None,
         };
         // `lavfi` is a device, not a file: play it through a tiny wrapper.
         let dir = tempfile::tempdir().unwrap();

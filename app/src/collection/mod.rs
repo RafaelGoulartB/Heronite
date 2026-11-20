@@ -20,6 +20,7 @@ mod emulation;
 mod epic;
 mod extras;
 mod family_art;
+mod ffmpeg_pill;
 mod focus;
 mod focus_left;
 mod folder_size;
@@ -44,6 +45,7 @@ mod list;
 mod list_heights;
 mod list_row;
 mod list_view;
+mod live_stage;
 mod load;
 mod look;
 mod metadata_menu;
@@ -221,6 +223,8 @@ pub struct CollectionView {
     family_chains: family_art::FamilyChains,
     /// Last stage texture shown, kept while the next one loads.
     shown_stage: Option<(SharedString, Arc<RenderImage>)>,
+    /// The background playing, when it moves (`live_stage.rs`).
+    live: live_stage::LiveStage,
     /// Last glass backdrop (blurred art behind menus and dialogs), kept while
     /// the next one loads.
     shown_glass: Option<(SharedString, Arc<RenderImage>)>,
@@ -434,6 +438,7 @@ impl CollectionView {
             stage_chains: HashMap::new(),
             family_chains: Default::default(),
             shown_stage: None,
+            live: Default::default(),
             shown_glass: None,
             groups: Vec::new(),
             items: Vec::new(),
@@ -693,6 +698,7 @@ impl CollectionView {
         self.sync_journal(window, cx);
         self.sync_shots(window, cx);
         self.sync_store_media(window, cx);
+        self.sync_live_stage(window, cx);
         self.drive_palette(window, cx);
         crate::ui::glass::set_backdrop(self.glass_image(window));
         self.sync_nav_meta(cx);
@@ -719,7 +725,7 @@ impl CollectionView {
         if !on_page {
             self.sync_row_heights(list_w, window);
         }
-        let stage_el = match self.stage_image(window) {
+        let stage_el = match self.stage_image(window, cx) {
             Some((key, src)) => stage::stage(Some(src), key, self.scrim, crate::theme::appearance().collection_opacity / 100.),
             None if self.stage_enabled && self.stage_is_solid() => stage::solid(self.scrim),
             None => stage::stage(None, SharedString::default(), self.scrim, 1.),

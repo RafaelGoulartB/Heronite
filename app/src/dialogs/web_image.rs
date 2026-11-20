@@ -55,6 +55,8 @@ pub enum ArtEvent {
 pub struct WebImageDialog {
     service: Arc<MetadataService>,
     images: Entity<DialogImages>,
+    /// Where "Turn on" (animated backgrounds) saves the appearance.
+    app: heronite_data::AppPaths,
     app_name: String,
     runner: String,
     /// The game's title and Steam app id: SteamGridDB's art is of the game
@@ -109,6 +111,7 @@ impl WebImageDialog {
         let mut this = Self {
             service,
             images,
+            app: ctx.app.clone(),
             app_name: game.app_name.clone(),
             runner,
             title,
@@ -166,6 +169,10 @@ impl WebImageDialog {
                             this.error = tr!("No images found. Try another search.").into();
                         }
                         this.results = list;
+                        // `HERONITE_DEBUG_PICK_ANIMATED=1`: the first animated one picked (captures).
+                        if crate::env::flag("HERONITE_DEBUG_PICK_ANIMATED") {
+                            this.selected = this.images(Source::SteamGrid).iter().position(|i| i.animated).map(|i| (Source::SteamGrid, i));
+                        }
                     }
                     Err(err) => this.error = format!("{err:#}"),
                 }
@@ -306,7 +313,7 @@ impl WebImageDialog {
                 }
                 cx.notify();
             }))
-            .child(preview.w(px(tw)).h(px(th)))
+            .child(super::animated_art::marked(preview.w(px(tw)).h(px(th)), image.animated))
             .children(size.map(|s| div().text_size(px(12.)).text_color(theme::text_dim()).child(s)))
     }
 }
@@ -372,6 +379,8 @@ impl Render for WebImageDialog {
             }
         }
 
+        let picked_animated =
+            self.kind == ArtKind::Hero && self.selected.and_then(|(from, i)| self.images(from).get(i).map(|im| im.animated)) == Some(true);
         let mut body = div()
             .flex()
             .flex_col()
@@ -382,6 +391,12 @@ impl Render for WebImageDialog {
             )))
             .child(toolbar)
             .child(grid);
+        // An animated background picked while they are off: it will show
+        // still. In the footer, whose height does not change, so the dialog
+        // never moves the picture being clicked.
+        let hint = super::animated_art::hint("wi-animated", picked_animated, cx, |this: &mut Self, cx| {
+            super::animated_art::turn_on(&this.app, cx)
+        });
         if !self.error.is_empty() {
             body = body.child(
                 div()
@@ -396,8 +411,14 @@ impl Render for WebImageDialog {
         }
 
         let footer = div()
+            .w_full()
             .flex()
+            .items_center()
             .gap(px(16.))
+            .child(match hint {
+                Some(h) => h.flex_1().min_w_0(),
+                None => div().flex_1(),
+            })
             .child(action_button(
                 "wi-cancel",
                 ButtonKind::Ghost,

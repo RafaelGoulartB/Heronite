@@ -68,7 +68,7 @@ pub struct ImageStore {
 
 impl ImageStore {
     pub fn new(images_cache: std::path::PathBuf, app: &AppPaths) -> (Self, UnboundedReceiver<Loaded>) {
-        let opts = Opts::new(images_cache, Some(app.thumbs_dir()));
+        let opts = Opts { video_still: Some(heronite_media::stills::video_still), ..Opts::new(images_cache, Some(app.thumbs_dir())) };
         let loader = Loader::new(LoaderConfig { threads: 3, opts });
         let (tx, rx) = unbounded();
         let store = Self {
