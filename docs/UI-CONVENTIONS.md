@@ -1236,17 +1236,24 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   room (Series X), modelled on other launchers' fullscreen themes and consoles' home screens. Classic
   (`presets::classic`) is no longer listed: it stays the base the others start from and what missing keys of a theme
   file read as. Cinema took over from it and from the first Cinema (one row of covers, tabs along the bottom): a
-  console.json on either, unchanged, becomes today's Cinema on load (`upgrade_cinema`; a changed one keeps its values,
-  and `Layout::Shelves` / `Layout::Cinema` still load from theme files). Cinema: tabs Installed, All games, Favourites
-  (Cinema layout) and Library (Grid, last played first) as names along the top; the Hero game page; hints that fade
-  (`Hints::Auto`, floating over the bottom). Its home (`layouts/cinema.rs`): the game's art full bleed with the logo
-  large (the name when there is none), chips and genres at the foot of the room over the first shelf of covers, the
-  next shelf's title peeking under it. ↓ takes the whole view down through the shelves (one scroll area, its offset
-  worked out from the fixed shelf height, `view_offset`): the large block scrolls away, the logo comes back small with a
-  line of facts at the top, the art darkens behind the shelves, the focused shelf sits right under the small block,
-  the next ones dimmer, the passed ones gone; ↑ to the first shelf brings it all back. Shelves count their games and
-  end a cut one with "View all", as Shelves do. A new game's logo holds 0.3 s, fades in over 0.45 s sliding in, its
-  facts 0.15 s after over 0.3 s (`motion::reveal`, shared with Minimal; the same game never replays it).
+  console.json on either (or on the Cinema of shelves that came between), unchanged, becomes today's Cinema on load
+  (`upgrade_cinema`; a changed one keeps its values, and `Layout::Shelves` / `Layout::Cinema` still load from theme
+  files). Cinema (`layouts/cinema.rs`): the focused game's key art full bleed under a soft vignette on the left and the
+  bottom (`Scrim::Cinema`); left of centre its logo large (else its name in spaced capitals that break between words
+  only and shrink to two lines), a line of facts (small-caps labels over values between thin rules: playtime, last
+  played, platform with the store's icon, released, time to beat) and the genres as plain words, all centred on each
+  other over a soft shade of their own; on the right, level with the facts, its achievements (a trophy, n / N, the
+  share and a thin bar) when it has a list; along the bottom one row of large portrait covers (about a third of the
+  screen) that glides, the focused one ringed in the theme's champagne gold (`presets::CINEMA_GOLD`, its accent).
+  While the focus moves along the row the game's block steps aside so the art shows whole; 400 ms after it rests it
+  comes back (`motion::reveal`: the logo, then the rest; a return replays it, the same game never does). Tabs
+  Installed, All games, Recently played (`recent`: played games), Favourites and Not played yet, each the most
+  recently played first (Not played yet A–Z), as a centred gold pill between LB and RB; on the right a cluster of
+  monochrome icons (`layouts::layout_status`): search (the Filters panel), downloads with a badge of how many queue,
+  the controller while one is connected, and the clock. Hints always on, floating over the art; `Hint::sub` adds a
+  small second line (Menu: what it leads to; Tabs: the next one). A plays (`nav.aButton: play`), X opens the game's
+  page, Y the game's actions in a sheet, View (`Btn::Select`) the Filters panel. Its page is Showcase without glass
+  (`layouts.showcaseGlass: false`): the sections over the darkened art under thin rules, no cards, the gold focus.
   Shelves (the base's home and Hub's): Shelves count a shelf's games
   before `shelfLimit` cuts it and end a cut one with a "View all" tile (A opens the first Grid tab with the filters
   that show them, `grid::Nav::show_like`), LT / RT page along a shelf, the focused game's text slides in from the side
