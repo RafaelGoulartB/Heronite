@@ -8,6 +8,7 @@
 
 mod hero;
 mod sheet;
+mod showcase;
 mod tabs;
 
 use hero::facts_table;
@@ -36,6 +37,10 @@ pub(super) struct GameNav {
     hero: hero::Nav,
     tabs: tabs::Nav,
     sheet: sheet::Nav,
+    /// The Showcase page: the focus of its sections (as on a Spotlight tab)
+    /// and the sheet of the game's actions (Options).
+    pub(in crate::collection::console) showcase: super::layouts::SpotNav,
+    showcase_more: Option<ListNav>,
 }
 
 impl Default for GameNav {
@@ -46,6 +51,8 @@ impl Default for GameNav {
             hero: Default::default(),
             tabs: Default::default(),
             sheet: Default::default(),
+            showcase: Default::default(),
+            showcase_more: None,
         }
     }
 }
@@ -264,6 +271,7 @@ impl CollectionView {
             GamePage::Hero => self.render_game_hero(key, window, cx),
             GamePage::Tabs => self.render_game_tabs(key, window, cx),
             GamePage::Sheet => self.render_game_sheet(key, window, cx),
+            GamePage::Showcase => self.render_game_showcase(key, window, cx),
         }
     }
 
@@ -289,6 +297,7 @@ impl CollectionView {
             GamePage::Hero => self.game_pad_hero(key, pad, window, cx),
             GamePage::Tabs => self.game_pad_tabs(key, pad, window, cx),
             GamePage::Sheet => self.game_pad_sheet(key, pad, window, cx),
+            GamePage::Showcase => self.game_pad_showcase(key, pad, window, cx),
         }
     }
 
@@ -299,6 +308,7 @@ impl CollectionView {
             GamePage::Hero => self.game_hints_hero(key),
             GamePage::Tabs => self.game_hints_tabs(key),
             GamePage::Sheet => self.game_hints_sheet(key),
+            GamePage::Showcase => self.game_hints_showcase(key),
         }
     }
 
@@ -307,6 +317,8 @@ impl CollectionView {
         match look::theme().game_page {
             GamePage::Classic | GamePage::Tabs => Scrim::Classic,
             GamePage::Hero => Scrim::Spot,
+            // The theme's background as the screen behind shows it (Minimal: its blurred cover).
+            GamePage::Showcase => Scrim::Carousel,
             GamePage::Sheet if self.console.game.sheet.full() => Scrim::Classic,
             GamePage::Sheet => super::layouts::scrim(spec.layout),
         }
@@ -315,7 +327,12 @@ impl CollectionView {
     /// Whether the page has long text the wheel scrolls (its lists take clicks);
     /// the Sheet is a list alone.
     pub(super) fn game_page_scrolls_text(&self) -> bool {
-        look::theme().game_page != GamePage::Sheet || self.console.game.sheet.full()
+        match look::theme().game_page {
+            // Showcase: the wheel moves the focus up and down its sections.
+            GamePage::Showcase => false,
+            GamePage::Sheet => self.console.game.sheet.full(),
+            _ => true,
+        }
     }
 
     /// The Sheet opens over the tab: its top bar stays.

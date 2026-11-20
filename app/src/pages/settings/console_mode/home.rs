@@ -5,7 +5,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{presets, store, BackgroundSource, ConsoleTheme, Layout};
+use heronite_data::console_theme::{presets, store, BackgroundSource, ConsoleTheme, GamePage, Layout};
 use heronite_i18n::{tr, trn};
 
 use super::preview::{self, Art};
@@ -33,7 +33,7 @@ const QUICK: [&str; 10] = [
 ];
 
 /// The sections of Spotlight's game page, offered in "Quick changes" while
-/// the theme has a Spotlight tab.
+/// the theme has a Spotlight tab or the Showcase game page.
 const QUICK_SPOTLIGHT: [&str; 7] = [
     "layouts.spotlight_sections.media",
     "layouts.spotlight_sections.screenshots",
@@ -937,7 +937,11 @@ fn quick_changes(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Set
             }
         }
     }
-    let spotlight = d.console_mode.as_ref().is_some_and(|s| s.theme.prefs.theme.tabs.iter().any(|t| t.layout == Layout::Spotlight));
+    // A Spotlight tab, or the Showcase game page: both show these sections.
+    let spotlight = d.console_mode.as_ref().is_some_and(|s| {
+        let t = &s.theme.prefs.theme;
+        t.game_page == GamePage::Showcase || t.tabs.iter().any(|t| t.layout == Layout::Spotlight)
+    });
     if spotlight {
         col = col.child(
             div()

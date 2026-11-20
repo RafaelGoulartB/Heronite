@@ -32,7 +32,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{HeroTitle, Layout, SpotActions, TabSpec};
+use heronite_data::console_theme::{GamePage, HeroTitle, Layout, SpotActions, TabSpec};
 use heronite_data::details_url::details_url;
 use heronite_data::CollectionGame;
 use heronite_i18n::{tr, trn};
@@ -69,6 +69,18 @@ const RELATED: usize = 9;
 
 /// The debug section asked for, until it is shown once.
 static DEBUG_DONE: AtomicBool = AtomicBool::new(false);
+
+/// What a page of these sections belongs to: a Spotlight tab (the row of
+/// icons above it), or the full-screen game page (`GamePage::Showcase`: the
+/// game alone, its sections on glass).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(in crate::collection::console) enum Host {
+    Tab(usize),
+    Game,
+}
+
+/// Room above the game page's head (no row, no top bar), design px.
+const GAME_TOP: f32 = 54.;
 
 /// A button of the actions row.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -272,21 +284,23 @@ impl CollectionView {
         top_recent(&games, ROW_GAMES).into_iter().map(|g| SharedString::from(g.key.clone())).collect()
     }
 
-    /// Whether the focused game's store media are wanted: a Spotlight tab is
-    /// on screen and the theme shows its media.
+    /// Whether the focused game's store media are wanted: a Spotlight tab or
+    /// the Showcase game page is on screen and the theme shows its media.
     pub(in crate::collection) fn console_wants_store_media(&self) -> bool {
-        self.console_shown_tab().1.layout == Layout::Spotlight && look::theme().layouts.spotlight_sections.media
+        let theme = look::theme();
+        let page = matches!(self.console.screen, super::super::Screen::Game(_)) && theme.game_page == GamePage::Showcase;
+        (page || self.console_shown_tab().1.layout == Layout::Spotlight) && theme.layouts.spotlight_sections.media
     }
 
     /// What the page of `g` has, laid out for a view `view` design px wide.
-    fn spotlight_shape(&mut self, g: &CollectionGame, view: f32, tab: usize, cx: &mut Context<Self>) -> Shape {
+    fn spotlight_shape(&mut self, g: &CollectionGame, view: f32, host: Host, cx: &mut Context<Self>) -> Shape {
         let theme = look::theme();
         let sections = theme.layouts.spotlight_sections.clone();
         let key = SharedString::from(g.key.clone());
         let mut s = Shape { key: key.clone(), ..Shape::default() };
         // While this game's store media are asked for, the last page's strip
         // keeps its place (empty), so nothing jumps when they come.
-        let prev = &self.tab_nav(tab).spotlight.shape;
+        let prev = &self.spot_nav(host).shape;
         // (The same game's page keeps holding them until they are known.)
         let same = prev.key == key;
         let prev_media = if !same || (prev.store.is_empty() && !prev.media_shots) { prev.media } else { 0 };
@@ -311,7 +325,7 @@ impl CollectionView {
         }
         let focus = self.focus.clone().filter(|f| f.key == key);
         let text = if sections.about {
-            let nav = &mut self.tab_nav(tab).spotlight;
+            let nav = &mut self.spot_nav(host);
             match (&nav.about, &focus) {
                 (Some((k, t)), _) if *k == key => Some(t.clone()),
                 (_, Some(f)) => {
@@ -362,7 +376,8 @@ impl CollectionView {
             s.fit_about(t.chars().count(), page::left_width(width));
         }
         let (_, on) = row::icon_sizes(self.cover_aspect);
-        s.layout(row::row_height(on), page::logo_h(theme.hero.size), width, page::COVER_W * self.cover_aspect);
+        let top = if host == Host::Game { GAME_TOP } else { row::row_height(on) };
+        s.layout(top, page::logo_h(theme.hero.size), width, page::COVER_W * self.cover_aspect);
         s
     }
 
@@ -481,8 +496,8 @@ impl CollectionView {
 
     /// Moves the focus to `spot` (a click); `false` when it was there already.
     fn spotlight_focus(&mut self, spot: Spot) -> bool {
-        let (tab, _) = self.console_shown_tab();
-        let nav = &mut self.tab_nav(tab).spotlight;
+        let host = self.spot_host();
+        let nav = &mut self.spot_nav(host);
         let before = (nav.zone, nav.action, nav.media, nav.mid, nav.link, nav.card, nav.shot, nav.related);
         match spot {
             Spot::Action(i) => (nav.zone, nav.action) = (Zone::Actions, i),
@@ -502,7 +517,7 @@ impl CollectionView {
     }
 
     /// Applies `HERONITE_DEBUG_SPOTLIGHT` once the page has the section.
-    fn spotlight_debug(&mut self, tab: usize, found: &[SharedString], cx: &mut Context<Self>) {
+    fn spotlight_debug(&mut self, host: Host, found: &[SharedString], cx: &mut Context<Self>) {
         let Some((zone, game)) = debug_target() else { return };
         // The game: its place in the row, or a part of its name (waiting
         // for a tab that has it, LB / RB).
@@ -513,7 +528,7 @@ impl CollectionView {
                 found.iter().position(|k| self.lib.as_ref().and_then(|l| l.get(k)).is_some_and(|x| x.title_lower.contains(&g)))
             }
         });
-        let nav = &mut self.tab_nav(tab).spotlight;
+        let nav = &mut self.spot_nav(host);
         match at {
             Some(None) => return,
             Some(Some(n)) if nav.index != n => {
@@ -548,28 +563,66 @@ impl CollectionView {
         cx.notify();
     }
 
+    /// Which page of sections the presses and clicks go to now.
+    fn spot_host(&self) -> Host {
+        match self.console.screen {
+            super::super::Screen::Game(_) => Host::Game,
+            _ => Host::Tab(self.console_shown_tab().0),
+        }
+    }
+
+    /// The focus of the page of `host`.
+    fn spot_nav(&mut self, host: Host) -> &mut Nav {
+        match host {
+            Host::Tab(tab) => &mut self.tab_nav(tab).spotlight,
+            Host::Game => &mut self.console.game.showcase,
+        }
+    }
+
+    fn spot_nav_ref(&self, host: Host) -> Option<&Nav> {
+        match host {
+            Host::Tab(tab) => self.console.tab_navs.get(tab).map(|n| &n.spotlight),
+            Host::Game => Some(&self.console.game.showcase),
+        }
+    }
+
     pub(super) fn render_spotlight(&mut self, tab: usize, spec: &TabSpec, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let found = self.spotlight_keys(spec);
         if found.is_empty() {
             return super::no_games();
         }
+        self.render_spot_page(Host::Tab(tab), &found, window, cx)
+    }
+
+    /// The page of `host` for the games `found` (the row's; the game page's one).
+    pub(in crate::collection::console) fn render_spot_page(
+        &mut self,
+        host: Host,
+        found: &[SharedString],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let game_page = host == Host::Game;
+        let bar = if game_page { 0. } else { TOP_BAR };
         let n = found.len();
         let k = kit::scale();
         let size = crate::ui::content_size(window);
         let (view_w, view_h) = (f32::from(size.width) / k, f32::from(size.height) / k);
-        self.spotlight_debug(tab, &found, cx);
-        let nav = &mut self.tab_nav(tab).spotlight;
-        nav.index = nav.index.min(n);
+        if !game_page {
+            self.spotlight_debug(host, found, cx);
+        }
+        let nav = &mut self.spot_nav(host);
+        nav.index = if game_page { 0 } else { nav.index.min(n) };
         let index = nav.index;
         let game_key = found.get(index).cloned();
         self.console_focus_game(Some(game_key.clone().unwrap_or_else(|| found[0].clone())), cx);
         let game = game_key.as_ref().and_then(|k| self.lib.as_ref()?.get(k)).cloned();
         let shape = match &game {
-            Some(g) => self.spotlight_shape(g, view_w, tab, cx),
+            Some(g) => self.spotlight_shape(g, view_w, host, cx),
             None => Shape::default(),
         };
         let (off, on) = row::icon_sizes(self.cover_aspect);
-        let nav = &mut self.tab_nav(tab).spotlight;
+        let nav = &mut self.spot_nav(host);
         if nav.shape.key != shape.key {
             nav.since = Some(std::time::Instant::now());
         }
@@ -595,11 +648,20 @@ impl CollectionView {
             nav.zone = Zone::Row;
         }
         nav.settle();
+        // The game page has no row: its focus starts on the buttons.
+        if game_page && nav.zone == Zone::Row {
+            nav.zone = Zone::Actions;
+        }
         let zone = nav.zone;
 
-        // The springs, a frame towards the focus.
-        let first = shape.rise(Zone::Actions, nav.mid, view_h, TOP_BAR).max(1.);
-        let rise_to = if game.is_some() { shape.rise(zone, nav.mid, view_h, TOP_BAR) } else { 0. };
+        // The springs, a frame towards the focus. The game page rests at
+        // its top on the buttons.
+        let first = shape.rise(Zone::Actions, nav.mid, view_h, bar).max(1.);
+        let rise_to = match game {
+            Some(_) if game_page && zone == Zone::Actions => 0.,
+            Some(_) => shape.rise(zone, nav.mid, view_h, bar).max(0.),
+            None => 0.,
+        };
         let width = shape.geo.left;
         let strip_to = [
             page::strip_offset(nav.media, shape.media, page::TILE_W, page::TILE_W + page::STRIP_GAP, width),
@@ -634,9 +696,13 @@ impl CollectionView {
         }
         nav.clock.done(moving, window);
         let rise = nav.rise.value.max(0.);
-        let lift = (rise / first).clamp(0., 1.);
+        // How far the page has risen: on the game page from its top.
+        let (lift, deep) = if game_page {
+            ((rise / 160.).clamp(0., 1.), ((rise - 160.) / 160.).clamp(0., 1.))
+        } else {
+            ((rise / first).clamp(0., 1.), ((rise - first) / 160.).clamp(0., 1.))
+        };
         nav.lift = lift;
-        let deep = ((rise - first) / 160.).clamp(0., 1.);
         let strips = [nav.strips[0].value, nav.strips[1].value, nav.strips[2].value];
         let look = Look { off, on, pos: nav.pos.value, ring: nav.ring.value.clamp(0., 1.) };
         let from = nav.from;
@@ -652,6 +718,7 @@ impl CollectionView {
             // What comes in after the logo waits only what is left of its
             // pause: a part that arrives later (store media, achievements)
             // just fades in.
+            glass: game_page,
             rest_hold: REST_HOLD.saturating_sub(nav.since.map_or(u128::MAX, |t| t.elapsed().as_millis()).min(u128::from(REST_HOLD)) as u64),
         };
         let viewer = nav.viewer;
@@ -664,14 +731,14 @@ impl CollectionView {
             _ => vec![Pad::B, Pad::B],
         };
         let mut page = div().absolute().left_0().right_0().top(u(-rise)).h(u(shape.geo.end.max(view_h)));
-        if lift < 0.99 {
-            let row = self.spotlight_row(&found, index, &look, &to_row, window);
+        if lift < 0.99 && !game_page {
+            let row = self.spotlight_row(found, index, &look, &to_row, window);
             page = page.child(div().absolute().top_0().left_0().right_0().opacity(1. - lift).child(row));
         }
         match &game {
             Some(g) => {
                 page = page.children(self.spotlight_head(g, &shape, &focus, strips[0], window));
-                if lift > 0.01 {
+                if lift > 0.01 || game_page {
                     page = page.children(self.spotlight_below(g, &shape, &focus, strips, None, window, cx));
                 } else {
                     // On the row each column's first section peeks in at the
@@ -688,15 +755,16 @@ impl CollectionView {
         }
         // The art darkens as the page rises, more deeper in it.
         let dim = (lift > 0.005).then(|| {
-            div().absolute().top(u(-TOP_BAR)).left_0().right_0().h(u(view_h)).bg(linear_gradient(
+            div().absolute().top(u(-bar)).left_0().right_0().h(u(view_h)).bg(linear_gradient(
                 0.,
-                linear_color_stop(kit::dim(0.35 * lift + 0.4 * deep), 0.),
-                linear_color_stop(kit::dim(0.18 * lift + 0.3 * deep), 1.),
+                // Lighter on the game page: its glass panels carry the text.
+                linear_color_stop(kit::dim(if game_page { 0.15 * lift + 0.15 * deep } else { 0.35 * lift + 0.4 * deep }), 0.),
+                linear_color_stop(kit::dim(if game_page { 0.1 * lift + 0.12 * deep } else { 0.18 * lift + 0.3 * deep }), 1.),
             ))
         });
         // Deep in the page, what rises past the top fades into the dark.
         let top_fade = (deep > 0.005).then(|| {
-            div().absolute().top(u(-TOP_BAR)).left_0().right_0().h(u(110.)).bg(linear_gradient(
+            div().absolute().top(u(-bar)).left_0().right_0().h(u(110.)).bg(linear_gradient(
                 180.,
                 linear_color_stop(kit::dim(0.75 * deep), 0.),
                 linear_color_stop(kit::dim(0.), 1.),
@@ -707,10 +775,10 @@ impl CollectionView {
         // the strip, a darker one under it, meeting at the same shade.
         let veil = ((shape.first_left().is_some() || shape.has_side()) && lift < 0.99).then(|| {
             let top = shape.geo.media + page::TILE_H * 0.1 - rise;
-            let foot = (view_h - TOP_BAR - 96.).max(top + 40.);
+            let foot = (view_h - bar - 96.).max(top + 40.);
             let mid = 0.7;
             // To the window's bottom edge, under a hint bar that takes its own room too.
-            let end = view_h - TOP_BAR;
+            let end = view_h - bar;
             div()
                 .absolute()
                 .top(u(top))
@@ -734,7 +802,7 @@ impl CollectionView {
             root = root.child(self.spotlight_viewer(&shape.store, i, window));
         } else if let Some(scroll) = &sheet {
             let title = game.as_ref().map_or(String::new(), |g| g.title.clone());
-            let text = self.tab_nav(tab).spotlight.about.as_ref().filter(|(k, _)| *k == shape.key).map(|(_, t)| t.clone());
+            let text = self.spot_nav(host).about.as_ref().filter(|(k, _)| *k == shape.key).map(|(_, t)| t.clone());
             if let Some(text) = text {
                 root = root.child(self.spotlight_about_sheet(&title, &text, scroll, window));
             }
@@ -909,7 +977,8 @@ impl CollectionView {
                         .on_mouse_down(MouseButton::Left, self.spot_click(Spot::Related(i)))
                 })
                 .collect();
-            out.push(titled(geo.related, geo.left, tr!("More like this"), strip(0., geo.left, h, strips[2], tiles)));
+            let strip = strip(0., geo.left, h, strips[2], tiles);
+            out.push(titled(geo.related, geo.left, tr!("More like this"), strip));
         }
         out
     }
@@ -978,7 +1047,9 @@ impl CollectionView {
                 .console
                 .tab_navs
                 .iter()
-                .find_map(|n| n.spotlight.about.as_ref().filter(|(k, _)| *k == shape.key).map(|(_, t)| t.clone()))
+                .map(|n| &n.spotlight)
+                .chain(std::iter::once(&self.console.game.showcase))
+                .find_map(|n| n.about.as_ref().filter(|(k, _)| *k == shape.key).map(|(_, t)| t.clone()))
                 .unwrap_or_default();
             left = left.child(section_title(tr!("About this game"))).child(
                 div()
@@ -1093,13 +1164,13 @@ impl CollectionView {
         }
         let mut out = Vec::new();
         if shape.about && !side_only {
-            out.push(div().absolute().top(u(geo.about)).left(u(SIDE)).child(left).into_any_element());
+            out.push(div().absolute().top(u(geo.about)).left(u(SIDE)).child(glass_panel(left, f.glass)).into_any_element());
         }
         // The sidebar, beside the left column from its first section down.
         if shape.has_side() {
             // Beside the left column, or in its place when it has nothing.
             let x = if shape.first_left().is_some() { SIDE + geo.left + page::COLUMN_GAP } else { SIDE };
-            out.push(div().absolute().top(u(geo.side)).left(u(x)).child(column).into_any_element());
+            out.push(div().absolute().top(u(geo.side)).left(u(x)).child(glass_panel(column, f.glass)).into_any_element());
         }
         out
     }
@@ -1292,10 +1363,23 @@ impl CollectionView {
         if found.is_empty() {
             return false;
         }
+        self.spot_page_pad(Host::Tab(tab), &found, pad, window, cx)
+    }
+
+    /// A press on the page of `host` (`false`: the owner's to use, B leaving it).
+    pub(in crate::collection::console) fn spot_page_pad(
+        &mut self,
+        host: Host,
+        found: &[SharedString],
+        pad: Pad,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let game_page = host == Host::Game;
         let n = found.len();
         let wrap = look::theme().nav.wrap;
         // What is open over the page takes every press.
-        let nav = &mut self.tab_nav(tab).spotlight;
+        let nav = &mut self.spot_nav(host);
         if let Some(i) = nav.viewer {
             let count = nav.shape.store.len().max(1);
             match pad {
@@ -1318,10 +1402,10 @@ impl CollectionView {
         if self.shot_viewer_pad(pad) {
             return true;
         }
-        let nav = &self.tab_nav(tab).spotlight;
+        let nav = &self.spot_nav(host);
         let index = nav.index.min(n);
         let game = found.get(index).cloned();
-        if pad == Pad::Y {
+        if pad == Pad::Y && !game_page {
             self.open_console_filters(window, cx);
             return true;
         }
@@ -1331,11 +1415,14 @@ impl CollectionView {
                 return true;
             }
         }
-        let nav = &mut self.tab_nav(tab).spotlight;
+        let nav = &mut self.spot_nav(host);
         nav.index = index;
         // Presses faster than frames: the page of a game not drawn yet has
         // only its buttons.
         let drawn = game.as_ref() == Some(&nav.shape.key);
+        if game_page && nav.zone == Zone::Row {
+            nav.zone = Zone::Actions;
+        }
         if game.is_none() {
             nav.zone = Zone::Row;
         } else if !drawn && !matches!(nav.zone, Zone::Row | Zone::Actions) {
@@ -1359,10 +1446,13 @@ impl CollectionView {
             (Zone::Row, _) => return false,
             (Zone::Actions, Pad::Left) => nav.action = nav.action.saturating_sub(1),
             (Zone::Actions, Pad::Right) => nav.action = (nav.action + 1).min(actions().len() - 1),
+            // The game page has nothing above its buttons: B leaves it.
+            (Zone::Actions, Pad::Up) if game_page => {}
+            (Zone::Actions, Pad::B) if game_page => return false,
             (Zone::Actions, Pad::Up | Pad::B) => nav.zone = Zone::Row,
             (Zone::Actions, Pad::A) => {
                 let (Some(key), at) = (game, nav.action) else { return true };
-                self.spotlight_act(&key, actions()[at.min(actions().len() - 1)], window, cx);
+                self.spotlight_act(host, &key, actions()[at.min(actions().len() - 1)], window, cx);
             }
             // ↓ from the buttons: the left column's first section, else the sidebar.
             (Zone::Actions, Pad::Down) => {
@@ -1385,7 +1475,7 @@ impl CollectionView {
             }
             (z, Pad::A) => {
                 let Some(key) = game else { return true };
-                self.spotlight_open(tab, &found, &key, z, window, cx);
+                self.spotlight_open(host, found, &key, z, window, cx);
             }
             _ => return false,
         }
@@ -1395,14 +1485,14 @@ impl CollectionView {
     /// A on something of the page (`zone` has the focus).
     fn spotlight_open(
         &mut self,
-        tab: usize,
+        host: Host,
         found: &[SharedString],
         key: &SharedString,
         zone: Zone,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let nav = &mut self.tab_nav(tab).spotlight;
+        let nav = &mut self.spot_nav(host);
         match zone {
             Zone::Media if nav.shape.media_shots => {
                 let i = nav.media;
@@ -1447,7 +1537,7 @@ impl CollectionView {
     }
 
     /// A on a button of the actions row.
-    fn spotlight_act(&mut self, key: &SharedString, action: SpotAct, window: &mut Window, cx: &mut Context<Self>) {
+    fn spotlight_act(&mut self, host: Host, key: &SharedString, action: SpotAct, window: &mut Window, cx: &mut Context<Self>) {
         match action {
             SpotAct::Play => self.install_or_play(key, window, cx),
             SpotAct::Status => {
@@ -1466,12 +1556,19 @@ impl CollectionView {
                 }
                 self.toggle_favourite(cx);
             }
+            // The game page lists the game's actions in a sheet over itself.
+            SpotAct::Options if host == Host::Game => self.open_showcase_options(),
             SpotAct::Options => self.open_game_page(key.clone()),
         }
     }
 
     pub(super) fn spotlight_hints(&self, tab: usize, spec: &TabSpec) -> Vec<Hint> {
-        let Some(nav) = self.console.tab_navs.get(tab).map(|n| &n.spotlight) else { return Vec::new() };
+        self.spot_page_hints(Host::Tab(tab), &self.spotlight_keys(spec))
+    }
+
+    /// The hints of the page of `host`.
+    pub(in crate::collection::console) fn spot_page_hints(&self, host: Host, found: &[SharedString]) -> Vec<Hint> {
+        let Some(nav) = self.spot_nav_ref(host) else { return Vec::new() };
         if nav.viewer.is_some() {
             return vec![hint(Btn::LeftRight, tr!("Browse")), hint(Btn::B, tr!("Close"))];
         }
@@ -1481,7 +1578,6 @@ impl CollectionView {
         if let Some(h) = self.shot_viewer_hints() {
             return h;
         }
-        let found = self.spotlight_keys(spec);
         let game = found.get(nav.index).and_then(|k| self.lib.as_ref()?.get(k));
         let primary = game.map_or(tr!("Play"), |g| self.primary_label(g));
         let a = match nav.zone {
@@ -1516,6 +1612,8 @@ struct Focus {
     card: usize,
     shot: usize,
     related: usize,
+    /// The game page: sections on frosted glass.
+    glass: bool,
     /// The pause left before the parts under the logo fade in, ms.
     rest_hold: u64,
 }
@@ -1573,6 +1671,29 @@ fn reveal(id: SharedString, el: Div, hold: u64, fade: u64, slide: Option<(f32, u
         }
     })
     .into_any_element()
+}
+
+/// How far a glass panel reaches around what it holds, design px (outside
+/// its place: the layout's heights stay the same).
+const GLASS_PAD: f32 = 18.;
+
+/// `el` on a panel of frosted glass (the game page's look): a translucent
+/// fill, a thin edge and the theme's soft corners, reaching a little around
+/// it; as is without `glass`.
+fn glass_panel(el: Div, glass: bool) -> Div {
+    if !glass {
+        return el;
+    }
+    let radius = (look::tile_radius() * 2.).max(12.);
+    div()
+        .ml(u(-GLASS_PAD))
+        .mt(u(-GLASS_PAD))
+        .p(u(GLASS_PAD))
+        .rounded(u(radius + 6.))
+        .bg(parts::glass(0.34))
+        .border_1()
+        .border_color(kit::ink(0.1))
+        .child(el)
 }
 
 /// Room around a strip's tiles for the focus ring, design px.

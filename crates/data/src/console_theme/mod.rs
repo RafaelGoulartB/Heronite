@@ -208,7 +208,9 @@ str_enum! {
     pub enum Hints { Always = "always", Auto = "auto", Off = "off" } default Always
 }
 str_enum! {
-    pub enum GamePage { Classic = "classic", Hero = "hero", Tabs = "tabs", Sheet = "sheet" } default Classic
+    /// `showcase`: the game's page full screen, its sections on glass (the
+    /// sections of Spotlight's page, `layouts.spotlightSections`).
+    pub enum GamePage { Classic = "classic", Hero = "hero", Tabs = "tabs", Sheet = "sheet", Showcase = "showcase" } default Classic
 }
 str_enum! {
     /// `rail`: a column of icons always on screen that opens into the sidebar.
@@ -872,6 +874,7 @@ impl ConsolePrefs {
             Some(mut p) => {
                 p.theme = p.theme.normalized();
                 upgrade_pulse(&mut p);
+                upgrade_minimal(&mut p);
                 if let Some(old) = old {
                     p.controller = old;
                 }
@@ -916,6 +919,15 @@ fn upgrade_pulse(p: &mut ConsolePrefs) {
     }
     p.kept_filters.sort = SORT_LAST_PLAYED;
     p.last_tab = 0;
+}
+
+/// Minimal as it shipped (its game page the Sheet, floating over the
+/// carousel) opens the game's page full screen now, as the preset does.
+/// A Minimal whose game page was changed to another one keeps it.
+fn upgrade_minimal(p: &mut ConsolePrefs) {
+    if p.theme.id == "minimal" && p.theme.game_page == GamePage::Sheet {
+        p.theme.game_page = presets::minimal().game_page;
+    }
 }
 
 /// `T` from `value`, leaving out what does not read: a value of the wrong

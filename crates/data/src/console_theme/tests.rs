@@ -321,3 +321,17 @@ fn pulse_with_its_first_tabs_takes_its_new_home() {
     ConsolePrefs { theme: mine.clone(), ..ConsolePrefs::default() }.save(&paths).unwrap();
     assert_eq!(ConsolePrefs::load(&paths).theme.tabs, mine.tabs);
 }
+
+#[test]
+fn a_saved_minimal_opens_the_showcase_unless_its_game_page_was_changed() {
+    let as_shipped = |page: GamePage| {
+        let mut theme = presets::minimal();
+        theme.game_page = page;
+        let mut p = ConsolePrefs { theme, ..ConsolePrefs::default() };
+        upgrade_minimal(&mut p);
+        p.theme.game_page
+    };
+    assert_eq!(as_shipped(GamePage::Sheet), GamePage::Showcase);
+    assert_eq!(as_shipped(GamePage::Hero), GamePage::Hero);
+    assert_eq!(presets::minimal().game_page, GamePage::Showcase);
+}

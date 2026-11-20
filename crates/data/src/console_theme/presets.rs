@@ -147,7 +147,10 @@ pub fn minimal() -> ConsoleTheme {
         t.background.dim = 20;
         t.tiles.size = TileSize::Large;
         t.layouts.carousel_reflect = true;
-        t.game_page = GamePage::Sheet;
+        // Its game page shows How Long To Beat and the rest in its sections.
+        t.layouts.spotlight_cards = false;
+        t.layouts.spotlight_actions = SpotActions::Play;
+        t.game_page = GamePage::Showcase;
     })
 }
 
