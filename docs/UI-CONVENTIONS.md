@@ -1275,6 +1275,24 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   `ConsoleTheme` (with a default and `#[serde(default)]`, so old and new theme files keep loading), its rows in
   `theme_rows`, and its use. Nothing console-only may run, read files or allocate while console mode is off;
   no "HERONITE" wordmark in console screens (the theme's `interface.label` may add a text of its own).
+- Launch screen and session card (the theme's `launch`; `collection/console/launch_screen.rs`, `session_card.rs`,
+  drawn by the shell over everything): any launch while console mode is in front (Play, X, the quick launcher, the
+  tray) covers the window so the desktop never shows: black, then (`art-logo`) the game's art drifting from 1.04 to
+  1.12 over 20 s (`motion`, not with Reduced) under the `shade` (none / 35 % / 60 % black), and the logo (the name when
+  there is none) fading in while it rises 26 px after the screen's 360 ms fade; `logo` is the logo on black, `off`
+  nothing. Near the bottom a thin line with a light sweeping along it and the launch's step (`preparing`, else
+  "Starting..."). It leaves (300 ms to black, 300 ms out) once the game runs and is in front: our window lost the
+  focus, or Hyprland lists a window of the game's pid (`heronite_overlay::game_window::shown`; the game is then
+  focused), or 8 s after it runs where nothing can tell (60 s at most where Hyprland can); also when the game ends, on
+  B or a click, and after 120 s. A failed launch shows why with B until read (10 s). It takes every press. Launch
+  events in the first 1.5 s of console mode are the runtime's replay for a new window, not launches. Minimize on
+  launch waits for it (`system::hide_after_cover`). When a game ends (not a failed start, at least 5 s) "Session
+  ended" shows top right 1.5 s after the console is in front again, for 8 s: the name, "<session> this session ·
+  <total> total" (`<1m` under a minute), the logo at the right over the art at 42 % fading out under the words, the
+  confirm sound when sounds are on; it takes no input and a newer session replaces it. One that ends with the window
+  in the tray waits for the window (`session_card::remember`). `HERONITE_DEBUG_LAUNCH_SCREEN=<app name or
+  key>[:error|:<step>]` shows the screen for that game, frozen (nothing launched); `HERONITE_DEBUG_SESSION_CARD=<app
+  name or key>` the card, staying.
 - Navigation sounds (`controls.sounds`, off by default; `console/sound.rs`): four short tones (move, confirm, back,
   tab) written as WAV files in `cache/console-sounds` and played by `pw-play`, `paplay` or `aplay` from a worker thread
   (Linux only). `controls.soundStyle` is `soft` (the default: ~320-590 Hz with a round start, quiet) or `classic` (the
