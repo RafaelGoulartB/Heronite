@@ -493,6 +493,7 @@ impl CollectionView {
         let tasks = &self.console.activity.tasks;
         let first = tasks.first()?;
         let (label, detail) = pill_text(tasks);
+        let many = tasks.len() > 1;
         let game = tasks.iter().any(|t| matches!(t.kind, Kind::Game { .. }));
         let progress = first.progress;
         let moving = motion::on() && first.waiting.is_none();
@@ -533,11 +534,11 @@ impl CollectionView {
             .id("console-activity")
             .relative()
             .flex()
-            .flex_none()
             .items_center()
             .gap(u(8.))
             .h(u(40.))
             .pb(u(2.))
+            .min_w_0()
             .max_w(u(460.))
             .pl(u(12.))
             .pr(u(16.))
@@ -547,8 +548,25 @@ impl CollectionView {
             .border_color(kit::ink(0.12))
             .when(floating, |d| d.shadow(kit::shadow(0.4, 6., 18.)))
             .child(glyph)
-            .child(div().min_w_0().truncate().text_size(u(14.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(label))
-            .children(detail.map(|d| div().flex_none().text_size(u(13.)).text_color(theme::text_muted()).child(d)))
+            // What gives way when it is narrow: one task's name (its count
+            // stays), or the first task's name after "3 tasks".
+            .child(
+                div()
+                    .when(many, |d| d.flex_none())
+                    .when(!many, |d| d.min_w_0().truncate())
+                    .text_size(u(14.))
+                    .font_weight(theme::W_BOLD)
+                    .text_color(theme::text_primary())
+                    .child(label),
+            )
+            .children(detail.map(|d| {
+                div()
+                    .when(many, |d| d.min_w_0().truncate())
+                    .when(!many, |d| d.flex_none())
+                    .text_size(u(13.))
+                    .text_color(theme::text_muted())
+                    .child(d)
+            }))
             .child(bar)
             // A game downloading: a click opens Downloads.
             .when(game, |d| {
@@ -560,7 +578,10 @@ impl CollectionView {
 
     /// The pill beside the clock (`console_top_bar`).
     pub(super) fn activity_in_bar(&self) -> Option<AnyElement> {
-        self.activity_pill(false)
+        // A fifth of the bar at most, clear of tabs centred in it: on a narrow
+        // window the label truncates.
+        let pill = self.activity_pill(false)?;
+        Some(div().flex().min_w_0().max_w(relative(0.2)).child(pill).into_any_element())
     }
 
     /// The toasts, newest last, for the column in the top right corner.
@@ -587,6 +608,8 @@ impl CollectionView {
             div()
                 .absolute()
                 .top(if top_bar { u(92.) } else { u(68.) })
+                // Both sides: its children are never wider than the window.
+                .left(u(28.))
                 .right(u(28.))
                 .flex()
                 .flex_col()
@@ -618,6 +641,7 @@ fn toast(t: &Toast) -> AnyElement {
     let leaving = t.at.elapsed() >= t.life();
     let body = div()
         .w(u(TOAST_W))
+        .max_w(relative(1.))
         .flex()
         .items_center()
         .gap(u(14.))

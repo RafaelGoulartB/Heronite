@@ -33,14 +33,44 @@ use crate::console::{hint, look, motion, Btn, Pad};
 use crate::icons::Icon;
 use crate::theme;
 
-/// The card, design px.
-const CARD_W: f32 = 940.;
-const COVER_W: f32 = 200.;
-const COVER_H: f32 = 300.;
+/// The card, design px: its widest, its padding and corners, the gap
+/// between the cover and the words.
+const CARD_MAX: f32 = 1000.;
 const CARD_PAD: f32 = 26.;
 const CARD_R: f32 = 22.;
+const CARD_GAP: f32 = 28.;
+/// The cover's width (2:3), and in a narrow card.
+const COVER_W: f32 = 190.;
+const COVER_W_NARROW: f32 = 130.;
+/// The logo's box at most.
 const LOGO_W: f32 = 460.;
-const LOGO_H: f32 = 130.;
+const LOGO_H: f32 = 120.;
+/// From this wide (design px) the card sits left of centre, else centred.
+const WIDE_FROM: f32 = 1500.;
+
+/// Where the card goes and how big its parts are, for a window `win_w`
+/// design px wide.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Fit {
+    /// Centred (a narrow or 16:9 window); else left of centre.
+    centred: bool,
+    /// The side margin.
+    margin: f32,
+    /// The card's widest (it is as wide as its words need, up to this).
+    card_max: f32,
+    cover_w: f32,
+    /// The logo's box width (never wider than the words' column).
+    logo_w: f32,
+}
+
+fn fit(win_w: f32) -> Fit {
+    let centred = win_w < WIDE_FROM;
+    let margin = if centred { 40. } else { 96. };
+    let card_max = (win_w - 2. * margin).clamp(320., CARD_MAX);
+    let cover_w = if card_max < 760. { COVER_W_NARROW } else { COVER_W };
+    let column = card_max - 2. * CARD_PAD - cover_w - CARD_GAP;
+    Fit { centred, margin, card_max, cover_w, logo_w: column.clamp(120., LOGO_W) }
+}
 
 /// When each game launched by this run started running (live events only,
 /// read by the hub without a window): the session's time survives the window
@@ -223,16 +253,20 @@ impl CollectionView {
         let since = started_at(&game.app_name);
         let secs = since.map_or(0, |t| t.elapsed().as_secs());
         np.shown_secs = secs;
-        let cover = self.cover(key, COVER_W * kit::scale(), COVER_H * kit::scale(), window.scale_factor(), 900);
+        let win_w = f32::from(crate::ui::content_size(window).width) / f32::from(u(1.));
+        let f = fit(win_w);
+        let (cover_w, cover_h) = (f.cover_w, f.cover_w * 1.5);
+        let cover = self.cover(key, cover_w * kit::scale(), cover_h * kit::scale(), window.scale_factor(), 900);
         let logo = self.console_logo(key, LOGO_W, LOGO_H, true, window);
         let glass = self.now_playing_glass(key, window);
         let total = format_playtime_minutes(game.playtime_minutes.max(secs / 60));
 
         let white = |a: f32| theme::white_a(a);
         let name_or_logo: AnyElement = match logo {
-            Some(src) => div().h(u(LOGO_H)).flex().items_end().child(logo_element(src, LOGO_W, LOGO_H, window)).into_any_element(),
+            Some(src) => div().flex().items_end().child(logo_element(src, f.logo_w, LOGO_H, window)).into_any_element(),
+            // Wraps between words, two lines at most, in the column's width.
             None => div()
-                .w(u(LOGO_W + 120.))
+                .w_full()
                 .font_family(kit::heading_font())
                 .font_weight(theme::W_BOLD)
                 .text_size(u(super::hero::fitted_title(46., game.title.chars().count())))
@@ -251,9 +285,10 @@ impl CollectionView {
             .child(div().text_size(u(17.)).font_weight(theme::W_BOLD).text_color(white(0.95)).child(tr!("Playing now")))
             .child(div().text_size(u(17.)).text_color(white(0.9)).child(clock(secs)))
             .child(div().text_size(u(15.)).text_color(white(0.45)).child("\u{b7}"))
-            .child(div().text_size(u(15.)).text_color(white(0.62)).child(tr!("{total} total", total)));
+            .child(div().text_size(u(15.)).text_color(white(0.62)).whitespace_nowrap().child(tr!("{total} total", total)));
         let list = buttons(can_focus);
-        let row = div().flex().items_center().gap(u(12.)).children(list.iter().enumerate().map(|(i, b)| {
+        // The buttons wrap to a second row rather than leave the card.
+        let row = div().flex().flex_wrap().items_center().gap(u(12.)).children(list.iter().enumerate().map(|(i, b)| {
             let (ic, label) = match b {
                 Button::BackToGame => (Icon::PlayArrow, tr!("Back to game")),
                 Button::Stop => (Icon::Stop, tr!("Stop game")),
@@ -266,6 +301,8 @@ impl CollectionView {
                 .flex()
                 .items_center()
                 .gap(u(10.))
+                .flex_none()
+                .whitespace_nowrap()
                 .h(u(50.))
                 .px(u(22.))
                 .rounded_full()
@@ -286,26 +323,19 @@ impl CollectionView {
                     }),
                 )
         }));
+        // Top to bottom, no gap kept open: the name, what it is, playing, the buttons.
         let column = div()
             .flex()
             .flex_col()
-            .flex_1()
             .min_w_0()
-            .justify_between()
-            .h(u(COVER_H))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(u(10.))
-                    .child(name_or_logo)
-                    .when(!about.is_empty(), |d| d.child(div().text_size(u(16.)).text_color(white(0.72)).truncate().child(about))),
-            )
-            .child(div().flex().flex_col().gap(u(18.)).child(playing).child(row));
+            .gap(u(10.))
+            .child(name_or_logo)
+            .when(!about.is_empty(), |d| d.child(div().w_full().text_size(u(16.)).text_color(white(0.72)).truncate().child(about)))
+            .child(div().mt(u(16.)).flex().flex_col().gap(u(18.)).child(playing).child(row));
         let cover_el = div()
             .flex_none()
-            .w(u(COVER_W))
-            .h(u(COVER_H))
+            .w(u(cover_w))
+            .h(u(cover_h))
             .rounded(u(12.))
             .overflow_hidden()
             .bg(white(0.08))
@@ -326,13 +356,12 @@ impl CollectionView {
         });
         let card = div()
             .relative()
-            .w(u(CARD_W))
-            .max_w(relative(0.9))
+            .max_w(u(f.card_max))
             .rounded(u(CARD_R))
             .shadow(kit::shadow(0.5, 16., 48.))
             .children(frost)
             .child(div().absolute().inset_0().rounded(u(CARD_R)).bg(theme::black_a(0.42)).border_1().border_color(white(0.16)))
-            .child(div().relative().flex().gap(u(28.)).p(u(CARD_PAD)).child(cover_el).child(column));
+            .child(div().relative().flex().items_center().gap(u(CARD_GAP)).p(u(CARD_PAD)).child(cover_el).child(column));
         let card = motion::enter(SharedString::from(format!("now-playing-in-{id}")), card, 420, 0., 24.);
         let keys = look::glyphs() == heronite_data::console_theme::Glyphs::Keyboard;
         let hints = div()
@@ -351,7 +380,16 @@ impl CollectionView {
                 .inset_0()
                 .bg(linear_gradient(20., linear_color_stop(theme::black_a(0.7), 0.), linear_color_stop(theme::black_a(0.), 0.65)))
                 .into_any_element(),
-            div().absolute().left(u(96.)).right(u(96.)).bottom(u(110.)).flex().child(card).into_any_element(),
+            // Left of centre on a wide window, centred on a narrower one.
+            div()
+                .absolute()
+                .left(u(f.margin))
+                .right(u(f.margin))
+                .bottom(u(if f.centred { 90. } else { 110. }))
+                .flex()
+                .when(f.centred, |d| d.justify_center())
+                .child(card)
+                .into_any_element(),
             hints.into_any_element(),
         ];
         if confirming {
@@ -384,7 +422,8 @@ impl CollectionView {
         };
         let at = Instant::now().checked_sub(Duration::from_secs(47 * 60 + 12)).unwrap_or_else(Instant::now);
         STARTED.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(game.app_name.clone(), at);
-        self.console.launch.now_playing_for(&game, None, at, true);
+        // A pid no process has: Back to game shows, and finds no window.
+        self.console.launch.now_playing_for(&game, Some(u32::MAX), at, true);
         if let (true, Some((_, _, np))) = (stop, self.console.launch.playing_mut()) {
             np.confirm = Some(ListNav::default());
         }
@@ -393,7 +432,7 @@ impl CollectionView {
 
 #[cfg(test)]
 mod tests {
-    use super::{buttons, clock, Button};
+    use super::{buttons, clock, fit, Button, CARD_MAX, COVER_W, COVER_W_NARROW, LOGO_W};
 
     #[test]
     fn the_session_reads_as_a_clock() {
@@ -406,5 +445,22 @@ mod tests {
     fn back_to_game_only_where_the_window_can_come_forward() {
         assert_eq!(buttons(true), [Button::BackToGame, Button::Stop, Button::BackToConsole]);
         assert_eq!(buttons(false), [Button::Stop, Button::BackToConsole]);
+    }
+
+    #[test]
+    fn the_card_fits_any_window() {
+        // An ultrawide (3440x1440: 1911 design px wide): left of centre, full size.
+        let wide = fit(1911.);
+        assert!(!wide.centred);
+        assert_eq!((wide.card_max, wide.cover_w, wide.logo_w), (CARD_MAX, COVER_W, LOGO_W));
+        // 16:9 and 4:3 (1422 and 1081 wide): centred, never wider than the window.
+        for w in [1422., 1081.] {
+            let f = fit(w);
+            assert!(f.centred && f.card_max + 2. * f.margin <= w, "{f:?}");
+        }
+        // Narrow: a smaller cover, the logo kept inside the words' column.
+        let narrow = fit(700.);
+        assert_eq!(narrow.cover_w, COVER_W_NARROW);
+        assert!(narrow.logo_w <= narrow.card_max - narrow.cover_w);
     }
 }

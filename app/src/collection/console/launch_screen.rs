@@ -618,7 +618,7 @@ impl CollectionView {
         // logo still loading does not flash the name first).
         let logo_ready = logo.is_some();
         let centre: Option<AnyElement> = match logo {
-            Some(src) => Some(img(src).w(u(LOGO_W)).h(u(LOGO_H)).object_fit(ObjectFit::Contain).into_any_element()),
+            Some(src) => Some(img(src).w(u(LOGO_W)).max_w(relative(0.86)).h(u(LOGO_H)).object_fit(ObjectFit::Contain).into_any_element()),
             // A box of its own width, so it wraps between words only (in a
             // box of no width it broke "Contr / ol"), large, smaller when long.
             None if since.elapsed() >= NAME_AFTER || !motion::on() => {
@@ -721,7 +721,7 @@ impl CollectionView {
 /// Under the logo, near the bottom: a thin line with a light sweeping along
 /// it and the launch's step; or, when the launch failed, why and B.
 fn status_line(id: u64, step: SharedString, failed: Option<SharedString>) -> Div {
-    let column = div().absolute().left_0().right_0().bottom(u(92.)).flex().flex_col().items_center().gap(u(16.));
+    let column = div().absolute().left_0().right_0().bottom(u(92.)).px(u(40.)).flex().flex_col().items_center().gap(u(16.));
     if let Some(message) = failed {
         let back = kit::hint_item(&hint(Btn::B, tr!("Back")), look::glyphs() == heronite_data::console_theme::Glyphs::Keyboard, 15., 8.)
             .text_color(theme::white_a(0.72));
@@ -731,9 +731,13 @@ fn status_line(id: u64, step: SharedString, failed: Option<SharedString>) -> Div
                     .flex()
                     .items_center()
                     .gap(u(12.))
-                    .max_w(u(820.))
+                    .w(u(820.))
+                    .max_w(relative(1.))
+                    .justify_center()
                     .child(crate::ui::icon(Icon::Warning, u(24.), rgb(0xffb74d)))
-                    .child(div().text_size(u(19.)).line_height(u(26.)).line_clamp(3).text_color(theme::white_a(0.92)).child(message)),
+                    .child(
+                        div().min_w_0().text_size(u(19.)).line_height(u(26.)).line_clamp(3).text_color(theme::white_a(0.92)).child(message),
+                    ),
             )
             .child(back);
     }

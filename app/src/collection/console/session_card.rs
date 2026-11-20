@@ -274,6 +274,7 @@ impl CollectionView {
             .id(SharedString::from(format!("console-session-card-{}", card.id)))
             .relative()
             .w(u(CARD_W))
+            .max_w(relative(1.))
             .h(u(CARD_H))
             .rounded(u(CARD_R))
             .overflow_hidden()
