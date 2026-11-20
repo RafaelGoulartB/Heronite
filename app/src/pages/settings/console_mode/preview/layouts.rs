@@ -165,14 +165,14 @@ fn cinema(p: &mut Pic, layer: Div) -> Div {
     let genres = div().flex().gap(p.u(5.)).child(p.line(12., 2.5, 0.45)).child(p.line(14., 2.5, 0.45)).child(p.line(10., 2.5, 0.45));
     let block = div()
         .absolute()
-        .left(p.u(30.))
-        .w(p.u(250.))
+        .left(p.u(26.))
+        .max_w(p.u(250.))
         .bottom(p.u(CANVAS_H - row_y + 16.))
         .flex()
         .flex_col()
         .items_center()
         .gap(p.u(7.))
-        .child(p.game_name(0, 24., 250.).text_center())
+        .child(p.game_name(0, 22., 250.).text_center())
         .child(facts)
         .child(genres);
     // The achievements, level with the facts.

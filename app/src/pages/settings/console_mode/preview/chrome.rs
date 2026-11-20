@@ -208,11 +208,11 @@ impl Pic<'_, '_> {
         }
         // The controller's buttons (not the theme's): south and east, the
         // one that confirms first, and X.
-        let (south, east, west): (&'static str, &'static str, &'static str) = match crate::console::look::glyphs() {
-            Glyphs::Xbox | Glyphs::Auto | Glyphs::Deck => ("A", "B", "X"),
-            Glyphs::PlayStation => ("\u{2715}", "\u{25cb}", "\u{25a1}"),
-            Glyphs::Nintendo => ("B", "A", "Y"),
-            Glyphs::Keyboard => ("Enter", "Esc", "X"),
+        let (south, east, west, north): (&'static str, &'static str, &'static str, &'static str) = match crate::console::look::glyphs() {
+            Glyphs::Xbox | Glyphs::Auto | Glyphs::Deck => ("A", "B", "X", "Y"),
+            Glyphs::PlayStation => ("\u{2715}", "\u{25cb}", "\u{25a1}", "\u{25b3}"),
+            Glyphs::Nintendo => ("B", "A", "Y", "X"),
+            Glyphs::Keyboard => ("Enter", "Esc", "X", "Y"),
         };
         let keys = crate::console::look::glyphs() == Glyphs::Keyboard;
         let (a, b) = if crate::console::look::confirm_east() && !keys { (east, south) } else { (south, east) };
@@ -228,8 +228,21 @@ impl Pic<'_, '_> {
         let tabs =
             (self.t.tabs.len() > 1).then(|| hint(div().flex().gap(self.u(2.)).child(self.key("LB")).child(self.key("RB")), tr!("Tabs")));
         let left = div().flex().items_center().gap(self.u(12.)).child(hint(menu, tr!("Menu"))).children(tabs);
-        // Spotlight's row: A opens the actions, X plays; elsewhere A and B.
-        let right = if self.spotlight_tab() {
+        let cinema = self.t.tabs.get(self.tab).is_some_and(|t| t.layout == Layout::Cinema);
+        // A and X as the theme's `nav.aButton` says, as on the console.
+        let details_on_a = self.t.nav.a_button == heronite_data::console_theme::AButton::Details;
+        // Cinema: View filters, Y the actions, A / X the page and Play; Spotlight's
+        // row: A opens the actions, X plays; elsewhere A and B.
+        let right = if cinema {
+            div()
+                .flex()
+                .items_center()
+                .gap(self.u(12.))
+                .child(hint(self.key("View"), tr!("Filter")))
+                .child(hint(self.mono_glyph(north), tr!("Game options")))
+                .child(hint(self.mono_glyph(west), if details_on_a { tr!("Play") } else { tr!("Details") }))
+                .child(hint(self.mono_glyph(a), if details_on_a { tr!("Details") } else { tr!("Play") }))
+        } else if self.spotlight_tab() {
             div()
                 .flex()
                 .items_center()
