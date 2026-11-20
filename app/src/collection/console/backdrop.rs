@@ -2,10 +2,12 @@
 //! focused game's wide art, its cover blurred, one of its screenshots, a
 //! gradient of its colour, a plain colour or the theme's own picture; then
 //! the extra darkening and the shading the current screen wants ([`Scrim`]).
-//! The art follows the focus after a short pause and cross-fades.
+//! The art follows the focus after a short pause ([`ART_SETTLE`], so a held
+//! stick does not load every game it passes) and cross-fades ([`ArtLayers`]).
 
 use std::borrow::Cow;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -13,17 +15,114 @@ use heronite_data::console_theme::{BackgroundMotion, BackgroundSource};
 use heronite_images::{ImageRef, Variant};
 
 use super::super::CollectionView;
-use crate::console::kit::u;
 use crate::console::{look, motion};
 use crate::theme;
 
-/// Cross-fade of the background art.
-pub(super) const ART_FADE_MS: u64 = 520;
-/// Classic's settle: the new art starts this much larger (design px above and
-/// below, and as much more across as keeps the window's shape, so the
-/// picture only grows and never shifts) and eases into place over this long.
-const SETTLE_PX: f32 = 14.;
-const SETTLE_MS: u64 = 1400;
+/// How long the art waits for the focus to rest before it loads.
+pub(super) const ART_SETTLE: Duration = Duration::from_millis(150);
+/// The cross-fade of the background art: the new art fades in over what
+/// is on screen, which stays as it is.
+const ART_FADE: Duration = Duration::from_millis(400);
+/// A layer that shows less than this through the ones above it is dropped.
+const SHOWS: f32 = 0.02;
+
+/// Ease in and out, the curve (0.42, 0, 0.58, 1).
+fn ease_in_out(t: f32) -> f32 {
+    // Solve x(u) = t on the bezier, then y(u).
+    let t = t.clamp(0., 1.);
+    let bez = |u: f32, a: f32, b: f32| 3. * a * u * (1. - u) * (1. - u) + 3. * b * u * u * (1. - u) + u * u * u;
+    let (mut lo, mut hi) = (0f32, 1f32);
+    for _ in 0..24 {
+        let mid = (lo + hi) / 2.;
+        if bez(mid, 0.42, 0.58) < t {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    bez((lo + hi) / 2., 0., 1.)
+}
+
+/// One picture of the cross-fade.
+struct Layer {
+    key: SharedString,
+    img: Arc<RenderImage>,
+    /// Its opacity when it started fading in, and when (`None`: it stays at `from`).
+    from: f32,
+    start: Option<Instant>,
+}
+
+impl Layer {
+    fn opacity(&self, now: Instant) -> f32 {
+        match self.start {
+            Some(at) => {
+                let t = now.duration_since(at).as_secs_f32() / ART_FADE.as_secs_f32();
+                self.from + (1. - self.from) * ease_in_out(t)
+            }
+            None => self.from,
+        }
+    }
+}
+
+/// The background's cross-fade, bottom to top: the newest art fades in over
+/// the others, which keep the opacity they had (nothing under it dips to the
+/// backdrop); a new game while a fade runs freezes it where it is and fades
+/// in on top (a game still in the stack fades on from where it is). Layers
+/// go once covered, so browsing fast keeps only a few.
+#[derive(Default)]
+pub(crate) struct ArtLayers {
+    layers: Vec<Layer>,
+}
+
+impl ArtLayers {
+    /// `img` is the art of `key` now: the same game's texture changing is no
+    /// new picture (it is swapped in place); another game fades in on top.
+    fn show(&mut self, key: &SharedString, img: Arc<RenderImage>, now: Instant, animate: bool) {
+        if let Some(top) = self.layers.last_mut().filter(|l| l.key == *key) {
+            top.img = img;
+            return;
+        }
+        if !animate {
+            self.layers = vec![Layer { key: key.clone(), img, from: 1., start: None }];
+            return;
+        }
+        // Everything stops where it is.
+        for l in &mut self.layers {
+            l.from = l.opacity(now);
+            l.start = None;
+        }
+        let from = match self.layers.iter().position(|l| l.key == *key) {
+            Some(i) => self.layers.remove(i).from,
+            None => 0.,
+        };
+        self.layers.push(Layer { key: key.clone(), img, from, start: Some(now) });
+        self.prune(now);
+    }
+
+    /// Drops the layers that no longer show through the ones above.
+    fn prune(&mut self, now: Instant) {
+        let mut through = 1.;
+        let mut keep = vec![false; self.layers.len()];
+        for (i, l) in self.layers.iter().enumerate().rev() {
+            keep[i] = through > SHOWS;
+            through *= 1. - l.opacity(now).clamp(0., 1.);
+        }
+        let mut i = 0;
+        self.layers.retain(|_| {
+            i += 1;
+            keep[i - 1]
+        });
+    }
+
+    /// Whether the top layer is still fading in.
+    fn moving(&self, now: Instant) -> bool {
+        self.layers.last().is_some_and(|l| l.start.is_some_and(|at| now.duration_since(at) < ART_FADE))
+    }
+
+    fn clear(&mut self) {
+        self.layers.clear();
+    }
+}
 
 /// How the screen shades the art so its text reads.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -211,61 +310,61 @@ impl CollectionView {
         }
     }
 
-    /// The art behind the screen and the one it fades from.
-    /// `drawn`: the screen shows the art (not a page over it).
+    /// The layers of the art behind the screen, bottom to top, each with
+    /// its opacity now. `drawn`: the screen shows the art (not a page over it).
     pub(super) fn console_art(
         &mut self,
         drawn: bool,
-        window: &Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> (Option<Arc<RenderImage>>, Option<(SharedString, Arc<RenderImage>)>) {
-        let Some(key) = self.console.art_key.clone() else {
-            return (self.console.art_prev.clone(), self.console.art_cur.clone());
-        };
-        let still_now = self.backdrop_image(&key, window);
-        let has_still = still_now.is_some();
-        if let Some(img) = still_now {
-            let same = self.console.art_cur.as_ref().is_some_and(|(_, i)| Arc::ptr_eq(i, &img));
-            // The same game's art loaded again (its texture was dropped while
-            // off screen) is no new picture: no cross-fade from itself.
-            let same_game = self.console.art_cur.as_ref().is_some_and(|(k, _)| *k == key);
-            if !same && !same_game {
-                // Cross-fade: the old art stays under the new one until it
-                // is fully in.
-                self.console.art_prev = self.console.art_cur.take().map(|(_, i)| i);
-                self.console.art_fade = Some(cx.spawn(async move |this, cx| {
-                    cx.background_executor().timer(std::time::Duration::from_millis(ART_FADE_MS + 100)).await;
-                    this.update(cx, |this, cx| {
-                        this.console.art_prev = None;
-                        cx.notify();
-                    })
-                    .ok();
-                }));
+    ) -> Vec<(SharedString, Arc<RenderImage>, f32)> {
+        let now = Instant::now();
+        let animate = motion::on();
+        if let Some(key) = self.console.art_key.clone() {
+            if let Some(img) = self.backdrop_image(&key, window) {
+                self.console.art_layers.show(&key, img.clone(), now, animate);
+                self.console.art_cur = Some((key.clone(), img.clone()));
+                self.shown_stage = Some((key, img));
+            } else if matches!(look::theme().background.source, BackgroundSource::Solid | BackgroundSource::GameColour) {
+                self.console.art_cur = None;
+                self.console.art_layers.clear();
             }
-            self.console.art_cur = Some((key.clone(), img.clone()));
-            self.shown_stage = Some((key.clone(), img));
-        } else if matches!(look::theme().background.source, BackgroundSource::Solid | BackgroundSource::GameColour) {
-            self.console.art_cur = None;
-            self.console.art_prev = None;
         }
-        // A background that moves: its frame drawn in place of its still,
-        // which the cross-fade keeps following (a frame is not a new
-        // picture), once that still is the one shown (not the last game's
-        // while the new one loads). Not while nothing shows it (a page, the
-        // idle screen): it then stops.
-        let live = (drawn && !self.console_idle_shown()).then(|| self.console_live(&key, window, cx)).flatten();
-        let ours = has_still && self.console.art_cur.as_ref().is_some_and(|(k, _)| *k == key);
-        let cur = self.console.art_cur.clone().map(|(k, still)| (k, live.filter(|_| ours).unwrap_or(still)));
-        (self.console.art_prev.clone(), cur)
+        self.console.art_layers.prune(now);
+        // Frames only while a fade runs.
+        if self.console.art_layers.moving(now) {
+            window.request_animation_frame();
+        }
+        // A background that moves: its frame drawn in place of the still of
+        // the top layer once that is this game's (not the last game's while
+        // the new one loads). Not while nothing shows it (a page, the idle
+        // screen): it then stops.
+        let key = self.console.art_key.clone();
+        let live = match &key {
+            Some(k) if drawn && !self.console_idle_shown() => self.console_live(k, window, cx),
+            _ => None,
+        };
+        let top = self.console.art_layers.layers.len().saturating_sub(1);
+        self.console
+            .art_layers
+            .layers
+            .iter()
+            .enumerate()
+            .map(|(i, l)| {
+                let img = match &live {
+                    Some(frame) if i == top && Some(&l.key) == key.as_ref() => frame.clone(),
+                    _ => l.img.clone(),
+                };
+                (l.key.clone(), img, l.opacity(now).clamp(0., 1.))
+            })
+            .collect()
     }
 
     /// The whole background layer: art (or colour), darkening, shading.
-    pub(super) fn render_console_backdrop(&mut self, scrim: Scrim, window: &Window, cx: &mut Context<Self>) -> Div {
+    pub(super) fn render_console_backdrop(&mut self, scrim: Scrim, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let theme = look::theme();
-        let (art_prev, art) = self.console_art(scrim != Scrim::Page, window, cx);
+        let layers = self.console_art(scrim != Scrim::Page, window, cx);
         let drift = theme.background.motion == BackgroundMotion::Drift && motion::on();
-        // Classic's and Spotlight's screens: new art settles in from a touch closer while it fades.
-        let settle = !drift && matches!(scrim, Scrim::Classic | Scrim::Library | Scrim::Home) && motion::on() && !motion::reduced();
         let art_img = move |i: Arc<RenderImage>| img(ImageSource::Render(i)).absolute().inset_0().size_full().object_fit(ObjectFit::Cover);
         let colour =
             (theme.background.source == BackgroundSource::GameColour).then_some(self.console.game_colour).flatten().map(|(r, g, b)| {
@@ -276,46 +375,27 @@ impl CollectionView {
                 ))
             });
         let mut layer = div().absolute().inset_0().children(colour);
-        if scrim != Scrim::Page {
-            let current = art.map(|(k, i)| {
-                let id = format!("console-art-{k}-{}", look::epoch());
-                let el = if settle {
-                    let size = crate::ui::content_size(window);
-                    let across = f32::from(size.width) / f32::from(size.height).max(1.);
-                    let zoom = div().absolute().inset_0().child(art_img(i)).with_animation(
-                        SharedString::from(format!("{id}-settle")),
-                        Animation::new(std::time::Duration::from_millis(SETTLE_MS)).with_easing(ease_out_quint()),
-                        move |d, t| {
-                            let z = u(SETTLE_PX) * (1. - t);
-                            d.top(-z).bottom(-z).left(-z * across).right(-z * across)
+        if scrim != Scrim::Page && !layers.is_empty() {
+            let top_key = layers.last().map(|(k, ..)| k.clone()).unwrap_or_default();
+            let stack = div().absolute().inset_0().children(layers.into_iter().map(|(_, i, o)| art_img(i).opacity(o)));
+            let stack = if drift {
+                // A slow pan and zoom, at a low frame rate (it runs as long
+                // as the screen shows).
+                stack
+                    .with_animation(
+                        SharedString::from(format!("console-drift-{top_key}")),
+                        Animation::new(std::time::Duration::from_secs(40)).repeat().with_max_fps(24.),
+                        |d, t| {
+                            let p = 1. - (2. * t - 1.).abs();
+                            let z = px(60. * p);
+                            d.top(-z).bottom(-z * 0.3).left(-z).right(-z * 0.3)
                         },
-                    );
-                    motion::fade_in(SharedString::from(id), div().absolute().inset_0().child(zoom), ART_FADE_MS)
-                } else {
-                    motion::fade_in(SharedString::from(id), art_img(i), ART_FADE_MS)
-                };
-                if drift {
-                    // A slow pan and zoom, at a low frame rate (it runs as
-                    // long as the screen shows).
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .child(el)
-                        .with_animation(
-                            SharedString::from(format!("console-drift-{k}")),
-                            Animation::new(std::time::Duration::from_secs(40)).repeat().with_max_fps(24.),
-                            |d, t| {
-                                let p = 1. - (2. * t - 1.).abs();
-                                let z = px(60. * p);
-                                d.top(-z).bottom(-z * 0.3).left(-z).right(-z * 0.3)
-                            },
-                        )
-                        .into_any_element()
-                } else {
-                    el
-                }
-            });
-            layer = layer.children(art_prev.map(art_img)).children(current);
+                    )
+                    .into_any_element()
+            } else {
+                stack.into_any_element()
+            };
+            layer = layer.child(stack);
         }
         let dim = f32::from(theme.background.dim) / 100.;
         let wash = if look::light() { light_wash(scrim) } else { 0. };
@@ -323,5 +403,58 @@ impl CollectionView {
             .when(dim > 0., |d| d.child(div().absolute().inset_0().bg(backing(dim))))
             .when(wash > 0., |d| d.child(div().absolute().inset_0().bg(backing(wash))))
             .children(scrim_layers(scrim))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Explicit imports: `use super::*` would bring in gpui's `test` macro and shadow `#[test]`.
+    use super::{ease_in_out, ArtLayers, ART_FADE};
+    use gpui_kit::{RenderImage, SharedString};
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    fn pic() -> Arc<RenderImage> {
+        Arc::new(RenderImage::new(smallvec::smallvec![image::Frame::new(image::RgbaImage::new(1, 1))]))
+    }
+
+    fn keys(a: &ArtLayers) -> Vec<String> {
+        a.layers.iter().map(|l| l.key.to_string()).collect()
+    }
+
+    #[test]
+    fn the_curve_starts_and_ends_still() {
+        assert!(ease_in_out(0.).abs() < 1e-3 && (ease_in_out(1.) - 1.).abs() < 1e-3);
+        assert!(ease_in_out(0.1) < 0.1 && (ease_in_out(0.5) - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_new_game_fades_in_over_what_shows_which_stays_still() {
+        let (a, b, c): (SharedString, SharedString, SharedString) = ("a".into(), "b".into(), "c".into());
+        let t0 = Instant::now();
+        let mut l = ArtLayers::default();
+        l.show(&a, pic(), t0, true);
+        // The same game's texture again: no new layer, no new fade.
+        l.show(&a, pic(), t0 + ART_FADE / 4, true);
+        assert_eq!(keys(&l), ["a"]);
+        let at = t0 + ART_FADE * 2;
+        l.prune(at);
+        l.show(&b, pic(), at, true);
+        assert_eq!(keys(&l), ["a", "b"]);
+        // `a` under it stays fully there while `b` fades in.
+        assert_eq!(l.layers[0].opacity(at + ART_FADE / 2), 1.);
+        // Interrupted halfway: `b` freezes where it is, `c` comes on top.
+        let mid = at + ART_FADE / 2;
+        l.show(&c, pic(), mid, true);
+        assert_eq!(keys(&l), ["a", "b", "c"]);
+        let frozen = l.layers[1].opacity(mid + ART_FADE);
+        assert!(frozen > 0.3 && frozen < 0.7, "{frozen}");
+        // Once `c` is in, what it covers goes.
+        l.prune(mid + ART_FADE * 2);
+        assert_eq!(keys(&l), ["c"]);
+        // Without motion it jumps.
+        l.show(&a, pic(), mid, false);
+        assert_eq!(keys(&l), ["a"]);
+        assert_eq!(l.layers[0].opacity(mid), 1.);
     }
 }

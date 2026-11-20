@@ -97,11 +97,10 @@ pub(super) struct ConsoleUi {
     /// Where the art is heading (set at once; `art_key` follows it).
     art_want: Option<SharedString>,
     art_task: Option<Task<()>>,
-    /// The art on screen and the one it fades from (dropped once the fade
-    /// is over).
+    /// The art on screen: the game's (its key and still), and the layers of
+    /// the cross-fade between games (`backdrop::ArtLayers`).
     art_cur: Option<(SharedString, std::sync::Arc<RenderImage>)>,
-    art_prev: Option<std::sync::Arc<RenderImage>>,
-    art_fade: Option<Task<()>>,
+    art_layers: backdrop::ArtLayers,
     /// Colour of the focused game's cover (the `game` focus colour and the
     /// game-colour background).
     pub game_colour: Option<(u8, u8, u8)>,
@@ -805,7 +804,7 @@ impl CollectionView {
         }
         let wanted = key.clone();
         self.console.art_task = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_millis(220)).await;
+            cx.background_executor().timer(backdrop::ART_SETTLE).await;
             this.update(cx, |this, cx| {
                 this.console.art_key = wanted;
                 cx.notify();
