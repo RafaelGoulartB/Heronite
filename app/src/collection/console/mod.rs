@@ -135,15 +135,8 @@ pub(super) struct ConsoleUi {
 /// The hint bar over the bottom of the screen, on a fade of the background
 /// colour; it fades in and rises a little while `shown`, and back out.
 fn floating_hints(hints: &[Hint], shown: bool) -> AnyElement {
-    let (mut top, mut bottom) = (theme::console_bg(), theme::console_bg());
-    top.a = 0.;
-    bottom.a = 0.9;
     // Hidden, it is only faded out: it must not take clicks meant for what is under it.
-    let bar = kit::hint_bar_with(hints, shown).border_color(transparent_black()).bg(linear_gradient(
-        0.,
-        linear_color_stop(bottom, 0.),
-        linear_color_stop(top, 1.),
-    ));
+    let bar = kit::hint_bar_with(hints, shown).bg(kit::hint_shade());
     let layer = div().absolute().left_0().right_0().bottom_0();
     motion::spring("console-hints-float", layer.child(bar), motion::SOFT, shown, |d, k| {
         let k = k.clamp(0., 1.);
@@ -1024,7 +1017,7 @@ impl CollectionView {
             .children(self.render_toast(cx))
             // Above the overlays: the hints of whatever has the focus.
             .when(hints_on && !float, |d| {
-                d.child(div().absolute().left_0().right_0().bottom_0().child(kit::hint_bar(&hints).bg(theme::console_bg())))
+                d.child(div().absolute().left_0().right_0().bottom_0().child(kit::hint_bar(&hints).bg(kit::hint_shade())))
             })
             .when(float, |d| d.child(floating_hints(&hints, hints_on)))
             .children(idle)

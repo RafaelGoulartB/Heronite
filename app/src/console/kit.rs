@@ -207,7 +207,7 @@ pub(crate) enum Mark {
     Letter(&'static str, Face),
     /// A PlayStation symbol (cross, circle, square, triangle) on a round button.
     Shape(Face),
-    /// A dark keycap with a label.
+    /// A keycap with a label.
     Cap(&'static str),
     /// A keycap with the menu icon.
     Menu,
@@ -253,8 +253,7 @@ pub(crate) fn mark(style: Glyphs, btn: Btn, swap_ab: bool) -> Mark {
         Btn::Start => match style {
             Glyphs::PlayStation => Mark::Cap("Options"),
             Glyphs::Nintendo => Mark::Cap("+"),
-            Glyphs::Deck => Mark::Menu,
-            _ => Mark::Cap("\u{2630}"),
+            _ => Mark::Menu,
         },
         Btn::LeftRight => Mark::Arrows,
         _ => unreachable!("face buttons are handled above"),
@@ -269,42 +268,43 @@ pub fn glyph(btn: Btn) -> Div {
     if style == Glyphs::Keyboard {
         return key_glyph(btn);
     }
-    draw(mark(style, btn, look::confirm_east()), style)
+    draw(mark(style, btn, look::confirm_east()))
 }
 
-fn draw(m: Mark, style: Glyphs) -> Div {
+fn draw(m: Mark) -> Div {
     match m {
-        Mark::Letter(text, f) => letter_button(text, f, style),
+        Mark::Letter(text, _) => letter_button(text),
         Mark::Shape(f) => shape_button(f),
         Mark::Cap(label) => key_cap(label),
-        Mark::Menu => arrow_cap(Icon::Menu),
+        Mark::Menu => icon_disc(Icon::Menu),
         Mark::Pair(a, b) => div().flex().gap(u(4.)).child(key_cap(a)).child(key_cap(b)),
         // Icons: the fonts have no ◀ ▶, and the fallback draws them as emoji.
-        Mark::Arrows => div().flex().gap(u(4.)).child(arrow_cap(Icon::ChevronLeft)).child(arrow_cap(Icon::ChevronRight)),
+        Mark::Arrows => div().flex().gap(u(4.)).child(icon_disc(Icon::ChevronLeft)).child(icon_disc(Icon::ChevronRight)),
     }
+}
+
+/// The glyphs are monochrome: a disc of the strong ink with its mark cut
+/// out in the opposite one (light on a dark console, dark on a light one).
+fn glyph_ink() -> (Hsla, Hsla) {
+    let mark: Hsla = if light() { white() } else { rgb(0x121419).into() };
+    (strong(), mark)
 }
 
 /// The round base of a face button.
 fn round_button() -> Div {
-    div().relative().flex().flex_none().items_center().justify_center().size(u(22.)).rounded_full()
+    div().relative().flex().flex_none().items_center().justify_center().size(u(20.)).rounded_full()
 }
 
-fn letter_button(text: &str, f: Face, style: Glyphs) -> Div {
-    let (bg, fg): (Hsla, Hsla) = match style {
-        Glyphs::Nintendo => (rgb(0xe3e6ea).into(), rgb(0x1a1d23).into()),
-        Glyphs::Deck => (ink(0.2), theme::text_primary().into()),
-        _ => (
-            match f {
-                Face::South => theme::console_btn_a(),
-                Face::East => theme::console_btn_b(),
-                Face::West => theme::console_btn_x(),
-                Face::North => theme::console_btn_y(),
-            }
-            .into(),
-            theme::console_on_focus().into(),
-        ),
-    };
-    round_button().bg(bg).text_size(u(11.)).font_weight(theme::W_BOLD).text_color(fg).child(text.to_string())
+/// A face button by its letter (Xbox, Nintendo, Steam Deck).
+fn letter_button(text: &str) -> Div {
+    let (fill, mark) = glyph_ink();
+    round_button().bg(fill).text_size(u(11.)).font_weight(theme::W_BOLD).text_color(mark).child(text.to_string())
+}
+
+/// A disc holding an icon (Menu, ◀ ▶).
+fn icon_disc(ic: Icon) -> Div {
+    let (fill, mark) = glyph_ink();
+    round_button().bg(fill).child(icon(ic, u(14.), mark))
 }
 
 /// PlayStation colours of the symbols.
@@ -320,10 +320,9 @@ pub(crate) fn shape_color(f: Face) -> Rgba {
 /// A PlayStation button. The symbols are drawn: the fonts have no ✕ ○ □ △,
 /// and the fallback draws emoji.
 fn shape_button(f: Face) -> Div {
-    let color: Hsla = shape_color(f).into();
-    // The symbols are light: on a dark disc when the console is light.
+    let (fill, color) = glyph_ink();
     round_button()
-        .bg(if light() { ink(0.82) } else { theme::white_a(0.16) })
+        .bg(fill)
         .child(canvas(|_, _, _| (), move |bounds, _, window, _| paint_shape(bounds, f, color, window)).absolute().inset_0())
 }
 
@@ -376,38 +375,31 @@ pub fn key_glyph(btn: Btn) -> Div {
         Btn::Y => key_cap("Y"),
         Btn::LB => key_cap("Q"),
         Btn::RB => key_cap("E"),
-        Btn::Bumpers => draw(Mark::Pair("Q", "E"), Glyphs::Keyboard),
+        Btn::Bumpers => draw(Mark::Pair("Q", "E")),
         Btn::Start => key_cap("M"),
         // No key for these: the pad's own look.
-        Btn::LT | Btn::LeftRight => draw(mark(Glyphs::Xbox, btn, false), Glyphs::Xbox),
+        Btn::LT | Btn::LeftRight => draw(mark(Glyphs::Xbox, btn, false)),
     }
 }
 
-/// A dark keycap with a label.
+/// A keycap with a label: a thin outline of the strong ink.
 fn key_cap(label: &str) -> Div {
+    let ink = strong();
     div()
         .flex()
         .flex_none()
         .items_center()
         .justify_center()
-        .h(u(22.))
+        .h(u(20.))
         .min_w(u(26.))
         .px(u(5.))
-        .rounded(u(5.))
-        .bg(ink(0.16))
-        .text_size(u(10.))
+        .rounded(u(6.))
+        .border(px(1.5))
+        .border_color(Hsla { a: 0.75, ..ink })
+        .text_size(u(9.5))
         .font_weight(theme::W_BOLD)
-        .text_color(theme::text_primary())
+        .text_color(ink)
         .child(label.to_string())
-}
-
-/// A dark keycap holding an icon.
-fn arrow_cap(ic: Icon) -> Div {
-    div().flex().flex_none().items_center().justify_center().h(u(22.)).min_w(u(26.)).rounded(u(5.)).bg(ink(0.16)).child(icon(
-        ic,
-        u(16.),
-        theme::text_primary(),
-    ))
 }
 
 /// The press a click on a hint for `btn` makes (a pair: the second one).
@@ -434,8 +426,8 @@ pub fn clickable_glyph(btn: Btn, keys: bool) -> Div {
         Btn::LeftRight => div()
             .flex()
             .gap(u(4.))
-            .child(arrow_cap(Icon::ChevronLeft).on_pads([Pad::Left]))
-            .child(arrow_cap(Icon::ChevronRight).on_pads([Pad::Right])),
+            .child(icon_disc(Icon::ChevronLeft).on_pads([Pad::Left]))
+            .child(icon_disc(Icon::ChevronRight).on_pads([Pad::Right])),
         b => one(b),
     }
 }
@@ -447,7 +439,7 @@ pub fn hint_item(h: &Hint, keys: bool, size: f32, gap: f32) -> Div {
 
 /// [`hint_item`]; `live` false draws it without taking clicks.
 fn hint_row(h: &Hint, keys: bool, size: f32, gap: f32, live: bool) -> Div {
-    let row = div().flex().items_center().gap(u(gap)).text_size(u(size)).text_color(theme::text_muted());
+    let row = div().flex().items_center().gap(u(gap)).text_size(u(size)).text_color(theme::text_primary());
     if !live {
         return row.child(if keys { key_glyph(h.btn) } else { glyph(h.btn) }).child(h.label.clone());
     }
@@ -456,18 +448,45 @@ fn hint_row(h: &Hint, keys: bool, size: f32, gap: f32, live: bool) -> Div {
 
 /// Footer with the button hints of the current screen (a click on one
 /// presses its button). It takes the clicks it gets, so nothing under it
-/// sees them.
+/// sees them. No surface of its own: it sits on what is under it (the
+/// caller shades that, [`hint_shade`]), the system hints (menu, tabs) on the
+/// left and the actions on the right, the confirm button last.
 pub fn hint_bar(hints: &[Hint]) -> Div {
     hint_bar_with(hints, true)
+}
+
+/// Whether a hint is a system one (the left of the bar): the menu and the tabs.
+fn system_hint(btn: Btn) -> bool {
+    matches!(btn, Btn::Start | Btn::Bumpers | Btn::LB | Btn::RB | Btn::LT)
+}
+
+/// The order of the actions on the right: ◀ ▶, Y, X, B, then A at the end.
+fn action_rank(btn: Btn) -> u8 {
+    match btn {
+        Btn::LeftRight => 0,
+        Btn::Y => 1,
+        Btn::X => 2,
+        Btn::B => 3,
+        Btn::A => 4,
+        _ => 5,
+    }
 }
 
 /// [`hint_bar`]; `live` false draws it without taking any click (a bar
 /// faded out over the screen).
 pub fn hint_bar_with(hints: &[Hint], live: bool) -> Div {
     let keys = look::glyphs() == Glyphs::Keyboard;
-    let bar = div().flex().flex_none().items_center().gap(u(26.)).h(u(60.)).px(u(46.)).border_t_1().border_color(ink(0.08)).bg(shade(0.35));
+    let row = |h: &Hint| hint_row(h, keys, 13.5, 9., live);
+    let mut actions: Vec<&Hint> = hints.iter().filter(|h| !system_hint(h.btn)).collect();
+    actions.sort_by_key(|h| action_rank(h.btn));
+    let bar = div().flex().flex_none().items_center().gap(u(30.)).h(u(60.)).px(u(46.));
     let bar = if live { bar.eats_clicks() } else { bar };
-    bar.children(hints.iter().map(|h| hint_row(h, keys, 14., 8., live)))
+    bar.children(hints.iter().filter(|h| system_hint(h.btn)).map(row)).child(div().flex_1()).children(actions.into_iter().map(row))
+}
+
+/// What a hint bar sits on: the bottom of the screen fading into the dark.
+pub fn hint_shade() -> Background {
+    linear_gradient(0., linear_color_stop(dim(0.62), 0.), linear_color_stop(dim(0.), 1.))
 }
 
 /// The light focus pill behind a row. It pops in (grows from a little
