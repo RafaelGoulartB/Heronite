@@ -718,7 +718,8 @@ impl CollectionView {
             // What comes in after the logo waits only what is left of its
             // pause: a part that arrives later (store media, achievements)
             // just fades in.
-            glass: game_page,
+            glass: game_page && look::theme().layouts.showcase_glass,
+            rules: game_page && !look::theme().layouts.showcase_glass,
             rest_hold: REST_HOLD.saturating_sub(nav.since.map_or(u128::MAX, |t| t.elapsed().as_millis()).min(u128::from(REST_HOLD)) as u64),
         };
         let viewer = nav.viewer;
@@ -753,13 +754,15 @@ impl CollectionView {
             }
             None => page = page.child(self.spotlight_all_games(from)),
         }
-        // The art darkens as the page rises, more deeper in it.
+        // The art darkens as the page rises, more deeper in it (as much as on
+        // the home on a game page without glass: nothing else carries the text).
+        let bare = focus.rules;
         let dim = (lift > 0.005).then(|| {
             div().absolute().top(u(-bar)).left_0().right_0().h(u(view_h)).bg(linear_gradient(
                 0.,
                 // Lighter on the game page: its glass panels carry the text.
-                linear_color_stop(kit::dim(if game_page { 0.15 * lift + 0.15 * deep } else { 0.35 * lift + 0.4 * deep }), 0.),
-                linear_color_stop(kit::dim(if game_page { 0.1 * lift + 0.12 * deep } else { 0.18 * lift + 0.3 * deep }), 1.),
+                linear_color_stop(kit::dim(if game_page && !bare { 0.15 * lift + 0.15 * deep } else { 0.35 * lift + 0.4 * deep }), 0.),
+                linear_color_stop(kit::dim(if game_page && !bare { 0.1 * lift + 0.12 * deep } else { 0.18 * lift + 0.3 * deep }), 1.),
             ))
         });
         // Deep in the page, what rises past the top fades into the dark.
@@ -1021,9 +1024,7 @@ impl CollectionView {
             .w(u(card_w))
             .h(u(h + 2. * pad))
             .rounded(u(18.))
-            .bg(parts::glass(0.38))
-            .border_1()
-            .border_color(kit::ink(0.1))
+            .when(!f.rules, |d| d.bg(parts::glass(0.38)).border_1().border_color(kit::ink(0.1)))
             .children(tiles);
         div()
             .absolute()
@@ -1165,13 +1166,13 @@ impl CollectionView {
         }
         let mut out = Vec::new();
         if shape.about && !side_only {
-            out.push(div().absolute().top(u(geo.about)).left(u(SIDE)).child(glass_panel(left, f.glass)).into_any_element());
+            out.push(div().absolute().top(u(geo.about)).left(u(SIDE)).child(glass_panel(left, f)).into_any_element());
         }
         // The sidebar, beside the left column from its first section down (under it when stacked).
         if shape.has_side() {
             // Beside the left column, or in its place when it has nothing.
             let x = if shape.first_left().is_some() && !geo.stacked { SIDE + geo.left + page::COLUMN_GAP } else { SIDE };
-            out.push(div().absolute().top(u(geo.side)).left(u(x)).child(glass_panel(column, f.glass)).into_any_element());
+            out.push(div().absolute().top(u(geo.side)).left(u(x)).child(glass_panel(column, f)).into_any_element());
         }
         out
     }
@@ -1615,6 +1616,9 @@ struct Focus {
     related: usize,
     /// The game page: sections on frosted glass.
     glass: bool,
+    /// The game page without glass (Cinema): sections over the darkened art,
+    /// a thin rule over each.
+    rules: bool,
     /// The pause left before the parts under the logo fade in, ms.
     rest_hold: u64,
 }
@@ -1680,9 +1684,13 @@ const GLASS_PAD: f32 = 18.;
 
 /// `el` on a panel of frosted glass (the game page's look): a translucent
 /// fill, a thin edge and the theme's soft corners, reaching a little around
-/// it; as is without `glass`.
-fn glass_panel(el: Div, glass: bool) -> Div {
-    if !glass {
+/// it; under a thin rule on a page without glass; else as is.
+fn glass_panel(el: Div, f: &Focus) -> Div {
+    if f.rules {
+        let rule = div().absolute().top(u(-GLASS_PAD)).left_0().right_0().h(px(1.)).bg(kit::ink(0.22));
+        return div().relative().child(rule).child(el);
+    }
+    if !f.glass {
         return el;
     }
     let radius = (look::tile_radius() * 2.).max(12.);
