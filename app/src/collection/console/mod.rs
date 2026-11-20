@@ -674,7 +674,7 @@ impl CollectionView {
     /// row (Carousel, Spotlight), else up and down.
     /// On a game page with long text, the wheel scrolls it.
     fn wheel_axis(&self) -> WheelAxis {
-        let row = matches!(self.console_shown_tab().1.layout, Layout::Carousel | Layout::Spotlight);
+        let row = self.layout_wheel_row();
         let game_page = self.page == Page::Collection
             && (matches!(self.console.screen, Screen::Game(_)) || self.console.achievements.is_some())
             && self.body_in_focus();
@@ -870,7 +870,7 @@ impl CollectionView {
             .h(u(76.))
             .px(u(46.))
             .when(!label.is_empty(), |d| d.child(kit::wordmark(&label)))
-            .when(names.len() > 1 && tab_bar == TabBar::Top, |d| d.child(kit::tabs(&names, tab)))
+            .when(names.len() > 1 && tab_bar == TabBar::Top, |d| d.child(self.layout_tabs(&names, tab)))
             .when(names.len() > 1 && tab_bar == TabBar::Names, |d| d.child(kit::tab_names(&names, tab)))
             .when_some(theme.tabs.get(tab).filter(|_| tab_bar == TabBar::Title), |d, t| {
                 let title = kit::tab_title(&tab_label(t), kit::tab_icon(&t.source, t.layout), names.len() > 1);
@@ -882,7 +882,7 @@ impl CollectionView {
                     d.child(crate::ui::icon(crate::icons::Icon::SportsEsports, u(20.), theme::text_muted()))
                 })
             })
-            .child(kit::clock())
+            .child(self.layout_clock())
     }
 
     /// The tabs along the bottom (`tab_bar: bottom`), when there are several.

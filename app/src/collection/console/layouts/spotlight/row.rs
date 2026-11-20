@@ -1,10 +1,9 @@
 //! The row of icons along the top of Spotlight, as on a console's home: the
-//! focused icon at the left edge, larger, its name beside it, the next
-//! icons after the name and the ones before it sliding off to the left.
-//! Every icon's place and size, and its name's, come from one number, the
-//! row's position (the focused index, gliding on a spring), so a move, a held
-//! direction and the room for a longer or shorter name all change smoothly
-//! together.
+//! focused icon larger, with a ring a little way out and its name under it;
+//! the icons before it stay in sight (up to [`LEAD`] of them) and the row
+//! slides once the focus passes them. Every icon's place and size, and its
+//! name's, come from one number, the row's position (the focused index,
+//! gliding on a spring), so a move and a held direction change smoothly.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -26,12 +25,13 @@ const ICON_ON: f32 = 130.;
 /// Between two icons, design px.
 const GAP: f32 = 14.;
 /// Room above the icons (for the focus ring and its glow), design px.
-pub(super) const PAD: f32 = 12.;
-/// The name beside the focused icon: its size, the space on each side of it
-/// and its widest (a longer one goes on two lines), design px.
-const NAME: f32 = 19.;
-const NAME_PAD: f32 = 20.;
-const NAME_MAX: f32 = 250.;
+const PAD: f32 = 12.;
+/// The name under the focused icon: its size, the space above it and its widest, design px.
+const NAME: f32 = 17.;
+const NAME_GAP: f32 = 10.;
+const NAME_MAX: f32 = 560.;
+/// Icons kept in sight before the focused one.
+const LEAD: f32 = 2.;
 /// The focus ring: how far out from the icon and how thick, design px.
 const RING_GAP: f32 = 5.;
 const RING: f32 = 2.5;
@@ -55,9 +55,10 @@ pub(super) fn icon_sizes(cover_aspect: f32) -> ((f32, f32), (f32, f32)) {
     (dims(ICON * k), dims(ICON_ON * k))
 }
 
-/// Height of the row (the focused icon and the room above and below it), design px.
+/// Height of the row: the focused icon, its name under it and the room
+/// around them, design px.
 pub(super) fn row_height(on: (f32, f32)) -> f32 {
-    on.1 + 2. * PAD
+    PAD + on.1 + NAME_GAP + NAME * 1.3 + PAD
 }
 
 /// Where an icon sits and how large, design px from the focused icon's place.
@@ -69,48 +70,29 @@ struct Place {
     opacity: f32,
 }
 
-/// The icon `d` places from the focus (fractional while the row glides):
-/// the focused one at 0 at full size, the next one after the name's `room`,
-/// the others [`GAP`] apart; the ones before the focus slide off to the left
-/// and fade. Between two places every icon is between their sizes, so
-/// neighbours never overlap.
-fn place(d: f32, off: (f32, f32), on: (f32, f32), room: f32) -> Place {
+/// The icon `d` places from the focus (fractional while the row glides),
+/// from the focused one's place: the focused one at 0 at full size, the
+/// others [`GAP`] apart; those more than `lead` places before it fade as
+/// they leave on the left. Between two places every icon is between their
+/// sizes, so neighbours never overlap.
+fn place(d: f32, off: (f32, f32), on: (f32, f32), lead: f32) -> Place {
     let k = d.abs().min(1.);
     let (w, h) = (on.0 + (off.0 - on.0) * k, on.1 + (off.1 - on.1) * k);
-    let next = on.0 + room;
     let x = if d >= 1. {
-        next + (d - 1.) * (off.0 + GAP)
+        on.0 + GAP + (d - 1.) * (off.0 + GAP)
     } else if d >= 0. {
-        next * d
+        d * (on.0 + GAP)
     } else {
         d * (off.0 + GAP)
     };
-    let opacity = if d < 0. { (1. + d).clamp(0., 1.).powf(1.5) } else { 1. };
+    let opacity = if d < -lead { (1. + d + lead).clamp(0., 1.).powf(1.5) } else { 1. };
     Place { x, w, h, opacity }
 }
 
-/// Room between the focused icon and the next one for a name `name_w` wide.
-pub(super) fn name_room(name_w: f32) -> f32 {
-    (name_w + 2. * NAME_PAD).max(GAP)
-}
-
-/// How wide `text` is in the name's type, at most [`NAME_MAX`], design px.
-pub(super) fn name_width(text: &str, window: &Window) -> f32 {
-    if text.is_empty() {
-        return 0.;
-    }
-    let family = SharedString::from(look::fonts().1);
-    let run = TextRun {
-        len: text.len(),
-        font: Font { weight: theme::W_BOLD, ..font(family) },
-        color: theme::text_primary().into(),
-        background_color: None,
-        underline: None,
-        strikethrough: None,
-    };
-    let line = window.text_system().shape_line(SharedString::from(text.to_string()), u(NAME), &[run], None);
-    // A pixel more for the rounding of the laid-out text.
-    (f32::from(line.width) / kit::scale() + 1.).min(NAME_MAX)
+/// How many icons show before the focused one for the row at `pos` (up to
+/// [`LEAD`]): the row only starts to slide once the focus passes them.
+fn lead(pos: f32) -> f32 {
+    pos.clamp(0., LEAD)
 }
 
 /// The "All games" icon: the grid of the library on a soft tile.
@@ -129,14 +111,15 @@ fn all_games(w: f32, h: f32, k: f32) -> Div {
 
 impl CollectionView {
     /// The row: `found`'s icons and "All games" after them, at `look`'s
-    /// position, the name of the focused one (`index`) beside it.
+    /// position, the name of the focused one (`index`) under it.
     /// `to_row`: the presses that bring the focus to the row (a click on an
     /// icon sends them, then ← → to it).
     pub(super) fn spotlight_row(&mut self, found: &[SharedString], index: usize, look: &Look, to_row: &[Pad], window: &Window) -> Div {
         let k = kit::scale();
         let dpr = window.scale_factor();
         let (off, on) = (look.off, look.on);
-        let room = name_room(look.name_w);
+        let lead = lead(look.pos);
+        let anchor = SIDE + lead * (off.0 + GAP);
         let view = f32::from(crate::ui::content_size(window).width) / k;
         let theme = look::theme();
         let radius = look::tile_radius();
@@ -145,9 +128,9 @@ impl CollectionView {
         let mut names = Vec::new();
         for i in 0..=found.len() {
             let d = i as f32 - look.pos;
-            let p = place(d, off, on, room);
-            let x = SIDE + p.x;
-            if p.opacity <= 0.01 || x > view {
+            let p = place(d, off, on, lead);
+            let x = anchor + p.x;
+            if p.opacity <= 0.01 || x > view || x + p.w < 0. {
                 continue;
             }
             let near = (1. - d.abs()).clamp(0., 1.);
@@ -206,12 +189,7 @@ impl CollectionView {
                 None => all_games(p.w, p.h, k),
             };
             if d.abs() < 1. {
-                let name = self.spotlight_name(found, i);
-                let width = if i == index { look.name_target } else { name_width(&name, window) };
-                // Never over the next icon while the room for it opens or closes.
-                let next = place(d + 1., off, on, room);
-                let clip = (next.x - p.x - p.w - 2. * NAME_PAD).max(0.);
-                names.push(name_label(name, width, clip, p, d, off, look));
+                names.push(name_label(self.spotlight_name(found, i), x, d, on, look));
             }
             let ring = near * look.ring;
             let mut pads = to_row.to_vec();
@@ -259,7 +237,7 @@ impl CollectionView {
         row.children(names)
     }
 
-    /// The name shown beside icon `i` of the row ("All games" past the games).
+    /// The name shown under icon `i` of the row ("All games" past the games).
     pub(super) fn spotlight_name(&self, found: &[SharedString], i: usize) -> String {
         match found.get(i) {
             Some(key) => self.lib.as_ref().and_then(|l| l.get(key)).map_or(String::new(), |g| g.title.clone()),
@@ -268,35 +246,26 @@ impl CollectionView {
     }
 }
 
-/// The name of an icon `p` (`d` places from the focus) beside it, in line
-/// with the middle of the other icons. It rides along with its icon and is
-/// fully there only at the focus: the name of the icon arriving fades in as
-/// the one leaving fades out. It shows `clip` design px of its `width`, the
-/// room up to the next icon.
-fn name_label(name: String, width: f32, clip: f32, p: Place, d: f32, off: (f32, f32), look: &Look) -> Div {
-    let fade = (1. - d.abs()).clamp(0., 1.).powi(2);
+/// The name of the icon at `x` (`d` places from the focus) under the place
+/// of the focused one. It rides along with its icon and is fully there only
+/// at the focus: the name of the icon arriving fades in as the one leaving
+/// fades out.
+fn name_label(name: String, x: f32, d: f32, on: (f32, f32), look: &Look) -> Div {
+    let fade = (1. - d.abs()).clamp(0., 1.).powi(3);
     div()
         .absolute()
-        .left(u(SIDE + p.x + p.w + NAME_PAD))
-        .top(u(PAD))
-        .h(u(off.1))
-        .w(u(clip + 1.))
-        .overflow_hidden()
-        .flex()
-        .items_center()
+        .left(u(x))
+        .top(u(PAD + on.1 + NAME_GAP))
+        .max_w(u(NAME_MAX))
+        .text_size(u(NAME))
+        .line_height(u(NAME * 1.3))
+        .font_weight(theme::W_BOLD)
+        .text_color(kit::strong())
+        .whitespace_nowrap()
+        .truncate()
         // A step back while the focus is below the row.
         .opacity(fade * (0.6 + 0.4 * look.ring))
-        .child(
-            div()
-                .flex_none()
-                .w(u(width + 1.))
-                .text_size(u(NAME))
-                .line_height(u(NAME * 1.22))
-                .font_weight(theme::W_BOLD)
-                .text_color(kit::strong())
-                .line_clamp(2)
-                .child(name),
-        )
+        .child(name)
 }
 
 #[cfg(test)]
@@ -309,29 +278,30 @@ mod tests {
     const ON: (f32, f32) = (110., 110.);
 
     #[test]
-    fn the_focus_is_at_the_edge_and_full_size() {
-        assert_eq!(place(0., OFF, ON, 200.), Place { x: 0., w: 110., h: 110., opacity: 1. });
-        let next = place(1., OFF, ON, 200.);
-        assert_eq!((next.x, next.w), (310., 80.));
-        assert_eq!(place(2., OFF, ON, 200.).x, 310. + 80. + GAP);
-        assert_eq!(place(-1., OFF, ON, 200.).opacity, 0.);
+    fn the_focus_is_full_size_and_its_neighbours_a_gap_away() {
+        assert_eq!(place(0., OFF, ON, 2.), Place { x: 0., w: 110., h: 110., opacity: 1. });
+        let next = place(1., OFF, ON, 2.);
+        assert_eq!((next.x, next.w), (110. + GAP, 80.));
+        assert_eq!(place(2., OFF, ON, 2.).x, 110. + GAP + 80. + GAP);
+        assert_eq!(place(-1., OFF, ON, 2.).x, -(80. + GAP));
+        assert_eq!(place(-2., OFF, ON, 2.).opacity, 1.);
+        assert_eq!(place(-3., OFF, ON, 2.).opacity, 0.);
     }
 
     #[test]
     fn icons_never_overlap_while_the_row_glides() {
-        for room in [GAP, 120., NAME_MAX + 2. * NAME_PAD] {
-            for step in -30..40 {
-                let d = step as f32 / 10.;
-                let (a, b) = (place(d, OFF, ON, room), place(d + 1., OFF, ON, room));
-                let gap = b.x - (a.x + a.w);
-                assert!(gap >= GAP.min(room) - 1e-3, "{room} {d}: {gap}");
-            }
+        for step in -30..40 {
+            let d = step as f32 / 10.;
+            let (a, b) = (place(d, OFF, ON, 2.), place(d + 1., OFF, ON, 2.));
+            let gap = b.x - (a.x + a.w);
+            assert!(gap >= GAP - 1e-3, "{d}: {gap}");
         }
     }
 
     #[test]
-    fn the_name_room_has_a_floor() {
-        assert_eq!(name_room(0.), 2. * NAME_PAD);
-        assert_eq!(name_room(100.), 100. + 2. * NAME_PAD);
+    fn the_row_slides_once_the_focus_passes_the_lead() {
+        assert_eq!(lead(0.), 0.);
+        assert_eq!(lead(1.5), 1.5);
+        assert_eq!(lead(7.), LEAD);
     }
 }

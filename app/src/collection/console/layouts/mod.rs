@@ -18,6 +18,7 @@ mod xbox;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
+use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::console_theme::{GridPanel, Hints, KeptFilters, Layout, TabSpec};
 use heronite_data::CollectionGame;
@@ -172,6 +173,41 @@ impl CollectionView {
             Layout::Carousel => self.carousel_pad(tab, spec, pad, window, cx),
             Layout::Xbox => self.xbox_pad(tab, spec, pad, window, cx),
         }
+    }
+
+    /// The tabs of the top bar as the layout on screen draws them:
+    /// Spotlight's pills (they step away while its page has risen), else
+    /// [`kit::tabs`].
+    pub(super) fn layout_tabs(&self, names: &[SharedString], active: usize) -> Div {
+        match self.spotlight_lift() {
+            Some(lift) => spotlight::spotlight_tabs(names, active, lift),
+            None => kit::tabs(names, active),
+        }
+    }
+
+    /// The clock of the top bar: Spotlight's larger one, else [`kit::clock`].
+    pub(super) fn layout_clock(&self) -> Div {
+        match self.spotlight_lift() {
+            Some(lift) => spotlight::spotlight_clock(lift),
+            None => kit::clock(),
+        }
+    }
+
+    /// Whether the wheel moves along a row of covers (Carousel, and
+    /// Spotlight's row while it has the focus) rather than up and down.
+    pub(super) fn layout_wheel_row(&self) -> bool {
+        let (tab, spec) = self.console_shown_tab();
+        match spec.layout {
+            Layout::Carousel => true,
+            Layout::Spotlight => self.console.tab_navs.get(tab).is_none_or(|n| n.spotlight.on_row()),
+            _ => false,
+        }
+    }
+
+    /// How far the page of the Spotlight tab on screen has risen (`None` for other layouts).
+    fn spotlight_lift(&self) -> Option<f32> {
+        let (tab, spec) = self.console_shown_tab();
+        (spec.layout == Layout::Spotlight).then(|| self.console.tab_navs.get(tab).map_or(0., |n| n.spotlight.lift()))
     }
 
     pub(super) fn layout_hints(&self, tab: usize, spec: &TabSpec) -> Vec<Hint> {
