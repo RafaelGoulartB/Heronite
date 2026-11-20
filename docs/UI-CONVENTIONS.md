@@ -1214,8 +1214,10 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   that show them, `grid::Nav::show_like`), LT / RT page along a shelf, the focused game's text slides in from the side
   the focus came from (with "Last played", a long name shrinks) over a soft shade of its own; the Grid without a panel
   puts the game's facts beside its name over a denser scrim (`Scrim::Library`); the Classic game page has the time
-  played, last played, time to beat and score above the overview and the facts not shown elsewhere; new art settles
-  in from a touch closer on these screens (`Scrim::Classic` / `Library`, not with Reduced motion).
+  played, last played, time to beat and score above the overview and the facts not shown elsewhere. The background
+  art (every theme, `backdrop::ArtLayers`) loads once the focus rests 150 ms and cross-fades: the new art fades in
+  over what shows in 0.4 s (ease in-out), nothing under it moves, a new game mid-fade freezes it and fades in on top,
+  covered layers go; the same game's texture again is swapped in place, never faded.
   Minimal's Carousel: covers spaced evenly (a fixed gap at every step of the turn), the far ones smaller, darker and
   rising a little, each over its real reflection (`heronite_images::Variant::Reflection`, `cr:` textures) on the
   blurred cover glowing through a vignette (`Scrim::Carousel`); a thin ring a little way out marks the focus; under it
@@ -1233,7 +1235,9 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   stepped with a `FrameClock`). Below, the logo (or the name) in a fixed box, Play / Options / ♥ as pills, the facts
   (small labels over Playtime, Last played, Platform with the store's logo, Released) and the genres as chips, then a
   strip of the store's screenshots (`store_media_of`, read in console mode only for Spotlight, never played)
-  dissolving at the bottom. Leaving the row lifts the whole screen (the row and the top bar fade, the art darkens, the
+  dissolving at the bottom. A new game's logo hides, holds 0.3 s, then fades in (0.45 s) sliding in from 30 px to
+  the left (0.55 s, cubic ease-out); the buttons, facts, genres and strip fade in 0.42 s after the change, in place
+  (Reduced motion: the fades alone). Leaving the row lifts the whole screen (the row and the top bar fade, the art darkens, the
   wheel turns to ↑ ↓) into the page (`page.rs`), in two columns, nothing spanning both: on the left the strip, the
   player's screenshots (a glass card of as many thumbnails as fit, "+N" on the last; the strip shows them instead
   when that card is off and the store has none), About this game (clamped, "Read more" opens the whole text in a
