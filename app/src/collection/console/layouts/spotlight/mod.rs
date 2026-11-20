@@ -1190,7 +1190,7 @@ impl CollectionView {
                 let bare = f.rules;
                 let el = motion::spring(("spot-link", i), base, motion::SOFT, focused, move |d, k| {
                     let t = k.clamp(0., 1.);
-                    let idle = if bare { Hsla::from(parts::glass(0.4)).opacity(0.) } else { parts::glass(0.4) };
+                    let idle = if bare { parts::glass(0.4).opacity(0.) } else { parts::glass(0.4) };
                     let fill: Hsla = motion::mix(idle, theme::console_focus(), t).into();
                     let edge = if bare { kit::ink(0.3 * (1. - t)) } else { kit::ink(0.14 * (1. - t)) };
                     d.child(
