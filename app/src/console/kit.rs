@@ -749,7 +749,7 @@ pub fn text_action(text: impl Into<SharedString>) -> Div {
 
 /// A heading between card rows, in [`accent_ink`].
 pub fn card_heading(text: impl Into<SharedString>) -> Div {
-    div().pt(u(16.)).pb(u(2.)).px(u(4.)).text_size(u(15.)).font_weight(theme::W_BOLD).text_color(accent_ink()).child(text.into())
+    div().pt(u(22.)).pb(u(4.)).px(u(4.)).text_size(u(15.)).font_weight(theme::W_BOLD).text_color(accent_ink()).child(text.into())
 }
 
 /// The name of a tab, `color` and bold or regular.

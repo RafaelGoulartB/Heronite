@@ -11,7 +11,8 @@ use gpui_kit::*;
 use heronite_i18n::tr;
 
 use super::kit::{self, u};
-use super::motion::{Axis, Glide, Goal};
+use super::motion::{self, Axis, Glide, Goal};
+use super::pointer::Clickable;
 use super::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
@@ -59,6 +60,13 @@ pub struct Row {
     /// What A does on an action row, written at its end in card lists
     /// ("Open", "Refresh"); without it a card shows a chevron.
     pub verb: Option<SharedString>,
+    /// The row this one is a sub-setting of: the rows of a group come right
+    /// after their parent, show only while it is open and draw inside its
+    /// card ([`Row::child_of`]).
+    pub parent: Option<SharedString>,
+    /// What a closed group says under its parent's label; without it, its
+    /// sub-settings' values ([`group_summary`]).
+    pub summary: Option<SharedString>,
 }
 
 impl Row {
@@ -75,6 +83,8 @@ impl Row {
             compact: false,
             image: None,
             verb: None,
+            parent: None,
+            summary: None,
         }
     }
     pub fn action(id: impl Into<SharedString>, label: impl Into<SharedString>) -> Self {
@@ -133,6 +143,22 @@ impl Row {
         self.image = path;
         self
     }
+    /// A row that only gathers the sub-settings after it (A opens it).
+    pub fn group(id: impl Into<SharedString>, label: impl Into<SharedString>) -> Self {
+        Self::new(id, label, Value::Action)
+    }
+    /// Makes this row a sub-setting of the row `parent` (it must come right
+    /// after the parent or its other sub-settings).
+    pub fn child_of(mut self, parent: impl Into<SharedString>) -> Self {
+        self.parent = Some(parent.into());
+        self
+    }
+    /// What the group says while closed (else its sub-settings' values).
+    pub fn summary(mut self, text: impl Into<SharedString>) -> Self {
+        let text = text.into();
+        self.summary = (!text.is_empty()).then_some(text);
+        self
+    }
     /// The word a card list writes at the end of an action row.
     pub fn verb(mut self, v: impl Into<SharedString>) -> Self {
         self.verb = Some(v.into());
@@ -141,6 +167,62 @@ impl Row {
     fn focusable(&self) -> bool {
         self.value != Value::Header
     }
+}
+
+/// Whether row `i` opens a group: the row after it is one of its sub-settings.
+pub fn has_children(rows: &[Row], i: usize) -> bool {
+    match (rows.get(i), rows.get(i + 1)) {
+        (Some(r), Some(next)) => next.parent.as_ref() == Some(&r.id),
+        _ => false,
+    }
+}
+
+/// The parent of row `i`, by index (the nearest row before it with its id).
+fn parent_index(rows: &[Row], i: usize) -> Option<usize> {
+    let p = rows.get(i)?.parent.as_ref()?;
+    (0..i).rev().find(|&j| &rows[j].id == p)
+}
+
+/// A child's value in a line ("Region: Europe", the label of a switch that
+/// is on; nothing for one that is off or does not hold a value).
+fn value_note(r: &Row) -> Option<String> {
+    match &r.value {
+        Value::Toggle(true) => Some(r.label.to_string()),
+        Value::Choice { options, index } => options.get(*index).map(|o| format!("{}: {o}", r.label)),
+        Value::Number { value, suffix, .. } => Some(format!("{}: {value}{suffix}", r.label)),
+        // A secret (typed as dots) says nothing.
+        Value::Text(t) if !t.is_empty() && !t.starts_with('\u{2022}') => Some(format!("{}: {t}", r.label)),
+        _ => None,
+    }
+}
+
+/// What the closed group of row `i` says: its own summary, else its
+/// sub-settings' values in one line, else how many there are.
+pub fn group_summary(rows: &[Row], i: usize) -> SharedString {
+    if let Some(s) = rows.get(i).and_then(|r| r.summary.clone()) {
+        return s;
+    }
+    let id = &rows[i].id;
+    let kids: Vec<&Row> = rows[i + 1..].iter().take_while(|r| r.parent.as_ref() == Some(id)).collect();
+    let notes: Vec<String> = kids.iter().filter_map(|r| value_note(r)).collect();
+    if notes.is_empty() {
+        heronite_i18n::trn!(kids.len(), "{n} more setting", "{n} more settings").into()
+    } else {
+        notes.join(" \u{b7} ").into()
+    }
+}
+
+/// Where a row sits in a list of groups, for drawing it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Place {
+    /// It opens a group: `Some(open)`.
+    pub group: Option<bool>,
+    /// A sub-setting: drawn inside its parent's card.
+    pub child: bool,
+    /// The last sub-setting of its group (closes the card).
+    pub last: bool,
+    /// Its parent is a switch that is off: shown, but it does nothing.
+    pub off: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -175,11 +257,14 @@ pub struct ListNav {
     /// Drawn once (the first reveal jumps instead of gliding).
     shown: bool,
     style: RowStyle,
+    /// The groups open (by their parent's id); kept across [`Self::reset`],
+    /// so a section shows its groups as they were left.
+    open: std::collections::HashSet<SharedString>,
 }
 
 impl Default for ListNav {
     fn default() -> Self {
-        Self { focus: 0, glide: Glide::new(Axis::Y), reveal: true, shown: false, style: RowStyle::Pill }
+        Self { focus: 0, glide: Glide::new(Axis::Y), reveal: true, shown: false, style: RowStyle::Pill, open: Default::default() }
     }
 }
 
@@ -196,16 +281,89 @@ impl ListNav {
     }
 
     /// Makes `id` the focused row when the list has it (a search result
-    /// picked); the next render brings it into view.
+    /// picked), opening its group; the next render brings it into view.
     pub fn focus_id(&mut self, rows: &[Row], id: &str) -> bool {
         match rows.iter().position(|r| r.id.as_ref() == id && r.focusable()) {
             Some(i) => {
+                if let Some(p) = rows[i].parent.clone() {
+                    self.open.insert(p);
+                }
                 self.focus = i;
                 self.reveal = true;
                 true
             }
             None => false,
         }
+    }
+
+    /// The groups open now (to keep them while another list shows).
+    pub fn open_groups(&mut self) -> std::collections::HashSet<SharedString> {
+        std::mem::take(&mut self.open)
+    }
+
+    /// Opens the groups `open` (kept by [`Self::open_groups`]).
+    pub fn set_open_groups(&mut self, open: std::collections::HashSet<SharedString>) {
+        self.open = open;
+    }
+
+    /// Whether row `i` is on screen (not inside a closed group).
+    pub fn shows(&self, rows: &[Row], i: usize) -> bool {
+        rows.get(i).is_some_and(|r| r.parent.as_ref().is_none_or(|p| self.open.contains(p)))
+    }
+
+    /// Whether row `i` can take the focus.
+    fn can_focus(&self, rows: &[Row], i: usize) -> bool {
+        rows.get(i).is_some_and(Row::focusable) && self.shows(rows, i)
+    }
+
+    /// Whether row `i` takes its presses (not disabled, not under a switch
+    /// that is off).
+    fn usable(&self, rows: &[Row], i: usize) -> bool {
+        rows.get(i).is_some_and(|r| r.enabled) && !self.parent_off(rows, i)
+    }
+
+    /// The press that opens the group of row `r` when it is closed, or
+    /// closes it when open: ▶ / ◀ beside a switch or a plain row, A beside
+    /// a value that ◀ ▶ change.
+    pub fn group_pad(r: &Row, open: bool) -> Pad {
+        match r.value {
+            Value::Choice { .. } | Value::Number { .. } => Pad::A,
+            _ if open => Pad::Left,
+            _ => Pad::Right,
+        }
+    }
+
+    /// Whether row `i` is a sub-setting of a switch that is off.
+    fn parent_off(&self, rows: &[Row], i: usize) -> bool {
+        parent_index(rows, i).is_some_and(|p| rows[p].value == Value::Toggle(false))
+    }
+
+    /// How row `i` is drawn among the groups.
+    pub fn place(&self, rows: &[Row], i: usize) -> Place {
+        let Some(r) = rows.get(i) else { return Place::default() };
+        let child = r.parent.is_some() && parent_index(rows, i).is_some();
+        Place {
+            group: has_children(rows, i).then(|| self.open.contains(&r.id)),
+            child,
+            last: child && rows.get(i + 1).is_none_or(|n| n.parent != r.parent),
+            off: child && self.parent_off(rows, i),
+        }
+    }
+
+    /// Opens or closes the group of row `i`; the focus leaves a closed one
+    /// for its parent.
+    fn set_open(&mut self, rows: &[Row], i: usize, open: bool) {
+        let id = rows[i].id.clone();
+        if open {
+            self.open.insert(id);
+        } else {
+            self.open.remove(&id);
+            if self.focus > i && rows.get(self.focus).is_some_and(|r| r.parent.as_ref() == Some(&id)) {
+                self.focus = i;
+            }
+        }
+        motion::press();
+        self.reveal = true;
     }
 
     /// Keeps the focus on a focusable row inside `rows`.
@@ -215,15 +373,18 @@ impl ListNav {
             return;
         }
         self.focus = self.focus.min(rows.len() - 1);
-        if !rows[self.focus].focusable() {
-            if let Some(i) = (self.focus..rows.len()).chain((0..self.focus).rev()).find(|&i| rows[i].focusable()) {
+        if !self.can_focus(rows, self.focus) {
+            // A hidden sub-setting gives the focus to its parent.
+            if let Some(p) = parent_index(rows, self.focus).filter(|&p| self.can_focus(rows, p)) {
+                self.focus = p;
+            } else if let Some(i) = (self.focus..rows.len()).chain((0..self.focus).rev()).find(|&i| self.can_focus(rows, i)) {
                 self.focus = i;
             }
         }
     }
 
     pub fn focused<'a>(&self, rows: &'a [Row]) -> Option<&'a Row> {
-        rows.get(self.focus).filter(|r| r.focusable())
+        rows.get(self.focus).filter(|_| self.can_focus(rows, self.focus))
     }
 
     pub fn reset(&mut self) {
@@ -241,7 +402,7 @@ impl ListNav {
                 break;
             }
             i = next;
-            if rows[i].focusable() {
+            if self.can_focus(rows, i) {
                 self.focus = i;
                 moved += 1;
                 if moved == by {
@@ -258,7 +419,12 @@ impl ListNav {
 
     pub fn on_pad(&mut self, pad: Pad, rows: &[Row]) -> Outcome {
         self.clamp(rows);
-        let Some(row) = rows.get(self.focus) else { return Outcome::Ignored };
+        let i = self.focus;
+        let Some(row) = rows.get(i) else { return Outcome::Ignored };
+        if let Some(o) = self.group_pad_press(pad, rows, i) {
+            return o;
+        }
+        let usable = self.usable(rows, i);
         match pad {
             Pad::Up | Pad::Down => {
                 if self.step(rows, pad == Pad::Down, 1) {
@@ -274,7 +440,7 @@ impl ListNav {
                     Outcome::Ignored
                 }
             }
-            Pad::Left | Pad::Right | Pad::A if row.enabled => {
+            Pad::Left | Pad::Right | Pad::A if usable => {
                 let right = pad != Pad::Left;
                 let changed = match &row.value {
                     Value::Toggle(on) => Some(Value::Toggle(!on)),
@@ -309,17 +475,82 @@ impl ListNav {
         }
     }
 
+    /// What a press does to the groups, when it does something: on a parent,
+    /// its open / close press ([`Self::group_pad`]; ▶ on an open one goes in);
+    /// on a sub-setting, B (or ◀ where ◀ changes nothing) goes back to the
+    /// parent and closes the group.
+    fn group_pad_press(&mut self, pad: Pad, rows: &[Row], i: usize) -> Option<Outcome> {
+        let row = &rows[i];
+        if has_children(rows, i) {
+            let open = self.open.contains(&row.id);
+            let toggles = Self::group_pad(row, false) == Pad::A;
+            match pad {
+                Pad::A if toggles => self.set_open(rows, i, !open),
+                // A plain row only opens its group.
+                Pad::A if matches!(row.value, Value::Action | Value::Info(_)) => self.set_open(rows, i, !open),
+                Pad::Right if !toggles && !open => self.set_open(rows, i, true),
+                Pad::Right if !toggles => {
+                    self.step(rows, true, 1);
+                }
+                Pad::Left if !toggles && open => self.set_open(rows, i, false),
+                _ => return None,
+            }
+            return Some(Outcome::Moved);
+        }
+        let parent = parent_index(rows, i)?;
+        let back = match pad {
+            Pad::B => true,
+            Pad::Left => matches!(row.value, Value::Action | Value::Text(_) | Value::Info(_)),
+            _ => false,
+        };
+        if !back {
+            return None;
+        }
+        self.focus = parent;
+        self.set_open(rows, parent, false);
+        Some(Outcome::Moved)
+    }
+
+    /// The hints of the focused row: what A and ◀ ▶ do on it, the group's
+    /// open / close among them.
+    pub fn hints(&self, rows: &[Row]) -> Vec<Hint> {
+        let Some(r) = self.focused(rows) else { return Vec::new() };
+        let i = self.focus;
+        if !self.usable(rows, i) && !has_children(rows, i) {
+            return Vec::new();
+        }
+        let mut h: Vec<Hint> = Vec::new();
+        if has_children(rows, i) {
+            let open = self.open.contains(&r.id);
+            let word = if open { tr!("Collapse") } else { tr!("Expand") };
+            match Self::group_pad(r, open) {
+                Pad::A => {
+                    h.extend(hint_for(r).filter(|x| x.btn != Btn::A));
+                    h.push(hint(Btn::A, word));
+                }
+                _ if matches!(r.value, Value::Action | Value::Info(_)) => h.push(hint(Btn::A, word)),
+                _ => {
+                    h.extend(hint_for(r));
+                    h.push(hint(Btn::LeftRight, word));
+                }
+            }
+            return h;
+        }
+        h.extend(hint_for(r));
+        h
+    }
+
     /// The presses that move the focus to row `to` (↑ ↓ over the focusable
     /// rows between; nothing when it has it or cannot take it).
     pub fn route(&self, rows: &[Row], to: usize) -> Vec<Pad> {
-        if !rows.get(to).is_some_and(Row::focusable) || self.focus >= rows.len() {
+        if !self.can_focus(rows, to) || self.focus >= rows.len() {
             return Vec::new();
         }
-        let between = |r: &[Row]| r.iter().filter(|r| r.focusable()).count();
+        let between = |a: usize, b: usize| (a..b).filter(|&i| self.can_focus(rows, i)).count();
         if to > self.focus {
-            super::pointer::repeat(Pad::Down, between(&rows[self.focus + 1..=to])).collect()
+            super::pointer::repeat(Pad::Down, between(self.focus + 1, to + 1)).collect()
         } else {
-            super::pointer::repeat(Pad::Up, between(&rows[to..self.focus])).collect()
+            super::pointer::repeat(Pad::Up, between(to, self.focus)).collect()
         }
     }
 
@@ -327,9 +558,9 @@ impl ListNav {
     /// row is used as A uses it (an action runs, a switch flips, a choice
     /// takes its next value; a number only takes the focus: its arrows change it).
     pub fn click(&self, rows: &[Row], to: usize) -> Vec<Pad> {
-        let Some(row) = rows.get(to).filter(|r| r.focusable()) else { return Vec::new() };
+        let Some(row) = rows.get(to).filter(|_| self.can_focus(rows, to)) else { return Vec::new() };
         let mut pads = self.route(rows, to);
-        if row.enabled && !matches!(row.value, Value::Number { .. }) {
+        if self.usable(rows, to) && !matches!(row.value, Value::Number { .. }) {
             pads.push(Pad::A);
         }
         pads
@@ -349,12 +580,25 @@ impl ListNav {
         let lead: Option<Vec<Pad>> = if active { Some(Vec::new()) } else { entry.map(<[Pad]>::to_vec) };
         let focus = self.focus;
         let style = self.style;
+        let places: Vec<Place> = (0..rows.len()).map(|i| self.place(rows, i)).collect();
+        // A click on a group's chevron: the presses to its row, then its open / close press.
+        let chevrons: Vec<Vec<Pad>> = (0..rows.len())
+            .map(|i| match (places[i].group, &lead) {
+                (Some(open), Some(lead)) => {
+                    let to = if i == focus { Vec::new() } else { self.route(rows, i) };
+                    lead.iter().copied().chain(to).chain([Self::group_pad(&rows[i], open)]).collect()
+                }
+                _ => Vec::new(),
+            })
+            .collect();
         self.render_clicks(id, rows, active, lead.clone(), |i, r, focused| {
             // The ‹ › of the row the focus is on (or comes back to).
             let arrows = lead.as_deref().filter(|_| i == focus);
+            let place = places[i];
+            let summary = (place.group == Some(false)).then(|| group_summary(rows, i));
             match style {
-                RowStyle::Pill => render_row_at(r, focused, arrows).into_any_element(),
-                RowStyle::Card => render_card_at(r, focused, arrows).into_any_element(),
+                RowStyle::Pill => render_row_in(r, focused, arrows, place, summary, chevrons[i].clone()).into_any_element(),
+                RowStyle::Card => render_card_in(r, focused, arrows, place, summary, chevrons[i].clone()).into_any_element(),
             }
         })
     }
@@ -394,12 +638,24 @@ impl ListNav {
             }
         }
         self.shown = true;
-        let clicks = lead.map(|lead| Clicks::new(rows, self.focus, lead));
+        let can: Vec<bool> = (0..rows.len()).map(|i| self.can_focus(rows, i)).collect();
+        let usable: Vec<bool> = (0..rows.len()).map(|i| self.usable(rows, i)).collect();
+        let clicks = lead.map(|lead| Clicks::new(&can, self.focus, lead));
         let gap = if self.style == RowStyle::Card { 8. } else { 4. };
-        let mut list = div().id(id).flex().flex_col().gap(u(gap)).overflow_y_scroll().track_scroll(self.glide.handle());
+        let mut list = div().id(id).flex().flex_col().overflow_y_scroll().track_scroll(self.glide.handle());
+        let mut first = true;
         for (i, r) in rows.iter().enumerate() {
-            let mut row = div().child(draw(i, r, active && i == self.focus));
-            if let Some(click) = clicks.as_ref().and_then(|c| c.at(rows, i)) {
+            // A row inside a closed group keeps its place (the scroll counts
+            // the children) but draws nothing.
+            if !self.shows(rows, i) {
+                list = list.child(div());
+                continue;
+            }
+            // A sub-setting joins its parent's card: no gap above it.
+            let joined = r.parent.is_some() && parent_index(rows, i).is_some();
+            let mut row = div().when(!first && !joined, |d| d.mt(u(gap))).child(draw(i, r, active && i == self.focus));
+            first = false;
+            if let Some(click) = clicks.as_ref().and_then(|c| c.at(&can, usable[i] && !matches!(r.value, Value::Number { .. }), i)) {
                 // The mouse over a row moves the focus there.
                 if click.moves() {
                     let route = click.route();
@@ -453,33 +709,61 @@ impl Click {
 }
 
 impl Clicks {
-    fn new(rows: &[Row], focus: usize, lead: Vec<Pad>) -> Self {
-        let mut before = Vec::with_capacity(rows.len() + 1);
+    /// `can`: which rows take the focus.
+    fn new(can: &[bool], focus: usize, lead: Vec<Pad>) -> Self {
+        let mut before = Vec::with_capacity(can.len() + 1);
         let mut n = 0;
         before.push(0);
-        for r in rows {
-            n += usize::from(r.focusable());
+        for c in can {
+            n += usize::from(*c);
             before.push(n);
         }
         Self { lead: lead.into(), focus, before }
     }
 
-    /// The click of row `to` (as [`ListNav::click`]); `None` for a header.
-    fn at(&self, rows: &[Row], to: usize) -> Option<Click> {
-        let row = rows.get(to).filter(|r| r.focusable())?;
+    /// The click of row `to` (as [`ListNav::click`]); `None` for a header
+    /// or a hidden row. `press`: the row takes A once it has the focus.
+    fn at(&self, can: &[bool], press: bool, to: usize) -> Option<Click> {
+        if !can.get(to).copied().unwrap_or(false) {
+            return None;
+        }
+        let len = can.len();
         let (step, n) = if to > self.focus {
-            (Pad::Down, self.before[to + 1] - self.before[(self.focus + 1).min(rows.len())])
+            (Pad::Down, self.before[to + 1] - self.before[(self.focus + 1).min(len)])
         } else {
-            (Pad::Up, self.before[self.focus.min(rows.len())] - self.before[to])
+            (Pad::Up, self.before[self.focus.min(len)] - self.before[to])
         };
-        let then = (row.enabled && !matches!(row.value, Value::Number { .. })).then_some(Pad::A);
-        Some(Click { lead: self.lead.clone(), step, n, then })
+        Some(Click { lead: self.lead.clone(), step, n, then: press.then_some(Pad::A) })
     }
 }
 
 /// One row (also used outside lists).
 pub fn render_row(r: &Row, focused: bool) -> Div {
     render_row_at(r, focused, None)
+}
+
+/// [`render_row_at`] at its `place` among the groups: a sub-setting
+/// indented under its parent, a parent with its chevron and, closed, its
+/// `summary` (`chevron`: the presses a click on the chevron makes).
+pub fn render_row_in(
+    r: &Row,
+    focused: bool,
+    route: Option<&[Pad]>,
+    place: Place,
+    summary: Option<SharedString>,
+    chevron_pads: Vec<Pad>,
+) -> Div {
+    if place.child {
+        return div().pl(u(30.)).child(render_row_at(r, focused, route).when(place.off, |d| d.opacity(0.45)));
+    }
+    let row = render_row_at(r, focused, route);
+    match place.group {
+        Some(open) => {
+            let note = summary.map(|s| div().max_w(u(260.)).truncate().text_size(u(13.)).text_color(theme::text_dim()).child(s));
+            row.children(note).child(chevron(&r.id, open, chevron_pads))
+        }
+        None => row,
+    }
 }
 
 /// [`render_row`] for a row the focus gets to with `route`: the ‹ › of its
@@ -566,21 +850,15 @@ pub fn render_row_at(r: &Row, focused: bool, route: Option<&[Pad]>) -> Div {
         .child(value)
 }
 
-/// One row as a card ([`RowStyle::Card`]): its title and description on the
-/// left, its control on the right (a switch, `‹ chip ›`, an accent text
-/// action, a muted value); a header is an accent heading. `route` as in
-/// [`render_row_at`].
-pub fn render_card_at(r: &Row, focused: bool, route: Option<&[Pad]>) -> Div {
+/// The value part of a card: the switch, `‹ chip ›`, a text action or a
+/// muted value; `route` as in [`render_row_at`].
+fn card_value(r: &Row, route: Option<&[Pad]>, usable: bool) -> AnyElement {
     let arrow = |pad: Pad| -> Vec<Pad> {
         match route {
-            Some(route) if r.enabled => route.iter().copied().chain([pad]).collect(),
+            Some(route) if usable => route.iter().copied().chain([pad]).collect(),
             _ => Vec::new(),
         }
     };
-    if r.value == Value::Header {
-        return kit::card_heading(r.label.clone());
-    }
-    let label_color: Hsla = if r.danger { theme::danger_text().into() } else { theme::text_primary().into() };
     let muted = |t: &SharedString| {
         div().min_w_0().max_w(u(380.)).truncate().text_size(u(14.)).text_color(theme::text_muted()).child(if t.is_empty() {
             SharedString::from("\u{2014}")
@@ -607,12 +885,12 @@ pub fn render_card_at(r: &Row, focused: bool, route: Option<&[Pad]>) -> Div {
             .items_center()
             .gap(u(14.))
             .child(muted(t))
-            .when(r.enabled, |d| d.child(kit::text_action(r.verb.clone().unwrap_or_else(|| tr!("Change").into()))))
+            .when(usable, |d| d.child(kit::text_action(r.verb.clone().unwrap_or_else(|| tr!("Change").into()))))
             .into_any_element(),
         Value::Info(t) => muted(t).into_any_element(),
         Value::Header => div().into_any_element(),
     };
-    let value = match &r.image {
+    match &r.image {
         Some(path) => div()
             .flex_none()
             .w(u(72.))
@@ -623,29 +901,147 @@ pub fn render_card_at(r: &Row, focused: bool, route: Option<&[Pad]>) -> Div {
             .child(img(path.clone()).size_full().object_fit(ObjectFit::Cover))
             .into_any_element(),
         None => value,
+    }
+}
+
+/// The open / closed mark of a group: › closed, ⌄ open (turning between
+/// them); a click sends `pads`.
+fn chevron(id: &SharedString, open: bool, pads: Vec<Pad>) -> AnyElement {
+    let mark = div().flex_none().size(u(28.)).flex().items_center().justify_center().rounded_full().bg(kit::ink(0.08));
+    let mark = motion::spring(SharedString::from(format!("chev-{id}")), mark, motion::SOFT, open, |d, k| {
+        let k = k.clamp(0., 1.);
+        // Two icons crossing over: the fonts have no rotation.
+        d.child(div().absolute().opacity(1. - k).child(icon(Icon::ChevronRight, u(18.), theme::text_muted())))
+            .child(div().absolute().opacity(k).child(icon(Icon::ExpandMore, u(18.), theme::text_muted())))
+    });
+    div().flex_none().relative().p(u(4.)).m(u(-4.)).child(mark).on_pads(pads).into_any_element()
+}
+
+/// One row as a card ([`RowStyle::Card`]) at its `place` among the groups:
+/// a group's parent shows its chevron (and `summary` while closed) and
+/// opens into its sub-settings, drawn inside the same card under a fine
+/// rule, indented beside a guide line, in a smaller type. `chevron`: the
+/// presses a click on the chevron makes.
+pub fn render_card_in(
+    r: &Row,
+    focused: bool,
+    route: Option<&[Pad]>,
+    place: Place,
+    summary: Option<SharedString>,
+    chevron_pads: Vec<Pad>,
+) -> Div {
+    if r.value == Value::Header {
+        return kit::card_heading(r.label.clone());
+    }
+    let usable = r.enabled && !place.off;
+    let label_color: Hsla = if r.danger { theme::danger_text().into() } else { theme::text_primary().into() };
+    // A row that only gathers its group shows the group's chevron alone.
+    let value = if place.group.is_some() && r.value == Value::Action && r.verb.is_none() {
+        div().into_any_element()
+    } else {
+        card_value(r, route, usable)
     };
+    if place.child {
+        return render_sub_card(r, focused, place, label_color, value);
+    }
+    let open = place.group == Some(true);
+    let text =
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w_0()
+            .gap(u(2.))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(u(8.))
+                    .child(div().text_size(u(17.)).text_color(label_color).truncate().child(r.label.clone()))
+                    .when(r.changed, |d| d.child(div().flex_none().size(u(7.)).rounded_full().bg(kit::accent_ink()))),
+            )
+            .children(r.desc.clone().map(|d| {
+                div().text_size(u(13.)).line_height(u(18.)).line_clamp(2).text_ellipsis().text_color(theme::text_muted()).child(d)
+            }))
+            .children(summary.map(|s| {
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(u(6.))
+                    .pt(u(2.))
+                    .child(icon(Icon::Tune, u(13.), kit::accent_ink()))
+                    .child(div().min_w_0().truncate().text_size(u(12.5)).text_color(kit::accent_ink()).child(s))
+            }));
     kit::card_base(focused)
+        .when(open, |d| d.rounded_bl(px(0.)).rounded_br(px(0.)))
         .when(!r.enabled, |d| d.opacity(0.45))
+        .child(text)
+        .child(div().flex().flex_none().max_w(relative(0.55)).justify_end().child(value))
+        .children(place.group.map(|open| chevron(&r.id, open, chevron_pads)))
+}
+
+/// A sub-setting inside its parent's card.
+fn render_sub_card(r: &Row, focused: bool, place: Place, label_color: Hsla, value: AnyElement) -> Div {
+    let usable = r.enabled && !place.off;
+    let radius = u(14.);
+    let inner = div()
+        .relative()
+        .flex()
+        .flex_1()
+        .min_w_0()
+        .items_center()
+        .gap(u(14.))
+        .min_h(u(44.))
+        .px(u(12.))
+        .py(u(6.))
+        .rounded(u(10.))
+        .when(focused, |d| d.child(kit::focus_ring(10.)))
+        .when(!usable, |d| d.opacity(0.45))
         .child(
             div()
                 .flex()
                 .flex_col()
                 .flex_1()
                 .min_w_0()
-                .gap(u(2.))
+                .gap(u(1.))
                 .child(
                     div()
                         .flex()
                         .items_center()
                         .gap(u(8.))
-                        .child(div().text_size(u(17.)).text_color(label_color).truncate().child(r.label.clone()))
-                        .when(r.changed, |d| d.child(div().flex_none().size(u(7.)).rounded_full().bg(kit::accent_ink()))),
+                        .child(div().text_size(u(15.)).text_color(label_color).truncate().child(r.label.clone()))
+                        .when(r.changed, |d| d.child(div().flex_none().size(u(6.)).rounded_full().bg(kit::accent_ink()))),
                 )
                 .children(r.desc.clone().map(|d| {
-                    div().text_size(u(13.)).line_height(u(18.)).line_clamp(2).text_ellipsis().text_color(theme::text_muted()).child(d)
+                    div().text_size(u(12.)).line_height(u(16.)).line_clamp(2).text_ellipsis().text_color(theme::text_muted()).child(d)
                 })),
         )
-        .child(div().flex().flex_none().max_w(relative(0.55)).justify_end().child(value))
+        .child(div().flex().flex_none().max_w(relative(0.55)).justify_end().child(value));
+    let row = div()
+        .relative()
+        .flex()
+        .pl(u(34.))
+        .pr(u(8.))
+        .pt(u(3.))
+        .pb(if place.last { u(9.) } else { u(3.) })
+        .bg(kit::card_fill())
+        .when(place.last, |d| d.rounded_bl(radius).rounded_br(radius))
+        // The nested panel: a shade darker than the card.
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .bottom_0()
+                .left_0()
+                .right_0()
+                .when(place.last, |d| d.rounded_bl(radius).rounded_br(radius))
+                .bg(kit::well(0.22)),
+        )
+        // The guide that ties the sub-settings to their parent.
+        .child(div().absolute().top_0().left(u(22.)).w(px(2.)).bottom(if place.last { u(16.) } else { px(0.) }).bg(kit::ink(0.16)))
+        .child(inner);
+    let id = SharedString::from(format!("sub-in-{}", r.id));
+    div().child(motion::enter_from(id, row, 220, 0., -6., 0.))
 }
 
 /// What A (or ◀ ▶) does on row `r`, as a hint (none for a row that does
@@ -736,17 +1132,69 @@ mod tests {
         let r = rows();
         for focus in 0..r.len() {
             let nav = ListNav { focus, ..Default::default() };
-            let clicks = Clicks::new(&r, focus, vec![Pad::Right]);
+            let can: Vec<bool> = (0..r.len()).map(|i| nav.can_focus(&r, i)).collect();
+            let clicks = Clicks::new(&can, focus, vec![Pad::Right]);
             for to in 0..r.len() {
                 let mut want = nav.click(&r, to);
                 if !r[to].focusable() {
-                    assert!(clicks.at(&r, to).is_none());
+                    assert!(clicks.at(&can, true, to).is_none());
                     continue;
                 }
                 want.insert(0, Pad::Right);
-                assert_eq!(clicks.at(&r, to).map(|c| c.pads()), Some(want), "{focus} -> {to}");
+                let press = r[to].enabled && !matches!(r[to].value, Value::Number { .. });
+                assert_eq!(clicks.at(&can, press, to).map(|c| c.pads()), Some(want), "{focus} -> {to}");
             }
         }
+    }
+
+    fn grouped() -> Vec<Row> {
+        vec![
+            Row::toggle("src", "Source", true),
+            Row::toggle("opt", "Option", false).child_of("src"),
+            Row::number("place", "Place", 2, 1, 5, 1, "").child_of("src"),
+            Row::number("limit", "Limit", 30, 0, 60, 10, ""),
+            Row::choice("how", "How", vec!["A".into(), "B".into()], 0).child_of("limit"),
+            Row::action("after", "After"),
+        ]
+    }
+
+    #[test]
+    fn groups_open_close_and_hide_their_rows() {
+        let r = grouped();
+        let mut nav = ListNav::default();
+        // Closed: the sub-settings are skipped.
+        assert_eq!(nav.on_pad(Pad::Down, &r), Outcome::Moved);
+        assert_eq!(nav.focus, 3);
+        // A opens a group whose parent's ◀ ▶ change its value; ↓ goes in.
+        assert_eq!(nav.on_pad(Pad::A, &r), Outcome::Moved);
+        assert_eq!(nav.on_pad(Pad::Down, &r), Outcome::Moved);
+        assert_eq!(nav.focus, 4);
+        // B goes back to the parent and closes the group.
+        assert_eq!(nav.on_pad(Pad::B, &r), Outcome::Moved);
+        assert_eq!(nav.focus, 3);
+        assert!(!nav.shows(&r, 4));
+        // ▶ opens a switch's group, A still flips the switch.
+        nav.focus = 0;
+        assert_eq!(nav.on_pad(Pad::Right, &r), Outcome::Moved);
+        assert!(nav.shows(&r, 1));
+        assert_eq!(nav.on_pad(Pad::A, &r), Outcome::Changed("src".into(), Value::Toggle(false)));
+        // ◀ closes it.
+        assert_eq!(nav.on_pad(Pad::Left, &r), Outcome::Moved);
+        assert!(!nav.shows(&r, 1));
+        // A search result inside a closed group opens it.
+        assert!(nav.focus_id(&r, "how"));
+        assert!(nav.shows(&r, 4));
+    }
+
+    #[test]
+    fn a_sub_setting_of_a_switch_that_is_off_does_nothing() {
+        let mut r = grouped();
+        r[0].value = Value::Toggle(false);
+        let mut nav = ListNav::default();
+        nav.on_pad(Pad::Right, &r);
+        nav.on_pad(Pad::Down, &r);
+        assert_eq!(nav.focus, 1);
+        assert_eq!(nav.on_pad(Pad::A, &r), Outcome::Ignored);
     }
 
     #[test]
