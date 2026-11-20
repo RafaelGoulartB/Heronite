@@ -1181,6 +1181,15 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   Heroic panel's through `SettingsPanel::console_rows_of`). A on a result opens its section on that row. Appearance is
   the desktop's and is not listed (its Animated backgrounds switch shows under Console mode). Debug:
   `HERONITE_DEBUG_PAGE=settings:<section>`, `HERONITE_DEBUG_SETTINGS_SEARCH=<text>`.
+- Groups in a console list (`console::list`): a row made `Row::child_of(parent_id)` (right after its parent or its
+  other sub-settings; `Row::group` for a parent that only gathers) is a sub-setting. Closed by default, the parent shows
+  a chevron and a one-line summary (`Row::summary`, else its sub-settings' values); open, the sub-settings draw inside
+  the parent's card under a guide line, smaller, sliding in. ▶ / ◀ open and close a group whose parent is a switch or
+  a plain row (A still flips the switch), A does it when ◀ ▶ change the parent's value; B (or ◀ on a row ◀ does not
+  change) goes back to the parent and closes it. `ListNav::hints` says so; under a switch that is off the sub-settings
+  show but do nothing. The open groups survive `reset`; Settings keeps them per section, and a search result inside a
+  group opens it (`focus_id`). Used by Metadata (each source), the Heroic panel's dependent rows, lists (hidden games,
+  wrappers, disk groups) and Console mode's tabs.
 - Motion (`console::motion`): scroll areas that follow the focus use a `Glide` (`go(Goal::Reveal{..})` / `Start` /
   `by(px)`, its `driver()` as the last child of the area) instead of `scroll_to_item`, so they glide on a spring;
   `row_base` focus pills pop in on every press; covers lift with `motion::spring`; one value that drives many
