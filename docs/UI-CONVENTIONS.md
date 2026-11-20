@@ -1228,22 +1228,24 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   Pulse's Spotlight (`layouts/spotlight/`), a console's home whose game page goes on below it. Its top bar
   (`layouts::{layout_tabs, layout_clock}`) centres the tabs between LB and RB, the current one in a pill, with a large
   clock; Pulse's tabs are Installed (first), All games and Favourites as Spotlight filters, then the whole library as a Grid; rows and grids put the game played last first (`KeptFilters` sorts by Last played unless changed). The row: the tab's games, the
-  last played first, as square icons, the focused one larger with a ring a little way out and its name under it, up
-  to two before it in sight; every place and size come from the row's position gliding on a spring (`motion::Follow`
+  last played first, as square icons, the focused one larger (reaching lower) with a ring a little way out and its
+  name just right of it on its bottom edge, under the smaller icons, up to two before it in sight; every place and size come from the row's position gliding on a spring (`motion::Follow`
   stepped with a `FrameClock`). Below, the logo (or the name) in a fixed box, Play / Options / ♥ as pills, the facts
   (small labels over Playtime, Last played, Platform with the store's logo, Released) and the genres as chips, then a
-  strip of the store's screenshots (`store_media_of`, read in console mode only for Spotlight, never played; else the
-  user's captures) dissolving at the bottom. Leaving the row lifts the whole screen (the row and the top bar fade, the
-  art darkens, the wheel turns to ↑ ↓) into the page (`page.rs`): the strip, About this game (clamped, "Read more"
-  opens the whole text in a sheet) beside Achievements (A: `open_console_achievements`), Details with link buttons
+  strip of the store's screenshots (`store_media_of`, read in console mode only for Spotlight, never played)
+  dissolving at the bottom. Leaving the row lifts the whole screen (the row and the top bar fade, the art darkens, the
+  wheel turns to ↑ ↓) into the page (`page.rs`), in two columns, nothing spanning both: on the left the strip, the
+  player's screenshots (a glass card of as many thumbnails as fit, "+N" on the last; the strip shows them instead
+  when that card is off and the store has none), About this game (clamped, "Read more" opens the whole text in a
+  sheet), the cards and More like this (A jumps the row to the game, else opens its page); on the right, from the
+  first left section down, a sidebar with Achievements (A: `open_console_achievements`), Details with link buttons
   (folder, store page) and How Long To Beat (the desktop section's bar, times and match note, `focus::hltb_*`; A opens
-  its page; "no times" when it has none), the cards, the user's screenshots and More like this (A jumps the row to the
-  game, else opens its page), each when `spotlightSections` keeps it and the game has data. Every section's place
+  its page; "no times" when it has none), each when `spotlightSections` keeps it and the game has data. Every section's place
   comes from counts and fixed heights, never a measure, so nothing jumps; the page rises on a slow spring until the
-  focused section's title nears the top, never past the page's end. ↑ ↓ between sections, ← → inside one (the strips
-  slide), B back to the buttons then the row, X plays anywhere; clicks focus then use (`cover_click`). A screenshot
+  focused section's title nears the top, never past the page's end. ↑ ↓ along a column, ← → along a strip or the
+  links and, at their ends, across to the other column's part nearest in height (`Shape::step`), B back to the buttons then the row, X plays anywhere; clicks focus then use (`cover_click`). A screenshot
   opens full screen (store ones in `viewer.rs`, the user's in the game page's viewer). Options opens the theme's game
-  page (Pulse: the Sheet over Spotlight). With `Hints::Auto` the hint bar floats (`layouts::hints_float`).
+  page (Pulse: the Sheet over Spotlight, which also opens the player's screenshots). With `Hints::Auto` the hint bar floats (`layouts::hints_float`).
   `HERONITE_DEBUG_SPOTLIGHT=<zone>[:<n>|:<name>]` (`actions`, `media`, `viewer`, `about`, `sheet`, `achievements`,
   `links`, `hltb`, `cards`, `shots`, `related`) opens a section, on the row's `n`th game or the first whose name holds
   `<name>` (on the first tab that has it).
