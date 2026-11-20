@@ -70,6 +70,21 @@ impl Item {
         self.row = self.row.desc(d.to_string());
         self
     }
+
+    /// Makes the row a sub-setting of the row `parent` (`t:<key>`, `c:<id>`...).
+    pub(super) fn under(mut self, parent: &str) -> Self {
+        self.row = self.row.child_of(parent.to_string());
+        self
+    }
+}
+
+/// The items of `list` after the first made sub-settings of the first.
+pub(super) fn grouped(mut list: Vec<Item>) -> Vec<Item> {
+    let Some(parent) = list.first().map(|i| i.row.id.to_string()) else { return list };
+    for i in list.iter_mut().skip(1) {
+        i.row = i.row.clone().child_of(parent.clone());
+    }
+    list
 }
 
 impl SettingsPanel {
@@ -302,6 +317,14 @@ impl SettingsPanel {
             Some(tr!("DLSS and other NVIDIA features (needs DXVK)")),
             !dxvk_on || busy,
         ));
+        // VKD3D and NVAPI need DXVK: its sub-settings.
+        if logic::offers_dxvk(&wine) {
+            let n = v.len();
+            let at = v.iter().position(|i| i.row.id.as_ref() == "t:autoInstallDxvk").unwrap_or(n);
+            for i in v.iter_mut().skip(at + 1) {
+                i.row = i.row.clone().child_of("t:autoInstallDxvk");
+            }
+        }
         if self.is_game() && logic::offers_system_libs(&wine) {
             v.push(self.c_toggle(
                 "preferSystemLibs",
@@ -322,9 +345,10 @@ impl SettingsPanel {
             Some(tr!("Runs the game on Wayland instead of X11; needs a Wine build that has it")),
             false,
         ));
-        if self.flag("enableWineWayland", false) {
-            v.push(self.c_toggle("enableHDR", false, "HDR", Some(tr!("The screen and the game must support it")), false));
-        }
+        v.push(
+            self.c_toggle("enableHDR", false, "HDR", Some(tr!("The screen and the game must support it")), false)
+                .under("t:enableWineWayland"),
+        );
         v.push(self.c_toggle("enableWoW64", false, "WoW64", Some(tr!("32-bit games on 64-bit Wine; can break older games")), false));
         if self.is_game() {
             v.push(Self::c_header(tr!("Tools")));
@@ -388,10 +412,13 @@ impl SettingsPanel {
         if self.flag("enableFSR", false) {
             let sharp = self.number("maxSharpness").unwrap_or(5).clamp(1, 5);
             let opts = (1..=5).map(|n| SharedString::from(n.to_string())).collect();
-            v.push(item(
-                Row::choice("c:sharp", tr!("FSR sharpness"), opts, (sharp - 1) as usize),
-                Act::Choice(Rc::new(|this, i, cx| this.set("maxSharpness", json!(i as i64 + 1), cx))),
-            ));
+            v.push(
+                item(
+                    Row::choice("c:sharp", tr!("FSR sharpness"), opts, (sharp - 1) as usize),
+                    Act::Choice(Rc::new(|this, i, cx| this.set("maxSharpness", json!(i as i64 + 1), cx))),
+                )
+                .under("t:enableFSR"),
+            );
         }
         v
     }
@@ -416,8 +443,13 @@ impl SettingsPanel {
     }
 
     fn c_pairs(&self, t: PairTable) -> Vec<Item> {
-        let mut v = vec![Self::c_header(heronite_i18n::tr(t.title).trim_end_matches(':'))];
-        for (i, (a, b)) in pairs(self.settings.get(t.setting), t.k1, t.k2).into_iter().enumerate() {
+        // A group: its list, Add (and typing several) inside.
+        let list = pairs(self.settings.get(t.setting), t.k1, t.k2);
+        let summary =
+            if list.is_empty() { tr!("None").to_string() } else { list.iter().map(|(a, _)| a.as_str()).collect::<Vec<_>>().join(", ") };
+        let title = heronite_i18n::tr(t.title).trim_end_matches(':').to_string();
+        let mut v = vec![item(Row::group(format!("grp:{}", t.id), title).summary(summary), Act::None)];
+        for (i, (a, b)) in list.into_iter().enumerate() {
             v.push(item(
                 Row::info(SharedString::from(format!("pair:{}:{i}", t.id)), a.clone(), b.clone()),
                 Act::Do(Rc::new(move |this, window, cx| this.console_pair_sheet(t, i, window, cx))),
@@ -445,14 +477,16 @@ impl SettingsPanel {
         if t.env && !self.env_error.is_empty() {
             v.push(Self::c_info("env-error", tr!("Problem"), self.env_error.clone()));
         }
-        v
+        grouped(v)
     }
 
     /// One row per program (left / right change its delay), then add and remove.
     fn c_companions(&self) -> Vec<Item> {
         use super::companions::{delay_index, delay_label, file_name, DELAYS};
         let list = self.companions();
-        let mut v = vec![Self::c_header(tr!("Programs alongside the game"))];
+        let names: Vec<String> = list.iter().map(|c| file_name(&c.path)).collect();
+        let summary = if names.is_empty() { tr!("None").to_string() } else { names.join(", ") };
+        let mut v = vec![item(Row::group("grp:companions", tr!("Programs alongside the game")).summary(summary), Act::None)];
         for (i, c) in list.iter().enumerate() {
             let options = DELAYS.iter().map(|d| SharedString::from(delay_label(*d))).collect();
             let row = Row::choice(SharedString::from(format!("companion:{i}")), file_name(&c.path), options, delay_index(c.delay_secs));
@@ -471,7 +505,7 @@ impl SettingsPanel {
                 this.console_companion_remove(window, cx)
             }));
         }
-        v
+        grouped(v)
     }
 
     fn console_prefix_sheet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -634,7 +668,7 @@ impl SettingsPanel {
             v.push(gs_toggle("enableForceGrabCursor", tr!("Keep the mouse in the game")));
             v.push(self.c_text("gs.additionalOptions", tr!("Extra gamescope options"), cx));
         }
-        v
+        grouped(v)
     }
 
     fn c_gog_saves(&self, cx: &App) -> Vec<Item> {
@@ -774,9 +808,7 @@ impl SettingsPanel {
         if supported(Feature::Autostart) {
             v.extend([Self::c_header(tr!("Startup")), self.c_toggle("startWithSystem", false, tr!("Start with the system"), None, false)]);
             // Starting minimized belongs to starting with the system, as on the desktop.
-            if with_system {
-                v.push(self.c_toggle("startInTray", false, tr!("Start minimized"), None, no_tray));
-            }
+            v.push(self.c_toggle("startInTray", false, tr!("Start minimized"), None, no_tray || !with_system).under("t:startWithSystem"));
         }
         if supported(Feature::Tray) {
             v.extend([
@@ -795,9 +827,10 @@ impl SettingsPanel {
             self.c_toggle("minimizeOnLaunch", false, tr!("Minimize when a game starts"), None, false),
         ]);
         // Bringing the window back belongs to minimizing it.
-        if self.flag("minimizeOnLaunch", false) {
-            v.push(self.c_toggle(KEY_RESTORE_AFTER_GAME, false, tr!("Show Heronite again when the game ends"), None, false));
-        }
+        v.push(
+            self.c_toggle(KEY_RESTORE_AFTER_GAME, false, tr!("Show Heronite again when the game ends"), None, false)
+                .under("t:minimizeOnLaunch"),
+        );
         v.extend([
             self.c_toggle("hideWindowOnProtocolLaunch", false, tr!("Hide the window for heronite:// launches"), None, false),
             self.c_toggle(
@@ -829,9 +862,13 @@ impl SettingsPanel {
                 false,
             ),
             self.c_toggle("downloadProtonToSteam", false, tr!("Download GE-Proton to Steam"), None, false),
-            Self::c_header(tr!("Custom Wine / Proton paths")),
         ]);
-        for (i, p) in self.custom_paths().into_iter().enumerate() {
+        // The other builds: a group, their list inside.
+        let paths = self.custom_paths();
+        let summary = if paths.is_empty() { tr!("None").to_string() } else { paths.join(", ") };
+        v.push(item(Row::group("g:wine-paths", tr!("Custom Wine / Proton paths")).summary(summary), Act::None));
+        let first = v.len();
+        for (i, p) in paths.into_iter().enumerate() {
             v.push(item(
                 Row::info(SharedString::from(format!("wp:{i}")), p.clone(), tr!("A removes")),
                 Act::Do(Rc::new(move |this, _, cx| {
@@ -852,6 +889,9 @@ impl SettingsPanel {
                 }
             })
         }));
+        for i in &mut v[first..] {
+            i.row = i.row.clone().child_of("g:wine-paths");
+        }
         v
     }
 
@@ -1092,7 +1132,7 @@ impl PadTarget for SettingsPanel {
         if clears && row.enabled {
             v.push(hint(Btn::X, tr!("Clear")));
         }
-        v.extend(crate::console::list::hint_for(row));
+        v.extend(self.console_list.hints(&rows));
         v
     }
 }

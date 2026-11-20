@@ -84,7 +84,9 @@ impl SettingsPanel {
             }
             _ => {}
         }
-        v
+        // How it is limited belongs to the limit: its sub-settings.
+        let head = v.remove(0);
+        std::iter::once(head).chain(super::grouped(v)).collect()
     }
 }
 
