@@ -78,8 +78,9 @@ pub(crate) fn entry(info: &mut GameInfo, game: &Game, transfer: &Transfer) {
     let program = transfer.start.program();
     let parent = || Path::new(program).parent().map(|p| p.to_string_lossy().into_owned()).filter(|p| !p.is_empty());
     // A program's folder stands in for a game with none, so it stays
-    // Playnite's (`launchers::managed_paths`).
-    let folder = game.folder.clone().or_else(|| matches!(transfer.start, Start::Program { .. }).then(parent).flatten());
+    // Playnite's (`launchers::managed_paths`); never a drive's root.
+    let own_folder = || parent().filter(|p| Path::new(p).components().count() > 2);
+    let folder = game.folder.clone().or_else(|| matches!(transfer.start, Start::Program { .. }).then(own_folder).flatten());
     info.install = InstallInfo {
         executable: Some(program.to_string()),
         platform: Some("Windows".into()),

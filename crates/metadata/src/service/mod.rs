@@ -260,7 +260,11 @@ impl MetadataService {
         }
         heronite_data::json_store::update::<heronite_data::models::MetadataFile, _>(&self.paths.metadata(), |file| {
             for md in seeded {
-                file.games.insert(heronite_data::library::metadata_key(&md.runner, &md.app_name), md);
+                let key = heronite_data::library::metadata_key(&md.runner, &md.app_name);
+                // A fetch stored while the pictures were copied wins.
+                if file.games.get(&key).is_none_or(|e| e.field_sources.is_empty()) {
+                    file.games.insert(key, md);
+                }
             }
             Ok(())
         })
