@@ -262,6 +262,13 @@ fn loads(seen: &RangeInclusive<usize>, i: usize, focus: usize) -> bool {
     seen.contains(&i) || i.abs_diff(focus) <= 2
 }
 
+/// Width of the body, design px: the window's, less the menu's rail when the
+/// theme keeps one on screen (it insets the content).
+fn body_width(window: &Window) -> f32 {
+    let rail = super::sidebar::rail_inset().map_or(0., |(_, w)| f32::from(w));
+    (f32::from(crate::ui::content_size(window).width) - rail) / kit::scale()
+}
+
 /// Height of the body under the shell's top bar (and above its hint bar), design px.
 fn body_height(window: &Window, hints: bool) -> f32 {
     /// Height of the shell's top bar and hint bar around the body, design px.
