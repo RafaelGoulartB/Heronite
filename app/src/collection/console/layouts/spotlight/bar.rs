@@ -13,6 +13,11 @@ use crate::theme;
 
 /// The tabs, centred in the top bar (it is `relative`).
 pub(in crate::collection::console) fn spotlight_tabs(names: &[SharedString], active: usize, lift: f32) -> Div {
+    spotlight_tabs_in(names, active, lift, theme::text_muted().into())
+}
+
+/// [`spotlight_tabs`] with the tabs that are not current in `idle`.
+pub(in crate::collection::console) fn spotlight_tabs_in(names: &[SharedString], active: usize, lift: f32, idle: Hsla) -> Div {
     let tabs = div()
         .flex()
         .items_center()
@@ -33,7 +38,7 @@ pub(in crate::collection::console) fn spotlight_tabs(names: &[SharedString], act
                         .py(u(5.))
                         .text_size(u(14.5))
                         .font_weight(if on { theme::W_BOLD } else { theme::W_REGULAR })
-                        .text_color(motion::mix(theme::text_muted(), theme::console_on_focus(), k))
+                        .text_color(motion::mix(idle, theme::console_on_focus(), k))
                         .whitespace_nowrap()
                         .child(label),
                 )

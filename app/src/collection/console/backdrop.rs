@@ -188,7 +188,7 @@ fn scrim_layers(scrim: Scrim) -> Vec<Div> {
         Scrim::Home => vec![layer(180., 0.78, 0., 0.36), layer(90., 0.82, 0., 0.58), layer(0., 0.9, 0., 0.42)],
         // The game's block on the left and the covers at the bottom: a soft
         // vignette there, and a little at the top for the tabs.
-        Scrim::Cinema => vec![layer(0., 0.95, 0., 0.6), layer(90., 0.8, 0., 0.6), layer(180., 0.66, 0., 0.24)],
+        Scrim::Cinema => vec![layer(0., 0.95, 0., 0.6), layer(90., 0.8, 0., 0.6), layer(180., 0.8, 0., 0.2)],
         Scrim::Carousel => vec![layer(0., 0.94, 0., 0.5), layer(180., 0.72, 0., 0.34), layer(90., 0.6, 0., 0.3), layer(270., 0.6, 0., 0.3)],
         Scrim::Full => vec![layer(0., 0.86, 0.7, 1.)],
         Scrim::Glass => vec![layer(0., 0.3, 0.3, 1.), layer(180., 0.5, 0., 0.3), layer(90., 0.5, 0., 0.45)],

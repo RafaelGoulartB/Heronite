@@ -36,8 +36,10 @@ const HINTS_ROOM: f32 = 70.;
 /// Between the game's block and the row.
 const BLOCK_GAP: f32 = 46.;
 /// The logo's box, and the name's size without one.
-const LOGO: (f32, f32) = (600., 170.);
-const NAME: f32 = 46.;
+const LOGO: (f32, f32) = (720., 210.);
+/// Between the logo and its facts.
+const LOGO_GAP: f32 = 8.;
+const NAME: f32 = 54.;
 /// Heights of the facts and genres lines.
 const FACTS_H: f32 = 44.;
 const GENRES_H: f32 = 24.;
@@ -70,13 +72,28 @@ impl Default for Nav {
 
 /// The left edge of the row and of the game's block: a share of the width,
 /// within reason.
-fn side(vw: f32) -> f32 {
+pub(super) fn side(vw: f32) -> f32 {
     (vw * 0.07).clamp(46., 150.)
 }
 
 /// The covers' height in a body `body_h` tall: about a third of the screen.
 fn cover_h(body_h: f32) -> f32 {
     (body_h * 0.36).clamp(170., 290.)
+}
+
+/// Where the row of covers `tw` wide (`GAP` apart, from `side` in a view
+/// `view` wide, now at `current`) scrolls for cover `i` to show whole with
+/// a little more than half a cover beside it: as little as it takes.
+fn row_offset(i: usize, tw: f32, side: f32, view: f32, current: f32) -> f32 {
+    let x = side + i as f32 * (tw + GAP);
+    let margin = (tw * 0.6).min((view - tw) / 2.).max(0.);
+    if x - margin < current {
+        (x - side).max(0.)
+    } else if x + tw + margin > current + view {
+        x + tw + margin - view
+    } else {
+        current
+    }
 }
 
 /// One fact: a small label over its value, centred.
@@ -86,54 +103,84 @@ fn fact(label: &str, value: Div) -> Div {
         .flex_col()
         .items_center()
         .gap(u(3.))
-        .child(div().text_size(u(10.)).font_weight(theme::W_BOLD).text_color(theme::text_muted()).child(label.to_uppercase()))
+        .child(label_caps(label))
         .child(value.h(u(22.)).flex().items_center().gap(u(7.)).text_size(u(16.)).font_weight(theme::W_BOLD).text_color(kit::strong()))
 }
 
-/// A thin rule between two facts.
-fn rule() -> Div {
-    div().flex_none().w(px(1.)).h(u(30.)).mx(u(20.)).bg(kit::ink(0.24))
+/// A small label in spaced capitals (the facts', the sections' headings).
+pub(super) fn label_caps(label: &str) -> Div {
+    div().text_size(u(9.5)).font_weight(theme::W_BOLD).text_color(kit::ink(0.72)).whitespace_nowrap().child(kit::spaced_caps(label))
 }
 
-/// The game's name in spaced capitals (no logo).
-fn spaced_name(title: &str, width: f32) -> Div {
-    let size = name_size(title.chars().count(), width);
+/// A thin rule of champagne between two facts.
+fn rule() -> Div {
+    let gold: Hsla = theme::console_focus().into();
+    div().flex_none().w(px(1.)).h(u(30.)).mx(u(20.)).bg(gold.opacity(0.35))
+}
+
+/// A letter, on average, in shares of the type's size; the space between two words.
+const LETTER_W: f32 = 0.56;
+const WORD_GAP: f32 = 0.28;
+
+/// The game's name as written (no logo), in large title type: each word kept
+/// whole, the words wrapping between them, centred, two lines at most.
+fn title_name(title: &str, width: f32) -> Div {
+    let words: Vec<&str> = title.split_whitespace().collect();
+    let size = name_size(&words, width);
     div()
+        .flex()
+        .flex_wrap()
+        .justify_center()
+        .gap_x(u(size * WORD_GAP))
         .font_family(kit::heading_font())
         .font_weight(theme::W_BOLD)
         .text_size(u(size))
         .line_height(u(size * 1.2))
         .text_color(kit::strong())
-        .text_center()
-        .line_clamp(2)
-        .child(spaced_words(title))
+        .children(words.into_iter().map(|w| div().whitespace_nowrap().child(w.to_string())))
 }
 
-/// `title` in capitals, its letters spaced with a narrow space that never
-/// breaks, so a line breaks between words only.
-fn spaced_words(title: &str) -> String {
-    title
-        .split_whitespace()
-        .map(|w| w.to_uppercase().chars().map(String::from).collect::<Vec<_>>().join("\u{202f}"))
-        .collect::<Vec<_>>()
-        .join("\u{2002}")
+/// The lines whole words `widths` wide take in `width`, `gap` between two
+/// words on a line: the words of each line, by index.
+fn wrap_words(widths: &[f32], gap: f32, width: f32) -> Vec<Vec<usize>> {
+    let mut lines: Vec<Vec<usize>> = Vec::new();
+    let mut used = 0.;
+    for (i, &w) in widths.iter().enumerate() {
+        match lines.last_mut() {
+            Some(line) if used + gap + w <= width => {
+                line.push(i);
+                used += gap + w;
+            }
+            _ => {
+                lines.push(vec![i]);
+                used = w;
+            }
+        }
+    }
+    lines
 }
 
-/// The size of a name of `chars` characters in spaced capitals, so it takes
-/// at most two lines of `width` design px (a spaced capital, with its
-/// space, is about as wide as the size; a line breaks between words, so
-/// the longer line gets a little more).
-fn name_size(chars: usize, width: f32) -> f32 {
-    let per_line = (chars as f32 * 0.6).max(8.);
-    (width / (per_line * 1.05)).clamp(26., NAME)
+/// The largest size (down to 26) at which the name `words` takes at most two
+/// lines of `width` design px, its longest line of whole words inside it.
+fn name_size(words: &[&str], width: f32) -> f32 {
+    let fits = |size: f32| {
+        let widths: Vec<f32> = words.iter().map(|w| w.chars().count() as f32 * size * LETTER_W).collect();
+        let lines = wrap_words(&widths, size * WORD_GAP, width);
+        lines.len() <= 2 && widths.iter().all(|w| *w <= width)
+    };
+    let mut size = NAME;
+    while size > 26. && !fits(size) {
+        size -= 1.;
+    }
+    size
 }
 
 /// A soft shade with no edges behind the game's block, so it reads over
 /// bright art without darkening the rest (a blurred shadow of the
 /// background colour spreading from a line with no height).
-fn block_shade(w: f32, h: f32) -> Div {
+pub(super) fn block_shade(w: f32, h: f32) -> Div {
     let mut c = theme::console_bg();
-    c.a = if kit::light() { 0.55 } else { 0.5 };
+    c.a = if kit::light() { 0.6 } else { 0.62 };
     div().absolute().left(u(w * 0.15)).right(u(w * 0.15)).top(u(h / 2.)).h(px(0.)).shadow(vec![BoxShadow {
         color: c.into(),
         offset: point(px(0.), px(0.)),
@@ -263,12 +310,12 @@ impl CollectionView {
 
     /// The game's block: the logo (or the name), the facts and the genres,
     /// centred on each other; it comes in as `id` says.
-    fn cinema_block(&mut self, g: &CollectionGame, id: &str, slide: f32, width: f32, window: &Window) -> Div {
+    pub(super) fn cinema_block(&mut self, g: &CollectionGame, id: &str, slide: f32, width: f32, logo_h: f32, window: &Window) -> Div {
         let key = SharedString::from(g.key.clone());
         let logo_w = LOGO.0.min(width);
-        let name = match self.console_logo(&key, logo_w, LOGO.1, true, window) {
-            Some(src) => logo_element(src, logo_w, LOGO.1, window),
-            None => spaced_name(&g.title, width).max_w(u(width)).into_any_element(),
+        let name = match self.console_logo(&key, logo_w, logo_h, true, window) {
+            Some(src) => logo_element(src, logo_w, logo_h, window),
+            None => title_name(&g.title, width).max_w(u(width)).into_any_element(),
         };
         let genres = div()
             .h(u(GENRES_H))
@@ -277,7 +324,7 @@ impl CollectionView {
             .justify_center()
             .gap(u(18.))
             .text_size(u(14.))
-            .text_color(theme::text_muted())
+            .text_color(kit::ink(0.72))
             .children(g.details.genres.iter().take(5).map(|genre| div().whitespace_nowrap().child(genre.clone())));
         let rest = div()
             .relative()
@@ -291,7 +338,7 @@ impl CollectionView {
             .flex()
             .flex_col()
             .items_center()
-            .gap(u(14.))
+            .gap(u(LOGO_GAP))
             .child(motion::reveal(
                 SharedString::from(format!("{id}-logo")),
                 div().relative().flex().justify_center().child(name),
@@ -358,13 +405,14 @@ impl CollectionView {
         if let (Some(g), false) = (game.as_ref(), moving) {
             let id = format!("cinema-{tab}-{focused}-{returns}");
             let block_w = (vw * 0.5).clamp(520., 900.);
-            let block = self.cinema_block(g, &id, LOGO_SLIDE, block_w, window);
+            let block = self.cinema_block(g, &id, LOGO_SLIDE, block_w, LOGO.1, window);
             let shade_h = LOGO.1 + FACTS_H + GENRES_H + 70.;
             over = over
                 .child(
                     div().absolute().left(u(side)).w(u(block_w)).bottom(u(block_bottom)).h(u(shade_h)).child(block_shade(block_w, shade_h)),
                 )
-                .child(div().absolute().left(u(side)).w(u(block_w)).bottom(u(block_bottom)).flex().justify_center().child(block));
+                // At the left edge of the row, as wide as its widest line.
+                .child(div().absolute().left(u(side)).max_w(u(block_w)).bottom(u(block_bottom)).child(block));
             if let Some(ach) = self.cinema_achievements(g, cx).filter(|_| vw >= block_w + side * 2. + ACH_W + 40.) {
                 let ach =
                     motion::reveal(SharedString::from(format!("{id}-ach")), ach.relative(), motion::REST_HOLD, motion::REST_FADE, 0., 0.);
@@ -450,7 +498,18 @@ impl CollectionView {
             nav.index = to;
             nav.hidden = true;
             nav.moving_until = Some(Instant::now() + SETTLE);
-            nav.row.go(Goal::Reveal { ix: to, margin: tw * 0.6 });
+            // Worked out from the row's fixed geometry (not the last layout's
+            // bounds), so the focused cover is always whole in view. Round the
+            // end of the row: there at once, not a glide past every cover.
+            let k = kit::scale();
+            let view = super::body_width(window);
+            let current = -f32::from(nav.row.handle().offset().x) / k;
+            let goal = Goal::Offset(row_offset(to, tw, side(view), view, current) * k);
+            if to.abs_diff(i) > 1 {
+                nav.row.jump(goal);
+            } else {
+                nav.row.go(goal);
+            }
             // Drawn again once the focus rests, for the block to come back.
             nav.wake = Some(cx.spawn(async move |this, cx| {
                 cx.background_executor().timer(SETTLE + Duration::from_millis(20)).await;
@@ -488,16 +547,39 @@ mod tests {
     use core::prelude::v1::test;
 
     #[test]
-    fn spaced_names_break_between_words_only() {
-        assert_eq!(spaced_words("Ab cd"), "A\u{202f}B\u{2002}C\u{202f}D");
+    fn words_wrap_whole_between_them() {
+        // 100 + 10 + 100 fits 250; the third goes to a new line.
+        assert_eq!(wrap_words(&[100., 100., 100.], 10., 250.), [vec![0, 1], vec![2]]);
+        // A word wider than the line still gets a line of its own, whole.
+        assert_eq!(wrap_words(&[300., 50.], 10., 250.), [vec![0], vec![1]]);
+        assert!(wrap_words(&[], 10., 250.).is_empty());
     }
 
     #[test]
-    fn a_long_name_shrinks_to_two_lines() {
-        assert_eq!(name_size(10, 600.), NAME);
-        let size = name_size(30, 540.);
-        assert!(size < NAME && 30. * 0.6 * size * 1.05 <= 540.5, "{size}");
-        assert_eq!(name_size(200, 300.), 26.);
+    fn a_long_name_shrinks_until_its_words_fit_two_lines() {
+        let short = ["Brotato"];
+        assert_eq!(name_size(&short, 600.), NAME);
+        let zelda = ["The", "Legend", "of", "Zelda:", "Ocarina", "of", "Time"];
+        let size = name_size(&zelda, 540.);
+        assert!(size < NAME);
+        let widths: Vec<f32> = zelda.iter().map(|w| w.chars().count() as f32 * size * LETTER_W).collect();
+        let lines = wrap_words(&widths, size * WORD_GAP, 540.);
+        assert!(lines.len() <= 2, "{lines:?}");
+        // "Ocarina" stays whole: no line starts inside a word.
+        assert!(lines.iter().flatten().count() == zelda.len());
+        assert_eq!(name_size(&["Supercalifragilisticexpialidocious"], 300.), 26.);
+    }
+
+    #[test]
+    fn the_row_scrolls_just_enough_to_show_the_focused_cover_whole() {
+        // In view: stays.
+        assert_eq!(row_offset(1, 200., 100., 2000., 0.), 0.);
+        // Past the right edge: it comes in whole with room beside it.
+        let o = row_offset(9, 200., 100., 2000., 0.);
+        let x = 100. + 9. * (200. + GAP);
+        assert!(x >= o && x + 200. <= o + 2000. && x + 200. + 120. - 0.01 <= o + 2000.);
+        // Back to the start: the row's own start.
+        assert_eq!(row_offset(0, 200., 100., 2000., 900.), 0.);
     }
 
     #[test]

@@ -542,11 +542,17 @@ fn action_rank(btn: Btn) -> u8 {
 /// [`hint_bar`]; `live` false draws it without taking any click (a bar
 /// faded out over the screen).
 pub fn hint_bar_with(hints: &[Hint], live: bool) -> Div {
+    hint_bar_at(hints, live, 46.)
+}
+
+/// [`hint_bar_with`] `side` design px from the window's edges (a layout
+/// lining it up with its own edge).
+pub fn hint_bar_at(hints: &[Hint], live: bool, side: f32) -> Div {
     let keys = look::glyphs() == Glyphs::Keyboard;
     let row = |h: &Hint| hint_row(h, keys, 13.5, 9., live);
     let mut actions: Vec<&Hint> = hints.iter().filter(|h| !system_hint(h.btn)).collect();
     actions.sort_by_key(|h| action_rank(h.btn));
-    let bar = div().flex().flex_none().items_center().gap(u(30.)).h(u(60.)).px(u(46.));
+    let bar = div().flex().flex_none().items_center().gap(u(30.)).h(u(60.)).px(u(side));
     let bar = if live { bar.eats_clicks() } else { bar };
     bar.children(hints.iter().filter(|h| system_hint(h.btn)).map(row)).child(div().flex_1()).children(actions.into_iter().map(row))
 }

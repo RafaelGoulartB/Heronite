@@ -134,9 +134,10 @@ pub(super) struct ConsoleUi {
 
 /// The hint bar over the bottom of the screen, on a fade of the background
 /// colour; it fades in and rises a little while `shown`, and back out.
-fn floating_hints(hints: &[Hint], shown: bool) -> AnyElement {
+/// `side`: its distance from the window's edges, design px.
+fn floating_hints(hints: &[Hint], shown: bool, side: f32) -> AnyElement {
     // Hidden, it is only faded out: it must not take clicks meant for what is under it.
-    let bar = kit::hint_bar_with(hints, shown).bg(kit::hint_shade());
+    let bar = kit::hint_bar_at(hints, shown, side).bg(kit::hint_shade());
     let layer = div().absolute().left_0().right_0().bottom_0();
     motion::spring("console-hints-float", layer.child(bar), motion::SOFT, shown, |d, k| {
         let k = k.clamp(0., 1.);
@@ -858,8 +859,9 @@ impl CollectionView {
     /// the current one's name, centred (`Title`) or nothing (`Bottom`: the
     /// tabs go along the bottom, see `console_bottom_tabs`); status icons,
     /// clock.
-    /// `downloads`: how many games download (Cinema's status icons count them).
-    fn console_top_bar(&self, downloads: usize) -> Div {
+    /// `downloads`: how many games download and how far the first one is
+    /// (Cinema's status icons show them).
+    fn console_top_bar(&self, downloads: (usize, Option<f32>)) -> Div {
         let theme = look::theme();
         let names: Vec<SharedString> = theme.tabs.iter().map(tab_label).collect();
         let label = theme.interface.label.trim().to_string();
@@ -882,8 +884,8 @@ impl CollectionView {
                 d.child(div().absolute().top_0().bottom_0().left_0().right_0().flex().items_center().justify_center().child(title))
             })
             .child(div().flex_1())
-            .children(self.activity_in_bar())
-            .map(|d| match self.layout_status(downloads) {
+            .children(self.activity_in_bar().filter(|_| self.layout_activity_fits()))
+            .map(|d| match self.layout_status(downloads.0, downloads.1) {
                 // Cinema's cluster of status icons, the clock among them.
                 Some(status) => d.child(status),
                 None => d
@@ -954,7 +956,10 @@ impl CollectionView {
         // The tabs take clicks only while LB / RB switch them.
         let tabs_input = self.tabs_in_focus() && !self.console.results;
         let blocked = |d: Div| if tabs_input { d } else { d.child(div().absolute().inset_0().occlude()) };
-        let downloads = crate::services::try_downloads(cx).map_or(0, |d| d.read(cx).snapshot().queue.len());
+        let downloads = crate::services::try_downloads(cx).map_or((0, None), |d| {
+            let snap = d.read(cx).snapshot();
+            (snap.queue.len(), snap.current.as_ref().and_then(|(_, p)| p.as_ref()).map(|p| (p.percent / 100.) as f32))
+        });
         let top_bar = keeps_tabs.then(|| blocked(self.console_top_bar(downloads)));
         let bottom_tabs = if keeps_tabs { self.console_bottom_tabs().map(|d| blocked(d.relative())) } else { None };
         let scrim = if on_page {
@@ -969,6 +974,7 @@ impl CollectionView {
         let backdrop = self.render_console_backdrop(scrim, window, cx);
         let hints_on = self.hints_visible();
         let float = ach || (!on_page && game_key.is_none() && layouts::hints_float(spec.layout));
+        let hint_side = if !on_page && game_key.is_none() && !ach { self.layout_hint_side(window).unwrap_or(46.) } else { 46. };
         let hints = if hints_on || float { self.console_hints(cx) } else { Vec::new() };
         let idle = self.render_idle(window, cx);
         let customize = self.render_console_customize();
@@ -1034,7 +1040,7 @@ impl CollectionView {
             .when(hints_on && !float, |d| {
                 d.child(div().absolute().left_0().right_0().bottom_0().child(kit::hint_bar(&hints).bg(kit::hint_shade())))
             })
-            .when(float, |d| d.child(floating_hints(&hints, hints_on)))
+            .when(float, |d| d.child(floating_hints(&hints, hints_on, hint_side)))
             .children(idle)
             .children(self.render_launch_layers(keeps_tabs, window, cx))
             .into_any_element()

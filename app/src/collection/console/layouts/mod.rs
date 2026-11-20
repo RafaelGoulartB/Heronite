@@ -185,16 +185,32 @@ impl CollectionView {
     pub(super) fn layout_tabs(&self, names: &[SharedString], active: usize) -> Div {
         match self.spotlight_lift() {
             Some(lift) => spotlight::spotlight_tabs(names, active, lift),
-            // Cinema: the same centred pill (in its gold).
-            None if self.console_shown_tab().1.layout == Layout::Cinema => spotlight::spotlight_tabs(names, active, 0.),
+            // Cinema: the same centred pill (in its gold), the tabs around the
+            // current one when they would come near the status icons.
+            None if self.console_shown_tab().1.layout == Layout::Cinema => {
+                let (first, last) = cinema_tab_window(names, active, kit::vw());
+                spotlight::spotlight_tabs_in(&names[first..last], active - first, 0., kit::ink(0.72))
+            }
             None => kit::tabs(names, active),
         }
+    }
+
+    /// Where Cinema's hint bar starts, design px from the edges: its row of
+    /// covers' (other layouts: `None`, the shell's own).
+    pub(super) fn layout_hint_side(&self, window: &Window) -> Option<f32> {
+        (self.console_shown_tab().1.layout == Layout::Cinema).then(|| cinema::side(body_width(window)))
+    }
+
+    /// Whether the activity pill fits beside Cinema's status icons (a narrow
+    /// window shows a download on the download icon instead).
+    pub(super) fn layout_activity_fits(&self) -> bool {
+        self.console_shown_tab().1.layout != Layout::Cinema || kit::vw() >= CINEMA_PILL_FROM
     }
 
     /// The right of the top bar in Cinema: search, the downloads with how
     /// many there are, the controller while one is connected, and the clock,
     /// as monochrome icons (`None` for the other layouts).
-    pub(super) fn layout_status(&self, downloads: usize) -> Option<Div> {
+    pub(super) fn layout_status(&self, downloads: usize, progress: Option<f32>) -> Option<Div> {
         if self.console_shown_tab().1.layout != Layout::Cinema {
             return None;
         }
@@ -225,6 +241,20 @@ impl CollectionView {
                         .font_weight(theme::W_BOLD)
                         .text_color(theme::console_on_focus())
                         .child(downloads.to_string()),
+                )
+            })
+            // Without the activity pill, the download's progress as a thin bar under the icon.
+            .when_some(progress.filter(|_| !self.layout_activity_fits()), |d, p| {
+                d.child(
+                    div()
+                        .absolute()
+                        .bottom(u(2.))
+                        .left(u(7.))
+                        .right(u(7.))
+                        .h(u(2.5))
+                        .rounded_full()
+                        .bg(kit::ink(0.2))
+                        .child(div().h_full().rounded_full().bg(theme::console_focus()).w(relative(p.clamp(0.04, 1.)))),
                 )
             })
             .on_mouse_down(
@@ -319,6 +349,21 @@ fn in_sight(scroll: Pixels, step: f32, view: Pixels) -> RangeInclusive<usize> {
 /// Whether item `i` of a row loads its picture: in sight (`seen`) or near the focus.
 fn loads(seen: &RangeInclusive<usize>, i: usize, focus: usize) -> bool {
     seen.contains(&i) || i.abs_diff(focus) <= 2
+}
+
+/// Below this width (design px) Cinema's top bar leaves the activity pill out.
+const CINEMA_PILL_FROM: f32 = 1500.;
+/// Room Cinema's status icons take on the right of the top bar (with the
+/// bar's padding), and the least space between them and the tabs, design px.
+const CINEMA_STATUS_W: f32 = 46. + 170.;
+const CINEMA_TABS_CLEAR: f32 = 48.;
+
+/// The tabs `first..last` of Cinema's top bar that fit centred in a window
+/// `vw` design px wide, clear of the status icons on both sides.
+fn cinema_tab_window(names: &[SharedString], active: usize, vw: f32) -> (usize, usize) {
+    let room = vw - 2. * (CINEMA_STATUS_W + CINEMA_TABS_CLEAR) - 2. * 40.;
+    let widths: Vec<f32> = names.iter().map(|n| kit::text_w(n.chars().count(), 14.5) + 30.).collect();
+    kit::fit_row(&widths, 4., active, room)
 }
 
 /// Width of the body, design px: the window's, less the menu's rail when the
