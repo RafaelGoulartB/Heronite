@@ -550,9 +550,25 @@ impl CollectionView {
         }
         self.show_console_hints(cx);
         if self.dialog.is_some() {
-            let used = self.dialog_hook.clone().is_some_and(|h| h.pad(pad, window, cx));
-            if !used && pad == Pad::B {
-                self.close_console_dialog();
+            // The dialog gets the press once this update is over: what it does
+            // may call back into the Collection (Choose disc and "How do you
+            // want to play?" launch through it), which cannot be updated
+            // while it is still handling the press.
+            match self.dialog_hook.clone() {
+                Some(hook) => {
+                    let me = cx.entity().downgrade();
+                    window.defer(cx, move |window, cx| {
+                        if !hook.pad(pad, window, cx) && pad == Pad::B {
+                            me.update(cx, |this, cx| {
+                                this.close_console_dialog();
+                                cx.notify();
+                            })
+                            .ok();
+                        }
+                    });
+                }
+                None if pad == Pad::B => self.close_console_dialog(),
+                None => {}
             }
             return;
         }
