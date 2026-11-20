@@ -1212,6 +1212,12 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   up from the bottom (`kit::hint_shade`), the menu and tabs on the left, the actions on the right with A last, the
   glyphs monochrome (a disc of the strong ink with its letter or symbol cut out, outlined caps for the shoulders),
   whatever the controller's glyph set. B goes back; Start opens the menu.
+  `u()` follows the window's height, so a 4:3 or small window has fewer design px across than the design's 1280
+  (1730×1280: about 1080; `kit::vw()` gives it each frame): whatever sits side by side works from it, never from a
+  fixed width. Rows of tabs that do not fit show the ones around the current tab (`kit::fit_row`, `tabs_within`);
+  layouts measure their room with `layouts::body_width` (less the menu's rail); Spotlight's and Showcase's page puts
+  its sidebar under the left column below `page::STACK_BELOW`. Check new screens at 1280×800, 1730×1280, 1920×1080,
+  2560×1080 and 3440×1440 (a floating window resized with `hl.dsp.window.resize`).
 - **Console themes** (`heronite_data::console_theme`, shareable JSON; `console.json` holds the one in use and the
   machine options, `console-themes/` the saved ones, each with its picture as `<id>.background-<hash>.<ext>`; an
   export carries the picture inside as a `data:` URL and leaves out a local path it does not use, an import writes it
