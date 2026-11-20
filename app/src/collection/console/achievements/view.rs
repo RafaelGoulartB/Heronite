@@ -25,6 +25,8 @@ const RING: f32 = 6.;
 const ROW_ICON: f32 = 50.;
 const RECENT: usize = 12;
 const RECENT_ICON: f32 = 46.;
+/// Width of the progress on the right of the header (the four trophies).
+const PROGRESS_W: f32 = 4. * 64. + 3. * 18.;
 /// The card of one achievement.
 const CARD_W: f32 = 540.;
 const CARD_ICON: f32 = 150.;
@@ -355,7 +357,10 @@ impl CollectionView {
                 }
 
                 // Recently unlocked: look only.
-                let recent = listing::recent_icons(set, RECENT);
+                // As many as fit beside the progress (a narrow window has fewer).
+                let room = col_w - PROGRESS_W - 40.;
+                let fit = (((room + 10.) / (RECENT_ICON + 10.)).floor().max(0.) as usize).min(RECENT);
+                let recent = listing::recent_icons(set, fit);
                 if !recent.is_empty() {
                     let icons: Vec<Div> = recent
                         .iter()
@@ -544,7 +549,7 @@ fn progress(set: &AchievementSet) -> Div {
             .children(small);
     }
     // As wide as the four trophies, so the bar does not jump when the rarity arrives.
-    let board_w = 4. * 64. + 3. * 18.;
+    let board_w = PROGRESS_W;
     let board = tiers.map(|t| {
         div().flex().gap(u(18.)).children(listing::TIERS.iter().zip(t).map(|(tier, (got, all))| {
             div()
