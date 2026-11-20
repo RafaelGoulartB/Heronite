@@ -1240,8 +1240,16 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   Minimal's Carousel: covers spaced evenly (a fixed gap at every step of the turn), the far ones smaller, darker and
   rising a little, each over its real reflection (`heronite_images::Variant::Reflection`, `cr:` textures) on the
   blurred cover glowing through a vignette (`Scrim::Carousel`); a thin ring a little way out marks the focus; under it
-  the name (long ones shrink), the facts and the place in the list (letter, a line with a gliding mark, "n of N"),
-  sliding in from the side the focus came from, each line of a fixed height so the covers never move. LT / RT jump by letter (the letter flashes over the covers), LB / RB
+  the name (long ones shrink), the facts as Pulse's (small-caps labels over values: playtime, last played, platform,
+  and the status with a dot of its colour) and the place in the list (letter, a line with a gliding mark, "n of N"),
+  each line of a fixed height so the covers never move. A new game's name holds 0.3 s, then fades in over 0.45 s
+  sliding from the side the focus came from; the facts and the place follow 0.15 s later over 0.3 s (the place never
+  from blank, so a held direction reads); the same game never replays it. The filters are Installed (the default),
+  All, Favourites and Playing: with one tab they sit in the top bar like Pulse's tabs (LB, the names, the current one
+  in a pill, RB; centred, Pulse's clock at the right; ↑ rings the current one), else in a row above the covers.
+  `KeptFilters::carousel` keeps the filter by what it shows (0 All, 1 Installed, ...), not by its place in the row,
+  so a choice saved before Installed came first still shows the same games. An empty filter says what it has none
+  of, with LB / RB for another. LT / RT jump by letter (the letter flashes over the covers), LB / RB
   change the filter when the theme has one tab (the focused game stays when it passes it), the covers fan out from the
   middle on first show and on a new filter; A opens the Sheet game page over the carousel: a window floating
   along the left edge (inset, round corners) over a dim of the whole window, sliding in from the left
