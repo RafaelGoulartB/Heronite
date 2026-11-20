@@ -1242,6 +1242,21 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   page (Pulse: the Sheet over Spotlight). With `Hints::Auto` the hint bar floats (`layouts::hints_float`).
   `HERONITE_DEBUG_SPOTLIGHT=<zone>[:<n>]` (`actions`, `media`, `viewer`, `about`, `sheet`, `achievements`, `links`,
   `cards`, `shots`, `related`) opens a section, on the row's `n`th game.
+  **Achievements (console)** (`collection/console/achievements/`): one game's achievements full screen over its art
+  (no top bar), reached from the game page's "Achievements" action in every theme (a row of the actions, a button on
+  Hero, a row of the Sheet) and from anything that calls `open_console_achievements(key)`; B goes back to where it
+  was opened. The logo and "Recently unlocked" (12 icons, look only) on the left; on the right the rarity tiers'
+  trophies with unlocked / total, the percentage with its bar and "n of N unlocked · last on <day>" (at 100% a gold
+  medallion instead); pills All / Unlocked / Locked with their counts between LB and RB (both clickable); a
+  one-column list (icon, name, description; tier, rarity and the unlock day or "Not unlocked" / a counted progress on
+  the right) with a ring on the focused row, gliding to it (`Goal::Offset` from the fixed row pitch; only the rows near
+  the view are built, so long lists stay cheap) and fading at its top once scrolled and above the floating hint bar.
+  Y switches the order (Default order, the game's; Newest first; Rarest first), a new filter or order starts at the
+  top. A opens a card over a dim (big icon with its tier on the corner, the whole name and description, "<n>% of
+  players", "Unlocked <day>"); ↑ ↓ step it through the list, X reveals a hidden secret, A / B or a click on the dim
+  close it. The wheel and the right stick scroll the list, and the next arrow brings the focus back into view. A ROM
+  without the RetroAchievements account, an unmatched ROM, loading and an empty game each get a message.
+  `HERONITE_DEBUG_CONSOLE_ACH=<game key or app name>[:detail]` opens it at start (with the card).
   Y on any tab opens the Filters panel along the right edge (`collection/console/filters.rs`): the search field first
   and focused (A opens the keyboard, a physical keyboard types into it), Show with counts, Sort, Favourites only,
   Status, Category and Smart group (every group, by name; the grid's Show chip then reads "<group> · <show>"); X resets them. They edit the filters of the tab's grid, else the theme's first Grid tab (the
