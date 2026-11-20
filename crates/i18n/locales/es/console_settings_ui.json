@@ -1,5 +1,12 @@
 {
+  "Every field follows the list order": "Todos los campos siguen el orden de la lista",
   "Groups": "Grupos",
   "No settings match.": "Ningún ajuste coincide.",
-  "Sections and settings, by their names and descriptions.": "Secciones y ajustes, por sus nombres y descripciones."
+  "Sections and settings, by their names and descriptions.": "Secciones y ajustes, por sus nombres y descripciones.",
+  "{n} field set by you": "{n} campo elegido por ti",
+  "{n} fields set by you": "{n} campos elegidos por ti",
+  "{n} item": "{n} elemento",
+  "{n} items": "{n} elementos",
+  "{n} more setting": "{n} opción más",
+  "{n} more settings": "{n} opciones más"
 }

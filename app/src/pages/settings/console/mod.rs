@@ -29,7 +29,7 @@ use super::{
     SettingsPage,
 };
 use crate::console::kit::{self, u};
-use crate::console::list::{self, Outcome, Row, RowStyle};
+use crate::console::list::{Outcome, Row, RowStyle};
 use crate::console::motion::{Axis, Glide};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::dialogs::settings_panel::logic::Section as HSection;
@@ -151,6 +151,8 @@ pub struct ConsoleState {
     side: Glide,
     side_reveal: bool,
     find: find::State,
+    /// The groups each section had open, by sidebar stop, while the page lives.
+    opened: std::collections::HashMap<usize, std::collections::HashSet<SharedString>>,
 }
 
 impl Default for ConsoleState {
@@ -166,6 +168,7 @@ impl Default for ConsoleState {
             side: Glide::new(Axis::Y),
             side_reveal: true,
             find: Default::default(),
+            opened: Default::default(),
         }
     }
 }
@@ -295,9 +298,18 @@ impl SettingsPage {
     /// Moves the sidebar to stop `nav` (its section shows).
     fn console_go(&mut self, nav: usize, window: &mut Window, cx: &mut Context<Self>) {
         if nav != self.console.nav {
-            self.console.nav = nav;
+            self.console_set_nav(nav);
             self.console_shown(window, cx);
         }
+    }
+
+    /// Moves the sidebar to stop `nav`, keeping the groups each section has open.
+    fn console_set_nav(&mut self, nav: usize) {
+        let open = self.console.list.open_groups();
+        self.console.opened.insert(self.console.nav, open);
+        self.console.nav = nav;
+        let back = self.console.opened.remove(&nav).unwrap_or_default();
+        self.console.list.set_open_groups(back);
     }
 
     /// The rows of the section shown (Search: its results).
@@ -501,7 +513,7 @@ impl PadTarget for SettingsPage {
             }
             Entry::Sec(sec) => {
                 let rows = self.console_rows(sec, cx);
-                h.extend(self.console.list.focused(&rows).and_then(list::hint_for));
+                h.extend(self.console.list.hints(&rows));
             }
         }
         h

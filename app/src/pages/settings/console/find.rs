@@ -79,7 +79,12 @@ fn search(words: &[&str], sources: &[(CSec, Vec<Row>)]) -> Vec<Hit> {
             } else {
                 continue;
             };
-            scored.push((rank, Hit::of_row(*sec, r)));
+            let mut hit = Hit::of_row(*sec, r);
+            // A sub-setting says which setting it belongs to.
+            if let Some(parent) = r.parent.as_ref().and_then(|p| rows.iter().find(|x| &x.id == p)) {
+                hit.title = format!("{} \u{b7} {} \u{203a} {}", sec.label(), parent.label, r.label).into();
+            }
+            scored.push((rank, hit));
         }
     }
     scored.sort_by_key(|(rank, _)| *rank);
@@ -180,7 +185,7 @@ impl SettingsPage {
     fn console_open_hit(&mut self, i: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(hit) = self.console.find.hits.get(i).cloned() else { return };
         let Some(nav) = entries().iter().position(|(e, _)| *e == Entry::Sec(hit.sec)) else { return };
-        self.console.nav = nav;
+        self.console_set_nav(nav);
         self.console_shown(window, cx);
         self.console.content = true;
         let Some(id) = hit.row else { return };

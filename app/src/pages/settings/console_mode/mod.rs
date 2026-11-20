@@ -427,10 +427,55 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<Row> {
             // goes with the theme's background.
             let at = rows.iter().position(|r| r.id.as_ref() == "background.motion").map_or(rows.len(), |i| i + 1);
             rows.insert(at, super::appearance::console_animated_row(d));
-            rows
+            group_tabs(rows)
         }
         None => Vec::new(),
     }
+}
+
+/// Each tab's rows (`tab.<n>.*`, under their "Tab n" heading) as a group:
+/// closed, it shows the tab's name, layout and games in one line.
+fn group_tabs(rows: Vec<Row>) -> Vec<Row> {
+    let tab_of = |id: &str| id.strip_prefix("tab.").and_then(|r| r.split_once('.')).map(|(n, _)| n.to_string());
+    let mut out: Vec<Row> = Vec::with_capacity(rows.len() + 4);
+    let mut current: Option<String> = None;
+    for r in rows {
+        match tab_of(&r.id) {
+            Some(n) => {
+                if current.as_deref() != Some(n.as_str()) {
+                    // The heading before the tab's rows becomes its group.
+                    if out.last().is_some_and(|h| h.value == crate::console::list::Value::Header) {
+                        out.pop();
+                    }
+                    let parent = format!("tab.{n}");
+                    let number = n.parse::<usize>().map_or(0, |i| i + 1);
+                    out.push(Row::group(parent, tr!("Tab {n}", n = number)));
+                    current = Some(n.clone());
+                }
+                out.push(r.child_of(format!("tab.{n}")));
+            }
+            None => {
+                current = None;
+                out.push(r);
+            }
+        }
+    }
+    // The group says the tab's name, layout and games.
+    for i in 0..out.len() {
+        if out[i].parent.is_none() && out[i].id.starts_with("tab.") && i + 1 < out.len() && out[i + 1].parent.as_ref() == Some(&out[i].id) {
+            let kids: Vec<String> = out[i + 1..]
+                .iter()
+                .take_while(|k| k.parent.as_ref() == Some(&out[i].id))
+                .filter_map(|k| match &k.value {
+                    crate::console::list::Value::Text(t) => Some(t.to_string()),
+                    crate::console::list::Value::Choice { options, index } => options.get(*index).map(|o| o.to_string()),
+                    _ => None,
+                })
+                .collect();
+            out[i].summary = Some(kids.join(" \u{b7} ").into());
+        }
+    }
+    out
 }
 
 /// X, LT and the moving of a row; whether the press was used.
@@ -458,10 +503,8 @@ pub(super) fn console_hints(d: &SettingsPage) -> Vec<Hint> {
     if s.theme.moving {
         return extra;
     }
-    let mut h = vec![
-        crate::console::hint(crate::console::Btn::A, tr!("Select")),
-        crate::console::hint(crate::console::Btn::LeftRight, tr!("Change")),
-    ];
+    // What the focused row takes (a tab's group opens with A), then X / LT.
+    let mut h = d.console.list.hints(&rows);
     h.extend(extra);
     h
 }

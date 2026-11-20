@@ -36,7 +36,9 @@ pub(in crate::pages::settings) fn console_rows(d: &SettingsPage, _cx: &App) -> V
             let id = &r.descriptor.id;
             let name = labels::name(&r.descriptor.name);
             let desc = format!("{} \u{b7} {}", labels::status_word(r.status), labels::audience(&r.descriptor));
-            rows.push(Row::toggle(format!("on:{id}"), name, r.enabled).desc(desc).enabled(r.status != SourceStatus::Unavailable));
+            // The source is a group: its switch on top, its options, place and test inside.
+            let parent = format!("on:{id}");
+            rows.push(Row::toggle(parent.clone(), name, r.enabled).desc(desc).enabled(r.status != SourceStatus::Unavailable));
             for o in &r.options {
                 let row_id = format!("opt:{id}:{}", o.option.key);
                 let label = tr(&o.option.label);
@@ -50,11 +52,13 @@ pub(in crate::pages::settings) fn console_rows(d: &SettingsPage, _cx: &App) -> V
                         Row::choice(row_id, label, options, index)
                     }
                 };
-                rows.push(row.desc(o.option.help.as_deref().map(tr).unwrap_or_default().to_string()));
+                rows.push(row.desc(o.option.help.as_deref().map(tr).unwrap_or_default().to_string()).child_of(parent.clone()));
             }
             if r.reorderable && movable > 1 {
                 rows.push(
-                    Row::number(format!("place:{id}"), tr!("Place in the list"), place as i64 + 1, 1, movable as i64, 1, "").compact(),
+                    Row::number(format!("place:{id}"), tr!("Place in the list"), place as i64 + 1, 1, movable as i64, 1, "")
+                        .compact()
+                        .child_of(parent.clone()),
                 );
             }
             if r.can_test {
@@ -63,7 +67,8 @@ pub(in crate::pages::settings) fn console_rows(d: &SettingsPage, _cx: &App) -> V
                 rows.push(
                     Row::action(format!("test:{id}"), if testing { tr!("Testing\u{2026}") } else { tr!("Test") })
                         .enabled(!testing)
-                        .desc(result),
+                        .desc(result)
+                        .child_of(parent.clone()),
                 );
             }
         }
@@ -86,17 +91,25 @@ pub(in crate::pages::settings) fn console_rows(d: &SettingsPage, _cx: &App) -> V
             tr!("Rating board shown first"),
             board_options().into_iter().map(|(_, label)| SharedString::from(label)).collect(),
             board_index(d),
-        ),
-        Row::header(tr!("Source asked first for each field")),
+        )
+        .child_of("age-show"),
     ]);
+    // The fields' first sources gather in one group: a long list few change.
+    if !st.fields.is_empty() {
+        let set = st.fields.iter().filter(|l| l.customised).count();
+        let summary = if set == 0 {
+            tr!("Every field follows the list order").to_string()
+        } else {
+            heronite_i18n::trn!(set, "{n} field set by you", "{n} fields set by you")
+        };
+        rows.push(Row::group("first", tr!("Source asked first for each field")).summary(summary));
+    }
     for line in &st.fields {
         let (options, index) = first_choices(d, line);
-        rows.push(Row::choice(
-            format!("first:{}", line.field),
-            field_label(line.field),
-            options.into_iter().map(|(_, l)| l).collect(),
-            index,
-        ));
+        rows.push(
+            Row::choice(format!("first:{}", line.field), field_label(line.field), options.into_iter().map(|(_, l)| l).collect(), index)
+                .child_of("first"),
+        );
     }
     rows
 }
