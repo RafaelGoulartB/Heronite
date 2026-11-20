@@ -647,20 +647,11 @@ impl CollectionView {
     }
 
     fn hints_visible(&self) -> bool {
-        if self.cinema_in_focus() {
-            return false;
-        }
         match look::theme().controls.hints {
             Hints::Always => true,
             Hints::Off => false,
             Hints::Auto => self.console.hints_until.is_some_and(|t| Instant::now() < t),
         }
-    }
-
-    /// Cinema keeps the whole screen to itself: no hint bar while its covers
-    /// have the focus (a dialog, menu or page over it still shows its own).
-    fn cinema_in_focus(&self) -> bool {
-        self.tabs_in_focus() && self.console_shown_tab().1.layout == Layout::Cinema
     }
 
     /// The tab's layout takes the presses: no page, game page, dialog, menu

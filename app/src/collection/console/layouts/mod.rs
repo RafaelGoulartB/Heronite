@@ -68,7 +68,7 @@ pub(super) fn scrim(layout: Layout) -> Scrim {
 /// (`Hints::Auto`) instead of taking its room: the screen never moves when it
 /// comes and goes. Spotlight keeps that room clear itself.
 pub(super) fn hints_float(layout: Layout) -> bool {
-    layout == Layout::Spotlight && look::theme().controls.hints == Hints::Auto
+    matches!(layout, Layout::Spotlight | Layout::Cinema) && look::theme().controls.hints == Hints::Auto
 }
 
 /// `i` moved by `delta` in `0..n`, going round when `wrap`.
@@ -223,7 +223,7 @@ impl CollectionView {
     pub(super) fn layout_hints(&self, tab: usize, spec: &TabSpec) -> Vec<Hint> {
         match spec.layout {
             Layout::Shelves => self.shelves_hints(tab, spec),
-            Layout::Cinema => self.console_cover_hints(),
+            Layout::Cinema => self.shelves_hints(tab, spec),
             Layout::Spotlight => self.spotlight_hints(tab, spec),
             Layout::Dashboard => self.dashboard_hints(tab, spec),
             Layout::Grid => self.grid_hints(tab, spec),
@@ -334,25 +334,20 @@ pub(crate) struct ShelfNav {
     from: (f32, f32),
     /// Counts the moves (part of the slide's id: every move replays it).
     moves: u64,
+    /// Where Cinema last sent its view (design px), so it is sent once.
+    goal: Option<f32>,
 }
 
 impl Default for ShelfNav {
     fn default() -> Self {
-        Self { shelf: 0, lines: ShelfLines::default(), shelves: Glide::new(Axis::Y), from: (1., 0.), moves: 0 }
+        Self { shelf: 0, lines: ShelfLines::default(), shelves: Glide::new(Axis::Y), from: (1., 0.), moves: 0, goal: None }
     }
 }
 
 impl ShelfNav {
-    /// Keeps the focus on the (non-empty) `shelves`; the focused game's key.
-    fn sync(&mut self, shelves: &[Shelf]) -> SharedString {
-        self.shelf = self.shelf.min(shelves.len() - 1);
-        self.lines.sync(shelves);
-        shelves[self.shelf].keys[self.lines.cols[self.shelf]].clone()
-    }
-
-    /// [`Self::sync`] for shelves that end with a "View all" tile: the
-    /// focused game (the last one of the shelf while that tile has the
-    /// focus) and whether the tile has it.
+    /// Keeps the focus on the (non-empty) `shelves`, which end with a "View
+    /// all" tile when the theme cut them: the focused game (the last one of
+    /// the shelf while that tile has the focus) and whether the tile has it.
     fn sync_more(&mut self, shelves: &[Shelf]) -> (SharedString, bool) {
         self.shelf = self.shelf.min(shelves.len() - 1);
         self.lines.sync_with(shelves, true);
@@ -382,8 +377,8 @@ impl CollectionView {
         }
         let (tw, _) = self.console_tile_size();
         let wrap = look::theme().nav.wrap;
-        // Shelves end a cut shelf with a "View all" tile.
-        let more = spec.layout == Layout::Shelves;
+        // Shelves and Cinema end a cut shelf with a "View all" tile.
+        let more = matches!(spec.layout, Layout::Shelves | Layout::Cinema);
         let nav = nav(self.tab_nav(tab));
         nav.lines.fit(shelves.len());
         let si = nav.shelf.min(shelves.len() - 1);
@@ -424,7 +419,10 @@ impl CollectionView {
                 _ => ((ci as f32 - before as f32).signum(), 0.),
             };
         }
-        nav.shelves.go(Goal::Start(si));
+        // Cinema glides its whole view itself (its game takes the top).
+        if spec.layout != Layout::Cinema {
+            nav.shelves.go(Goal::Start(si));
+        }
         nav.lines.glides[si].go(Goal::Reveal { ix: ci, margin: tw * 0.6 });
         true
     }

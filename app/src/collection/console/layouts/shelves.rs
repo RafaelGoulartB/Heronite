@@ -6,7 +6,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{FactStyle, Size3, TabSpec};
+use heronite_data::console_theme::{FactStyle, Layout, Size3, TabSpec};
 use heronite_i18n::{tr, trn};
 
 use super::super::super::CollectionView;
@@ -58,7 +58,7 @@ fn text_shade(hero_h: f32) -> Div {
 }
 
 /// The tile at the end of a cut shelf: "View all" and how many games it has.
-fn more_tile(id: impl Into<ElementId>, focused: bool, total: usize, w: f32, h: f32) -> Div {
+pub(super) fn more_tile(id: impl Into<ElementId>, focused: bool, total: usize, w: f32, h: f32) -> Div {
     let radius = u(look::tile_radius());
     let (disc, mark) = if focused {
         (Hsla::from(theme::console_focus()), Hsla::from(theme::console_on_focus()))
@@ -85,7 +85,7 @@ fn more_tile(id: impl Into<ElementId>, focused: bool, total: usize, w: f32, h: f
 
 /// What the top shows while a "View all" tile has the focus: the shelf's
 /// name and size, and what A does.
-fn shelf_summary(shelf: &Shelf, si: usize, how: HeroMotion) -> AnyElement {
+pub(super) fn shelf_summary(shelf: &Shelf, si: usize, how: HeroMotion) -> AnyElement {
     let block = div()
         .relative()
         .flex()
@@ -195,11 +195,12 @@ impl CollectionView {
             .into_any_element()
     }
 
-    /// A / X on a cover, or "View all" on a shelf's last tile; Y, the tabs.
+    /// A / X on a cover, or "View all" on a shelf's last tile; Y, the tabs
+    /// (Shelves and Cinema).
     pub(super) fn shelves_hints(&self, tab: usize, spec: &TabSpec) -> Vec<Hint> {
         let shelves = self.console_shelves(&spec.source);
         let on_more = self.console.tab_navs.get(tab).is_some_and(|n| {
-            let nav = &n.shelves;
+            let nav = if spec.layout == Layout::Cinema { &n.cinema } else { &n.shelves };
             let si = nav.shelf.min(shelves.len().saturating_sub(1));
             shelves.get(si).is_some_and(|s| nav.lines.cols.get(si).is_some_and(|&c| c.min(columns(s, true) - 1) >= s.keys.len()))
         });
