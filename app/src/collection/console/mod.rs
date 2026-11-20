@@ -10,6 +10,7 @@
 //! The desktop screen is untouched: nothing here runs while console mode is
 //! off (the controller thread, the theme and its file only live while it is on).
 
+mod achievements;
 mod actions;
 mod art;
 mod backdrop;
@@ -116,6 +117,8 @@ pub(super) struct ConsoleUi {
     logos: art::LogoCache,
     controls: controls::ControlsState,
     customize: Option<customize::CustomizeNav>,
+    /// The Achievements screen of a game, over the current screen.
+    achievements: Option<achievements::AchNav>,
     /// This view, for the clicks of what it draws (`console_click`).
     me: Option<WeakEntity<CollectionView>>,
 }
