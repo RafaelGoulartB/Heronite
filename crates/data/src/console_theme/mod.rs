@@ -31,7 +31,7 @@ use crate::paths::AppPaths;
 /// `format` is refused on import (it may rely on things this app lacks).
 pub const FORMAT: u32 = 1;
 /// At most this many tabs (LB / RB).
-pub const MAX_TABS: usize = 4;
+pub const MAX_TABS: usize = 6;
 /// Interface scale, percent.
 pub const SCALE_RANGE: (u16, u16) = (80, 140);
 pub const DIM_MAX: u8 = 90;
@@ -633,6 +633,9 @@ pub struct LayoutOptions {
     /// Xbox: the shelves under the row of tiles.
     pub xbox_groups: bool,
     pub dashboard: DashboardWidgets,
+    /// The Showcase game page sets its sections on frosted glass panels;
+    /// off, they sit over the darkened art between thin rules (Cinema).
+    pub showcase_glass: bool,
 }
 
 impl Default for LayoutOptions {
@@ -647,6 +650,7 @@ impl Default for LayoutOptions {
             carousel_reflect: false,
             xbox_groups: true,
             dashboard: DashboardWidgets::default(),
+            showcase_glass: true,
         }
     }
 }
@@ -922,12 +926,13 @@ fn upgrade_pulse(p: &mut ConsolePrefs) {
     p.last_tab = 0;
 }
 
-/// The built-in Classic (no longer listed) or the first Cinema, unchanged,
-/// takes Cinema as it is now: the two became one. A theme the user changed
+/// The built-in Classic (no longer listed) or an earlier Cinema, unchanged,
+/// takes Cinema as it is now: the two became one, then took its own look. A theme the user changed
 /// keeps its values (its layouts still load).
 fn upgrade_cinema(p: &mut ConsolePrefs) {
     let built_in = match p.theme.id.as_str() {
         "classic" => presets::classic(),
+        "cinema" if p.theme == presets::second_cinema().normalized() => presets::second_cinema(),
         "cinema" => presets::first_cinema(),
         _ => return,
     };

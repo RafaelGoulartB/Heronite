@@ -86,12 +86,44 @@ fn from_classic(id: &str, name: &str, description: &str, edit: impl FnOnce(&mut 
     t
 }
 
-/// The game's art full screen with its logo large and chips of facts, the
-/// first shelf of covers under it; ↓ goes down through the shelves (the logo
-/// stays small on top), "View all" opens the Library. Installed first, the
-/// tabs as names along the top, the Hero game page.
+/// The champagne-gold of [`cinema`]'s focus.
+pub const CINEMA_GOLD: &str = "#e8cf9a";
+
+/// The game's key art full screen, its logo large with its facts and genres
+/// centred under it, one row of large covers along the bottom (the logo and
+/// facts step aside while the row moves), a champagne-gold focus; tabs of
+/// filters in a pill at the top with a cluster of status icons, A plays,
+/// X opens the game's page (Showcase over the art, without glass), Y its
+/// actions.
 pub fn cinema() -> ConsoleTheme {
-    from_classic("cinema", n_!("Cinema"), n_!("The game's art full screen with its logo, and shelves of covers below it."), |t| {
+    from_classic("cinema", n_!("Cinema"), n_!("The game's art full screen with its logo, and a row of large covers below it."), |t| {
+        t.tabs = vec![
+            TabSpec::new(n_!("Installed"), Layout::Cinema, "installed"),
+            TabSpec::new(n_!("All games"), Layout::Cinema, "all"),
+            TabSpec::new(n_!("Recently played"), Layout::Cinema, "recent"),
+            TabSpec::new(n_!("Favourites"), Layout::Cinema, "favourites"),
+            TabSpec::new(n_!("Not played yet"), Layout::Cinema, "status:not-played"),
+        ];
+        t.hero.title = HeroTitle::Logo;
+        t.hero.overview = false;
+        t.tiles.corners = Corners::Soft;
+        t.tiles.size = TileSize::Large;
+        t.tiles.badges = Badges::Off;
+        t.interface.tab_bar = TabBar::Top;
+        t.interface.status_icons = true;
+        t.interface.font = ConsoleFont::System;
+        t.interface.accent = CINEMA_GOLD.into();
+        t.controls.hints = Hints::Always;
+        t.nav.a_button = AButton::Play;
+        t.game_page = GamePage::Showcase;
+        t.layouts.showcase_glass = false;
+        t.layouts.spotlight_cards = false;
+    })
+}
+
+/// The Cinema of shelves under the game (a console.json still on it moves to [`cinema`]).
+pub(super) fn second_cinema() -> ConsoleTheme {
+    from_classic("cinema", n_!("Cinema"), "The game's art full screen with its logo, and shelves of covers below it.", |t| {
         t.tabs = vec![
             TabSpec::new(n_!("Installed"), Layout::Cinema, "installed"),
             TabSpec::new(n_!("All games"), Layout::Cinema, "all"),

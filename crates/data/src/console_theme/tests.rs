@@ -72,13 +72,17 @@ fn classic_is_the_unlisted_base_and_cinema_is_listed() {
     assert_eq!(ids, ["minimal", "pulse", "cinema", "arcade", "hub", "living-room"]);
     assert!(presets::by_id("classic").is_none());
     let cinema = presets::cinema();
-    assert_eq!(cinema.tabs.iter().map(|t| t.source.as_str()).collect::<Vec<_>>(), ["installed", "all", "favourites", "all"]);
-    assert_eq!(cinema.tabs[3].layout, Layout::Grid);
+    assert_eq!(
+        cinema.tabs.iter().map(|t| t.source.as_str()).collect::<Vec<_>>(),
+        ["installed", "all", "recent", "favourites", "status:not-played"]
+    );
+    assert!(cinema.tabs.iter().all(|t| t.layout == Layout::Cinema));
+    assert!(!cinema.layouts.showcase_glass && presets::pulse().layouts.showcase_glass);
 }
 
 #[test]
 fn the_built_in_classic_and_first_cinema_become_cinema_unless_changed() {
-    for old in [presets::classic(), presets::first_cinema()] {
+    for old in [presets::classic(), presets::first_cinema(), presets::second_cinema()] {
         // Saved and read back, as a console.json is.
         let dir = tempfile::tempdir().unwrap();
         let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
