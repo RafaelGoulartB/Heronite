@@ -145,9 +145,14 @@ fn shelves(p: &mut Pic, layer: Div) -> Div {
         ))
 }
 
+/// Cinema (the console's `layouts/cinema.rs`): the logo large with its facts
+/// at the bottom of the room over the first shelf, that shelf's covers, and
+/// the next shelf's title peeking at the bottom.
 fn cinema(p: &mut Pic, layer: Div) -> Div {
     let h = 82. * p.size();
-    let row_y = p.bottom() - h - if p.t.tiles.titles == TileTitles::Always { 22. } else { 10. };
+    let names = if p.t.tiles.titles == TileTitles::Always { 12. } else { 0. };
+    let peek = 20.;
+    let row_y = p.bottom() - h - names - peek;
     let centred = p.t.hero.align == HeroAlign::Center;
     // The real Cinema never shows the description; its stats panel sits at
     // the right edge, centred in the room above the covers.
@@ -156,14 +161,24 @@ fn cinema(p: &mut Pic, layer: Div) -> Div {
         let (from, to) = (p.top(), row_y - 22.);
         div().absolute().right_0().top(p.u(from)).h(p.u(to - from)).flex().items_center().child(p.stats())
     });
+    // The game sits at the foot of its room (centred: at the top, as the console puts it).
+    let foot = p.u(CANVAS_H - row_y + 22.);
     let hero = if centred {
         div().absolute().left_0().right_0().top(p.u(p.top() + 24.)).flex().justify_center().child(hero.items_center())
     } else {
-        p.at(26., p.top() + 30., hero)
+        div().absolute().left(p.u(26.)).bottom(foot).child(hero)
     };
     let row = p.tile_row(0, h, 10., 8, true);
     let heading = p.at(26., row_y - 16., p.shelf_heading(0));
-    layer.child(p.scrim_left(0.55)).child(p.scrim_bottom(0.65)).child(hero).children(stats).child(heading).child(p.at(26., row_y, row))
+    let next = p.at(26., row_y + h + names + 6., p.shelf_heading(1).opacity(if p.t.dim_others { 0.5 } else { 0.85 }));
+    layer
+        .child(p.scrim_left(0.5))
+        .child(p.scrim_bottom(0.7))
+        .child(hero)
+        .children(stats)
+        .child(heading)
+        .child(p.at(26., row_y, row))
+        .child(next)
 }
 
 /// Spotlight (the console's `layouts/spotlight/`): a row of square icons

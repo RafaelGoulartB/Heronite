@@ -67,6 +67,33 @@ fn presets_are_valid_and_unique() {
 }
 
 #[test]
+fn classic_is_the_unlisted_base_and_cinema_is_listed() {
+    let ids: Vec<_> = presets::all().into_iter().map(|t| t.id).collect();
+    assert_eq!(ids, ["minimal", "cinema", "pulse", "arcade", "hub", "living-room"]);
+    assert!(presets::by_id("classic").is_none());
+    let cinema = presets::cinema();
+    assert_eq!(cinema.tabs.iter().map(|t| t.source.as_str()).collect::<Vec<_>>(), ["installed", "all", "favourites", "all"]);
+    assert_eq!(cinema.tabs[3].layout, Layout::Grid);
+}
+
+#[test]
+fn the_built_in_classic_and_first_cinema_become_cinema_unless_changed() {
+    for old in [presets::classic(), presets::first_cinema()] {
+        // Saved and read back, as a console.json is.
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+        ConsolePrefs { theme: old.clone(), based_on: old.id.clone(), ..ConsolePrefs::default() }.save(&paths).unwrap();
+        let p = ConsolePrefs::load(&paths);
+        assert_eq!((p.theme, p.based_on.as_str()), (presets::cinema(), "cinema"), "{}", old.id);
+        // Changed by the user: its values stay.
+        let changed = ConsoleTheme { shelf_limit: 7, ..old.clone() };
+        let mut p = ConsolePrefs { theme: changed.clone(), based_on: old.id.clone(), ..ConsolePrefs::default() };
+        upgrade_cinema(&mut p);
+        assert_eq!(p.theme, changed);
+    }
+}
+
+#[test]
 fn prefs_and_store_on_disk() {
     let dir = tempfile::tempdir().unwrap();
     let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };

@@ -875,6 +875,7 @@ impl ConsolePrefs {
                 p.theme = p.theme.normalized();
                 upgrade_pulse(&mut p);
                 upgrade_minimal(&mut p);
+                upgrade_cinema(&mut p);
                 if let Some(old) = old {
                     p.controller = old;
                 }
@@ -919,6 +920,21 @@ fn upgrade_pulse(p: &mut ConsolePrefs) {
     }
     p.kept_filters.sort = SORT_LAST_PLAYED;
     p.last_tab = 0;
+}
+
+/// The built-in Classic (no longer listed) or the first Cinema, unchanged,
+/// takes Cinema as it is now: the two became one. A theme the user changed
+/// keeps its values (its layouts still load).
+fn upgrade_cinema(p: &mut ConsolePrefs) {
+    let built_in = match p.theme.id.as_str() {
+        "classic" => presets::classic(),
+        "cinema" => presets::first_cinema(),
+        _ => return,
+    };
+    if p.theme == built_in.normalized() {
+        p.theme = presets::cinema();
+        p.based_on = p.theme.id.clone();
+    }
 }
 
 /// Minimal as it shipped (its game page the Sheet, floating over the

@@ -1,6 +1,9 @@
 //! The built-in console themes. [`minimal`] is the one a new install uses
 //! ([`DEFAULT`]); `classic` is the base the others start from (and what a
-//! theme file's missing keys read as), each changing what makes it different. Their names and descriptions are English keys translated
+//! theme file's missing keys read as), each changing what makes it different.
+//! Classic itself is no longer listed: [`cinema`] took its shelves (a
+//! console.json still on the built-in Classic or the first Cinema moves to it,
+//! see `upgrade_cinema`). Their names and descriptions are English keys translated
 //! where they are shown (`n_!` marks them for the translation coverage test).
 
 use heronite_i18n::n_;
@@ -45,7 +48,8 @@ pub fn default_shelves() -> Vec<ShelfSpec> {
     on.into_iter().map(|k| ShelfSpec::new(k, true)).chain(off.into_iter().map(|k| ShelfSpec::new(k, false))).collect()
 }
 
-/// The base of every theme: shelves on Home, a cover grid in Library, the sidebar menu.
+/// The base of every theme: shelves on Home, a cover grid in Library, the
+/// sidebar menu. Not listed among the built-in themes (see [`all`]).
 pub fn classic() -> ConsoleTheme {
     ConsoleTheme {
         format: FORMAT,
@@ -82,10 +86,33 @@ fn from_classic(id: &str, name: &str, description: &str, edit: impl FnOnce(&mut 
     t
 }
 
-/// The game's art full screen with its logo large, chips of facts, one row
-/// of portrait covers and the tabs along the bottom.
+/// The game's art full screen with its logo large and chips of facts, the
+/// first shelf of covers under it; ↓ goes down through the shelves (the logo
+/// stays small on top), "View all" opens the Library. Installed first, the
+/// tabs as names along the top, the Hero game page.
 pub fn cinema() -> ConsoleTheme {
-    from_classic("cinema", n_!("Cinema"), n_!("The game's art full screen, its logo large, a row of covers and the tabs below."), |t| {
+    from_classic("cinema", n_!("Cinema"), n_!("The game's art full screen with its logo, and shelves of covers below it."), |t| {
+        t.tabs = vec![
+            TabSpec::new(n_!("Installed"), Layout::Cinema, "installed"),
+            TabSpec::new(n_!("All games"), Layout::Cinema, "all"),
+            TabSpec::new(n_!("Favourites"), Layout::Cinema, "favourites"),
+            TabSpec::new(n_!("Library"), Layout::Grid, "all"),
+        ];
+        t.hero.title = HeroTitle::Logo;
+        t.hero.overview = false;
+        t.hero.fact_style = FactStyle::Chips;
+        t.tiles.corners = Corners::Soft;
+        t.interface.tab_bar = TabBar::Names;
+        t.interface.status_icons = false;
+        t.controls.hints = Hints::Auto;
+        t.game_page = GamePage::Hero;
+    })
+}
+
+/// Cinema as it first shipped: one row of covers, the tabs along the bottom
+/// (a console.json still on it moves to [`cinema`]).
+pub(super) fn first_cinema() -> ConsoleTheme {
+    from_classic("cinema", n_!("Cinema"), "The game's art full screen, its logo large, a row of covers and the tabs below.", |t| {
         t.tabs = vec![
             TabSpec::new(n_!("All games"), Layout::Cinema, "all"),
             TabSpec::new(n_!("Installed games"), Layout::Cinema, "installed"),
@@ -219,9 +246,10 @@ pub fn living_room() -> ConsoleTheme {
     })
 }
 
-/// Every built-in theme, the default ([`minimal`]) first.
+/// Every built-in theme listed, the default ([`minimal`]) first (not the
+/// base, [`classic`]).
 pub fn all() -> Vec<ConsoleTheme> {
-    vec![minimal(), classic(), cinema(), pulse(), arcade(), hub(), living_room()]
+    vec![minimal(), cinema(), pulse(), arcade(), hub(), living_room()]
 }
 
 pub fn by_id(id: &str) -> Option<ConsoleTheme> {
