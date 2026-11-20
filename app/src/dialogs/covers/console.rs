@@ -130,7 +130,9 @@ impl CoversDialog {
         let idle = self.busy.is_none() && self.kept(self.slot);
         let custom = self.kind().of_art(&self.art).is_some_and(|u| !u.is_empty());
         let mut rows = vec![
-            Row::action("file", tr!("Choose a file\u{2026}")).icon(Icon::FolderOpen).enabled(idle),
+            Row::action("file", if self.slot == Slot::Background { tr!("Image or video\u{2026}") } else { tr!("Choose a file\u{2026}") })
+                .icon(Icon::FolderOpen)
+                .enabled(idle),
             Row::action("reset", tr!("Reset")).icon(Icon::Replay).enabled(idle && custom).desc(tr!("Back to what the sources gave")),
         ];
         let counts = self.source_counts();

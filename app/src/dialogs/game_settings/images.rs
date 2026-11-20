@@ -389,7 +389,7 @@ impl GameSettingsDialog {
             (false, Some(f)) => tr!("Default image \u{b7} {family}", family = words::family_name(f)),
         };
         let note = match kind {
-            ArtKind::Hero => tr!("Shown behind the game in Collection"),
+            ArtKind::Hero => tr!("An image or a video, shown behind the game in Collection"),
             ArtKind::Logo if has_picture => tr!("Shown instead of the name in console mode"),
             ArtKind::Logo => tr!("Console mode shows the name instead"),
             _ => tr!("Shown on the game card"),

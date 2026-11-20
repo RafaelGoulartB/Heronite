@@ -244,7 +244,8 @@ impl CoversDialog {
                 "cv-file",
                 ButtonKind::Ghost,
                 Icon::FolderOpen,
-                tr!("Choose a file\u{2026}"),
+                // A background may be a video (an animated one).
+                if self.slot == Slot::Background { tr!("Image or video\u{2026}") } else { tr!("Choose a file\u{2026}") },
                 idle && kept,
                 cx.listener(|this, _, _, cx| this.pick_file(cx)),
             ))
