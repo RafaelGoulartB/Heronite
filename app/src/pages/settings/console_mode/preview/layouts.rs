@@ -5,7 +5,7 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::console_theme::{
-    FactStyle, GridPanel, Headings, HeroAlign, HeroTitle, Layout, Size3, SpotActions, TileShape, TileSize, TileTitles, WheelItems,
+    FactStyle, GridPanel, Headings, HeroTitle, Layout, Size3, SpotActions, TileShape, TileSize, TileTitles, WheelItems,
 };
 use heronite_i18n::tr;
 
@@ -145,40 +145,50 @@ fn shelves(p: &mut Pic, layer: Div) -> Div {
         ))
 }
 
-/// Cinema (the console's `layouts/cinema.rs`): the logo large with its facts
-/// at the bottom of the room over the first shelf, that shelf's covers, and
-/// the next shelf's title peeking at the bottom.
+/// Cinema (the console's `layouts/cinema.rs`): the game's name large left of
+/// centre with its facts and genres centred under it, its achievements on the
+/// right, one row of large covers along the bottom.
 fn cinema(p: &mut Pic, layer: Div) -> Div {
-    let h = 82. * p.size();
+    let h = 104. * p.size().min(1.15);
     let names = if p.t.tiles.titles == TileTitles::Always { 12. } else { 0. };
-    let peek = 20.;
-    let row_y = p.bottom() - h - names - peek;
-    let centred = p.t.hero.align == HeroAlign::Center;
-    // The real Cinema never shows the description; its stats panel sits at
-    // the right edge, centred in the room above the covers.
-    let hero = p.hero(300., 22., false);
-    let stats = p.t.hero.stats.then(|| {
-        let (from, to) = (p.top(), row_y - 22.);
-        div().absolute().right_0().top(p.u(from)).h(p.u(to - from)).flex().items_center().child(p.stats())
-    });
-    // The game sits at the foot of its room (centred: at the top, as the console puts it).
-    let foot = p.u(CANVAS_H - row_y + 22.);
-    let hero = if centred {
-        div().absolute().left_0().right_0().top(p.u(p.top() + 24.)).flex().justify_center().child(hero.items_center())
-    } else {
-        div().absolute().left(p.u(26.)).bottom(foot).child(hero)
-    };
-    let row = p.tile_row(0, h, 10., 8, true);
-    let heading = p.at(26., row_y - 16., p.shelf_heading(0));
-    let next = p.at(26., row_y + h + names + 6., p.shelf_heading(1).opacity(if p.t.dim_others { 0.5 } else { 0.85 }));
-    layer
-        .child(p.scrim_left(0.5))
-        .child(p.scrim_bottom(0.7))
-        .child(hero)
-        .children(stats)
-        .child(heading)
-        .child(p.at(26., row_y, row))
-        .child(next)
+    let row_y = p.bottom() - h - names - 4.;
+    let gap = p.u(3.);
+    // The facts: small labels over values, between thin rules.
+    let rule = || div().flex_none().w(px(1.)).h(p.u(9.)).bg(Rgba { a: 0.25, ..p.text });
+    let mut facts = div().flex().items_center().gap(p.u(6.));
+    for (i, w) in [14., 16., 18., 12., 14.].into_iter().enumerate() {
+        if i > 0 {
+            facts = facts.child(rule());
+        }
+        facts = facts.child(div().flex().flex_col().items_center().gap(gap).child(p.line(w * 0.7, 2., 0.4)).child(p.line(w, 3.5, 0.9)));
+    }
+    let genres = div().flex().gap(p.u(5.)).child(p.line(12., 2.5, 0.45)).child(p.line(14., 2.5, 0.45)).child(p.line(10., 2.5, 0.45));
+    let block = div()
+        .absolute()
+        .left(p.u(30.))
+        .w(p.u(250.))
+        .bottom(p.u(CANVAS_H - row_y + 16.))
+        .flex()
+        .flex_col()
+        .items_center()
+        .gap(p.u(7.))
+        .child(p.game_name(0, 24., 250.).text_center())
+        .child(facts)
+        .child(genres);
+    // The achievements, level with the facts.
+    let ach = div()
+        .absolute()
+        .right(p.u(30.))
+        .bottom(p.u(CANVAS_H - row_y + 30.))
+        .flex()
+        .items_center()
+        .gap(p.u(5.))
+        .child(div().size(p.u(11.)).rounded_full().bg(Rgba { a: 0.25, ..p.accent }))
+        .child(div().flex().flex_col().gap(gap).child(p.line(26., 2., 0.45)).child(p.line(18., 3.5, 0.9)).child(
+            div().w(p.u(56.)).h(p.u(1.5)).rounded_full().bg(Rgba { a: 0.2, ..p.text }).child(div().w(p.u(14.)).h_full().bg(p.accent)),
+        ));
+    let row = p.tile_row(0, h, 8., 9, true);
+    layer.child(p.scrim_left(0.6)).child(p.scrim_bottom(0.75)).child(block).child(ach).child(p.at(26., row_y, row))
 }
 
 /// Spotlight (the console's `layouts/spotlight/`): a row of square icons

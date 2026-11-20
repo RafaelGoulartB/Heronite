@@ -74,9 +74,9 @@ impl Pic<'_, '_> {
             .child(text)
     }
 
-    /// Whether the tab shown is a Spotlight one (its own top bar).
+    /// Whether the tab shown draws its tabs as a centred pill (Spotlight, Cinema).
     fn spotlight_tab(&self) -> bool {
-        self.t.tabs.get(self.tab).is_some_and(|t| t.layout == Layout::Spotlight)
+        self.t.tabs.get(self.tab).is_some_and(|t| matches!(t.layout, Layout::Spotlight | Layout::Cinema))
     }
 
     /// Spotlight's tabs: the names between LB and RB, the current one in a
