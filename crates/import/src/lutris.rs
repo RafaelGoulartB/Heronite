@@ -95,6 +95,7 @@ fn read(install: &Install) -> Result<Vec<Game>> {
             command: command(install.flatpak, id),
             prefix: settings.prefix,
             runs_from: None,
+            transfer: None,
         });
     }
     Ok(games)

@@ -64,7 +64,7 @@ pub fn what(launcher: Launcher) -> &'static str {
         ),
         Launcher::Faugus => tr!("Its games, with their covers and play time. Faugus keeps starting them, with the settings you gave them there."),
         Launcher::Playnite => tr!(
-            "Its installed games, with their covers and play time. Playnite keeps starting them, with the settings and emulators you gave them there. Its Steam, Epic, GOG, Amazon, Xbox, Battle.net, EA and Ubisoft games are left to their own pages here."
+            "Its installed games move here with their details, covers, play time, status, favourites and categories. They start here, without Playnite, with the arguments and emulators you gave them there; a game only Playnite can start (an add-on's, a link or a script) keeps starting through it. Its Steam, Epic, GOG, Amazon, Xbox, Battle.net, EA and Ubisoft games are left to their own pages here."
         ),
     }
 }

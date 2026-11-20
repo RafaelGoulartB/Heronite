@@ -133,6 +133,15 @@ pub struct SideloadSpec {
 /// The shell command that starts a Linux game, run inside its folder.
 pub const COMMAND_KEY: &str = "heroniteCommand";
 
+/// The folder a Windows game starts in when it is not its executable's
+/// (a game brought over from Playnite keeps the one it had there).
+pub const WORKING_DIR_KEY: &str = "heroniteWorkingDir";
+
+/// The folder `game` starts in, when it has one of its own ([`WORKING_DIR_KEY`]).
+pub fn working_dir_of(game: &crate::models::GameInfo) -> Option<&str> {
+    game.rest.get(WORKING_DIR_KEY).and_then(Value::as_str).map(str::trim).filter(|d| !d.is_empty())
+}
+
 /// `(command, folder)` of a game started by a command (see
 /// [`SideloadSpec::command`]).
 pub fn command_of(game: &crate::models::GameInfo) -> Option<(&str, &str)> {

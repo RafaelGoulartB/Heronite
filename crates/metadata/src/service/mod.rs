@@ -237,6 +237,10 @@ impl MetadataService {
         for field in existing.as_ref().map(crate::record::locked_fields).unwrap_or_default() {
             crate::merge::copy_field(existing.as_ref(), &mut merged, &field);
         }
+        // Links are not a merged field: Playnite's are kept when there are none.
+        if merged.websites.is_empty() {
+            merged.websites = from_playnite.websites.clone();
+        }
         upsert_game_metadata(&self.paths, self.persist_images(merged, false))
     }
 
