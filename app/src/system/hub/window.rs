@@ -396,7 +396,7 @@ pub fn console_in_front(cx: &mut App) -> bool {
         return false;
     }
     let handle = cx.try_global::<Hub>().and_then(|h| h.0.borrow().window.as_ref().map(|w| w.handle));
-    handle.is_some_and(|h| cx.active_window().is_some_and(|active| active == AnyWindowHandle::from(h)))
+    handle.is_some_and(|h| cx.active_window().is_some_and(|active| active == h))
 }
 
 #[cfg(test)]
