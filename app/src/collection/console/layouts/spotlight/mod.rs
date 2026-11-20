@@ -671,16 +671,13 @@ impl CollectionView {
         let total = self.lib.as_ref().map_or(0, |l| l.games.len());
         let (_, on) = row::icon_sizes(self.cover_aspect);
         let main = div()
-            .absolute()
-            .top(u(row::row_height(on) + 40.))
-            .left(u(SIDE))
             .flex()
             .flex_col()
             .gap(u(8.))
             .child(kit::title(tr!("All games"), 54.))
             .child(div().text_size(u(17.)).text_color(theme::text_muted()).child(trn!(total, "{n} game", "{n} games")))
             .child(kit::body_text(tr!("Press A to see them all.")));
-        motion::enter_from("spot-main-all", main, 300, 16. * from, 0., 0.25)
+        placed(row::row_height(on) + 40., motion::enter_from("spot-main-all", main.relative(), 300, 16. * from, 0., 0.25))
     }
 
     /// The logo (or name), the buttons, the facts and genres, and the media strip.
@@ -709,15 +706,13 @@ impl CollectionView {
         );
         let actions = (f.zone == Zone::Actions).then_some(f.action);
         let rest = div()
-            .absolute()
-            .top(u(geo.buttons))
-            .left(u(SIDE))
+            .relative()
             .flex()
             .flex_col()
             .child(self.spotlight_actions(g, actions))
             .child(div().mt(u(18.)).child(self.spotlight_facts(g)))
             .child(div().mt(u(10.)).child(parts::genre_chips(g)));
-        let rest = motion::enter_from(SharedString::from(format!("spot-rest-{key}")), rest, 420, 0., 8., 0.);
+        let rest = placed(geo.buttons, motion::enter_from(SharedString::from(format!("spot-rest-{key}")), rest, 420, 0., 8., 0.));
         let mut out = vec![logo.into_any_element(), rest];
         if shape.media > 0 {
             out.push(self.spotlight_media(shape, f, strip_x, window));
@@ -1290,6 +1285,14 @@ fn page_tile(id: (&'static str, usize), x: f32, w: f32, h: f32, radius: f32, foc
             .when(t > 0.01, |d| d.child(ring(radius, t)))
     });
     div().absolute().left(u(x)).top_0().w(u(w)).h(u(h)).child(el)
+}
+
+/// `el` at `top` on the page's left edge. A slide-in (`motion::enter_from`)
+/// sets the `top` / `left` of what it moves, ending at 0: it must move a
+/// `relative` element inside this one, never the placed element itself, or
+/// the element ends at the page's top, over the row.
+fn placed(top: f32, el: AnyElement) -> AnyElement {
+    div().absolute().top(u(top)).left(u(SIDE)).child(el).into_any_element()
 }
 
 /// Room around a strip's tiles for the focus ring, design px.

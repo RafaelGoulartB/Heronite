@@ -387,6 +387,23 @@ mod tests {
     }
 
     #[test]
+    fn the_head_always_sits_under_the_row() {
+        use heronite_data::console_theme::Size3;
+        for row in [150., 186., 240.] {
+            for size in [Size3::Small, Size3::Medium, Size3::Large] {
+                for media in [0, 6] {
+                    let mut s = Shape { media, ..Shape::default() };
+                    s.layout(row, logo_h(size), 1200., 192.);
+                    let g = s.geo;
+                    assert!(g.logo >= row, "{row} {size:?}");
+                    assert!(g.buttons >= g.logo + g.logo_h && g.facts >= g.buttons + BUTTON_H, "{row} {size:?}");
+                    assert!(g.chips >= g.facts + FACTS_H && g.media >= g.chips + CHIPS_H, "{row} {size:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn the_screen_rises_with_the_focus_and_stops_at_the_end() {
         let s = shape();
         let (h, bar) = (800., 76.);
