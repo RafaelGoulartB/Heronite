@@ -1189,7 +1189,7 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   and ◀ closes a group under a switch or a plain row (A still flips the switch; ◀ on a closed one goes back, never
   flips it); A opens and closes one whose parent ◀ ▶ change; B on an open parent closes it, B on a sub-setting goes
   back to the parent. `ListNav::hints` names only the arrow that works (`Btn::Left` / `Btn::Right`). A group of one is
-  always open (no chevron, no press of its own). Under a switch that is off the sub-settings fade (the ring does not)
+  always open (no chevron, no press of its own) unless its parent is `Row::always_folds` (one whose sub-settings come and go, like Maximum FPS). Under a switch that is off the sub-settings fade (the ring does not)
   and say "Turn on … first" while focused. The open groups survive `reset`; Settings keeps them per section, a search
   result inside a group opens it (`focus_id`), and moving a metadata source or a console tab keeps the focus and the
   open state on it. Used by Metadata (each source), the Heroic panel's dependent rows, lists (hidden games, wrappers,
