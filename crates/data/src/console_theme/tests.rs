@@ -273,3 +273,24 @@ fn the_sound_style_and_volume_are_repaired() {
     let text = json!({ "format": 1, "controls": { "soundVolume": 200 } }).to_string();
     assert_eq!(ConsoleTheme::from_json(&text).unwrap().normalized().controls.sound_volume, SOUND_VOLUME.1);
 }
+
+#[test]
+fn pulse_with_its_first_tabs_takes_its_new_home() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+    let mut old = presets::pulse();
+    old.tabs = vec![TabSpec::new("Games", Layout::Spotlight, "all"), TabSpec::new("Library", Layout::Grid, "all")];
+    old.interface.tab_bar = TabBar::Names;
+    old.interface.accent = "pink".into();
+    ConsolePrefs { theme: old, ..ConsolePrefs::default() }.save(&paths).unwrap();
+    let p = ConsolePrefs::load(&paths);
+    assert_eq!(p.theme.tabs, presets::pulse().tabs);
+    assert_eq!(p.theme.interface.tab_bar, TabBar::Top);
+    assert_eq!(p.theme.interface.accent, "pink", "the user's own changes stay");
+
+    // Tabs the user changed are theirs.
+    let mut mine = presets::pulse();
+    mine.tabs = vec![TabSpec::new("Games", Layout::Spotlight, "all")];
+    ConsolePrefs { theme: mine.clone(), ..ConsolePrefs::default() }.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).theme.tabs, mine.tabs);
+}

@@ -857,7 +857,7 @@ impl ConsolePrefs {
         let old = value.get("controller").is_none().then(|| ControllerPrefs::from_old_theme(&value));
         match lenient::<ConsolePrefs>(value) {
             Some(mut p) => {
-                p.theme = p.theme.normalized();
+                p.theme = upgrade_pulse(p.theme.normalized());
                 if let Some(old) = old {
                     p.controller = old;
                 }
@@ -873,6 +873,26 @@ impl ConsolePrefs {
     pub fn save(&self, paths: &AppPaths) -> Result<()> {
         json_store::write_indented(&paths.console_prefs(), self, b"  ")
     }
+}
+
+/// Pulse in use with the tabs it shipped with (Games and Library) takes the
+/// home it has now: Spotlight tabs of filters along the top, the game's page
+/// below the buttons instead of the cards, Options opening a sheet. Its other
+/// options (colours, covers...) stay as the user left them.
+fn upgrade_pulse(mut theme: ConsoleTheme) -> ConsoleTheme {
+    let first = [TabSpec::new("Games", Layout::Spotlight, "all"), TabSpec::new("Library", Layout::Grid, "all")];
+    if theme.id != "pulse" || theme.tabs != first {
+        return theme;
+    }
+    let now = presets::pulse();
+    theme.tabs = now.tabs;
+    theme.interface.tab_bar = now.interface.tab_bar;
+    theme.layouts.spotlight_cards = now.layouts.spotlight_cards;
+    theme.game_page = now.game_page;
+    if theme.description == "A console home: icons on top, the game's art and logo, a wide Play button and cards." {
+        theme.description = now.description;
+    }
+    theme
 }
 
 /// `T` from `value`, leaving out what does not read: a value of the wrong
