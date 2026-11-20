@@ -78,5 +78,8 @@
   "{name} was installed, but its files don't match the game's folders. Check the mod's instructions; you can open its folder from the list.": "{name} se instaló, pero sus archivos no coinciden con las carpetas del juego. Revisa las instrucciones del mod; puedes abrir su carpeta desde la lista.",
   "{n} mod has a newer version": "{n} mod tiene una versión más nueva",
   "{n} mods have a newer version": "{n} mods tienen una versión más nueva",
-  "{path} is no longer there: add the mod once more": "{path} ya no está: añade el mod otra vez"
+  "{path} is no longer there: add the mod once more": "{path} ya no está: añade el mod otra vez",
+  "Install 7-Zip to install mods": "Instala 7-Zip para instalar mods",
+  "Install the 7zip package (p7zip on some distributions) with your package manager.": "Instala el paquete 7zip (p7zip en algunas distribuciones) con tu gestor de paquetes.",
+  "Most Nexus Mods files are .7z or .rar archives, and this computer has no program that opens {kinds} files: mods would download and then fail to install. Install 7-Zip, then press Look again.": "La mayoría de los archivos de Nexus Mods son .7z o .rar, y este equipo no tiene ningún programa que abra archivos {kinds}: los mods se descargarían y luego fallaría su instalación. Instala 7-Zip y pulsa Buscar de nuevo."
 }

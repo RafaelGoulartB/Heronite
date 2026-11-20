@@ -4,12 +4,20 @@
 //! [`clear`] drops it when console mode ends. Until then everything reads the
 //! built-in Classic theme, so the desktop and the in-game overlay never load a
 //! file or allocate anything for it.
+//!
+//! The controller's options (how its buttons are drawn, which one confirms)
+//! are not the theme's: they apply everywhere, the overlay too. They are
+//! installed at start from the mirror in `ui-state.json` ([`set_controls`])
+//! and follow every change; [`set_controller`] says which controller is in
+//! use, for the automatic choices.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use gpui_kit::{rgb, Rgba};
-use heronite_data::console_theme::{parse_hex, Clock, ConsoleFont, ConsoleTheme, Corners, Glyphs, Motion, TileShape, TileSize};
+use heronite_data::console_theme::{
+    parse_hex, Clock, ConfirmButton, ConsoleFont, ConsoleTheme, ControllerPrefs, Corners, Glyphs, Motion, TileShape, TileSize,
+};
 
 /// The theme in use with its colours resolved (once, when it is installed).
 #[derive(Clone)]
@@ -31,6 +39,8 @@ static EPOCH: AtomicU64 = AtomicU64::new(0);
 static GAME_ACCENT: RwLock<Option<(u8, u8, u8)>> = RwLock::new(None);
 /// The connected controller's family, for `Glyphs::Auto`.
 static CONTROLLER: RwLock<Option<Glyphs>> = RwLock::new(None);
+/// The controller's options (`ConsolePrefs::controller`).
+static CONTROLS: RwLock<ControllerPrefs> = RwLock::new(ControllerPrefs { glyphs: Glyphs::Auto, confirm: ConfirmButton::Auto });
 
 fn classic() -> &'static Installed {
     static C: OnceLock<Installed> = OnceLock::new();
@@ -70,32 +80,92 @@ pub fn wants_game_accent() -> bool {
     palette().game_focus
 }
 
-/// The family of a controller from its name, for `Glyphs::Auto`.
+/// The family of a controller from its name, for `Glyphs::Auto`: Xbox
+/// unless the name says otherwise (most others copy its layout).
 pub fn glyphs_for_controller(name: &str) -> Glyphs {
     let n = name.to_ascii_lowercase();
-    if n.contains("xbox") || n.contains("microsoft") {
+    let has = |keys: &[&str]| keys.iter().any(|k| n.contains(k));
+    if has(&["xbox", "microsoft", "x-box"]) {
         Glyphs::Xbox
-    } else if ["dualsense", "dualshock", "playstation", "ps3", "ps4", "ps5", "sony", "wireless controller"].iter().any(|k| n.contains(k)) {
+    } else if has(&["dualsense", "dualshock", "playstation", "ps3", "ps4", "ps5", "sony"]) || n.trim() == "wireless controller" {
+        // "Wireless Controller" alone is a DualShock 4 over Bluetooth.
         Glyphs::PlayStation
-    } else if ["nintendo", "pro controller", "joy-con", "switch"].iter().any(|k| n.contains(k)) {
+    } else if has(&["nintendo", "pro controller", "joy-con", "joycon", "switch"]) {
         Glyphs::Nintendo
-    } else if n.contains("steam deck") || n.contains("valve") {
+    } else if has(&["steam deck", "valve", "steam controller"]) {
         Glyphs::Deck
     } else {
         Glyphs::Xbox
     }
 }
 
-/// The connected controller's name (`None` when it disconnects).
+/// The controller in use (`None` when the last one goes away).
 pub fn set_controller(name: Option<&str>) {
     *CONTROLLER.write().unwrap_or_else(|e| e.into_inner()) = name.map(glyphs_for_controller);
 }
 
-/// How to draw the buttons, `Auto` resolved.
+/// The overlay's list of controllers (evdev on Linux): the first one is the
+/// one in use. XInput's (Windows) names no family and misses PlayStation and
+/// Nintendo controllers, which console mode finds through SDL: not used.
+/// An empty list keeps the last one.
+pub fn controllers_found(list: &[heronite_overlay::input::Controller]) {
+    if cfg!(windows) {
+        return;
+    }
+    if let Some(first) = list.first() {
+        set_controller(Some(&first.name));
+    }
+}
+
+/// The family of the controller in use, when one is known.
+pub fn controller_family() -> Option<Glyphs> {
+    *CONTROLLER.read().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Installs the controller's options; whether they changed.
+pub fn set_controls(c: ControllerPrefs) -> bool {
+    let mut cur = CONTROLS.write().unwrap_or_else(|e| e.into_inner());
+    let changed = *cur != c;
+    *cur = c;
+    changed
+}
+
+/// The controller's options in use.
+pub fn controls() -> ControllerPrefs {
+    *CONTROLS.read().unwrap_or_else(|e| e.into_inner())
+}
+
+/// How to draw the buttons, `Auto` resolved (Xbox when no controller is known).
 pub fn glyphs() -> Glyphs {
-    match theme().controls.glyphs {
-        Glyphs::Auto => CONTROLLER.read().unwrap_or_else(|e| e.into_inner()).unwrap_or(Glyphs::Xbox),
+    resolve(controls().glyphs, controller_family())
+}
+
+/// [`glyphs`] for a drawn controller: the keyboard's becomes the controller's.
+pub fn pad_glyphs() -> Glyphs {
+    match glyphs() {
+        Glyphs::Keyboard => controller_family().unwrap_or(Glyphs::Xbox),
         g => g,
+    }
+}
+
+/// The east face button confirms and the south one goes back.
+pub fn confirm_east() -> bool {
+    confirms_east(controls().confirm, pad_glyphs())
+}
+
+fn resolve(glyphs: Glyphs, family: Option<Glyphs>) -> Glyphs {
+    match glyphs {
+        Glyphs::Auto => family.unwrap_or(Glyphs::Xbox),
+        g => g,
+    }
+}
+
+/// `Auto` confirms the Nintendo way (its A is east) with Nintendo buttons.
+fn confirms_east(confirm: ConfirmButton, pad: Glyphs) -> bool {
+    match confirm {
+        ConfirmButton::East => true,
+        ConfirmButton::South => false,
+        ConfirmButton::Auto => pad == Glyphs::Nintendo,
     }
 }
 
@@ -290,6 +360,24 @@ mod tests {
         assert_eq!(glyphs_for_controller("Nintendo Switch Pro Controller"), Glyphs::Nintendo);
         assert_eq!(glyphs_for_controller("Steam Deck"), Glyphs::Deck);
         assert_eq!(glyphs_for_controller("Xbox Wireless Controller"), Glyphs::Xbox);
+        assert_eq!(glyphs_for_controller("Wireless Controller"), Glyphs::PlayStation, "a DualShock 4 over Bluetooth");
+        assert_eq!(glyphs_for_controller("Sony Computer Entertainment Wireless Controller"), Glyphs::PlayStation);
+        assert_eq!(glyphs_for_controller("GameSir G7 SE"), Glyphs::Xbox);
+        assert_eq!(glyphs_for_controller("8BitDo Ultimate Wireless Controller"), Glyphs::Xbox);
+        assert_eq!(glyphs_for_controller("Microsoft X-Box 360 pad"), Glyphs::Xbox);
+        assert_eq!(glyphs_for_controller("Nintendo Co., Ltd. Pro Controller"), Glyphs::Nintendo);
+    }
+
+    #[test]
+    fn auto_follows_the_controller_and_confirms_with_nintendo_s_a() {
+        use heronite_data::console_theme::ConfirmButton;
+        assert_eq!(resolve(Glyphs::Auto, None), Glyphs::Xbox);
+        assert_eq!(resolve(Glyphs::Auto, Some(Glyphs::PlayStation)), Glyphs::PlayStation);
+        assert_eq!(resolve(Glyphs::Nintendo, Some(Glyphs::PlayStation)), Glyphs::Nintendo, "chosen wins");
+        assert!(confirms_east(ConfirmButton::Auto, Glyphs::Nintendo));
+        assert!(!confirms_east(ConfirmButton::Auto, Glyphs::PlayStation));
+        assert!(confirms_east(ConfirmButton::East, Glyphs::Xbox));
+        assert!(!confirms_east(ConfirmButton::South, Glyphs::Nintendo));
     }
 
     #[test]

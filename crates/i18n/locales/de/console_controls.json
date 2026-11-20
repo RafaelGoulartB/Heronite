@@ -1,3 +1,15 @@
 {
-  "Controller connected — press any button to enter console mode": "Controller verbunden — drücke eine beliebige Taste für den Console mode"
+  "Ask shows a notice in the corner of the screen, even with Heronite in the tray.": "Fragen zeigt einen Hinweis in der Bildschirmecke, auch wenn Heronite im Tray ist.",
+  "Button to enter console mode": "Taste für den Console mode",
+  "Controller connected": "Controller verbunden",
+  "Heronite comes to the front": "Heronite kommt nach vorn",
+  "Hold Back + Start": "Back + Start halten",
+  "Hold Guide": "Guide halten",
+  "Hold LB + RB": "LB + RB halten",
+  "Hold it for a second, from any app. Not while a game runs.": "Eine Sekunde halten, aus jeder App. Nicht während ein Spiel läuft.",
+  "Hold to enter console mode": "Halten für den Console mode",
+  "Hold {button} to enter console mode": "{button} halten für den Console mode",
+  "Keep holding…": "Weiter halten…",
+  "Opening console mode…": "Console mode wird geöffnet…",
+  "Release to cancel": "Loslassen zum Abbrechen"
 }

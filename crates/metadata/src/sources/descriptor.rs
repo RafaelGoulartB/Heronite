@@ -198,6 +198,12 @@ pub struct SourceDescriptor {
     /// More games it is for while an option says so.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub also_for: Option<AlsoFor>,
+    /// The games the user can link to one of this source's games by hand
+    /// although the source is not for them (a searchable source): the
+    /// dialog offers "Search" for it, and a pinned game is asked for by its
+    /// id whatever the audience. Steam's: PC games that are not on Steam.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link_for: Option<AppliesTo>,
     /// The games for which, when it finds one surely, it goes ahead of the
     /// sources that found that game only by its title, in every field
     /// whose order the user did not set (`crate::sources::order`).

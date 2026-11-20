@@ -95,6 +95,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 Name: "german"; MessagesFile: "compiler:Languages\German.isl"
+Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 
 [CustomMessages]
 english.DeleteUserData=Also delete your Heronite library, settings and cache?%n%n%1%n%2%n%nGames you installed are not in these folders and stay where they are. Choose No to keep everything for a later install.
@@ -113,6 +114,11 @@ german.DeleteUserData=Auch deine Heronite-Bibliothek, Einstellungen und den Cach
 german.PortableFolder=Dieser Ordner enthält eine portable Kopie von Heronite (portable.txt). Wähle einen anderen Ordner oder lösche portable.txt, um diese Kopie in eine installierte Version umzuwandeln.
 german.CloseRunning=Heronite wird ausgeführt. Möchtest du es schließen und mit der Deinstallation fortfahren?
 german.ShortcutComment=Alle deine Spiele in einem Launcher
+
+french.DeleteUserData=Supprimer aussi votre bibliothèque, vos paramètres et le cache de Heronite ?%n%n%1%n%2%n%nVos jeux installés ne sont pas dans ces dossiers et resteront à leur emplacement actuel. Choisissez Non pour tout conserver en vue d’une installation ultérieure.
+french.PortableFolder=Ce dossier contient une copie portable de Heronite (portable.txt). Choisissez un autre dossier ou supprimez portable.txt pour convertir cette copie en version installée.
+french.CloseRunning=Heronite est en cours d’exécution. Le fermer et poursuivre la désinstallation ?
+french.ShortcutComment=Tous vos jeux dans un seul launcher
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked

@@ -197,7 +197,7 @@ fn open_emulator(d: &mut SettingsPage, emulator: Emulator, cx: &mut Context<Sett
 /// The emulators as a grid of tiles, one per emulator (its settings files in
 /// the tooltip), under how many are signed in and a button that looks again.
 /// A tile without settings yet can open its emulator.
-fn emulator_grid(d: &SettingsPage, statuses: &[Status], cx: &mut Context<SettingsPage>) -> Div {
+fn emulator_grid(d: &SettingsPage, statuses: &[Status], cols: u16, cx: &mut Context<SettingsPage>) -> Div {
     let mut emulators: Vec<(Emulator, Vec<&Status>)> = Vec::new();
     for s in statuses {
         match emulators.iter_mut().find(|(e, _)| *e == s.emulator) {
@@ -215,8 +215,10 @@ fn emulator_grid(d: &SettingsPage, statuses: &[Status], cx: &mut Context<Setting
     }
     let head = div()
         .flex()
+        .flex_wrap()
         .items_center()
-        .gap(px(12.))
+        .gap_x(px(12.))
+        .gap_y(px(4.))
         .child(div().text_size(px(13.5)).text_color(theme::text_primary()).child(tr!("Emulators")))
         .child(meta_text(tr!("{signed} of {total} signed in", signed = signed, total = states.len())))
         .child(meter)
@@ -228,7 +230,7 @@ fn emulator_grid(d: &SettingsPage, statuses: &[Status], cx: &mut Context<Setting
     // Signed in first, then the rest in the usual order.
     let mut order: Vec<usize> = (0..emulators.len()).collect();
     order.sort_by_key(|&i| !matches!(states[i], EmuState::SignedIn));
-    let mut grid = div().grid().grid_cols(3).gap(px(8.));
+    let mut grid = div().grid().grid_cols(cols).gap(px(8.));
     for i in order {
         let ((emulator, list), state) = (&emulators[i], &states[i]);
         let emulator = *emulator;
@@ -277,8 +279,8 @@ fn emulator_grid(d: &SettingsPage, statuses: &[Status], cx: &mut Context<Setting
                     .justify_between()
                     .gap(px(8.))
                     .h(px(24.))
-                    .child(div().text_size(px(13.5)).text_color(theme::text_primary()).child(emulator.name()))
-                    .children(open),
+                    .child(div().min_w_0().truncate().text_size(px(13.5)).text_color(theme::text_primary()).child(emulator.name()))
+                    .children(open.map(|b| b.flex_none())),
             )
             .child(
                 div()
@@ -289,7 +291,7 @@ fn emulator_grid(d: &SettingsPage, statuses: &[Status], cx: &mut Context<Setting
                     .line_height(px(16.))
                     .text_color(colour.map_or(theme::text_dim(), Into::into))
                     .children(status_icon)
-                    .child(text),
+                    .child(div().flex_1().min_w_0().child(text)),
             )
             .when(!paths.is_empty(), |t| t.tooltip(crate::ui::tooltip(paths.join("\n"))));
         grid = grid.child(tile);
@@ -351,32 +353,45 @@ fn account_band(account: &RetroAccount, session: Option<&connect::Session>, cx: 
         None => account.username.clone(),
     };
     let profile = format!("https://retroachievements.org/user/{}", account.username);
-    div()
+    // The buttons go under the name when the window is narrow.
+    let buttons = div()
         .flex()
+        .flex_none()
+        .ml_auto()
         .items_center()
         .gap(px(14.))
-        .px(px(16.))
-        .py(px(14.))
-        .border_b_1()
-        .border_color(theme::row_separator())
-        .child(brand_tile())
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .flex_1()
-                .min_w_0()
-                .gap(px(2.))
-                .child(div().flex().items_center().gap(px(8.)).child(brand_name()).child(connected_pill(true)))
-                .child(div().text_size(px(12.5)).text_color(theme::text_dim()).child(line)),
-        )
         .child(icon_button_sm("ach-ra-profile", ButtonKind::Ghost, Icon::OpenInNew, tr!("Profile"), true, move |_, _, cx| {
             cx.open_url(&profile)
         }))
         .child(button_sm("ach-ra-sign-out", ButtonKind::Glass, tr!("Sign out")).on_click(cx.listener(|d, _, _, cx| {
             d.achievements.retro.session = None;
             service::get(cx).update(cx, |s, cx| s.set_retro_account(None, cx));
-        })))
+        })));
+    div()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .gap_x(px(14.))
+        .gap_y(px(10.))
+        .px(px(16.))
+        .py(px(14.))
+        .border_b_1()
+        .border_color(theme::row_separator())
+        .child(
+            div().flex().items_center().gap(px(14.)).flex_grow(1.).flex_basis(px(260.)).min_w_0().child(brand_tile()).child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(2.))
+                    .child(
+                        div().flex().flex_wrap().items_center().gap_x(px(8.)).gap_y(px(4.)).child(brand_name()).child(connected_pill(true)),
+                    )
+                    .child(div().text_size(px(12.5)).text_color(theme::text_dim()).child(line)),
+            ),
+        )
+        .child(buttons)
 }
 
 /// The frame of the card: it has parts that reach its edges (the top, the
@@ -397,7 +412,7 @@ fn rows_body(rows: Vec<AnyElement>) -> Div {
     body
 }
 
-pub fn card_view(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
+pub fn card_view(d: &mut SettingsPage, room: f32, cx: &mut Context<SettingsPage>) -> Div {
     let (account, prefs, statuses) = {
         let svc = service::get(cx);
         let svc = svc.read(cx);
@@ -408,7 +423,7 @@ pub fn card_view(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     let Some(account) = account.clone().filter(|_| signed_in) else {
         // An account kept from before (a refused sign-in) still has its key.
         let key = account.is_some().then(|| rows_body(vec![advanced_part(d, cx).into_any_element()]));
-        let split = signed_out_split(d, account.as_ref(), cx);
+        let split = signed_out_split(d, account.as_ref(), room < 600., cx);
         return card_frame().child(split).children(key.map(|k| k.border_t_1().border_color(theme::row_separator())));
     };
     let emulators = toggle_row_info(
@@ -432,7 +447,7 @@ pub fn card_view(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     .into_any_element();
     let mut subs = Vec::new();
     if prefs.emulators && !statuses.is_empty() {
-        subs.push(emulator_grid(d, &statuses, cx).into_any_element());
+        subs.push(emulator_grid(d, &statuses, if room < 600. { 2 } else { 3 }, cx).into_any_element());
     }
     subs.push(
         div()
@@ -526,15 +541,16 @@ fn benefit(ic: Icon, lead: &str, rest: &str) -> Div {
 
 /// Signed out: the brand and what signing in brings on the left, the
 /// sign-in form on the right.
-fn signed_out_split(d: &mut SettingsPage, account: Option<&RetroAccount>, cx: &mut Context<SettingsPage>) -> Div {
+fn signed_out_split(d: &mut SettingsPage, account: Option<&RetroAccount>, narrow: bool, cx: &mut Context<SettingsPage>) -> Div {
+    // Narrow: the brand over the form.
     let brand = div()
-        .w(relative(0.45))
+        .when(!narrow, |d| d.w(relative(0.45)).border_r_1())
+        .when(narrow, |d| d.w_full().border_b_1())
         .flex_none()
         .flex()
         .flex_col()
         .gap(px(14.))
         .p(px(18.))
-        .border_r_1()
         .border_color(theme::row_separator())
         .child(
             div()
@@ -557,7 +573,12 @@ fn signed_out_split(d: &mut SettingsPage, account: Option<&RetroAccount>, cx: &m
                 ))
                 .child(benefit(Icon::Star, tr!("Points and hardcore mode,"), tr!("kept by Heronite even if the account goes away."))),
         );
-    div().flex().w_full().child(brand).child(div().flex_1().min_w_0().p(px(18.)).child(login_form(d, account, cx)))
+    div()
+        .flex()
+        .w_full()
+        .when(narrow, |d| d.flex_col())
+        .child(brand)
+        .child(div().flex_1().min_w_0().p(px(18.)).child(login_form(d, account, cx)))
 }
 
 fn login_form(d: &mut SettingsPage, account: Option<&RetroAccount>, cx: &mut Context<SettingsPage>) -> Div {

@@ -45,7 +45,7 @@ fn map_images(rows: impl IntoIterator<Item = (String, String, u32, u32)>) -> Vec
         if !seen.insert(image_url.clone()) {
             continue;
         }
-        out.push(WebImage { image_url, thumb_url, width, height });
+        out.push(WebImage { image_url, thumb_url, width, height, style: String::new(), animated: false });
     }
     out
 }
@@ -327,7 +327,7 @@ pub fn title_of_query(query: &str) -> String {
             }
         }
     }
-    for suffix in [" cover", " wallpaper"] {
+    for suffix in [" cover", " wallpaper", " logo"] {
         let cut = q.len().saturating_sub(suffix.len());
         if q.is_char_boundary(cut) && q[cut..].eq_ignore_ascii_case(suffix) {
             return q[..cut].trim().to_owned();
@@ -352,6 +352,7 @@ mod tests {
         assert_eq!(title_of_query("Hades II"), "Hades II");
         assert_eq!(title_of_query("\"\" cover"), "\"\"");
         assert_eq!(title_of_query("Pokémon wallpaper"), "Pokémon");
+        assert_eq!(title_of_query("Portal 2 logo"), "Portal 2");
     }
 
     #[test]

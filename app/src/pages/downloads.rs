@@ -115,7 +115,7 @@ fn failure_reason(error: &str) -> String {
 
 fn date_text(ms: u64) -> String {
     let format = match heronite_i18n::current() {
-        heronite_i18n::Lang::PtBr | heronite_i18n::Lang::Es => "%d/%m/%Y %H:%M",
+        heronite_i18n::Lang::PtBr | heronite_i18n::Lang::Es | heronite_i18n::Lang::Fr => "%d/%m/%Y %H:%M",
         heronite_i18n::Lang::De => "%d.%m.%Y %H:%M",
         heronite_i18n::Lang::En => "%Y-%m-%d %H:%M",
     };

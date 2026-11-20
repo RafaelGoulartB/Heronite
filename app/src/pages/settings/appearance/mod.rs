@@ -86,6 +86,8 @@ pub struct State {
     /// The "Under the cover" and background picture selects are open.
     label_open: bool,
     picture_open: bool,
+    /// ffmpeg is there to play animated backgrounds (looked for when the page opens).
+    ffmpeg: bool,
     /// The "With no game selected" select is open.
     home_open: bool,
     /// The Collection background's finer sliders (blur, colour intensity,
@@ -199,12 +201,16 @@ impl State {
             preview: None,
             preview_task: None,
             preview_light: theme::is_light(),
-            opts: Opts::new(ctx.data_paths.images_cache_dir(), Some(ctx.app.thumbs_dir())),
+            opts: Opts {
+                video_still: Some(heronite_media::stills::video_still),
+                ..Opts::new(ctx.data_paths.images_cache_dir(), Some(ctx.app.thumbs_dir()))
+            },
             aspect_open: false,
             notice_watch: None,
             label_open: false,
             picture_open: false,
             home_open: false,
+            ffmpeg: heronite_media::stream::available(),
             more_background: false,
             profiles: None,
             profiles_task: None,
@@ -486,6 +492,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     if a.enabled {
         rows.push(look::picture_row(d, cx));
         rows.push(look::home_row(d, cx));
+        rows.push(look::animated_row(d, cx));
         let a = &d.appearance;
         let more = a.more_background;
         let mut extra = Vec::new();
@@ -613,6 +620,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
                 ))
                 .children(aspect_notice.map(|n| n.mb(px(12.))))
                 .into_any_element(),
+            look::fit_row(d, cx),
             toggle_row("grey-uninstalled", tr!("Show uninstalled games in grey"), None, grey)
                 .on_click(cx.listener(move |d, _, _, cx| {
                     let res = settings::save_grey_uninstalled(&d.ctx.data_paths, !grey);
@@ -722,6 +730,8 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
     let aspect = CoverAspect::parse(&d.settings.metadata.cover_aspect);
     let ai = ASPECTS.iter().position(|(x, _)| *x == aspect).unwrap_or(0);
     rows.push(Row::choice("aspect", tr!("Cover aspect"), ASPECTS.iter().map(|(_, l)| SharedString::from(tr(l))).collect(), ai));
+    let (fits, fi) = console_choice(&look::fit_items(), d.appearance.ui.cover_fit);
+    rows.push(Row::choice("cover-fit", tr!("Cover fit"), fits, fi));
     rows.push(Row::toggle("grey", tr!("Show uninstalled games in grey"), d.settings.grey_uninstalled_games));
     rows.extend(console_look_rows(d));
     rows
@@ -759,6 +769,16 @@ fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         choice("bg-picture", tr!("Picture"), console_choice(&console_pictures(), a.background)),
         Row::toggle("bg-slideshow", tr!("Change the screenshot by itself"), a.background_slideshow),
         choice("bg-home", tr!("With no game selected"), console_choice(&console_home_pictures(), a.home_background)),
+        // Console mode has no header pill: ffmpeg missing is said here.
+        Row::toggle("bg-animated", tr!("Animated backgrounds"), a.animated_backgrounds).desc(
+            if a.animated_backgrounds && !d.appearance.ffmpeg {
+                tr!("ffmpeg, which plays them, was not found, so backgrounds stay still.")
+            } else if a.animated_backgrounds && a.motion != heronite_data::appearance::Motion::Full {
+                tr!("Animations are not on Full (Text and motion), so backgrounds stay still.")
+            } else {
+                tr!("A background that is a video or an animated picture plays; off, it stays still")
+            },
+        ),
         Row::header(tr!("Colour")),
         choice("theme", tr!("Theme"), console_choice(&scheme::theme_items(), a.theme)).desc(tr!("Console mode stays dark")),
         choice("accent", tr!("Accent colour"), console_choice(&accents, a.accent)),
@@ -833,6 +853,11 @@ fn console_apply_look(
                 look::set_look(d, cx, |a| a.cover_label = v)
             }
         }
+        ("cover-fit", i, _) => {
+            if let Some(v) = pick(&look::fit_items(), i) {
+                look::set_look(d, cx, |a| a.cover_fit = v)
+            }
+        }
         ("cover-hover", i, _) => {
             if let Some(v) = pick(&look::hover_items(), i) {
                 look::set_look(d, cx, |a| a.cover_hover = v)
@@ -893,6 +918,7 @@ fn console_apply_look(
         }
         ("cover-badges", _, Some(on)) => look::set_look(d, cx, |a| a.cover_badges = on),
         ("bg-slideshow", _, Some(on)) => look::set_look(d, cx, |a| a.background_slideshow = on),
+        ("bg-animated", _, Some(on)) => look::set_look(d, cx, |a| a.animated_backgrounds = on),
         ("open-with-game", _, Some(on)) => look::set_look(d, cx, |a| a.open_with_game = on),
         ("high-contrast", _, Some(on)) => look::set_look(d, cx, |a| a.high_contrast = on),
         ("ui-scale-system", _, Some(on)) => {

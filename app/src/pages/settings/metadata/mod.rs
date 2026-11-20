@@ -173,8 +173,10 @@ pub(super) fn ensure_rows(d: &mut SettingsPage, window: &mut Window, cx: &mut Co
     // Only the sources shown as rows: a hidden one (Playnite) or one this
     // build does not know keeps its place when the order is saved.
     let shown = |id: &String| rows.iter().any(|r| r.descriptor.id == *id);
+    // The Store media are ordered like a field too (the focus panel shows the first source that has any).
     d.metadata.fields = METADATA_FIELDS
         .iter()
+        .chain([&heronite_data::settings::STORE_MEDIA])
         .map(|field| {
             let sources = service.field_order(m, field).into_iter().filter(shown).collect();
             FieldLine { field, sources, customised: service.is_field_customised(m, field) }
@@ -393,7 +395,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .flex()
         .flex_col()
         .child(summary::card(d))
-        .children(sources::cards(d, cx))
+        .children(sources::cards(d, super::room(window) < sources::NARROW_BELOW, cx))
         .child(more::row(cx))
         .children(shapes::card(d, cx))
         .child(arrive::card(d, cx))

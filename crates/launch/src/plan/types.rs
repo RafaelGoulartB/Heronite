@@ -102,6 +102,10 @@ pub struct ProcessPlan {
 pub struct Handoff {
     pub prefix: Option<String>,
     pub folder: Option<String>,
+    /// A Microsoft Store game: the family name of its package
+    /// (`<name>_<publisher id>`). Its programs are found by the package they
+    /// run from too, wherever Windows put its files.
+    pub package: Option<String>,
     /// A store client starts the game: the session follows the game, not the
     /// command.
     pub client: Option<ClientHandoff>,

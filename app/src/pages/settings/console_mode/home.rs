@@ -19,7 +19,7 @@ use crate::ui::icon;
 
 /// The options the "Quick changes" list offers, in its order: the ones that
 /// change the look most and need no knowledge of the layouts.
-const QUICK: [&str; 11] = [
+const QUICK: [&str; 10] = [
     "interface.accent",
     "tiles.shape",
     "tiles.size",
@@ -29,7 +29,6 @@ const QUICK: [&str; 11] = [
     "background.blur",
     "interface.font",
     "controls.hints",
-    "controls.glyphs",
     "interface.scale",
 ];
 

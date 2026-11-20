@@ -250,8 +250,9 @@ impl CollectionView {
 
     /// A card was clicked. Shift adds the cards from the last one clicked;
     /// Ctrl, or any click while selecting, ticks or unticks it (Ctrl on a
-    /// second game also keeps the focused one); a plain click focuses it.
-    pub(super) fn card_clicked(&mut self, key: SharedString, ev: &ClickEvent) {
+    /// second game also keeps the focused one); a plain click focuses it and
+    /// a plain double click does what Enter does (Play or Install).
+    pub(super) fn card_clicked(&mut self, key: SharedString, ev: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
         let m = ev.modifiers();
         let ctrl = m.control || m.platform;
         if m.shift {
@@ -281,9 +282,14 @@ impl CollectionView {
             return;
         }
         self.select(key.clone(), true);
-        self.sel.anchor = Some(key);
+        self.sel.anchor = Some(key.clone());
         if ev.click_count() > 1 {
             self.grid.drawer_closed = false;
+        }
+        // Only the second click: a third would land on what the second one
+        // opened (an install dialog).
+        if ev.click_count() == 2 {
+            self.enter_primary(&key, window, cx);
         }
     }
 

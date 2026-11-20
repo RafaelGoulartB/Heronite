@@ -595,5 +595,7 @@
   "Edit details…": "Details bearbeiten…",
   "Name, images, description, tags": "Name, Bilder, Beschreibung, Tags",
   "Setup": "Einrichtung",
-  "Show all": "Alle zeigen"
+  "Show all": "Alle zeigen",
+  "{n} shows another picture on the desktop": "{n} zeigt auf dem Desktop ein anderes Bild",
+  "{n} show another picture on the desktop": "{n} zeigen auf dem Desktop ein anderes Bild"
 }

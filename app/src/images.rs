@@ -26,6 +26,23 @@ pub fn to_chain(chain: &[heronite_data::ImageRef]) -> Vec<heronite_images::Image
         .collect()
 }
 
+/// File Steam keeps a game's logo in, inside its library cache folder.
+const STEAM_LOGO_FILE: &str = "logo.png";
+
+/// The loader's chain of a game's logo sources. Steam's cache folders are
+/// searched by the loader's worker (its folders are hashed), never here.
+pub fn logo_chain(sources: &[heronite_data::console_art::LogoSource]) -> Vec<heronite_images::ImageRef> {
+    use heronite_data::console_art::LogoSource;
+    sources
+        .iter()
+        .map(|s| match s {
+            LogoSource::Url(u) => heronite_images::ImageRef::Url(u.clone()),
+            LogoSource::File(p) => heronite_images::ImageRef::File(p.clone()),
+            LogoSource::SteamCache(dir) => heronite_images::ImageRef::Find { dir: dir.clone(), name: STEAM_LOGO_FILE.into() },
+        })
+        .collect()
+}
+
 /// Pixel bytes the ready textures may hold. Each one also has a copy in the
 /// GPU atlas, so the real cost is about twice this.
 const BUDGET_BYTES: usize = 48 << 20;
@@ -51,7 +68,7 @@ pub struct ImageStore {
 
 impl ImageStore {
     pub fn new(images_cache: std::path::PathBuf, app: &AppPaths) -> (Self, UnboundedReceiver<Loaded>) {
-        let opts = Opts::new(images_cache, Some(app.thumbs_dir()));
+        let opts = Opts { video_still: Some(heronite_media::stills::video_still), ..Opts::new(images_cache, Some(app.thumbs_dir())) };
         let loader = Loader::new(LoaderConfig { threads: 3, opts });
         let (tx, rx) = unbounded();
         let store = Self {

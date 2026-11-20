@@ -17,6 +17,7 @@ use heronite_overlay::replay::plan::buffer_seconds;
 use heronite_overlay::replay::{estimate, Encoding, Estimate, Info, Program};
 
 use super::screenshots::format_size;
+use super::shortcuts::{self, Shortcut};
 use super::{overlay, SettingsPage};
 use crate::icons::Icon;
 use crate::overlay::HotkeyState;
@@ -26,11 +27,13 @@ use crate::theme;
 use crate::ui::controls::{
     button, caption, card, card_box, icon_button_sm, info_tip, row, tabs, toggle_row, toggle_row_info, with_sub_rows, ButtonKind, CAPTION_H,
 };
-use crate::ui::fields::{accelerator_from_key, hotkey_box, labeled, meta_text, select_field};
+use crate::ui::fields::{hotkey_box, hotkey_press, labeled, meta_text, needs_modifier_text, select_field, HotkeyPress};
 use crate::ui::icon;
 
 /// Width of the column beside the options: the status and the cost.
 const SIDE_W: f32 = 250.;
+/// Least width of the settings beside the side column.
+const MAIN_MIN_W: f32 = 520.;
 
 /// The section's width: the options and the column beside them.
 pub const MAX_W: f32 = 1080.;
@@ -599,21 +602,21 @@ fn advanced_part(d: &SettingsPage, o: &Options, cx: &mut Context<SettingsPage>) 
 }
 
 /// `CommandOrControl` as the keyboard says it.
-fn shown_accelerator(a: &str) -> String {
-    a.replace("CommandOrControl", "Ctrl")
+/// The key that saves the replay, as the keyboard says it; `None` unless set.
+pub(super) fn accelerator(d: &SettingsPage, cx: &App) -> Option<String> {
+    let p = prefs(d, cx);
+    let a = p.keyboard_accelerator.trim();
+    (!a.is_empty()).then(|| shown_accelerator(a))
 }
 
-/// What else uses `accelerator` (the overlay's or the screenshot's shortcut).
-fn taken_by(d: &SettingsPage, accelerator: &str) -> Option<String> {
-    let o = &d.overlay.prefs;
-    let s = &d.settings.screenshots;
-    if o.enabled && o.keyboard_shortcut && o.keyboard_accelerator.eq_ignore_ascii_case(accelerator) {
-        Some(tr!("{key} already opens the overlay.", key = shown_accelerator(accelerator)))
-    } else if s.capture_enabled && s.capture_accelerator.eq_ignore_ascii_case(accelerator) {
-        Some(tr!("{key} already takes a screenshot.", key = shown_accelerator(accelerator)))
-    } else {
-        None
-    }
+/// Changes the key that saves the replay; empty removes it (Settings → Controller).
+pub(super) fn set_accelerator(d: &mut SettingsPage, accelerator: String, cx: &mut Context<SettingsPage>) {
+    d.replay.hotkey_taken = None;
+    update(d, cx, |p| p.keyboard_accelerator = accelerator);
+}
+
+fn shown_accelerator(a: &str) -> String {
+    a.replace("CommandOrControl", "Ctrl")
 }
 
 /// The keyboard shortcut that saves the replay: a field (none unless set;
@@ -627,22 +630,30 @@ fn keyboard_row(d: &SettingsPage, p: &ReplayPrefs, window: &Window, cx: &mut Con
         (true, false) => tr!("None").into(),
     };
     let field = hotkey_box(
-        div().id("replay-hotkey").track_focus(&d.replay.hotkey).cursor_pointer().on_key_down(cx.listener(|d, ev: &KeyDownEvent, _, cx| {
-            cx.stop_propagation();
-            let k = &ev.keystroke;
-            let plain = !(k.modifiers.control || k.modifiers.alt || k.modifiers.shift || k.modifiers.platform);
-            let accelerator = if plain && matches!(k.key.as_str(), "backspace" | "delete") {
-                String::new()
-            } else {
-                let Some(a) = accelerator_from_key(ev) else { return };
-                a
-            };
-            d.replay.hotkey_taken = taken_by(d, &accelerator);
-            if d.replay.hotkey_taken.is_none() {
-                update(d, cx, |p| p.keyboard_accelerator = accelerator);
-            }
-            cx.notify();
-        })),
+        div().id("replay-hotkey").track_focus(&d.replay.hotkey).cursor_pointer().on_key_down(cx.listener(
+            |d, ev: &KeyDownEvent, window, cx| {
+                cx.stop_propagation();
+                let accelerator = match hotkey_press(&ev.keystroke, true) {
+                    HotkeyPress::Set(a) => a,
+                    HotkeyPress::Clear => String::new(),
+                    HotkeyPress::Leave => {
+                        d.replay.hotkey_taken = None;
+                        return d.leave_hotkey_field(window, cx);
+                    }
+                    HotkeyPress::NeedsModifier(a) => {
+                        d.replay.hotkey_taken = Some(needs_modifier_text(&shown_accelerator(&a)));
+                        return cx.notify();
+                    }
+                    HotkeyPress::Ignore => return,
+                };
+                d.replay.hotkey_taken =
+                    (!accelerator.is_empty()).then(|| shortcuts::taken_by(d, Shortcut::Replay, &accelerator, cx)).flatten();
+                if d.replay.hotkey_taken.is_none() {
+                    update(d, cx, |p| p.keyboard_accelerator = accelerator);
+                }
+                cx.notify();
+            },
+        )),
         text,
         focused,
     )
@@ -753,14 +764,17 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         tr!("Choose a screenshots folder in Settings → Screenshots").into()
     };
     let status = status.child(status_item(has_folder, tr!("Saved in"), saved_in, None)).child(status_item(now_ok, tr!("Now"), now, None));
+    // A narrow window puts the side column under the settings.
+    let beside = super::room(window) >= MAIN_MIN_W + SIDE_W + 18.;
     let side = div()
         .flex()
         .flex_col()
-        .flex_none()
-        .w(px(SIDE_W))
         .gap(px(12.))
-        // Level with the first card, under its caption.
-        .mt(px(CAPTION_H + 20.))
+        .when(beside, |d| {
+            // Level with the first card, under its caption.
+            d.flex_none().w(px(SIDE_W)).mt(px(CAPTION_H + 20.))
+        })
+        .when(!beside, |d| d.w_full().mt(px(18.)))
         .child(side_card(tr!("Status"), status))
         .child(div().when(!p.any_enabled(), |d| d.opacity(0.5)).child(cost_card(o, &d.replay)));
 
@@ -777,6 +791,9 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .child(dim(on, picture_sound))
         .child(dim(on, advanced))
         .child(div().mt(px(14.)).px(px(6.)).child(meta_text(per_game)));
+    if !beside {
+        return div().flex().flex_col().child(column).child(side).into_any_element();
+    }
     div().flex().items_start().gap(px(18.)).child(column.flex_1().min_w_0()).child(side).into_any_element()
 }
 

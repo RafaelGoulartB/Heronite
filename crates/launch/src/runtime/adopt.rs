@@ -70,6 +70,9 @@ pub(super) struct RunningEntry {
     /// Stop patterns only reach processes started since (see [`Control`]).
     #[serde(default)]
     pub(super) since_ticks: u64,
+    /// How its FPS limit changes while it runs (see [`crate::live_fps`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) live_fps: Option<crate::live_fps::LiveFps>,
     pub(super) tracked: Tracked,
 }
 
@@ -174,6 +177,7 @@ pub(super) fn remember(shared: &Shared, control: &Control, req: &LaunchRequest, 
         base_total: ledger.cp.base_total(),
         written: ledger.cp.has_written(),
         since_ticks: control.since_ticks,
+        live_fps: control.live_fps.lock().unwrap().clone(),
         tracked,
     };
     drop(ledger);
@@ -340,7 +344,7 @@ fn adopted_control(entry: &RunningEntry) -> Control {
         ledger: Mutex::new(Ledger { cp: Checkpointer::resume(entry.base_total, entry.written), finished: false }),
         wake: Default::default(),
         running: Mutex::new(Some(entry.clone())),
-        live_fps: Mutex::new(None),
+        live_fps: Mutex::new(entry.live_fps.clone().map(crate::live_fps::LiveFps::current)),
     }
 }
 

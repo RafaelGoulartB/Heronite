@@ -26,13 +26,23 @@ pub struct LastBackup {
     pub at: SystemTime,
 }
 
-/// Looks up the backup folder of a game by title, then by Steam app id.
+/// Looks up the backup folder of a game by title — and, for an emulated game
+/// (`emulator_id` from [`LudusaviGame::emulator_of`](super::LudusaviGame::emulator_of)),
+/// by the platform-suffixed names its manifest uses for the title, its
+/// tag-stripped form and the ROM's name (`rom_path`) — then by Steam app id.
 /// `None` when Ludusavi is off, has no backup root, or has no such game.
-pub fn last_backup(paths: &DataPaths, title: &str, steam_app_id: Option<&str>) -> Option<LastBackup> {
+pub fn last_backup(
+    paths: &DataPaths,
+    title: &str,
+    steam_app_id: Option<&str>,
+    emulator_id: Option<&str>,
+    rom_path: Option<&str>,
+) -> Option<LastBackup> {
     let settings = heronite_data::settings::load(paths).ok()?.ludusavi;
     if !settings.enabled {
         return None;
     }
+    let engine = super::backup::emulator_engine(paths, emulator_id);
     if cfg!(windows) {
         // No `HOME` there: the user's folder, and Ludusavi's config where
         // the program found (or set in Settings) keeps it.
@@ -41,7 +51,7 @@ pub fn last_backup(paths: &DataPaths, title: &str, steam_app_id: Option<&str>) -
         let binary = super::detect::resolve_binary(&probe, Some(settings.binary_path.as_str()));
         let config = super::detect::windows_config_file(&probe, binary.as_deref());
         let root = backup_root(settings.use_installed_config, &settings.backup_path, Some(Path::new(&config)), &probe.home())?;
-        return find_in(&root, title, steam_app_id);
+        return find_for(&root, title, steam_app_id, engine.as_deref(), rom_path);
     }
     let home = std::env::var_os("HOME");
     let config = ludusavi_config_path(std::env::var_os("XDG_CONFIG_HOME"), home.as_deref());
@@ -51,7 +61,7 @@ pub fn last_backup(paths: &DataPaths, title: &str, steam_app_id: Option<&str>) -
         config.as_deref(),
         &home.map(|h| h.to_string_lossy().into_owned()).unwrap_or_default(),
     )?;
-    find_in(&root, title, steam_app_id)
+    find_for(&root, title, steam_app_id, engine.as_deref(), rom_path)
 }
 
 /// `$XDG_CONFIG_HOME/ludusavi/config.yaml`, else `~/.config/ludusavi/config.yaml`.
@@ -155,14 +165,31 @@ impl RootFolders {
     }
 }
 
-pub(super) fn find_in(root: &Path, title: &str, steam_app_id: Option<&str>) -> Option<LastBackup> {
-    RootFolders::read(root, steam_app_id)?.find(title)
+/// [`RootFolders::find`] under the title, then under the names the emulator
+/// manifests use for it ("Turbo Goose Racer (RetroArch)"). The root is read
+/// once: its folder list and the `mapping.yaml` fallback are reused for every
+/// attempt.
+fn find_for(root: &Path, title: &str, steam_app_id: Option<&str>, engine: Option<&str>, rom_path: Option<&str>) -> Option<LastBackup> {
+    let mut roots = RootFolders::read(root, steam_app_id)?;
+    if let Some(found) = roots.find(title) {
+        return Some(found);
+    }
+    for name in super::titles::emulator_names(engine, title, rom_path) {
+        if let Some(found) = roots.find(&name) {
+            return Some(found);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    fn find(root: &Path, title: &str, steam_app_id: Option<&str>) -> Option<LastBackup> {
+        find_for(root, title, steam_app_id, None, None)
+    }
 
     fn game(root: &Path, folder: &str, yaml: Option<&str>) -> PathBuf {
         let dir = root.join(folder);
@@ -178,12 +205,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         game(tmp.path(), "Elden Ring", Some("---\nname: Elden Ring\nbackups:\n  - name: x\n"));
         game(tmp.path(), "Onimusha_ Way of the Sword", None);
-        let b = find_in(tmp.path(), "ELDEN RING", None).unwrap();
+        let b = find(tmp.path(), "ELDEN RING", None).unwrap();
         assert_eq!(b.game_name, "Elden Ring");
         assert_eq!(b.dir, tmp.path().join("Elden Ring"));
-        let b = find_in(tmp.path(), "Onimusha: Way of the Sword", None).unwrap();
+        let b = find(tmp.path(), "Onimusha: Way of the Sword", None).unwrap();
         assert_eq!(b.game_name, "Onimusha_ Way of the Sword");
-        assert!(find_in(tmp.path(), "Control", None).is_none());
+        assert!(find(tmp.path(), "Control", None).is_none());
     }
 
     #[test]
@@ -192,9 +219,9 @@ mod tests {
         let dir = game(tmp.path(), "Game", Some("name: Game\n"));
         let when = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
         fs::File::options().write(true).open(dir.join("mapping.yaml")).unwrap().set_modified(when).unwrap();
-        assert_eq!(find_in(tmp.path(), "Game", None).unwrap().at, when);
+        assert_eq!(find(tmp.path(), "Game", None).unwrap().at, when);
         fs::remove_file(dir.join("mapping.yaml")).unwrap();
-        assert!(find_in(tmp.path(), "Game", None).unwrap().at > when);
+        assert!(find(tmp.path(), "Game", None).unwrap().at > when);
     }
 
     #[test]
@@ -202,16 +229,34 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         game(tmp.path(), "Odd Folder", Some("name: Real Title\n"));
         game(tmp.path(), "Other", Some("name: Other\nfiles:\n  /s/steamapps/compatdata/12345/pfx/save.dat:\n    hash: a\n"));
-        assert_eq!(find_in(tmp.path(), "real title", None).unwrap().dir, tmp.path().join("Odd Folder"));
-        assert_eq!(find_in(tmp.path(), "Unrelated", Some("12345")).unwrap().game_name, "Other");
-        assert!(find_in(tmp.path(), "Unrelated", Some("1234")).is_none());
-        assert!(find_in(tmp.path(), "Unrelated", Some("../")).is_none());
-        assert!(find_in(tmp.path(), "Unrelated", None).is_none());
+        assert_eq!(find(tmp.path(), "real title", None).unwrap().dir, tmp.path().join("Odd Folder"));
+        assert_eq!(find(tmp.path(), "Unrelated", Some("12345")).unwrap().game_name, "Other");
+        assert!(find(tmp.path(), "Unrelated", Some("1234")).is_none());
+        assert!(find(tmp.path(), "Unrelated", Some("../")).is_none());
+        assert!(find(tmp.path(), "Unrelated", None).is_none());
     }
 
     #[test]
     fn missing_root_is_none() {
-        assert!(find_in(Path::new("/nonexistent/ludusavi-root"), "Game", None).is_none());
+        assert!(find(Path::new("/nonexistent/ludusavi-root"), "Game", None).is_none());
+    }
+
+    #[test]
+    fn finds_an_emulated_games_suffixed_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        game(tmp.path(), "Turbo Goose Racer (RetroArch)", Some("name: Turbo Goose Racer (RetroArch)\n"));
+        let b = find_for(tmp.path(), "Turbo Goose Racer", None, Some("retroarch"), None).unwrap();
+        assert_eq!(b.game_name, "Turbo Goose Racer (RetroArch)");
+        assert!(find_for(tmp.path(), "Turbo Goose Racer", None, None, None).is_none());
+        assert!(find_for(Path::new("/nonexistent/ludusavi-root"), "Game", None, Some("retroarch"), None).is_none());
+    }
+
+    #[test]
+    fn finds_a_renamed_games_folder_through_its_rom() {
+        let tmp = tempfile::tempdir().unwrap();
+        game(tmp.path(), "Great Adventure (RetroArch)", Some("name: Great Adventure (RetroArch)\n"));
+        let b = find_for(tmp.path(), "MK3", None, Some("retroarch"), Some("/roms/Great Adventure (NA).sfc")).unwrap();
+        assert_eq!(b.game_name, "Great Adventure (RetroArch)");
     }
 
     #[test]

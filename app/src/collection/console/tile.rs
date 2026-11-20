@@ -119,7 +119,7 @@ impl CollectionView {
             CoverOrigin::Own => {
                 let s = k * sf;
                 let size = ((w * s).round() as u32, (h * s).round() as u32);
-                let pick = self.family_art(key, key, family, size, priority, "cw");
+                let pick = self.family_art(key, key, family, size, priority, "cw", false);
                 if pick.failed {
                     return (tall(self), false);
                 }

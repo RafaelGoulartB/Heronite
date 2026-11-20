@@ -20,8 +20,10 @@ pub mod osk;
 pub mod pointer;
 pub mod registry;
 pub mod sheet;
+pub mod sound;
 pub mod spatial;
 pub mod startup;
+pub mod summon;
 pub mod theme_rows;
 pub mod themes;
 

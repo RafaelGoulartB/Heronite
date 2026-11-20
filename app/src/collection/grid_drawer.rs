@@ -12,7 +12,7 @@ use heronite_images::Variant;
 use super::grid::DRAWER_INSET;
 use super::resize::Panel;
 use super::vm::FocusVm;
-use super::{focus, CollectionView};
+use super::{focus, whole_cover, CollectionView};
 use crate::theme;
 use crate::ui::controls::{button, close_button, ButtonKind};
 use heronite_i18n::tr;
@@ -58,7 +58,9 @@ impl CollectionView {
         let html_images = self.focus_html_images(&vm, inner_w, scale);
         let screenshots = self.screenshots_section(cx);
         let timeline = self.timeline_section(&vm.key, inner_w, scale, cx);
-        let extras = self.focus_extras(&vm.key, scale, cx);
+        let mut extras = self.focus_extras(&vm.key, scale, cx);
+        extras.media = self.store_media_section(inner_w, scale, cx);
+        extras.links = self.links_section(&vm.key, cx);
         let details = focus::stacked_details(
             focus::StackedProps {
                 vm,
@@ -157,7 +159,10 @@ impl CollectionView {
         let r = px(theme::R_DRAWER);
         let hero = self.drawer_art(&vm.key, width, hero_h, scale);
         let cover_h = COVER_W * self.cover_aspect;
-        let cover = self.cover(&vm.cover_key, COVER_W, cover_h, scale, 200);
+        let whole = whole_cover::on();
+        let cover = self.tall_cover(&vm.cover_key, COVER_W, cover_h, scale, 200, whole);
+        // A whole cover sits on the bottom of its place, by the title.
+        let (box_w, box_h) = if whole { whole_cover::whole_box(cover.as_ref(), COVER_W, cover_h) } else { (COVER_W, cover_h) };
         let fade = theme::drawer_fade(0.96);
         div()
             .relative()
@@ -202,20 +207,22 @@ impl CollectionView {
                     .items_end()
                     .gap(px(16.))
                     .child(
-                        div()
-                            .flex_none()
-                            .w(px(COVER_W))
-                            .h(px(cover_h))
-                            .rounded(px(10.))
-                            .bg(theme::ink_a(0.06))
-                            .shadow(vec![BoxShadow {
-                                color: theme::shadow_a(0.55),
-                                offset: point(px(0.), px(14.)),
-                                blur_radius: px(30.),
-                                spread_radius: px(0.),
-                                inset: false,
-                            }])
-                            .children(cover.map(|src| img(src).size_full().rounded(px(10.)).object_fit(ObjectFit::Cover))),
+                        div().flex_none().flex().items_end().justify_center().w(px(COVER_W)).h(px(cover_h)).child(
+                            div()
+                                .flex_none()
+                                .w(px(box_w))
+                                .h(px(box_h))
+                                .rounded(px(10.))
+                                .bg(theme::ink_a(0.06))
+                                .shadow(vec![BoxShadow {
+                                    color: theme::shadow_a(0.55),
+                                    offset: point(px(0.), px(14.)),
+                                    blur_radius: px(30.),
+                                    spread_radius: px(0.),
+                                    inset: false,
+                                }])
+                                .children(cover.map(|src| img(src).size_full().rounded(px(10.)).object_fit(ObjectFit::Cover))),
+                        ),
                     )
                     .child(
                         div()

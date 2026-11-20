@@ -81,6 +81,20 @@ mod tests {
         assert_eq!((a.is_premium, a.is_supporter, a.avatar), (false, true, None));
     }
 
+    /// Nexus answers with both spellings at once (#313).
+    #[test]
+    fn validate_answers_with_both_spellings_at_once() {
+        let both: api::RawUser = serde_json::from_str(
+            r#"{"user_id":1234,"key":"k","name":"Rafa","is_premium?":false,"is_supporter?":true,"email":"a@b.c","profile_url":"https://forums.nexusmods.com/uploads/profile/photo-1234.png","is_supporter":true,"is_premium":false}"#,
+        )
+        .unwrap();
+        let a = Account::from(both);
+        assert_eq!((a.name.as_str(), a.user_id, a.is_premium, a.is_supporter), ("Rafa", 1234, false, true));
+        let nulls: api::RawUser = serde_json::from_str(r#"{"user_id":null,"name":"N","is_premium":null,"is_premium?":true}"#).unwrap();
+        let a = Account::from(nulls);
+        assert_eq!((a.user_id, a.is_premium), (0, true));
+    }
+
     #[test]
     #[ignore = "network"]
     fn live_a_wrong_key_is_refused() {

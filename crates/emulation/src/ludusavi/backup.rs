@@ -4,9 +4,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use heronite_data::models::LocalMetaFile;
+use heronite_data::models::{LocalGameMeta, LocalMetaFile};
 use heronite_data::{json_store, settings, DataPaths};
 use heronite_i18n::tr;
+use heronite_launch::emulators::EmulatorsFile;
 use heronite_launch::probe::Probe;
 use heronite_launch::settings::{load_game_settings, GlobalSettings};
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,7 @@ use super::commands::{
 };
 use super::detect::detect_ludusavi;
 use super::runner::{CommandOutput, CommandRunner, LUDUSAVI_TIMEOUT};
+use super::titles::emulator_names;
 use crate::iso::iso_now;
 use crate::pathutil::join;
 use crate::settings_ext::{record_ludusavi_backup, LudusaviRecord};
@@ -56,6 +58,15 @@ pub struct LudusaviGame {
     pub steam_app_id: Option<String>,
     #[serde(default)]
     pub store_game_id: Option<String>,
+    /// Id of the user's emulator that runs the game (an `emulators.json`
+    /// entry, the meta's `emulatorId`); `None` when the game is not emulated.
+    #[serde(default)]
+    pub emulator_id: Option<String>,
+    /// The ROM that runs the game (emulated games): the name the emulator
+    /// manifests build their entries from. `None` when the game is not
+    /// emulated or its meta lists no ROM.
+    #[serde(default)]
+    pub rom_path: Option<String>,
 }
 
 impl LudusaviGame {
@@ -70,7 +81,28 @@ impl LudusaviGame {
             runner: runner.to_owned(),
             steam_app_id: meta.and_then(|m| m.steam_app_id.clone()),
             store_game_id: meta.and_then(|m| m.store_game_id.clone()),
+            emulator_id: Self::emulator_of(meta),
+            rom_path: Self::rom_path_of(meta),
         }
+    }
+
+    /// The emulator of an emulated game. Emulated games are sideloaded
+    /// (`runner` is `sideload`), so the emulator lives in the overlay meta.
+    pub fn emulator_of(meta: Option<&LocalGameMeta>) -> Option<String> {
+        meta.filter(|m| m.launch_kind == "emulator").and_then(|m| m.emulator_id.clone()).filter(|id| !id.is_empty())
+    }
+
+    /// The ROM a meta lists: the one selected for play, else the first
+    /// non-empty `roms[].path`. Emulated games carry one; other games simply
+    /// have none. The manifests name an entry after the ROM's title, so this
+    /// is what covers a Collection title that was renamed, stripped of
+    /// punctuation or cut short.
+    pub fn rom_path_of(meta: Option<&LocalGameMeta>) -> Option<String> {
+        let meta = meta?;
+        if let Some(path) = meta.selected_rom_path.as_ref().filter(|path| !path.is_empty()) {
+            return Some(path.clone());
+        }
+        meta.roms.as_ref()?.iter().map(|rom| rom.path.as_str()).find(|path| !path.is_empty()).map(str::to_owned)
     }
 }
 
@@ -175,6 +207,14 @@ pub(super) fn resolve_title(env: &LudusaviEnv, binary: &str, game: &LudusaviGame
     game.title.clone()
 }
 
+/// The catalog id (`retroarch`, `pcsx2`) of the user's emulator `emulator_id`;
+/// a custom emulator is recognised by its name or program.
+pub(crate) fn emulator_engine(paths: &DataPaths, emulator_id: Option<&str>) -> Option<String> {
+    let id = emulator_id.filter(|id| !id.is_empty())?;
+    let emulators: EmulatorsFile = json_store::read(&paths.emulators()).ok()?;
+    emulators.get(id).map(crate::save_states::engine_id_for)
+}
+
 /// `backupLudusaviForGame`.
 pub fn backup_for_game(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) -> LudusaviBackupResult {
     backup_for_game_within(env, game, reason, AFTER_PLAY_WAIT)
@@ -259,6 +299,30 @@ fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) ->
     let mut payload = parse_json(&result.stdout);
     let mut total = total_games(&payload);
 
+    // A secondary manifest may name an emulated game after its platform
+    // ("… (RetroArch)"), which the library title does not carry. The bare
+    // title is tried first, because that is the primary manifest's convention;
+    // only when it found nothing are the suffixed names tried, one run each,
+    // under the usual timeout and the single in-flight guard. A suffixed name
+    // without saves leaves no backup behind, so the order is safe.
+    if total == 0 {
+        let engine = emulator_engine(env.paths, game.emulator_id.as_deref());
+        for name in emulator_names(engine.as_deref(), &game.title, game.rom_path.as_deref()) {
+            if name == game_name {
+                continue;
+            }
+            let attempt = run_backup(&name)?;
+            let attempt_payload = parse_json(&attempt.stdout);
+            if total_games(&attempt_payload) > 0 {
+                game_name = name;
+                result = attempt;
+                payload = attempt_payload;
+                total = total_games(&payload);
+                break;
+            }
+        }
+    }
+
     if result.code != 0 && total == 0 && (game.steam_app_id.as_deref().is_some_and(|s| !s.is_empty()) || game.runner == "gog") {
         game_name = resolve_title(env, &binary, game);
         if game_name != game.title {
@@ -338,6 +402,7 @@ pub fn notification(result: &LudusaviBackupResult, title: &str) -> Option<(Strin
 mod tests {
     use super::*;
     use crate::ludusavi::fake::{out, Fake};
+    use heronite_data::models::LocalGameRom;
     use heronite_launch::probe::FakeProbe;
 
     use super::test_lock as guard_lock;
@@ -563,5 +628,246 @@ mod tests {
         assert_eq!(title, "Ludusavi");
         assert_eq!(body, format!("Saved G to {}", join("/backups", "G")));
         assert!(notification(&LudusaviBackupResult::default(), "G").is_none());
+    }
+
+    /// Adds a user emulator to `emulators.json`, under a generated id like
+    /// the import writes into the meta.
+    fn seed_emulator(paths: &DataPaths, id: &str, definition_id: &str, name: &str) {
+        json_store::update::<EmulatorsFile, _>(&paths.emulators(), |f| {
+            f.emulators.push(heronite_launch::emulators::UserEmulator {
+                id: id.into(),
+                definition_id: definition_id.into(),
+                name: name.into(),
+                ..Default::default()
+            });
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn the_catalog_id_comes_from_the_users_emulator() {
+        let (_d, paths) = setup(ENABLED);
+        seed_emulator(&paths, "7d0c2f1e", "retroarch", "RetroArch");
+        seed_emulator(&paths, "a91b44c3", "custom", "Dolphin");
+        assert_eq!(emulator_engine(&paths, Some("7d0c2f1e")).as_deref(), Some("retroarch"));
+        assert_eq!(emulator_engine(&paths, Some("a91b44c3")).as_deref(), Some("dolphin"));
+        assert_eq!(emulator_engine(&paths, Some("missing")), None);
+        assert_eq!(emulator_engine(&paths, None), None);
+    }
+
+    fn emulated_meta(launch_kind: &str, emulator_id: &str) -> LocalGameMeta {
+        LocalGameMeta {
+            app_name: "g".into(),
+            runner: "sideload".into(),
+            launch_kind: launch_kind.into(),
+            emulator_id: Some(emulator_id.into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn the_emulator_comes_from_an_emulated_games_meta() {
+        assert_eq!(LudusaviGame::emulator_of(Some(&emulated_meta("emulator", "7d0c2f1e"))).as_deref(), Some("7d0c2f1e"));
+        // A game turned into a plain executable keeps the stale id in its meta.
+        assert_eq!(LudusaviGame::emulator_of(Some(&emulated_meta("executable", "7d0c2f1e"))), None);
+        assert_eq!(LudusaviGame::emulator_of(Some(&emulated_meta("emulator", ""))), None);
+        assert_eq!(LudusaviGame::emulator_of(None), None);
+    }
+
+    #[test]
+    fn the_rom_comes_from_the_meta() {
+        let mut meta = emulated_meta("emulator", "7d0c2f1e");
+        meta.selected_rom_path = Some("/roms/selected.sfc".into());
+        meta.roms = Some(vec![LocalGameRom { path: "/roms/first.sfc".into(), ..Default::default() }]);
+        // The selected ROM wins, the first listed one is the fallback.
+        assert_eq!(LudusaviGame::rom_path_of(Some(&meta)).as_deref(), Some("/roms/selected.sfc"));
+        meta.selected_rom_path = None;
+        assert_eq!(LudusaviGame::rom_path_of(Some(&meta)).as_deref(), Some("/roms/first.sfc"));
+        // Neither present: no ROM, no ROM base.
+        meta.roms = None;
+        assert_eq!(LudusaviGame::rom_path_of(Some(&meta)), None);
+        assert_eq!(LudusaviGame::rom_path_of(None), None);
+    }
+
+    #[test]
+    fn emulated_game_is_backed_up_under_the_manifest_name() {
+        let _l = guard_lock();
+        let (_d, paths) = setup(ENABLED);
+        let name = "Turbo Goose Racer (RetroArch)";
+        let reply = format!(r#"{{"overall":{{"totalGames":1}},"games":{{"{name}":{{}}}}}}"#);
+        let runner = Fake {
+            replies: vec![(
+                format!("backup --force --api --no-cloud-sync --path /backups --format zip --compression zstd {name}"),
+                out(&reply, "", 0),
+            )],
+            ..Default::default()
+        };
+        json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |f| {
+            f.games.insert("g".into(), emulated_meta("emulator", "7d0c2f1e"));
+            Ok(())
+        })
+        .unwrap();
+        seed_emulator(&paths, "7d0c2f1e", "retroarch", "RetroArch");
+        let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        // As a session ends: emulated games are sideloaded, the emulator is in the meta.
+        let play = AfterPlay { app_name: "g".into(), title: "Turbo Goose Racer".into(), runner: "sideload".into(), elapsed_seconds: 60 };
+        let r = backup_after_play(&env, &play).unwrap();
+        assert!(r.ran, "{r:?}");
+        assert_eq!(r.game_name.as_deref(), Some(name));
+        assert_eq!(r.backup_path, Some(join("/backups", name)));
+        let calls = runner.calls.lock().unwrap();
+        let backups: Vec<_> = calls.iter().filter(|c| c[0] == "backup").collect();
+        assert_eq!(backups.len(), 2, "{calls:?}");
+        assert_eq!(backups[0].last().unwrap(), "Turbo Goose Racer");
+        assert_eq!(backups[1].last().unwrap(), name);
+    }
+
+    #[test]
+    fn a_tagged_title_falls_back_to_the_stripped_manifest_name() {
+        let _l = guard_lock();
+        let (_d, paths) = setup(ENABLED);
+        let name = "Turbo Goose Racer (RetroArch)";
+        let reply = format!(r#"{{"overall":{{"totalGames":1}},"games":{{"{name}":{{}}}}}}"#);
+        let runner = Fake {
+            replies: vec![(
+                format!("backup --force --api --no-cloud-sync --path /backups --format zip --compression zstd {name}"),
+                out(&reply, "", 0),
+            )],
+            ..Default::default()
+        };
+        json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |f| {
+            f.games.insert("g".into(), emulated_meta("emulator", "7d0c2f1e"));
+            Ok(())
+        })
+        .unwrap();
+        seed_emulator(&paths, "7d0c2f1e", "retroarch", "RetroArch");
+        let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        // The title kept a tag the generator strips; the manifest key does not
+        // have it. Bare title, then as-is with the platform, then the
+        // tag-stripped name: three attempts, in that order.
+        let play =
+            AfterPlay { app_name: "g".into(), title: "Turbo Goose Racer (NA)".into(), runner: "sideload".into(), elapsed_seconds: 60 };
+        let r = backup_after_play(&env, &play).unwrap();
+        assert!(r.ran, "{r:?}");
+        assert_eq!(r.game_name.as_deref(), Some(name));
+        assert_eq!(r.backup_path, Some(join("/backups", name)));
+        let calls = runner.calls.lock().unwrap();
+        let backups: Vec<_> = calls.iter().filter(|c| c[0] == "backup").collect();
+        assert_eq!(backups.len(), 3, "{calls:?}");
+        assert_eq!(backups[0].last().unwrap(), "Turbo Goose Racer (NA)");
+        assert_eq!(backups[1].last().unwrap(), "Turbo Goose Racer (NA) (RetroArch)");
+        assert_eq!(backups[2].last().unwrap(), name);
+    }
+
+    #[test]
+    fn a_renamed_title_falls_back_to_the_rom_name() {
+        let _l = guard_lock();
+        let (_d, paths) = setup(ENABLED);
+        let name = "Great Adventure (RetroArch)";
+        let reply = format!(r#"{{"overall":{{"totalGames":1}},"games":{{"{name}":{{}}}}}}"#);
+        let runner = Fake {
+            replies: vec![(
+                format!("backup --force --api --no-cloud-sync --path /backups --format zip --compression zstd {name}"),
+                out(&reply, "", 0),
+            )],
+            ..Default::default()
+        };
+        json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |f| {
+            let mut meta = emulated_meta("emulator", "7d0c2f1e");
+            meta.selected_rom_path = Some("/roms/Great Adventure (NA).sfc".into());
+            f.games.insert("g".into(), meta);
+            Ok(())
+        })
+        .unwrap();
+        seed_emulator(&paths, "7d0c2f1e", "retroarch", "RetroArch");
+        let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        // The Collection title was renamed; only the ROM still names the game
+        // the way the manifest does.
+        let play = AfterPlay { app_name: "g".into(), title: "MK3".into(), runner: "sideload".into(), elapsed_seconds: 60 };
+        let r = backup_after_play(&env, &play).unwrap();
+        assert!(r.ran, "{r:?}");
+        assert_eq!(r.game_name.as_deref(), Some(name));
+        let calls = runner.calls.lock().unwrap();
+        let backups: Vec<_> = calls.iter().filter(|c| c[0] == "backup").collect();
+        assert_eq!(backups.len(), 3, "{calls:?}");
+        assert_eq!(backups[0].last().unwrap(), "MK3");
+        assert_eq!(backups[1].last().unwrap(), "MK3 (RetroArch)");
+        assert_eq!(backups[2].last().unwrap(), name);
+    }
+
+    #[test]
+    fn a_pc_game_is_looked_up_by_title_only() {
+        let _l = guard_lock();
+        let (_d, paths) = setup(ENABLED);
+        let name = "Turbo Goose Racer";
+        let reply = format!(r#"{{"overall":{{"totalGames":1}},"games":{{"{name}":{{}}}}}}"#);
+        let runner = Fake {
+            replies: vec![(
+                format!("backup --force --api --no-cloud-sync --path /backups --format zip --compression zstd {name}"),
+                out(&reply, "", 0),
+            )],
+            ..Default::default()
+        };
+        // A PC game whose meta happens to carry a ROM path: no emulator, so no
+        // platform-suffixed names and no ROM base are ever tried.
+        json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |f| {
+            let meta = LocalGameMeta {
+                app_name: "g".into(),
+                runner: "sideload".into(),
+                launch_kind: "executable".into(),
+                selected_rom_path: Some("/roms/stray.sfc".into()),
+                ..Default::default()
+            };
+            f.games.insert("g".into(), meta);
+            Ok(())
+        })
+        .unwrap();
+        let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        let play = AfterPlay { app_name: "g".into(), title: name.into(), runner: "sideload".into(), elapsed_seconds: 60 };
+        let r = backup_after_play(&env, &play).unwrap();
+        assert!(r.ran, "{r:?}");
+        assert_eq!(r.game_name.as_deref(), Some(name));
+        let calls = runner.calls.lock().unwrap();
+        let backups: Vec<_> = calls.iter().filter(|c| c[0] == "backup").collect();
+        assert_eq!(backups.len(), 1, "{calls:?}");
+        assert_eq!(backups[0].last().unwrap(), name);
+    }
+
+    #[test]
+    fn a_platform_without_saves_falls_through_to_the_next_one() {
+        let _l = guard_lock();
+        let (_d, paths) = setup(ENABLED);
+        let wii = "Moon Cheese Caper (Wii)";
+        let reply = format!(r#"{{"overall":{{"totalGames":1}},"games":{{"{wii}":{{}}}}}}"#);
+        let runner = Fake {
+            replies: vec![(
+                format!("backup --force --api --no-cloud-sync --path /backups --format zip --compression zstd {wii}"),
+                out(&reply, "", 0),
+            )],
+            ..Default::default()
+        };
+        let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        let game = LudusaviGame {
+            app_name: "g".into(),
+            title: "Moon Cheese Caper".into(),
+            runner: "sideload".into(),
+            emulator_id: Some("a91b44c3".into()),
+            ..Default::default()
+        };
+        seed_emulator(&paths, "a91b44c3", "custom", "Dolphin");
+        let r = backup_for_game(&env, &game, BackupReason::Auto);
+        assert!(r.ran, "{r:?}");
+        assert_eq!(r.game_name.as_deref(), Some(wii));
+        let calls = runner.calls.lock().unwrap();
+        let backups: Vec<_> = calls.iter().filter(|c| c[0] == "backup").collect();
+        assert_eq!(backups.len(), 3, "{calls:?}");
+        assert_eq!(backups[0].last().unwrap(), "Moon Cheese Caper");
+        assert_eq!(backups[2].last().unwrap(), wii);
     }
 }

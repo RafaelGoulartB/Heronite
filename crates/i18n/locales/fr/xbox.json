@@ -1,0 +1,18 @@
+{
+  "Add the Microsoft Store and PC Game Pass games installed on this PC": "Ajouter les jeux Microsoft Store et PC Game Pass installés sur ce PC",
+  "Could not open the Xbox app: {error}": "Impossible d’ouvrir l’application Xbox : {error}",
+  "Get the Xbox app": "Obtenir l’application Xbox",
+  "Install PC Game Pass and Microsoft Store games": "Installer des jeux PC Game Pass et Microsoft Store",
+  "Microsoft Store and PC Game Pass games": "Jeux Microsoft Store et PC Game Pass",
+  "Microsoft Store games run on Windows only": "Les jeux Microsoft Store fonctionnent uniquement sous Windows",
+  "No games yet. Install them in the Xbox app or the Microsoft Store: they come into your Collection by themselves.": "Aucun jeu pour le moment. Installez-en depuis l’application Xbox ou le Microsoft Store : ils rejoindront automatiquement votre Collection.",
+  "Open the Xbox app": "Ouvrir l’application Xbox",
+  "Read games now": "Analyser les jeux maintenant",
+  "Read the Xbox games": "Analyser les jeux Xbox",
+  "The Collection already has every game installed from the Xbox app.": "La Collection contient déjà tous les jeux installés depuis l’application Xbox.",
+  "The Xbox app was not found on this PC. Get it from the Microsoft Store to install PC Game Pass games; the games you installed from the Microsoft Store show up here anyway.": "L’application Xbox est introuvable sur ce PC. Obtenez-la depuis le Microsoft Store pour installer des jeux PC Game Pass ; les jeux installés depuis le Microsoft Store apparaîtront ici dans tous les cas.",
+  "Xbox app found": "Application Xbox trouvée",
+  "Xbox app not found": "Application Xbox introuvable",
+  "{n} game installed": "{n} jeu installé",
+  "{n} games installed": "{n} jeux installés"
+}

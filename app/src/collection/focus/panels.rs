@@ -297,9 +297,14 @@ pub(super) fn related_panel(
                 }
             }
         });
-    for game in &g.games {
+    let covers: Vec<Option<ImageSource>> = g.games.iter().map(|game| cover_for(&game.cover_key)).collect();
+    // "Whole cover": the row's covers of a family share a height.
+    let shelf = super::super::whole_cover::on()
+        .then(|| super::super::whole_cover::Shelf::of(covers.iter().map(Option::as_ref), RELATED_COVER_W, RELATED_COVER_H));
+    for (game, src) in g.games.iter().zip(covers) {
         let key = game.key.clone();
         let cb = on_select.clone();
+        let (box_w, box_h) = shelf.map_or((RELATED_COVER_W, RELATED_COVER_H), |s| s.cover_box(src.as_ref()));
         row = row.child(
             div()
                 .id(SharedString::from(format!("rel-{tab}-{key}")))
@@ -310,20 +315,22 @@ pub(super) fn related_panel(
                 .cursor_pointer()
                 .on_click(move |_, w, cx| cb(key.clone(), w, cx))
                 .child(
-                    div()
-                        .w(px(RELATED_COVER_W))
-                        .h(px(RELATED_COVER_H))
-                        .rounded(px(6.))
-                        .overflow_hidden()
-                        .bg(theme::ink_a(0.06))
-                        .shadow(vec![BoxShadow {
-                            color: theme::shadow_a(0.45),
-                            offset: point(px(0.), px(8.)),
-                            blur_radius: px(20.),
-                            spread_radius: px(0.),
-                            inset: false,
-                        }])
-                        .children(cover_for(&game.cover_key).map(|src| img(src).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover))),
+                    div().flex().items_center().justify_center().w(px(RELATED_COVER_W)).h(px(RELATED_COVER_H)).child(
+                        div()
+                            .w(px(box_w))
+                            .h(px(box_h))
+                            .rounded(px(6.))
+                            .overflow_hidden()
+                            .bg(theme::ink_a(0.06))
+                            .shadow(vec![BoxShadow {
+                                color: theme::shadow_a(0.45),
+                                offset: point(px(0.), px(8.)),
+                                blur_radius: px(20.),
+                                spread_radius: px(0.),
+                                inset: false,
+                            }])
+                            .children(src.map(|src| img(src).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover))),
+                    ),
                 )
                 .child(div().mt(px(7.)).text_size(px(12.)).text_color(theme::ink_a(0.88)).truncate().child(game.title.clone()))
                 .child(

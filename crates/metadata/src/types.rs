@@ -37,6 +37,16 @@ impl<T> Lookup<T> {
         }
     }
 
+    /// [`map`](Self::map) with a function that may find nothing.
+    pub fn and_then<U>(self, f: impl FnOnce(T) -> Lookup<U>) -> Lookup<U> {
+        match self {
+            Self::Found(v) => f(v),
+            Self::NotFound => Lookup::NotFound,
+            Self::Unreachable => Lookup::Unreachable,
+            Self::Skipped => Lookup::Skipped,
+        }
+    }
+
     /// A provider failure: transport errors are `Unreachable`, the rest
     /// (bad status, bad JSON) count as an answer without data.
     pub fn from_error(err: &anyhow::Error) -> Self {
@@ -83,10 +93,15 @@ impl MatchedBy {
     }
 }
 
-/// The year of a release date (`2011-04-18`, `2011`); `None` when unknown.
+/// The year of a release date (`2011-04-18`, `2011`, or as Steam writes it,
+/// `18 Apr, 2011`); `None` when unknown.
 pub fn release_year(date: Option<&str>) -> Option<i32> {
-    let head: String = date?.chars().take(4).collect();
-    head.trim().parse::<i32>().ok().filter(|y| *y != 0)
+    let date = date?;
+    let head: String = date.chars().take(4).collect();
+    match head.trim().parse::<i32>() {
+        Ok(year) => Some(year).filter(|y| *y != 0),
+        Err(_) => crate::steam::year_of_date(date),
+    }
 }
 
 /// `CollectionMetadataCandidate`.
@@ -222,6 +237,9 @@ pub enum NotAsked {
     /// Asked only as a fallback, and nothing called for it: the other
     /// sources found the game ([`crate::sources::Asked::AsFallback`]).
     Fallback,
+    /// A source the game can be linked to by hand ([`crate::sources::SourceDescriptor::link_for`])
+    /// and is not: nothing is asked until the user picks its game.
+    NotLinked,
     /// It could not be loaded, or failed too many times in a row
     /// ([`crate::sources::SourceHealth`]).
     Failing,
@@ -501,7 +519,8 @@ pub struct DetailsResult {
 }
 
 /// `CollectionArtKind`: a picture of a game. `Cover` is the tall cover;
-/// the other cover families ([`CoverFamily`]) have their own kinds.
+/// the other cover families ([`CoverFamily`]) have their own kinds. `Logo`
+/// is the game's title as a transparent picture (console mode's).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ArtKind {
@@ -511,21 +530,23 @@ pub enum ArtKind {
     CoverSquare,
     #[serde(rename = "coverWide")]
     CoverWide,
+    Logo,
 }
 
 impl ArtKind {
     /// Every kind, the tall cover and the background first.
-    pub const ALL: [ArtKind; 4] = [Self::Cover, Self::Hero, Self::CoverSquare, Self::CoverWide];
+    pub const ALL: [ArtKind; 5] = [Self::Cover, Self::Hero, Self::CoverSquare, Self::CoverWide, Self::Logo];
 
-    /// Its field id (`cover`, `hero`, `coverSquare`, `coverWide`).
+    /// Its field id (`cover`, `hero`, `coverSquare`, `coverWide`, `logo`).
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Hero => "hero",
+            Self::Logo => "logo",
             cover => cover.family().expect("a cover").field(),
         }
     }
 
-    /// The kind of a field id (`cover`, `hero`, `coverSquare`, `coverWide`).
+    /// The kind of a field id (`cover`, `hero`, `coverSquare`, `coverWide`, `logo`).
     pub fn from_field(field: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|k| k.as_str() == field)
     }
@@ -539,13 +560,13 @@ impl ArtKind {
         }
     }
 
-    /// The family of a cover; `None` for the background.
+    /// The family of a cover; `None` for the background and the logo.
     pub fn family(self) -> Option<CoverFamily> {
         match self {
             Self::Cover => Some(CoverFamily::Tall),
             Self::CoverSquare => Some(CoverFamily::Square),
             Self::CoverWide => Some(CoverFamily::Wide),
-            Self::Hero => None,
+            Self::Hero | Self::Logo => None,
         }
     }
 
@@ -557,6 +578,7 @@ impl ArtKind {
             Self::Hero => "hero",
             Self::CoverSquare => "cover-square",
             Self::CoverWide => "cover-wide",
+            Self::Logo => "logo",
         }
     }
 
@@ -567,6 +589,7 @@ impl ArtKind {
             Self::Hero => md.hero_url.as_deref(),
             Self::CoverSquare => md.cover_square_url.as_deref(),
             Self::CoverWide => md.cover_wide_url.as_deref(),
+            Self::Logo => md.logo_url.as_deref(),
         }
     }
 
@@ -576,6 +599,7 @@ impl ArtKind {
             Self::Hero => &mut md.hero_url,
             Self::CoverSquare => &mut md.cover_square_url,
             Self::CoverWide => &mut md.cover_wide_url,
+            Self::Logo => &mut md.logo_url,
         }
     }
 
@@ -586,6 +610,7 @@ impl ArtKind {
             Self::Hero => art.hero_url.as_deref(),
             Self::CoverSquare => art.cover_square_url.as_deref(),
             Self::CoverWide => art.cover_wide_url.as_deref(),
+            Self::Logo => art.logo_url.as_deref(),
         }
     }
 
@@ -595,6 +620,7 @@ impl ArtKind {
             Self::Hero => &mut art.hero_url,
             Self::CoverSquare => &mut art.cover_square_url,
             Self::CoverWide => &mut art.cover_wide_url,
+            Self::Logo => &mut art.logo_url,
         }
     }
 }
@@ -607,6 +633,14 @@ pub struct WebImage {
     pub thumb_url: String,
     pub width: u32,
     pub height: u32,
+    /// SteamGridDB's style of the picture (`alternate`, `white_logo`,
+    /// `official`...), which its image search filters by; empty elsewhere.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub style: String,
+    /// A moving picture (SteamGridDB's animated backgrounds, a WebM): it
+    /// plays as the background with "Animated backgrounds" on.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub animated: bool,
 }
 
 /// A picture a source has by region (LaunchBox's box art): the region as
@@ -661,9 +695,11 @@ mod tests {
             let kind = ArtKind::cover(family);
             assert_eq!((kind.family(), kind.as_str()), (Some(family), family.field()));
         }
-        assert_eq!(ArtKind::Hero.family(), None);
+        assert_eq!((ArtKind::Hero.family(), ArtKind::Logo.family()), (None, None));
         let stems: Vec<&str> = ArtKind::ALL.iter().map(|k| k.file_stem()).collect();
-        assert_eq!(stems, ["cover", "hero", "cover-square", "cover-wide"]);
+        assert_eq!(stems, ["cover", "hero", "cover-square", "cover-wide", "logo"]);
+        assert_eq!(ArtKind::from_field("logo"), Some(ArtKind::Logo));
+        assert_eq!(serde_json::to_value(ArtKind::Logo).unwrap(), "logo");
         assert_eq!(serde_json::to_value(ArtKind::Cover).unwrap(), "cover");
         assert_eq!(serde_json::to_value(ArtKind::CoverWide).unwrap(), "coverWide");
     }

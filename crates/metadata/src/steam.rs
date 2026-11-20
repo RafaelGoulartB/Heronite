@@ -291,6 +291,11 @@ fn strip_fetched(mut d: SteamAppDetails) -> SteamAppDetails {
     d
 }
 
+/// The year in Steam's release date ("10 Oct, 2007", "Nov 2020", "2019").
+pub fn year_of_date(date: &str) -> Option<i32> {
+    crate::util::re!(r"\b(\d{4})\b").captures_iter(date).last().and_then(|c| c[1].parse().ok()).filter(|y| (1970..=2100).contains(y))
+}
+
 /// `steamCdnCover`.
 pub fn steam_cdn_cover(steam_app_id: Option<&str>) -> Option<String> {
     steam_app_id.filter(|s| !s.is_empty()).map(steam_library_cover)
@@ -441,6 +446,15 @@ mod tests {
 
     fn fixture(name: &str) -> String {
         std::fs::read_to_string(format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
+    }
+
+    #[test]
+    fn the_year_is_read_from_steams_release_dates() {
+        assert_eq!(year_of_date("10 Oct, 2007"), Some(2007));
+        assert_eq!(year_of_date("Nov 2020"), Some(2020));
+        assert_eq!(year_of_date("2019"), Some(2019));
+        assert_eq!(year_of_date("Coming soon"), None);
+        assert_eq!(year_of_date("To be announced"), None);
     }
 
     #[test]

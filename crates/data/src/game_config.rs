@@ -198,16 +198,18 @@ const INHERITED_KEYS: [&str; 24] = [
 const INHERITED_KEYS_2: [&str; 5] = ["useGameMode", "battlEyeRuntime", "eacRuntime", "beforeLaunchScriptPath", "afterLaunchScriptPath"];
 // `heroniteSharedFolders` ("Folders visible to Proton"),
 // `heroniteMangohudFpsLimit`, `heroniteFpsLimit*` (the FPS limit),
+// `heroniteMangohudHidden` (MangoHud starts hidden),
 // `heroniteLsfg*` (frame generation), `heroniteGpu*` (the graphics card
 // settings, `heronite_launch::gpu`), `heronitePreferSdl` and
 // `heroniteKeepAwake` are Heronite's. A game's `heroniteUmuId` is its own and
 // never inherited.
-const INHERITED_KEYS_3: [&str; 33] = [
+const INHERITED_KEYS_3: [&str; 34] = [
     "gamescope",
     "verboseLogs",
     "advertiseAvxForRosetta",
     "heroniteSharedFolders",
     "heroniteMangohudFpsLimit",
+    "heroniteMangohudHidden",
     "heroniteFpsLimit",
     "heroniteFpsLimitMethod",
     "heroniteFpsLimitSmooth",

@@ -1,7 +1,10 @@
 //! "Change": which game of one source this is. A search of that source only
 //! (by the game's title to start, Enter searches again) and its hits;
 //! picking one pins it and asks the sources again with that game;
-//! "Automatic" lets the source find the game by itself again.
+//! "Automatic" lets the source find the game by itself again. For a source
+//! the game is only linked to by hand (Steam, for a game that is not on it)
+//! the search also reads a store address or an app id, and the first entry
+//! is "Unlink".
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
@@ -31,7 +34,8 @@ pub(super) struct Change {
 impl MetadataDialog {
     /// Opens "Change" for `source` and searches it for the game's title.
     pub(super) fn open_change(&mut self, source: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let input = new_input(window, cx, &self.title, tr!("Search this source"));
+        let hint = if self.linked_by_hand(source) { tr!("Name, store address or app id") } else { tr!("Search this source") };
+        let input = new_input(window, cx, &self.title, hint);
         input.update(cx, |s, cx| s.focus(window, cx));
         let sub = cx.subscribe_in(&input, window, |this, _, ev: &InputEvent, _, cx| {
             if matches!(ev, InputEvent::PressEnter { .. }) {
@@ -85,6 +89,16 @@ impl MetadataDialog {
         cx.notify();
     }
 
+    /// Whether `source` is one this game is only linked to by hand: the
+    /// source is not for it (Steam, for a PC game with no Steam id of its own).
+    pub(super) fn linked_by_hand(&self, source: &str) -> bool {
+        let sources = self.service.sources();
+        // The library entry's own Steam id: the id of a Steam copy the game joined is not it.
+        let not_steam = self.game.meta.as_deref().and_then(|m| m.steam_app_id.as_deref()).is_none_or(str::is_empty);
+        let emulated = self.game.launch_kind.as_deref() == Some("emulator");
+        not_steam && !emulated && sources.get(source).is_some_and(|d| d.link_for.is_some())
+    }
+
     /// The id of the game `source` matched in the preview.
     fn matched_id(&self, source: &str) -> Option<String> {
         let p = self.preview.as_ref()?;
@@ -94,13 +108,14 @@ impl MetadataDialog {
         })
     }
 
-    fn hit_row(&self, i: usize, hit: &SourceHit, current: bool, cx: &mut Context<Self>) -> Stateful<Div> {
+    fn hit_row(&mut self, i: usize, hit: &SourceHit, current: bool, cx: &mut Context<Self>) -> Stateful<Div> {
         let line = [hit.year.map(|y| y.to_string()), hit.alt_title.clone(), hit.platform.clone()]
             .into_iter()
             .flatten()
             .collect::<Vec<_>>()
             .join(" \u{b7} ");
         let (source, id) = (hit.source.clone(), hit.id.clone());
+        let thumb = hit.thumb_url.clone().map(|url| self.thumb(&url, 30., 40., cx).flex_none());
         div()
             .id(("md-hit", i))
             .flex()
@@ -114,6 +129,7 @@ impl MetadataDialog {
             .when(current, |d| d.bg(theme::accent_tint()))
             .hover(|s| s.bg(theme::ink_a(0.06)))
             .on_click(cx.listener(move |this, _, _, cx| this.pin(&source, id.clone(), cx)))
+            .children(thumb)
             .child(
                 div()
                     .flex()
@@ -135,6 +151,7 @@ impl MetadataDialog {
         let (input, searching, hits, note) = (change.input.clone(), change.searching, change.hits.clone(), change.note.clone());
         let current = self.matched_id(&source);
         let pinned = self.pinned(&source);
+        let unlink = self.linked_by_hand(&source);
         let back = div()
             .id("md-change-back")
             .flex()
@@ -152,7 +169,8 @@ impl MetadataDialog {
             }))
             .child(icon(Icon::ChevronLeft, px(16.), theme::text_primary()));
         let mut list = div().id("md-hits").flex().flex_col().gap(px(2.)).flex_1().min_h_0().overflow_y_scroll();
-        if pinned {
+        // A game linked by hand, or found on the source by its name, can be unlinked.
+        if pinned || (unlink && current.is_some()) {
             let auto = source.clone();
             list = list.child(
                 div()
@@ -167,20 +185,22 @@ impl MetadataDialog {
                     .cursor_pointer()
                     .hover(|s| s.bg(theme::ink_a(0.06)))
                     .on_click(cx.listener(move |this, _, _, cx| this.pin(&auto, None, cx)))
-                    .child(icon(Icon::AutoAwesome, px(14.), theme::accent()))
+                    .child(icon(if unlink { Icon::Close } else { Icon::AutoAwesome }, px(14.), theme::accent()))
                     .child(
                         div()
                             .flex()
                             .flex_col()
                             .min_w_0()
-                            .child(div().text_size(px(13.)).text_color(theme::text_primary()).child(tr!("Automatic")))
-                            .child(
-                                div()
-                                    .truncate()
-                                    .text_size(px(11.5))
-                                    .text_color(theme::text_dim())
-                                    .child(tr!("Let {source} find the game by itself", source = name.as_str())),
-                            ),
+                            .child(div().text_size(px(13.)).text_color(theme::text_primary()).child(if unlink {
+                                tr!("Unlink")
+                            } else {
+                                tr!("Automatic")
+                            }))
+                            .child(div().truncate().text_size(px(11.5)).text_color(theme::text_dim()).child(if unlink {
+                                tr!("Take away the link to {source}", source = name.as_str())
+                            } else {
+                                tr!("Let {source} find the game by itself", source = name.as_str())
+                            })),
                     ),
             );
         }

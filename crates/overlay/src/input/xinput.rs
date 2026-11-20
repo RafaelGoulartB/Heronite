@@ -261,7 +261,8 @@ mod tests {
     use super::*;
     use crate::input::{Event, Options};
 
-    const ALL: Options = Options { screenshot: true, screenshot_button: Button::RB, volume: true, moment: true, replay: true };
+    const ALL: Options =
+        Options { screenshot: true, screenshot_button: Button::RB, volume: true, moment: true, replay: true, console_hold: false };
 
     fn snapshot(buttons: u32) -> Snapshot {
         Snapshot { buttons: buttons as u16, ..Snapshot::default() }
