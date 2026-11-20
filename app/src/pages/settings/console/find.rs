@@ -294,9 +294,10 @@ mod tests {
         let hits = search(&["library"], &sources);
         assert_eq!(hits[0].row, None, "the Library section itself first");
         assert!(hits.iter().any(|h| h.row.as_deref() == Some("x")), "a description matches too");
+        // The row's own label ranks before the section whose description has the words.
         let hits = search(&["show", "hidden"], &sources);
-        assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].row.as_deref(), Some("show-hidden"));
+        assert!(hits[1..].iter().all(|h| h.row.is_none()));
         assert!(search(&["show", "nothing"], &sources).is_empty());
     }
 }
