@@ -131,6 +131,7 @@ impl CollectionView {
                     .desc(tr!("Wine / Proton, launch options, Gamescope\u{2026}")),
             );
         }
+        rows.extend(self.achievements_row(g, cx));
         if !playing {
             rows.push(
                 Row::text("playtime", tr!("Playtime"), heronite_data::collection::playtime_label(g.playtime_minutes))
@@ -211,6 +212,28 @@ impl CollectionView {
         rows.push(Row::header(tr!("Manage")));
         rows.extend(manage);
         rows
+    }
+
+    /// "Achievements" (with how many are unlocked), when the game has some
+    /// or its ROM needs the RetroAchievements account: it opens the
+    /// Achievements screen.
+    fn achievements_row(&self, g: &CollectionGame, cx: &mut Context<Self>) -> Option<Row> {
+        use heronite_achievements::{Problem, Source};
+        if !crate::services::achievements::enabled() {
+            return None;
+        }
+        let svc = crate::services::achievements::get(cx);
+        let svc = svc.read(cx);
+        let entry = svc.entry(&crate::services::achievements::key_of(&g.runner, &g.app_name))?;
+        let desc = match (entry.primary(), entry.problem()) {
+            (Some(set), _) => tr!("{unlocked} of {total} unlocked", unlocked = set.unlocked(), total = set.total()),
+            (None, Some((Source::RetroAchievements, Problem::NeedsAccount))) => tr!("Connect RetroAchievements").to_string(),
+            (None, Some((Source::RetroAchievements, Problem::Unmatched { .. }))) => {
+                tr!("This ROM doesn't match any RetroAchievements set.").to_string()
+            }
+            _ => return None,
+        };
+        Some(Row::action("achievements", tr!("Achievements")).icon(Icon::Trophy).desc(desc))
     }
 
     /// What the main action of `g` is now: "Cancel launch", "Stop", "Play" or "Install", with its icon.
@@ -487,6 +510,7 @@ impl CollectionView {
                 }
                 "x:as-pc" => self.open_play_as_pc(key, window, cx),
                 "settings" => self.console_game_settings(key, window, cx),
+                "achievements" => self.open_console_achievements(key.clone(), cx),
                 "playtime" => self.console_edit_playtime(key, window, cx),
                 "recent" => {
                     if let Err(err) = heronite_data::config_games::remove_recent(&self.data_paths, &g.app_name) {

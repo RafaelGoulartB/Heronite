@@ -39,7 +39,7 @@ const RADIUS: f32 = 26.;
 
 /// The rows the sheet shows: the main ones of the game's actions, then "Full page".
 fn sheet_rows(all: Vec<Row>) -> Vec<Row> {
-    let mut rows: Vec<Row> = ["primary", "status", "favourite", "settings"]
+    let mut rows: Vec<Row> = ["primary", "status", "favourite", "settings", "achievements"]
         .into_iter()
         .filter_map(|id| all.iter().find(|r| r.id.as_ref() == id).cloned())
         .collect();
@@ -212,10 +212,11 @@ mod tests {
             Row::action("primary", "Play"),
             Row::action("ua:1", "Mod manager"),
             Row::toggle("favourite", "Favourite", false),
+            Row::action("achievements", "Achievements"),
             Row::header("Manage"),
             Row::action("x:ludusavi", "Back up"),
         ];
         let ids: Vec<_> = sheet_rows(all).iter().map(|r| r.id.to_string()).collect();
-        assert_eq!(ids, ["primary", "favourite", "full"]);
+        assert_eq!(ids, ["primary", "favourite", "achievements", "full"]);
     }
 }

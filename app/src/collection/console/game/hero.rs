@@ -551,6 +551,9 @@ mod tests {
         assert_eq!(buttons(&[play.clone(), fav.clone()]), [Button::Primary, Button::Favourite, Button::More]);
         let all = [play, Row::choice("status", "Status", vec!["a".into()], 0), fav, Row::action("settings", "Game settings")];
         assert_eq!(buttons(&all), [Button::Primary, Button::Status, Button::Favourite, Button::Settings, Button::More]);
+        let with_achievements = [Row::action("primary", "Play"), Row::action("achievements", "Achievements")];
+        assert_eq!(buttons(&with_achievements), [Button::Primary, Button::Favourite, Button::Achievements, Button::More]);
+        assert!(more_rows(&with_achievements).is_empty());
     }
 
     #[test]
