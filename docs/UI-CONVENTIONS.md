@@ -1226,7 +1226,7 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   follow the theme too. A light `colors.background` (`ColourOptions::is_light`, `look::light()`) makes the console
   light: dark text and focus, white panels, the art washed out; surfaces use the scheme's ink, never a bare white.
   The built-in themes (`presets.rs`), in the order they are listed: Minimal (what a new install uses,
-  `presets::DEFAULT`, and what Reset goes back to), Cinema, Pulse, Arcade (Wheel), Hub (Dashboard, the rail) and Living
+  `presets::DEFAULT`, and what Reset goes back to), Pulse, Cinema, Arcade (Wheel), Hub (Dashboard, the rail) and Living
   room (Series X), modelled on other launchers' fullscreen themes and consoles' home screens. Classic
   (`presets::classic`) is no longer listed: it stays the base the others start from and what missing keys of a theme
   file read as. Cinema took over from it and from the first Cinema (one row of covers, tabs along the bottom): a

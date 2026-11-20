@@ -69,7 +69,7 @@ fn presets_are_valid_and_unique() {
 #[test]
 fn classic_is_the_unlisted_base_and_cinema_is_listed() {
     let ids: Vec<_> = presets::all().into_iter().map(|t| t.id).collect();
-    assert_eq!(ids, ["minimal", "cinema", "pulse", "arcade", "hub", "living-room"]);
+    assert_eq!(ids, ["minimal", "pulse", "cinema", "arcade", "hub", "living-room"]);
     assert!(presets::by_id("classic").is_none());
     let cinema = presets::cinema();
     assert_eq!(cinema.tabs.iter().map(|t| t.source.as_str()).collect::<Vec<_>>(), ["installed", "all", "favourites", "all"]);

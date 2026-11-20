@@ -249,7 +249,7 @@ pub fn living_room() -> ConsoleTheme {
 /// Every built-in theme listed, the default ([`minimal`]) first (not the
 /// base, [`classic`]).
 pub fn all() -> Vec<ConsoleTheme> {
-    vec![minimal(), cinema(), pulse(), arcade(), hub(), living_room()]
+    vec![minimal(), pulse(), cinema(), arcade(), hub(), living_room()]
 }
 
 pub fn by_id(id: &str) -> Option<ConsoleTheme> {
