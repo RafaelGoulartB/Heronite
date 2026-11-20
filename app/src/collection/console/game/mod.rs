@@ -317,8 +317,9 @@ impl CollectionView {
         match look::theme().game_page {
             GamePage::Classic | GamePage::Tabs => Scrim::Classic,
             GamePage::Hero => Scrim::Spot,
-            // The theme's background as the screen behind shows it (Minimal: its blurred cover).
-            GamePage::Showcase => Scrim::Carousel,
+            // The theme's background (Minimal: its blurred cover), lightly
+            // shaded and never darkened at the bottom: its glass carries the text.
+            GamePage::Showcase => Scrim::Glass,
             GamePage::Sheet if self.console.game.sheet.full() => Scrim::Classic,
             GamePage::Sheet => super::layouts::scrim(spec.layout),
         }

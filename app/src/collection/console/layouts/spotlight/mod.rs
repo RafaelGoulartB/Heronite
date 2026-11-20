@@ -773,7 +773,8 @@ impl CollectionView {
         // On the row the strip and the art under it dissolve into the dark
         // towards the bottom edge, where the hints float: one gradient down
         // the strip, a darker one under it, meeting at the same shade.
-        let veil = ((shape.first_left().is_some() || shape.has_side()) && lift < 0.99).then(|| {
+        // (Not on the game page: its glass panels run to the edge.)
+        let veil = (!game_page && (shape.first_left().is_some() || shape.has_side()) && lift < 0.99).then(|| {
             let top = shape.geo.media + page::TILE_H * 0.1 - rise;
             let foot = (view_h - bar - 96.).max(top + 40.);
             let mid = 0.7;

@@ -145,6 +145,9 @@ pub(crate) enum Scrim {
     Carousel,
     /// Evenly dark (grids and lists over busy art).
     Full,
+    /// Light and even, a touch darker along the top and the left, never at
+    /// the bottom: glass panels carry the text (the Showcase game page).
+    Glass,
     /// Nearly opaque (pages).
     Page,
 }
@@ -168,6 +171,7 @@ fn light_wash(scrim: Scrim) -> f32 {
         Scrim::Cinema => 0.62,
         Scrim::Carousel => 0.56,
         Scrim::Full => 0.68,
+        Scrim::Glass => 0.5,
         Scrim::Page => 0.,
     }
 }
@@ -185,6 +189,7 @@ fn scrim_layers(scrim: Scrim) -> Vec<Div> {
         Scrim::Cinema => vec![layer(0., 0.97, 0., 0.62), layer(90., 0.55, 0., 0.5), layer(180., 0.45, 0., 0.16)],
         Scrim::Carousel => vec![layer(0., 0.94, 0., 0.5), layer(180., 0.72, 0., 0.34), layer(90., 0.6, 0., 0.3), layer(270., 0.6, 0., 0.3)],
         Scrim::Full => vec![layer(0., 0.86, 0.7, 1.)],
+        Scrim::Glass => vec![layer(0., 0.3, 0.3, 1.), layer(180., 0.5, 0., 0.3), layer(90., 0.5, 0., 0.45)],
         Scrim::Page => vec![layer(90., 0.96, 0.96, 1.)],
     }
 }
