@@ -92,9 +92,8 @@ pub const CINEMA_GOLD: &str = "#e8cf9a";
 /// The game's key art full screen, its logo large with its facts and genres
 /// centred under it, one row of large covers along the bottom (the logo and
 /// facts step aside while the row moves), a champagne-gold focus; tabs of
-/// filters in a pill at the top with a cluster of status icons, A plays,
-/// X opens the game's page (Showcase over the art, without glass), Y its
-/// actions.
+/// filters in a pill at the top with a cluster of status icons; its game page
+/// is Showcase over the art, without glass; Y opens the game's actions.
 pub fn cinema() -> ConsoleTheme {
     from_classic("cinema", n_!("Cinema"), n_!("The game's art full screen with its logo, and a row of large covers below it."), |t| {
         t.tabs = vec![
@@ -114,7 +113,6 @@ pub fn cinema() -> ConsoleTheme {
         t.interface.font = ConsoleFont::System;
         t.interface.accent = CINEMA_GOLD.into();
         t.controls.hints = Hints::Always;
-        t.nav.a_button = AButton::Play;
         t.game_page = GamePage::Showcase;
         t.layouts.showcase_glass = false;
         t.layouts.spotlight_cards = false;
