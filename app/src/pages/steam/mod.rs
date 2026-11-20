@@ -449,7 +449,7 @@ impl SteamPage {
 
     fn render_console(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let rows = self.console_rows(cx);
-        let list = self.console_list.render("steam-console", &rows, !self.layer.is_open());
+        let list = self.console_list.render_cards("steam-console", &rows, !self.layer.is_open());
         div()
             .relative()
             .flex()
@@ -468,16 +468,7 @@ impl SteamPage {
                     .child(div().flex_1())
                     .child(kit::clock()),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h_0()
-                    .px(u(46.))
-                    .pb(u(16.))
-                    .child(div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(list.flex_1().min_h_0())),
-            )
+            .child(div().flex().flex_col().flex_1().min_h_0().px(u(46.)).pb(u(16.)).child(list))
             .children(self.layer.view())
             .into_any_element()
     }
