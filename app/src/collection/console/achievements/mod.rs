@@ -380,6 +380,8 @@ impl CollectionView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // `gpui_kit::*` brings gpui's `test` macro into scope.
+    use core::prelude::v1::test;
 
     #[test]
     fn reveal_moves_the_list_only_as_far_as_needed() {

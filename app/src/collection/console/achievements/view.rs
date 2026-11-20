@@ -208,14 +208,9 @@ fn status_line(a: &Achievement, size: f32, long: bool) -> Div {
     if let Some(p) = a.progress.filter(|p| p.max > 1) {
         return d
             .text_color(theme::text_muted())
-            .child(
-                div()
-                    .w(u(if long { 120. } else { 70. }))
-                    .h(u(4.))
-                    .rounded_full()
-                    .bg(kit::ink(0.14))
-                    .child(div().h_full().rounded_full().bg(theme::console_focus()).w(relative(p.fraction().max(0.03)))),
-            )
+            .child(div().w(u(if long { 120. } else { 70. })).h(u(4.)).rounded_full().bg(kit::ink(0.14)).when(p.current > 0, |d| {
+                d.child(div().h_full().rounded_full().bg(theme::console_focus()).w(relative(p.fraction().max(0.03))))
+            }))
             .child(format!("{}/{}", p.current.min(p.max), p.max));
     }
     d.text_color(kit::ink(0.45)).child(tr!("Not unlocked"))
