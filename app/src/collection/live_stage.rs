@@ -1,8 +1,9 @@
 //! Animated backgrounds: with Settings → Appearance → "Animated backgrounds"
 //! on, a background that is a video or an animated picture (the game's own,
 //! "Your own picture", the one with no game selected) plays behind the
-//! Collection, and behind console mode (`console::backdrop::console_live`). Off, or while it cannot play, its first frame shows still
-//! like any picture (`heronite_images::Opts::video_still`).
+//! Collection, and behind console mode (`console::backdrop::console_live`).
+//! Off, or while it cannot play, its first frame shows still like any
+//! picture (`heronite_images::Opts::video_still`).
 //!
 //! Kept cheap (about 6% of one core while it plays, measured): ffmpeg
 //! (`heronite_media::stream`) decodes it 24 times a second into a raster of

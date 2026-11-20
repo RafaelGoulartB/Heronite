@@ -773,6 +773,8 @@ fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         Row::toggle("bg-animated", tr!("Animated backgrounds"), a.animated_backgrounds).desc(
             if a.animated_backgrounds && !d.appearance.ffmpeg {
                 tr!("ffmpeg, which plays them, was not found, so backgrounds stay still.")
+            } else if a.animated_backgrounds && a.motion != heronite_data::appearance::Motion::Full {
+                tr!("Animations are not on Full (Text and motion), so backgrounds stay still.")
             } else {
                 tr!("A background that is a video or an animated picture plays; off, it stays still")
             },
