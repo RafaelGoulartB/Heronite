@@ -213,6 +213,8 @@ pub(crate) enum Mark {
     Menu,
     Pair(&'static str, &'static str),
     Arrows,
+    /// One arrow: ◀ (`false`) or ▶ (`true`).
+    Arrow(bool),
 }
 
 /// The button a hint stands for, by position: A confirms (south, or east when
@@ -256,6 +258,8 @@ pub(crate) fn mark(style: Glyphs, btn: Btn, swap_ab: bool) -> Mark {
             _ => Mark::Menu,
         },
         Btn::LeftRight => Mark::Arrows,
+        Btn::Left => Mark::Arrow(false),
+        Btn::Right => Mark::Arrow(true),
         _ => unreachable!("face buttons are handled above"),
     }
 }
@@ -280,6 +284,7 @@ fn draw(m: Mark) -> Div {
         Mark::Pair(a, b) => div().flex().gap(u(4.)).child(key_cap(a)).child(key_cap(b)),
         // Icons: the fonts have no ◀ ▶, and the fallback draws them as emoji.
         Mark::Arrows => div().flex().gap(u(4.)).child(icon_disc(Icon::ChevronLeft)).child(icon_disc(Icon::ChevronRight)),
+        Mark::Arrow(right) => icon_disc(if right { Icon::ChevronRight } else { Icon::ChevronLeft }),
     }
 }
 
@@ -378,7 +383,7 @@ pub fn key_glyph(btn: Btn) -> Div {
         Btn::Bumpers => draw(Mark::Pair("Q", "E")),
         Btn::Start => key_cap("M"),
         // No key for these: the pad's own look.
-        Btn::LT | Btn::LeftRight => draw(mark(Glyphs::Xbox, btn, false)),
+        Btn::LT | Btn::LeftRight | Btn::Left | Btn::Right => draw(mark(Glyphs::Xbox, btn, false)),
     }
 }
 
@@ -413,7 +418,8 @@ pub fn btn_pad(btn: Btn) -> Pad {
         Btn::RB | Btn::Bumpers => Pad::RB,
         Btn::LT => Pad::LT,
         Btn::Start => Pad::Start,
-        Btn::LeftRight => Pad::Right,
+        Btn::LeftRight | Btn::Right => Pad::Right,
+        Btn::Left => Pad::Left,
     }
 }
 
@@ -463,7 +469,7 @@ fn system_hint(btn: Btn) -> bool {
 /// The order of the actions on the right: ◀ ▶, Y, X, B, then A at the end.
 fn action_rank(btn: Btn) -> u8 {
     match btn {
-        Btn::LeftRight => 0,
+        Btn::LeftRight | Btn::Left | Btn::Right => 0,
         Btn::Y => 1,
         Btn::X => 2,
         Btn::B => 3,
@@ -749,7 +755,7 @@ pub fn text_action(text: impl Into<SharedString>) -> Div {
 
 /// A heading between card rows, in [`accent_ink`].
 pub fn card_heading(text: impl Into<SharedString>) -> Div {
-    div().pt(u(22.)).pb(u(4.)).px(u(4.)).text_size(u(15.)).font_weight(theme::W_BOLD).text_color(accent_ink()).child(text.into())
+    div().pt(u(22.)).pb(u(4.)).px(u(4.)).text_size(u(16.)).font_weight(theme::W_BOLD).text_color(accent_ink()).child(text.into())
 }
 
 /// The name of a tab, `color` and bold or regular.

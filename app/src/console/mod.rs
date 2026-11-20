@@ -95,6 +95,10 @@ pub enum Btn {
     Start,
     /// "◀ ▶".
     LeftRight,
+    /// "◀" alone.
+    Left,
+    /// "▶" alone.
+    Right,
 }
 
 #[derive(Clone, Debug, PartialEq)]
