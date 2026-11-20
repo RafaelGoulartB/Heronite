@@ -9,7 +9,7 @@
 //! nothing is drawn while nothing runs. A click on the pill opens Downloads
 //! when a game downloads; otherwise it takes no input.
 //!
-//! `HERONITE_DEBUG_CONSOLE_ACTIVITY=metadata|download|many|done|error` shows
+//! `HERONITE_DEBUG_CONSOLE_ACTIVITY=metadata|download|many|done|error|nothing` shows
 //! made-up tasks or toasts (nothing runs); `=start:square|wide` starts the
 //! real cover download Settings → Metadata starts.
 
@@ -151,6 +151,8 @@ pub(super) enum Tone {
     Started,
     Done,
     Failed,
+    /// Nothing to do: said so.
+    Info,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -167,10 +169,20 @@ impl Toast {
     fn life(&self) -> Duration {
         match self.tone {
             Tone::Started => START_FOR,
-            Tone::Done => DONE_FOR,
+            Tone::Done | Tone::Info => DONE_FOR,
             Tone::Failed => ERROR_FOR,
         }
     }
+}
+
+/// A cover download that found every game with a cover of the family.
+fn nothing_to_download(f: CoverFamily) -> (String, String) {
+    let detail = match f {
+        CoverFamily::Square => tr!("Every game already has a square cover"),
+        CoverFamily::Wide => tr!("Every game already has a wide cover"),
+        CoverFamily::Tall => tr!("Every game already has a cover"),
+    };
+    (tr!("Nothing to download").into(), detail.into())
 }
 
 /// How a metadata job ended, from its tally.
@@ -224,6 +236,8 @@ pub(super) struct ActivityUi {
     /// The hub's finished jobs, for their toast.
     ended_jobs: HashMap<u64, JobTally>,
     hub_sub: Option<Subscription>,
+    /// The hub's "nothing to download" count already told.
+    nothing_seen: Option<u64>,
     /// `HERONITE_DEBUG_CONSOLE_ACTIVITY`: read once; made-up tasks stay.
     debug: Option<Option<Vec<Task>>>,
 }
@@ -359,6 +373,13 @@ impl CollectionView {
                 self.push_activity_toast(t.icon(), tone, title, detail);
             }
         }
+        if let Some((n, family)) = cx.has_global::<HubGlobal>().then(|| hub(cx).read(cx).nothing_to_download).flatten() {
+            if self.console.activity.nothing_seen.replace(n) != Some(n) {
+                let (title, detail) = nothing_to_download(family);
+                self.push_activity_toast(Icon::ViewCovers, Tone::Info, title, Some(detail));
+                changed = true;
+            }
+        }
         let ui = &mut self.console.activity;
         // A toast stays a little past its life while it fades out.
         let kept = ui.toasts.len();
@@ -447,6 +468,10 @@ impl CollectionView {
                     tr!("{title} installed", title = "Elden Ring"),
                     Some(tr!("ready to play").into()),
                 );
+            }
+            "nothing" => {
+                let (title, detail) = nothing_to_download(CoverFamily::Square);
+                self.push_activity_toast(Icon::ViewCovers, Tone::Info, title, Some(detail));
             }
             "error" => {
                 let t = JobTally { offline: 195, ..Default::default() };
@@ -582,11 +607,13 @@ fn toast(t: &Toast) -> AnyElement {
         Tone::Started => theme::console_focus(),
         Tone::Done => theme::console_on(),
         Tone::Failed => rgb(0xffb74d),
+        Tone::Info => theme::text_muted(),
     };
     let glyph = match t.tone {
         Tone::Started => t.icon,
         Tone::Done => Icon::Check,
         Tone::Failed => Icon::Warning,
+        Tone::Info => Icon::InfoOutlined,
     };
     let leaving = t.at.elapsed() >= t.life();
     let body = div()
@@ -637,7 +664,7 @@ fn toast(t: &Toast) -> AnyElement {
 
 #[cfg(test)]
 mod tests {
-    use super::{changes, metadata_end, pill_text, Kind, Task, Tone};
+    use super::{changes, metadata_end, nothing_to_download, pill_text, Kind, Task, Tone};
     use heronite_data::cover_family::CoverFamily;
     use heronite_metadata::JobTally;
 
@@ -687,5 +714,14 @@ mod tests {
         let none = metadata_end(Some(CoverFamily::Square), &JobTally { not_found: 14, ..Default::default() });
         assert_eq!(none, (Tone::Done, "No new square covers".into(), Some("14 not found".into())), "never \"0 updated\"");
         assert_eq!(metadata_end(None, &JobTally::default()), (Tone::Done, "Nothing new for these games".into(), None));
+    }
+
+    #[test]
+    fn a_download_with_nothing_to_fetch_says_so() {
+        assert_eq!(
+            nothing_to_download(CoverFamily::Square),
+            ("Nothing to download".into(), "Every game already has a square cover".into())
+        );
+        assert_eq!(nothing_to_download(CoverFamily::Wide).1, "Every game already has a wide cover");
     }
 }

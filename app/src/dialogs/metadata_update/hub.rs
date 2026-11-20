@@ -79,6 +79,10 @@ pub struct MetadataHub {
     idle_check: Option<usize>,
     /// The notice under the Cover aspect pickers (`family_notice.rs`).
     pub notice: Option<FamilyNotice>,
+    /// The last cover download asked for that found no game lacking the
+    /// family (a count, so the same answer twice still counts): console
+    /// mode's activity says so.
+    pub nothing_to_download: Option<(u64, heronite_data::cover_family::CoverFamily)>,
     /// `HERONITE_DEBUG_METADATA_JOB`: jobs are made up (see `fake.rs`).
     fake: Option<Fake>,
     /// The sources' database downloads (`source_downloads.rs`).
@@ -140,6 +144,7 @@ impl MetadataHub {
             idle_review: false,
             idle_check: None,
             notice: None,
+            nothing_to_download: None,
             fake: Fake::from_env(),
             source_downloads: SourceDownloads::new(),
             following_downloads: false,
