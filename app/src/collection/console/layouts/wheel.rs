@@ -33,6 +33,15 @@ const ROW: f32 = 62.;
 const ROW_H: f32 = 54.;
 /// Height of the header with the filter.
 const HEAD: f32 = 46.;
+/// What the game's text under its art takes at most (the name without a
+/// logo, two lines of facts, four of overview), design px.
+const PANEL_TEXT: f32 = 262.;
+
+/// Height of the game's art in the panel `w` wide: 16:9, as far as the
+/// body's height `body_h` leaves room for the text under it.
+fn wheel_art_h(w: f32, body_h: f32) -> f32 {
+    (w * 9. / 16.).min(body_h - HEAD - 6. - PANEL_TEXT).max(120.).round()
+}
 /// Rows drawn on each side of the centre (further ones are invisible).
 const REACH: isize = 7;
 /// LT / RT jump this many games.
@@ -178,13 +187,14 @@ impl CollectionView {
         let art_l = SIDE + list_w + 40.;
         let panel = self.lib.as_ref().and_then(|l| l.get(&focused)).cloned().map(|g| {
             let panel_w = vw - art_l - SIDE;
-            self.wheel_panel(&g, panel_w, vh, window)
+            let body_h = super::body_height(window, self.hints_visible());
+            self.wheel_panel(&g, panel_w, body_h, window)
         });
         div()
             .flex()
             .size_full()
             .child(div().flex_none().flex().flex_col().w(u(SIDE + list_w + 40.)).h_full().child(head).child(list))
-            .child(div().flex_1().min_w_0().h_full().pt(u(HEAD + 6.)).pr(u(SIDE)).children(panel))
+            .child(div().flex_1().min_w_0().h_full().overflow_hidden().pt(u(HEAD + 6.)).pr(u(SIDE)).children(panel))
             .into_any_element()
     }
 
@@ -267,11 +277,12 @@ impl CollectionView {
     }
 
     /// The focused game on the right: art in a rounded frame with its logo
-    /// over it, six facts and the overview.
-    fn wheel_panel(&mut self, g: &CollectionGame, w: f32, vh: f32, window: &Window) -> AnyElement {
+    /// over it, six facts and the overview, in the body's height `body_h`
+    /// (the art gives up what the text under it needs).
+    fn wheel_panel(&mut self, g: &CollectionGame, w: f32, body_h: f32, window: &Window) -> AnyElement {
         let theme = look::theme();
         let key = SharedString::from(g.key.clone());
-        let art_h = (w * 9. / 16.).min(vh - 76. - HEAD - 230.).max(120.).round();
+        let art_h = wheel_art_h(w, body_h);
         let art = self.console_wide_art(&key, w, art_h, 200, window);
         let logo = self.console_logo(&key, w * 0.55, art_h * 0.34, true, window);
         let no_logo = logo.is_none();
@@ -399,6 +410,15 @@ mod tests {
     use super::*;
     // `gpui_kit::*` above brings gpui's own `test` macro.
     use core::prelude::v1::test;
+
+    #[test]
+    fn the_art_leaves_room_for_the_text_under_it() {
+        // Wide panel, the body under a hint bar: the height caps it.
+        let h = wheel_art_h(1200., 664.);
+        assert!(h + HEAD + 6. + PANEL_TEXT <= 664.5, "{h}");
+        // A narrow panel keeps 16:9.
+        assert_eq!(wheel_art_h(400., 724.), 225.);
+    }
 
     #[test]
     fn rows_fade_and_bend_with_distance() {
