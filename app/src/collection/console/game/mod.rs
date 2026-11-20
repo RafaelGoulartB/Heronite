@@ -167,6 +167,11 @@ impl CollectionView {
                 .desc(tr!("Covers and backgrounds, from the web or a file")),
         );
         manage.push(
+            Row::action("x:background", tr!("Change background\u{2026}"))
+                .icon(Icon::Image)
+                .desc(tr!("The art behind the game in console mode")),
+        );
+        manage.push(
             Row::toggle("hidden", tr!("Hidden"), g.hidden).icon(Icon::VisibilityOff).desc(tr!("Hidden games stay out of the library")),
         );
         if g.recent {
@@ -519,6 +524,7 @@ impl CollectionView {
                 "x:manual-install" => self.open_manual_install(key, window, cx),
                 "x:ludusavi" => self.open_ludusavi_backup(key, cx),
                 "x:pictures" => self.open_covers_for(key, window, cx),
+                "x:background" => self.open_covers_at(key, Some(crate::dialogs::covers::Slot::Background), window, cx),
                 "x:steam-uninstall" => self.open_steam_uninstall(key, window, cx),
                 "x:steam-play" => self.play_with_steam(key, cx),
                 "x:open-client" => self.open_client_of(key, cx),
