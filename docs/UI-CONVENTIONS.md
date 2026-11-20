@@ -296,9 +296,12 @@ cover blurred, the Solid tint, or a picture copied to `AppPaths::custom_backgrou
 screenshots every 20 s. **Animated backgrounds** (under the two pictures, off by default, `animatedBackgrounds`): a
 background that is a video (WebM, MP4, MKV, MOV; a game's background may be one, `heronite_metadata::util::VIDEO_EXT`)
 or an animated GIF or PNG (`heronite_images::animation`; an animated WebP stays on its first frame: ffmpeg loops it
-badly, and older ones cannot decode it) plays behind the Collection (`collection/live_stage.rs`):
+badly, and older ones cannot decode it) plays behind the Collection and behind console mode (`collection/live_stage.rs`;
+console mode: the theme's Art or its own picture, `console::backdrop::console_live`, sharp, its still kept for the
+cross-fade between games; console's Settings → Appearance has the switch too):
 ffmpeg (`heronite_media::stream`, `fill` + `looped`) at 24 fps into the still stage's small raster
-(`heronite_images::stage_frame_size`, at most 640 wide), with the still stage's blur and colour done by ffmpeg (`gblur`,
+(`heronite_images::stage_frame_size`, at most 640 wide, also in console mode: 960 looked the same there and cost ffmpeg
+twice as much), with the still stage's blur and colour done by ffmpeg (`gblur`,
 `eq`) and only the roll-off on its reading thread (`backdrop_frame_rolloff`): about 6% of one core while it plays (35%
 with the blur on the frames). One slot, the newest frame drawn, as the trailers. It stops (its first frame
 shows) with Motion other than Full, while Heronite is not the active window, a game runs or a trailer plays, the stage

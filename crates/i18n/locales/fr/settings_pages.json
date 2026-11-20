@@ -603,5 +603,6 @@
   "Installing ffmpeg": "Installation de ffmpeg",
   "This shows because Animated backgrounds is on (Settings → Appearance). ffmpeg plays them; without it, backgrounds stay still.": "Ceci s'affiche car Arrière-plans animés est activé (Paramètres → Apparence). ffmpeg les lit ; sans lui, les arrière-plans restent fixes.",
   "Turn off": "Désactiver",
-  "ffmpeg missing": "ffmpeg manquant"
+  "ffmpeg missing": "ffmpeg manquant",
+  "A background that is a video or an animated picture plays; off, it stays still": "Un arrière-plan vidéo ou image animée bouge ; désactivé, il reste fixe"
 }

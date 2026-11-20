@@ -603,5 +603,6 @@
   "Installing ffmpeg": "Instalando ffmpeg",
   "This shows because Animated backgrounds is on (Settings → Appearance). ffmpeg plays them; without it, backgrounds stay still.": "Esto aparece porque Fondos animados está activado (Ajustes → Apariencia). ffmpeg los reproduce; sin él, los fondos quedan quietos.",
   "Turn off": "Desactivar",
-  "ffmpeg missing": "Falta ffmpeg"
+  "ffmpeg missing": "Falta ffmpeg",
+  "A background that is a video or an animated picture plays; off, it stays still": "Un fondo que sea vídeo o imagen animada se mueve; desactivado, queda quieto"
 }

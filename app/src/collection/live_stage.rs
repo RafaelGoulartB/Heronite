@@ -32,10 +32,20 @@ use super::CollectionView;
 
 /// Frames a second: a background moves slowly, and each one redraws the window.
 const FPS: u32 = 24;
-/// Widest frame, even with no blur: a moving picture behind the panels is
-/// not looked at closely (SteamGridDB's previews are 850 px wide), and each
-/// pixel costs ffmpeg and the roll-off 24 times a second.
+/// Widest frame, even with no blur (console mode's art is sharp): a moving
+/// picture behind the panels is not looked at closely (SteamGridDB's
+/// previews are 850 px wide; 960 looked the same in console mode and cost
+/// ffmpeg twice as much), and each pixel costs 24 times a second.
 const MAX_W: u32 = 640;
+
+/// How a moving background is drawn: the still stage's blur (physical px at
+/// the target), colour and highlights' roll-off.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct StageLook {
+    pub(super) blur: f32,
+    pub(super) saturation: f32,
+    pub(super) rolloff: f32,
+}
 /// A draw asked for this long ago that never came: the window is not shown.
 const UNSEEN: Duration = Duration::from_millis(1500);
 
@@ -122,7 +132,7 @@ impl CollectionView {
         picture: &str,
         chain: &[ImageRef],
         target: (u32, u32),
-        (blur, saturation, rolloff): (f32, f32, f32),
+        StageLook { blur, saturation, rolloff }: StageLook,
         window: &Window,
         cx: &mut Context<Self>,
     ) -> Option<(SharedString, ImageSource)> {
@@ -221,7 +231,9 @@ impl CollectionView {
         let mut count = 0u64;
         let stream = Stream::start(spec, move |ev| match ev {
             StreamEvent::Frame(mut f) => {
-                heronite_images::backdrop_frame_rolloff(&mut f, look.rolloff);
+                if look.rolloff > 0. {
+                    heronite_images::backdrop_frame_rolloff(&mut f, look.rolloff);
+                }
                 count += 1;
                 let was_empty = frames.lock().unwrap_or_else(|e| e.into_inner()).replace(f).is_none();
                 // Also once a second while nothing draws, so an unseen background stops.
@@ -283,11 +295,14 @@ impl CollectionView {
 /// ffmpeg's filters that give a frame the still stage's blur (`look.blur`,
 /// already in the frame's pixels; none when too light to see) and colour.
 fn look_filter(look: &Look) -> String {
-    let saturation = format!("eq=saturation={:.3}", look.saturation.clamp(0., 3.));
-    if look.blur < 0.3 {
-        saturation
+    let saturation = ((look.saturation - 1.).abs() > 0.005).then(|| format!("eq=saturation={:.3}", look.saturation.clamp(0., 3.)));
+    let blur = (look.blur >= 0.3).then(|| format!("gblur=sigma={:.2}:steps=2", look.blur));
+    // Nothing to do: ffmpeg's `null` filter passes the frame on.
+    let parts: Vec<String> = blur.into_iter().chain(saturation).collect();
+    if parts.is_empty() {
+        "null".into()
     } else {
-        format!("gblur=sigma={:.2}:steps=2,{saturation}", look.blur)
+        parts.join(",")
     }
 }
 
@@ -326,6 +341,7 @@ mod tests {
         assert_eq!(look_filter(&look(1.9)), "gblur=sigma=1.90:steps=2,eq=saturation=0.940");
         assert_eq!(look_filter(&look(0.)), "eq=saturation=0.940", "no blur to see");
         assert_eq!(look_filter(&Look { saturation: 9., ..look(0.) }), "eq=saturation=3.000", "within eq's range");
+        assert_eq!(look_filter(&Look { saturation: 1., ..look(0.) }), "null", "console mode's sharp art: nothing to do");
     }
     use heronite_images::ImageRef;
 

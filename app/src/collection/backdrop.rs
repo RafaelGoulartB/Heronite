@@ -51,8 +51,8 @@ impl CollectionView {
             self.shown_stage = None;
         }
         // A moving one: its frames in place of the still, under its id.
-        if let Some(live) = self.live_stage(&id, &picture, live_chain.as_deref().unwrap_or(&[]), (pw, ph), (blur, sat, rolloff), window, cx)
-        {
+        let look = super::live_stage::StageLook { blur, saturation: sat, rolloff };
+        if let Some(live) = self.live_stage(&id, &picture, live_chain.as_deref().unwrap_or(&[]), (pw, ph), look, window, cx) {
             return Some(live);
         }
         self.shown_stage.as_ref().map(|(k, img)| (k.clone(), ImageSource::Render(img.clone())))

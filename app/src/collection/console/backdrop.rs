@@ -172,6 +172,36 @@ impl CollectionView {
         self.images.get_or_request(&id, chain, size.0, size.1, variant, 1000)
     }
 
+    /// The frame of the background for `key` while it moves (Settings →
+    /// Appearance → "Animated backgrounds", `live_stage.rs`): the game's art,
+    /// or the theme's own picture, when that is a video or an animated
+    /// picture. Its still stays [`Self::backdrop_image`], which the
+    /// cross-fade between games follows.
+    fn console_live(&mut self, key: &SharedString, window: &Window, cx: &mut Context<Self>) -> Option<Arc<RenderImage>> {
+        let theme = look::theme();
+        let size = backdrop_size(window);
+        let blur = f32::from(theme.background.blur);
+        let (owner, tag, chain): (Option<&str>, Cow<'static, str>, Vec<ImageRef>) = match theme.background.source {
+            BackgroundSource::Art => (Some(key.as_ref()), "art".into(), self.stage_chains.get(key).cloned().unwrap_or_default()),
+            BackgroundSource::Image => {
+                let src = theme.background.image.trim();
+                if src.is_empty() || src.starts_with("http://") || src.starts_with("https://") {
+                    return None;
+                }
+                (None, format!("img:{src}").into(), vec![ImageRef::File(src.into())])
+            }
+            // Covers and screenshots are pictures; no picture, no motion.
+            _ => return None,
+        };
+        let id = backdrop_id(owner, &tag, size, blur);
+        let picture = format!("console:{}:{tag}", owner.unwrap_or(""));
+        let look = super::super::live_stage::StageLook { blur, saturation: 1., rolloff: 0. };
+        match self.live_stage(&id, &picture, &chain, size, look, window, cx)?.1 {
+            ImageSource::Render(frame) => Some(frame),
+            _ => None,
+        }
+    }
+
     /// The art behind the screen and the one it fades from.
     pub(super) fn console_art(
         &mut self,
@@ -197,12 +227,16 @@ impl CollectionView {
                 }));
             }
             self.console.art_cur = Some((key.clone(), img.clone()));
-            self.shown_stage = Some((key, img));
+            self.shown_stage = Some((key.clone(), img));
         } else if matches!(look::theme().background.source, BackgroundSource::Solid | BackgroundSource::GameColour) {
             self.console.art_cur = None;
             self.console.art_prev = None;
         }
-        (self.console.art_prev.clone(), self.console.art_cur.clone())
+        // A background that moves: its frame drawn in place of the still,
+        // which the cross-fade keeps following (a frame is not a new picture).
+        let live = self.console_live(&key, window, cx);
+        let cur = self.console.art_cur.clone().map(|(k, still)| (k, live.unwrap_or(still)));
+        (self.console.art_prev.clone(), cur)
     }
 
     /// The whole background layer: art (or colour), darkening, shading.
