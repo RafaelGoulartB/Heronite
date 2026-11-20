@@ -899,7 +899,7 @@ impl CollectionView {
 
     /// Cinema's page head: the home's block (the logo or the name, the facts
     /// between champagne rules, the genres as words) at the page's left edge,
-    /// Play / Options / ♥ centred under it; then the strip.
+    /// Play / Options / ♥ under it, all from that edge; then the strip.
     /// It keeps the head's room (`Geo`): the block and the buttons end
     /// where the chips would.
     fn cinema_page_head(&mut self, g: &CollectionGame, shape: &Shape, f: &Focus, strip_x: f32, window: &Window) -> Vec<AnyElement> {
@@ -907,13 +907,13 @@ impl CollectionView {
         let key = &g.key;
         let block = self.cinema_block(g, &format!("cinema-page-{key}"), LOGO_SLIDE, geo.width.min(760.), geo.logo_h, window);
         let actions = (f.zone == Zone::Actions).then_some(f.action);
-        let buttons = div().relative().flex().justify_center().child(self.spotlight_actions(g, actions));
+        let buttons = div().relative().flex().child(self.spotlight_actions(g, actions));
         let buttons = reveal(SharedString::from(format!("cinema-page-buttons-{key}")), buttons, f.rest_hold, REST_FADE, None);
         // A soft shade of its own behind it, as on the home.
         let shade_h = geo.logo_h + 150.;
         let shade =
             div().absolute().top(u(geo.logo)).left(u(SIDE)).w(u(geo.width)).h(u(shade_h)).child(cinema::block_shade(geo.width, shade_h));
-        // At the page's left edge, as wide as its widest line, centred inside.
+        // At the page's left edge, everything from it.
         let head = div()
             .absolute()
             .top(u(geo.logo))
@@ -921,7 +921,7 @@ impl CollectionView {
             .max_w(u(geo.width))
             .flex()
             .flex_col()
-            .items_center()
+            .items_start()
             .gap(u(16.))
             .child(block)
             .child(buttons);
