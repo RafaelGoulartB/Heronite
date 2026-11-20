@@ -5,7 +5,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{presets, store, BackgroundSource, ConsoleTheme};
+use heronite_data::console_theme::{presets, store, BackgroundSource, ConsoleTheme, Layout};
 use heronite_i18n::{tr, trn};
 
 use super::preview::{self, Art};
@@ -31,6 +31,29 @@ const QUICK: [&str; 10] = [
     "controls.hints",
     "interface.scale",
 ];
+
+/// The sections of Spotlight's game page, offered in "Quick changes" while
+/// the theme has a Spotlight tab.
+const QUICK_SPOTLIGHT: [&str; 7] = [
+    "layouts.spotlight_sections.media",
+    "layouts.spotlight_sections.screenshots",
+    "layouts.spotlight_sections.about",
+    "layouts.spotlight_sections.achievements",
+    "layouts.spotlight_sections.details",
+    "layouts.spotlight_sections.related",
+    "layouts.spotlight_cards",
+];
+
+/// "Spotlight: media" → "Media": the heading above says Spotlight already
+/// (`:` or the French ` :` ends the prefix in every language).
+fn without_layout_prefix(label: &str) -> String {
+    let rest = label.split_once(':').map_or(label, |(_, r)| r).trim();
+    let mut c = rest.chars();
+    match c.next() {
+        Some(first) => first.to_uppercase().chain(c).collect(),
+        None => label.to_string(),
+    }
+}
 
 const GAP: f32 = 14.;
 /// Between the cards of the gallery.
@@ -914,6 +937,40 @@ fn quick_changes(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Set
             }
         }
     }
+    let spotlight = d.console_mode.as_ref().is_some_and(|s| s.theme.prefs.theme.tabs.iter().any(|t| t.layout == Layout::Spotlight));
+    if spotlight {
+        col = col.child(
+            div()
+                .pt(px(10.))
+                .pb(px(2.))
+                .text_size(px(13.))
+                .text_color(theme::text_primary())
+                .font_weight(theme::W_500)
+                .child(tr!("Game page sections")),
+        );
+        for id in QUICK_SPOTLIGHT {
+            let Some(r) = all.iter().find(|r| r.id.as_ref() == id) else { continue };
+            let Some(control) = form::control_in(d, r, 22, window, cx) else { continue };
+            let reset = form::reset_button(d, id, cx);
+            col = col.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(12.))
+                    .min_h(px(34.))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .text_size(px(13.))
+                            .text_color(theme::text_muted())
+                            .truncate()
+                            .child(without_layout_prefix(&r.label)),
+                    )
+                    .child(div().flex_none().flex().items_center().gap(px(6.)).child(control).children(reset)),
+            );
+        }
+    }
     col
 }
 
@@ -931,6 +988,13 @@ fn startup(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsP
 #[cfg(test)]
 mod tests {
     use super::Pages;
+
+    #[test]
+    fn a_layout_prefix_is_left_out() {
+        assert_eq!(super::without_layout_prefix("Spotlight: more like this"), "More like this");
+        assert_eq!(super::without_layout_prefix("À la une : médias"), "Médias");
+        assert_eq!(super::without_layout_prefix("Media"), "Media");
+    }
 
     #[test]
     fn the_row_maps_to_pages_with_a_short_last_one() {
