@@ -15,7 +15,7 @@ use super::super::super::super::CollectionView;
 use super::super::super::hero::{clip, played_time};
 use crate::collection::data::played_ago;
 use crate::console::kit::{self, u};
-use crate::console::motion;
+use crate::console::{look, motion};
 use crate::icons::Icon;
 use crate::theme;
 
@@ -137,8 +137,22 @@ pub(super) fn ring(radius: f32, t: f32) -> Div {
         }])
 }
 
-/// A section's title ("About this game").
+/// A section's title ("About this game"). On a page without glass
+/// (Cinema's), over a thin champagne rule.
 pub(super) fn section_title(text: &str) -> Div {
+    if !look::theme().layouts.showcase_glass {
+        let gold: Hsla = theme::console_focus().into();
+        return div()
+            .h(u(TITLE_H))
+            .flex()
+            .flex_col()
+            .justify_center()
+            .gap(u(6.))
+            .child(
+                div().text_size(u(TITLE)).font_weight(theme::W_BOLD).text_color(kit::strong()).whitespace_nowrap().child(text.to_string()),
+            )
+            .child(div().w(u(48.)).h(px(1.)).bg(gold.opacity(0.6)));
+    }
     div().h(u(TITLE_H)).text_size(u(TITLE)).font_weight(theme::W_BOLD).text_color(kit::strong()).whitespace_nowrap().child(text.to_string())
 }
 

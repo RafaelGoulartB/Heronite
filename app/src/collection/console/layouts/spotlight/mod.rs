@@ -37,14 +37,14 @@ use heronite_data::details_url::details_url;
 use heronite_data::CollectionGame;
 use heronite_i18n::{tr, trn};
 
-pub(in crate::collection::console) use bar::{spotlight_clock, spotlight_tabs};
+pub(in crate::collection::console) use bar::{spotlight_clock, spotlight_tabs, spotlight_tabs_in};
 use page::{HltbCard, Link, Mid, Move, Shape, Zone, SIDE};
 
 use super::super::super::focus::{hltb_hours, hltb_marker, hltb_note_text, HLTB_COLOURS};
 use super::super::super::vm::{DetailField, DetailValue};
 use super::super::super::CollectionView;
 use super::super::hero::{fitted_title, logo_element, HeroSize};
-use super::top_recent;
+use super::{cinema, top_recent};
 use crate::collection::focus_left::STAR;
 use crate::console::kit::{self, u};
 use crate::console::look;
@@ -378,6 +378,10 @@ impl CollectionView {
         let (_, on) = row::icon_sizes(self.cover_aspect);
         let top = if host == Host::Game { GAME_TOP } else { row::row_height(on) };
         s.layout(top, page::logo_h(theme.hero.size), width, page::COVER_W * self.cover_aspect);
+        // The game page ends clear of the hint bar under it.
+        if host == Host::Game {
+            s.geo.end += HINT_ROOM;
+        }
         s
     }
 
@@ -801,7 +805,19 @@ impl CollectionView {
                     linear_color_stop(kit::dim(0.94), 1.),
                 )))
         });
-        let mut root = div().relative().size_full().children(dim).child(page).children(veil).children(top_fade);
+        // Cinema's page: the bottom fades into the dark behind the hint bar.
+        let foot = focus.rules.then(|| {
+            div().absolute().left_0().right_0().bottom_0().h(u(90.)).bg(linear_gradient(
+                0.,
+                linear_color_stop(kit::dim(0.92), 0.),
+                linear_color_stop(kit::dim(0.), 1.),
+            ))
+        });
+        let mut root = div().relative().size_full().children(dim).child(page).children(veil).children(top_fade).children(foot);
+        // Cinema's page stops above the hint bar, which has its own room under it.
+        if focus.rules {
+            root = root.overflow_hidden();
+        }
         if let (Some(i), false) = (viewer, shape.media_shots) {
             root = root.child(self.spotlight_viewer(&shape.store, i, window));
         } else if let Some(scroll) = &sheet {
@@ -841,6 +857,9 @@ impl CollectionView {
 
     /// The logo (or name), the buttons, the facts and genres, and the media strip.
     fn spotlight_head(&mut self, g: &CollectionGame, shape: &Shape, f: &Focus, strip_x: f32, window: &Window) -> Vec<AnyElement> {
+        if f.rules {
+            return self.cinema_page_head(g, shape, f, strip_x, window);
+        }
         let geo = shape.geo;
         let size = HeroSize { title: 54., logo: (600., geo.logo_h), max_w: 760., overview: 0 };
         // The logo, else the name in type, smaller when long, on two lines at most.
@@ -869,6 +888,41 @@ impl CollectionView {
             .child(div().mt(u(10.)).child(parts::genre_chips(g)));
         let rest = placed(geo.buttons, reveal(SharedString::from(format!("spot-rest-{key}")), rest, f.rest_hold, REST_FADE, None));
         let mut out = vec![logo.into_any_element(), rest];
+        if shape.media > 0 {
+            out.push(self.spotlight_media(shape, f, strip_x, window));
+        }
+        out
+    }
+
+    /// Cinema's page head: the home's block (the logo or the name, the facts
+    /// between champagne rules, the genres as words) at the page's left edge,
+    /// Play / Options / ♥ centred under it; then the strip.
+    /// It keeps the head's room (`Geo`): the block and the buttons end
+    /// where the chips would.
+    fn cinema_page_head(&mut self, g: &CollectionGame, shape: &Shape, f: &Focus, strip_x: f32, window: &Window) -> Vec<AnyElement> {
+        let geo = shape.geo;
+        let key = &g.key;
+        let block = self.cinema_block(g, &format!("cinema-page-{key}"), LOGO_SLIDE, geo.width.min(760.), geo.logo_h, window);
+        let actions = (f.zone == Zone::Actions).then_some(f.action);
+        let buttons = div().relative().flex().justify_center().child(self.spotlight_actions(g, actions));
+        let buttons = reveal(SharedString::from(format!("cinema-page-buttons-{key}")), buttons, f.rest_hold, REST_FADE, None);
+        // A soft shade of its own behind it, as on the home.
+        let shade_h = geo.logo_h + 150.;
+        let shade =
+            div().absolute().top(u(geo.logo)).left(u(SIDE)).w(u(geo.width)).h(u(shade_h)).child(cinema::block_shade(geo.width, shade_h));
+        // At the page's left edge, as wide as its widest line, centred inside.
+        let head = div()
+            .absolute()
+            .top(u(geo.logo))
+            .left(u(SIDE))
+            .max_w(u(geo.width))
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap(u(16.))
+            .child(block)
+            .child(buttons);
+        let mut out = vec![shade.into_any_element(), head.into_any_element()];
         if shape.media > 0 {
             out.push(self.spotlight_media(shape, f, strip_x, window));
         }
@@ -1684,12 +1738,8 @@ const GLASS_PAD: f32 = 18.;
 
 /// `el` on a panel of frosted glass (the game page's look): a translucent
 /// fill, a thin edge and the theme's soft corners, reaching a little around
-/// it; under a thin rule on a page without glass; else as is.
+/// it; as is without `glass`.
 fn glass_panel(el: Div, f: &Focus) -> Div {
-    if f.rules {
-        let rule = div().absolute().top(u(-GLASS_PAD)).left_0().right_0().h(px(1.)).bg(kit::ink(0.22));
-        return div().relative().child(rule).child(el);
-    }
     if !f.glass {
         return el;
     }
@@ -1704,6 +1754,9 @@ fn glass_panel(el: Div, f: &Focus) -> Div {
         .border_color(kit::ink(0.1))
         .child(el)
 }
+
+/// Room the game page keeps under its end for the hint bar, design px.
+const HINT_ROOM: f32 = 60.;
 
 /// Room around a strip's tiles for the focus ring, design px.
 const STRIP_ROOM: f32 = 26.;
