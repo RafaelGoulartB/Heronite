@@ -96,8 +96,8 @@ impl Host for CollectionView {
         self.open_console_overlay(&sheet, sub, cx);
     }
 
-    fn start_options_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.console_start_options_changed(window, cx);
+    fn start_options_changed(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
+        self.console_start_options_changed();
     }
 }
 
@@ -109,7 +109,7 @@ impl CollectionView {
         state.data.saved = store::list(&self.app_paths);
         if let Some(lib) = self.lib.as_ref() {
             let org = self.organize();
-            state.data.facts = Facts::build(lib, &self.categories, |g| org.platform(g));
+            state.data.facts = Facts::build(lib, &self.categories, &self.smart_groups, |g| org.platform(g));
         }
         self.console.customize = Some(CustomizeNav { group: 0, list: ListNav::default(), state, peek: false });
     }

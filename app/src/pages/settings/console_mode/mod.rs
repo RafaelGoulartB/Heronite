@@ -225,12 +225,12 @@ pub(super) fn hidden(d: &mut SettingsPage, window: &mut Window) {
     }
 }
 
-/// The statuses, categories, platforms, stores and genres of the library.
+/// The statuses, categories (both kinds), platforms, stores and genres of the library.
 fn facts_of(paths: &DataPaths) -> Facts {
     let Ok(lib) = Library::load(paths) else { return Facts::default() };
     let extras = crate::collection::organize::system_extras(&lib);
     let org = Organize { extras: Some(&extras), ..Default::default() };
-    Facts::build(&lib, &Categories::load(paths), |g| org.platform(g))
+    Facts::build(&lib, &Categories::load(paths), &heronite_data::smart_groups::SmartGroups::load(paths), |g| org.platform(g))
 }
 
 impl HasLayer for SettingsPage {
@@ -396,8 +396,7 @@ pub(super) fn studio_width(window: &Window) -> f32 {
 }
 
 fn room(window: &Window) -> f32 {
-    // The sheet's inset (12 + 12), the section list (230) and the body's padding (36 + 36).
-    f32::from(crate::ui::content_size(window).width) - 24. - 230. - 72.
+    super::room(window)
 }
 
 /// The options of `card`, without the lists the editors draw.

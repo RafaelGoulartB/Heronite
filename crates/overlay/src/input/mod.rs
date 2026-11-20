@@ -22,7 +22,7 @@ mod windows;
 #[cfg(any(windows, test))]
 mod xinput;
 
-pub use self::core::{Button, Event, Options};
+pub use self::core::{Button, Event, Options, CONSOLE_HOLD};
 #[cfg(target_os = "linux")]
 pub use self::linux::{list_controllers, Watcher};
 #[cfg(not(any(target_os = "linux", windows)))]

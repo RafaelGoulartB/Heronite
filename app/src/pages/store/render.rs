@@ -9,7 +9,7 @@ use crate::icons::Icon;
 use crate::pages::{columns, status_pill, stores};
 use crate::services::downloads::{Store, StoreState};
 use crate::theme;
-use crate::ui::controls::{action_button, button, caption, card, row, ButtonKind};
+use crate::ui::controls::{action_button, button, caption, card, row, toggle_row, ButtonKind};
 use crate::ui::fields::{input_box, meta_text};
 use crate::ui::icon;
 
@@ -243,6 +243,31 @@ impl<K: StoreKind> StorePage<K> {
             .child(text)
             .into_any_element()]))
     }
+
+    /// GOG: the switch for Comet beside GOG games (the same as Settings →
+    /// Achievements → GOG), on by default.
+    fn render_comet(&self, cx: &mut Context<Self>) -> Option<Div> {
+        if self.store() != Store::Gog {
+            return None;
+        }
+        let on = crate::services::achievements::get(cx).read(cx).prefs().gog_comet;
+        let switch = toggle_row(
+            self.id("comet"),
+            tr!("Unlock GOG achievements while you play"),
+            Some(tr!(
+                "Heronite runs Comet, an open-source stand-in for GOG Galaxy's service, beside each GOG game, signed in with your GOG account: what the game unlocks counts on GOG and shows here while you play. Off, games that need GOG Galaxy for their achievements unlock nothing."
+            )),
+            on,
+        )
+        .on_click(cx.listener(|_, _, _, cx| {
+            let svc = crate::services::achievements::get(cx);
+            let mut prefs = svc.read(cx).prefs();
+            prefs.gog_comet = !prefs.gog_comet;
+            svc.update(cx, |s, cx| s.set_prefs(prefs, cx));
+            cx.notify();
+        }));
+        Some(div().child(caption(tr!("Achievements"))).child(card([switch.into_any_element()])))
+    }
 }
 
 impl<K: StoreKind> Render for StorePage<K> {
@@ -274,7 +299,8 @@ impl<K: StoreKind> Render for StorePage<K> {
         }
         // Wide: the account on the left, the About card on the right.
         let wide = stores::content_width(window) >= 1000.;
-        let body = columns(wide, [column, self.render_about()]);
+        let side = self.render_about().children(self.render_comet(cx));
+        let body = columns(wide, [column, side]);
         div()
             .size_full()
             .relative()

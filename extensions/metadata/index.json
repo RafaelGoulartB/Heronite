@@ -1,0 +1,102 @@
+{
+  "index": 1,
+  "type": "metadata",
+  "name": "Heronite",
+  "extensions": [
+    {
+      "id": "vndb",
+      "name": "VNDB",
+      "version": "1.0.0",
+      "api": 1,
+      "author": "Heronite",
+      "homepage": "https://vndb.org",
+      "kind": "details",
+      "adult": false,
+      "description": "The Visual Novel Database (vndb.org), for visual novels and Japanese titles: found by the Japanese, romaji or English name, or by a VNDB id such as v17. Not affiliated with VNDB.",
+      "fields": [
+        "description",
+        "releaseDate",
+        "developers",
+        "genres",
+        "themes",
+        "criticScore",
+        "cover",
+        "hero"
+      ],
+      "applies": {
+        "to": "all",
+        "asked": "fallback",
+        "game_kind": {
+          "name": "Visual novels",
+          "signals": [
+            "Visual Novel"
+          ]
+        }
+      },
+      "hosts": [
+        "api.vndb.org"
+      ],
+      "images": [
+        "t.vndb.org"
+      ],
+      "settings": [
+        {
+          "label": "Title to show",
+          "required": false
+        },
+        {
+          "label": "Use a screenshot as background",
+          "required": false
+        }
+      ],
+      "files": {
+        "source.toml": {
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/metadata/vndb/source.toml",
+          "sha256": "793489b77d5b4da349eea542cd89b874a34d7a66387c10588bc678ccb89e08e7",
+          "size": 1373
+        },
+        "source.js": {
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/metadata/vndb/source.js",
+          "sha256": "7acdc1a6a4ca0a95e3b2298b82a64ddaf63aee2055750937f58b16b909a93832",
+          "size": 11129
+        }
+      }
+    },
+    {
+      "id": "wikipedia",
+      "name": "Wikipedia",
+      "version": "1.0.0",
+      "api": 1,
+      "author": "Heronite",
+      "homepage": "https://www.wikipedia.org",
+      "kind": "details",
+      "adult": false,
+      "description": "The first paragraphs of the game's Wikipedia article, in your language when there is one. Asked only when the other sources lack the game.",
+      "fields": [
+        "description",
+        "releaseDate"
+      ],
+      "applies": {
+        "to": "all",
+        "asked": "fallback"
+      },
+      "hosts": [
+        "*.wikipedia.org"
+      ],
+      "images": [],
+      "settings": [],
+      "files": {
+        "source.toml": {
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/metadata/wikipedia/source.toml",
+          "sha256": "5d12d1646140a78c7e9614f028aa98178db81d45df879e3f0e26248841e71c54",
+          "size": 659
+        },
+        "source.js": {
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/metadata/wikipedia/source.js",
+          "sha256": "382556b0935ac6b7c20478b4fe0f1d55c4a039cc331f659d5c4482e3b1c4218e",
+          "size": 3199
+        }
+      }
+    }
+  ]
+}

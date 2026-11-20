@@ -17,11 +17,16 @@ static RUNNING: AtomicBool = AtomicBool::new(false);
 /// Holds [`RUNNING`] while a refresh runs and lets it go when dropped, even
 /// when the refresh panics: a stuck flag would stop every later refresh
 /// until the app restarts.
-struct Running;
+pub(super) struct Running;
+
+/// Whether a refresh of the Steam tags runs.
+pub(super) fn running() -> bool {
+    RUNNING.load(Ordering::SeqCst)
+}
 
 impl Running {
     /// `None` when another refresh holds it.
-    fn take() -> Option<Self> {
+    pub(super) fn take() -> Option<Self> {
         (!RUNNING.swap(true, Ordering::SeqCst)).then_some(Running)
     }
 }
@@ -35,11 +40,17 @@ impl Drop for Running {
 impl MetadataService {
     /// Fetches the Steam tags the Collection lacks (when "Steam tags" is on),
     /// checking `should_stop` before each request.
+    /// Gives way to a bulk job: does nothing while one runs or waits, and
+    /// stops before its next request when one starts.
     pub fn refresh_steam_tags_while(&self, should_stop: &dyn Fn() -> bool) -> Result<Refreshed> {
         if !self.metadata_settings().steam_tags {
             return Ok(Refreshed::default());
         }
         let Some(_running) = Running::take() else { return Ok(Refreshed::default()) };
+        if self.job_pending() {
+            return Ok(Refreshed::default());
+        }
+        let should_stop = &|| should_stop() || self.job_pending();
         let result = (|| {
             let lib = Library::load(&self.paths)?;
             let ids: Vec<String> = lib.games.iter().filter_map(|g| g.tag_steam_id().map(str::to_owned)).collect();

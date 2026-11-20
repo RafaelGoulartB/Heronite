@@ -24,11 +24,15 @@ impl Drop for Source {
 
 /// `None` when the thread cannot start. When gilrs cannot (no udev, ...) the
 /// thread ends at once and the receiver with it.
-pub(super) fn start() -> Option<(Source, UnboundedReceiver<PadMsg>)> {
+pub(super) fn start(tr: Translator) -> Option<(Source, UnboundedReceiver<PadMsg>)> {
     let (tx, rx) = unbounded();
     let stop = Arc::new(AtomicBool::new(false));
     let flag = stop.clone();
-    std::thread::Builder::new().name("gamepad".into()).spawn(move || run(tx, flag)).map_err(|e| log::warn!("gamepad thread: {e}")).ok()?;
+    std::thread::Builder::new()
+        .name("gamepad".into())
+        .spawn(move || run(tx, flag, tr))
+        .map_err(|e| log::warn!("gamepad thread: {e}"))
+        .ok()?;
     Some((Source { stop }, rx))
 }
 
@@ -115,7 +119,7 @@ fn axis(a: gilrs::Axis) -> Option<StickAxis> {
     })
 }
 
-fn run(tx: UnboundedSender<PadMsg>, stop: Arc<AtomicBool>) {
+fn run(tx: UnboundedSender<PadMsg>, stop: Arc<AtomicBool>, mut tr: Translator) {
     // No force feedback (nothing here rumbles): gilrs runs it on a thread that
     // never ends. It outlived each console mode session holding the
     // controllers open, and once a controller was unplugged it logged
@@ -127,7 +131,6 @@ fn run(tx: UnboundedSender<PadMsg>, stop: Arc<AtomicBool>) {
             return;
         }
     };
-    let mut tr = Translator::default();
     let send = |m: PadMsg| tx.unbounded_send(m).is_ok();
     // The pads whose top and left buttons arrive swapped.
     let mut swapped: HashSet<gilrs::GamepadId> = HashSet::new();

@@ -1,4 +1,5 @@
-//! Keeping the computer awake (Windows).
+//! Keeping the computer awake, and suspending, restarting or shutting it
+//! down (Windows).
 //!
 //! [`KeepAwake::hold`] keeps Windows from sleeping and the screen from
 //! turning off until the guard is dropped, as a video player does. Useful
@@ -10,12 +11,17 @@
 //! whatever the others do.
 
 use std::io;
+use std::os::windows::process::CommandExt;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Sender};
 use std::thread::JoinHandle;
 
 use windows_sys::Win32::System::Power::{
-    CallNtPowerInformation, SetThreadExecutionState, SystemExecutionState, ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED,
+    CallNtPowerInformation, SetSuspendState, SetThreadExecutionState, SystemExecutionState, ES_CONTINUOUS, ES_DISPLAY_REQUIRED,
+    ES_SYSTEM_REQUIRED,
 };
+use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
 /// The computer stays awake while this lives. Dropping it ends the hold.
 #[derive(Debug)]
@@ -80,12 +86,76 @@ pub fn requested() -> Option<Requested> {
     (status == 0).then_some(Requested { system: state & ES_SYSTEM_REQUIRED != 0, display: state & ES_DISPLAY_REQUIRED != 0 })
 }
 
+/// Puts the computer to sleep, as Start's own Sleep does: never hibernates
+/// (the `rundll32 powrprof.dll,SetSuspendState` shortcut hibernates when
+/// hibernation is on), and programs are told first. Blocks until the
+/// computer wakes up again.
+pub fn suspend() -> io::Result<()> {
+    // SAFETY: a plain call with three flags: sleep (not hibernate), let
+    // programs know (not forced), wake-up events kept.
+    if unsafe { SetSuspendState(false, false, false) } {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+/// How the computer goes off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shutdown {
+    Restart,
+    PowerOff,
+}
+
+impl Shutdown {
+    /// `shutdown.exe`'s arguments: at once (`/t 0`, which does not force
+    /// programs to close, so they may save or hold the shutdown up).
+    fn args(self) -> [&'static str; 3] {
+        match self {
+            Self::Restart => ["/r", "/t", "0"],
+            Self::PowerOff => ["/s", "/t", "0"],
+        }
+    }
+}
+
+/// Restarts or shuts down the computer with Windows' `shutdown.exe`, as the
+/// Start menu does: every program, this one too, is asked to close.
+/// `Err`: why Windows refused (another user's session, no permission).
+pub fn shutdown(how: Shutdown) -> io::Result<()> {
+    // From System32, not whatever `shutdown` is first on the PATH.
+    let exe = std::env::var_os("SystemRoot")
+        .map(|root| PathBuf::from(root).join("System32").join("shutdown.exe"))
+        .filter(|p| p.is_file())
+        .unwrap_or_else(|| PathBuf::from("shutdown.exe"));
+    let status = Command::new(&exe)
+        .args(how.args())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .status()?;
+    match status.code() {
+        Some(0) => Ok(()),
+        // Its exit code is a Windows error (5: access denied, 1190: a
+        // shutdown is already on its way), which Windows words in the user's
+        // language; its stderr is in the console's code page instead.
+        Some(code) => Err(io::Error::from_raw_os_error(code)),
+        None => Err(io::Error::other(format!("shutdown.exe: {status}"))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
 
     const BOTH: Requested = Requested { system: true, display: true };
+
+    #[test]
+    fn shutdown_is_immediate_and_not_forced() {
+        assert_eq!(Shutdown::Restart.args(), ["/r", "/t", "0"]);
+        assert_eq!(Shutdown::PowerOff.args(), ["/s", "/t", "0"]);
+    }
 
     fn held() -> bool {
         requested().expect("Windows says what is requested") == BOTH

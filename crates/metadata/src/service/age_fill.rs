@@ -13,8 +13,9 @@ use heronite_data::models::{CollectionGameMetadata, MetadataFile};
 use serde_json::Value;
 
 use super::MetadataService;
-use crate::igdb::RATINGS_BATCH;
+use crate::igdb::{IgdbCredentials, RATINGS_BATCH};
 use crate::merge::{AGE_CHECKED, AGE_RATINGS};
+use crate::record;
 use crate::steam;
 use crate::store::get_all_game_metadata;
 use crate::types::Lookup;
@@ -25,11 +26,13 @@ use crate::util::now_iso;
 const STEAM_PER_PASS: usize = 100;
 const STEAM_GAP: Duration = Duration::from_millis(400);
 
-/// A record never asked for its ratings that has an id to ask with.
+/// A record never asked for its ratings that has an id to ask with (and
+/// whose ratings are not locked).
 fn needs_age_ratings(md: &CollectionGameMetadata) -> bool {
     md.age_ratings.is_empty()
         && !md.extra.contains_key(AGE_CHECKED)
         && md.field_sources.get(AGE_RATINGS).map(String::as_str) != Some("manual")
+        && !record::is_locked(md, AGE_RATINGS)
         && (igdb_id(md).is_some() || md.steam_app_id.as_deref().is_some_and(|s| !s.is_empty()))
 }
 
@@ -43,11 +46,12 @@ impl MetadataService {
     /// before each game. Returns how many got a rating. A record whose
     /// sources answered is marked asked, rated or not; one whose source
     /// could not be reached waits for the next pass.
+    /// Gives way to a bulk job like the other idle fills.
     pub fn fill_missing_age_ratings_while(&self, should_stop: &dyn Fn() -> bool) -> Result<usize> {
         if self.rating_fill.swap(true, Ordering::SeqCst) {
             return Ok(0);
         }
-        let result = self.fill_age_ratings(should_stop);
+        let result = if self.job_pending() { Ok(0) } else { self.fill_age_ratings(&|| should_stop() || self.job_pending()) };
         self.rating_fill.store(false, Ordering::SeqCst);
         result
     }
@@ -57,6 +61,13 @@ impl MetadataService {
         if !settings.auto_fill_missing {
             return Ok(0);
         }
+        // The sources age ratings are taken from, in order: IGDB and Steam
+        // unless the user turned them, or their age ratings, off.
+        let order = self.sources().field_order(&settings, AGE_RATINGS);
+        let (ask_igdb, ask_steam) = (order.iter().any(|s| s == "igdb"), order.iter().any(|s| s == "steam"));
+        if !ask_igdb && !ask_steam {
+            return Ok(0);
+        }
         let todo: Vec<(String, CollectionGameMetadata)> =
             get_all_game_metadata(&self.paths)?.into_iter().filter(|(_, md)| needs_age_ratings(md)).collect();
         if todo.is_empty() {
@@ -64,12 +75,15 @@ impl MetadataService {
         }
         log::info!("Reading age ratings for {} game(s)", todo.len());
 
-        let creds = self.credentials();
+        let creds = if ask_igdb { self.credentials() } else { IgdbCredentials::new("", "") };
         let mut from_igdb: HashMap<i64, Vec<AgeRating>> = HashMap::new();
         let mut igdb_answered = creds.configured();
         if igdb_answered {
             let ids: Vec<i64> = todo.iter().filter_map(|(_, md)| igdb_id(md)).collect();
             for chunk in ids.chunks(RATINGS_BATCH) {
+                if should_stop() {
+                    break;
+                }
                 match self.igdb.age_ratings_by_id(&self.http, &creds, chunk) {
                     Ok(rows) => from_igdb.extend(rows),
                     Err(e) => {
@@ -81,7 +95,6 @@ impl MetadataService {
             }
         }
 
-        let order = settings.field_priority.get(AGE_RATINGS).cloned().unwrap_or_default();
         let mut found: Vec<(String, Option<(String, Vec<AgeRating>)>)> = Vec::new();
         let mut steam_asked = 0;
         for (key, md) in &todo {
@@ -93,7 +106,7 @@ impl MetadataService {
                 Some(id) if creds.configured() => Some(from_igdb.get(&id).cloned().unwrap_or_default()),
                 _ => None,
             };
-            let steam = match md.steam_app_id.as_deref().filter(|s| !s.is_empty()) {
+            let steam = match md.steam_app_id.as_deref().filter(|s| ask_steam && !s.is_empty()) {
                 Some(_) if steam_asked >= STEAM_PER_PASS => continue,
                 Some(id) => {
                     if steam_asked > 0 {
@@ -140,5 +153,20 @@ impl MetadataService {
             }
             Ok(rated)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::util::blank_metadata;
+
+    #[test]
+    fn a_record_with_its_ratings_locked_is_not_asked() {
+        let mut md = blank_metadata("a", "sideload");
+        md.igdb_id = Some(heronite_data::num::JsNum(72.0));
+        assert!(needs_age_ratings(&md));
+        record::set_locked(&mut md, AGE_RATINGS, true);
+        assert!(!needs_age_ratings(&md));
     }
 }

@@ -35,11 +35,17 @@ fn fast_cfg() -> LauncherConfig {
             start_timeout: Duration::from_millis(600),
             poll_interval: Duration::from_millis(10),
             resolve_interval: Duration::from_millis(20),
+            delivery_check: Duration::from_millis(50),
+            cold_start_grace: Duration::ZERO,
         },
         record: true,
         handoff: HandoffConfig {
-            soon: Duration::from_millis(500),
+            // From the spawn, through the preparation steps, to the fake
+            // launcher's exit: a busy runner can take more than half a second,
+            // and then the game it handed on is not followed at all.
+            soon: Duration::from_secs(10),
             wait: Duration::from_millis(400),
+            package_wait: Duration::from_secs(2),
             gone: Duration::from_millis(60),
             ..Default::default()
         },
@@ -191,13 +197,17 @@ fn a_game_another_launcher_hands_to_its_open_window_is_followed() {
     let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
     assert!(elapsed >= Duration::from_millis(600));
 
-    // A game that never shows up: the session ends after the wait.
+    // A game that never shows up: the session ends after the wait, which is
+    // not play time. Lutris may have run the game itself, briefly: no warning.
     r.launcher.launch(request("lutris_12", LaunchPlan::Native(plan.clone()))).unwrap();
     assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "lutris_12".into() });
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    let asked = Instant::now();
     r.spawner.finish(1, 0);
-    let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
-    assert!(elapsed >= Duration::from_millis(400), "{elapsed:?}");
+    let ev = next(&r.rx);
+    let LaunchEvent::Exited { elapsed, .. } = ev else { panic!("{ev:?}") };
+    assert!(asked.elapsed() >= Duration::from_millis(400), "waited for the game");
+    assert!(elapsed < Duration::from_millis(400), "{elapsed:?}");
 
     // The launcher failed: nothing is waited for (no made-up play time), not
     // even a game that is there. A game following a failed launcher would keep
@@ -230,6 +240,67 @@ fn a_hand_off_whose_exit_code_says_nothing_is_followed() {
     let LaunchEvent::Exited { elapsed, exit, .. } = next(&r.rx) else { panic!() };
     assert!(elapsed >= Duration::from_millis(500));
     assert_eq!(exit.unwrap().code, Some(0), "not a failed launch");
+}
+
+/// A Store game is found by the package its programs run from, wherever
+/// they are (a GDK game's folder is a link to another one), and has longer
+/// to show up than other games handed on.
+#[test]
+fn a_store_game_is_followed_by_its_package() {
+    let r = rig();
+    let mut plan = process_plan("explorer.exe", &[r"shell:AppsFolder\Studio.Game_abc!Game"]);
+    plan.handoff = Some(Handoff {
+        folder: Some("/games/xbox".into()),
+        package: Some("Studio.Game_abc".into()),
+        exit_ignored: true,
+        ..Default::default()
+    });
+    r.launcher.launch(request("xbox_game", LaunchPlan::Native(plan.clone()))).unwrap();
+    assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "xbox_game".into() });
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.spawner.finish(0, 1);
+    std::thread::sleep(Duration::from_millis(600));
+    assert!(r.launcher.is_running("xbox_game"), "still waiting past the wait for other games");
+    r.procs.start(903, "Game-Win64-Shipping.exe", None);
+    r.procs.set_package_pids("Studio.Game_abc", &[903]);
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(r.launcher.is_running("xbox_game"));
+    r.procs.exit(903);
+    let LaunchEvent::Exited { elapsed, exit, .. } = next(&r.rx) else { panic!("no warning expected") };
+    assert!(elapsed >= Duration::from_millis(900), "{elapsed:?}");
+    assert_eq!(exit.unwrap().code, Some(0));
+
+    // Another package's programs are not the game's.
+    r.launcher.launch(request("xbox_game", LaunchPlan::Native(plan))).unwrap();
+    assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "xbox_game".into() });
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.procs.start(904, "Other.exe", None);
+    r.procs.set_package_pids("Studio.Other_abc", &[904]);
+    r.spawner.finish(1, 1);
+    // The command only asked Windows: the game was lost, and the user is told.
+    let LaunchEvent::Status { message, warning: true, .. } = next(&r.rx) else { panic!("no warning") };
+    assert!(message.contains("xbox_game title"), "{message}");
+    let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
+    assert!(elapsed < Duration::from_secs(2), "the wait is not play time: {elapsed:?}");
+}
+
+/// Stopped before the game showed up: nothing was lost, no warning, and the
+/// wait is not play time.
+#[test]
+fn a_stop_while_waiting_for_a_handed_on_game_is_not_a_lost_game() {
+    let r = rig();
+    let mut plan = process_plan("explorer.exe", &[r"shell:AppsFolder\Studio.Game_abc!Game"]);
+    plan.handoff = Some(Handoff { package: Some("Studio.Game_abc".into()), exit_ignored: true, ..Default::default() });
+    r.launcher.launch(request("xbox_game", LaunchPlan::Native(plan))).unwrap();
+    assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "xbox_game".into() });
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.spawner.finish(0, 1);
+    std::thread::sleep(Duration::from_millis(500));
+    r.launcher.stop("xbox_game");
+    let ev = next(&r.rx);
+    let LaunchEvent::Exited { elapsed, stopped, .. } = ev else { panic!("{ev:?}") };
+    assert!(stopped);
+    assert!(elapsed < Duration::from_millis(500), "{elapsed:?}");
 }
 
 #[test]
@@ -435,9 +506,41 @@ fn play_steam_game(close_after: bool, steam_open_before: bool) -> Vec<String> {
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
     r.procs.exit(7777);
     assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
-    // Steam is closed right after the session ends, on the same thread.
-    std::thread::sleep(Duration::from_millis(100));
+    // Steam is closed right after the session ends, on the same thread, once
+    // a look at the computer's processes finds no game it still runs: on a
+    // busy computer that look can take longer than a fixed wait. Whether it
+    // stays open can only be waited for.
+    if close_after && !steam_open_before {
+        wait_until("Steam asked to exit", || r.spawner.uris().len() > 1);
+    } else {
+        std::thread::sleep(Duration::from_millis(100));
+    }
     r.spawner.uris()
+}
+
+/// The desktop can fail to hand `steam://` to Steam (a broken handler) while
+/// xdg-open looks fine: a running Steam that logged nothing of the URI gets
+/// it again, straight from its client.
+// Windows has no other way to ask Steam, so it does not ask again.
+#[cfg(unix)]
+#[test]
+fn steam_that_did_not_get_the_uri_is_asked_directly() {
+    let r = rig();
+    let log = write_steam_log(&r, "");
+    fs::write(r._dir.path().join("home/.steam/steam.pid"), "5000\n").unwrap();
+    r.procs.start(5000, if cfg!(windows) { "steam.exe" } else { "steam" }, None);
+    let uri = "steam://rungameid/400";
+    let plan = LaunchPlan::SteamUri { app_id: "400".into(), uri: uri.into(), extras: Default::default() };
+    r.launcher.launch(request("steam_400", plan)).unwrap();
+    next(&r.rx);
+    wait_until("asked through the desktop", || r.spawner.uris() == [uri]);
+    wait_until("asked through the Steam client", || r.spawner.steam_uris() == [uri]);
+    r.procs.start(7777, "reaper", None);
+    fs::OpenOptions::new().append(true).open(&log).unwrap().write_all(b"Game process added : AppID 400 x ProcID 7777\n").unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    assert_eq!(r.spawner.steam_uris(), [uri], "asked again once");
+    r.procs.exit(7777);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
 }
 
 #[test]
@@ -1464,6 +1567,16 @@ impl heronite_launch::galaxy::GalaxyAccount for Account {
     }
 }
 
+/// Held by every test that may look at GOG Galaxy's port. [`port_taken`]
+/// binds the port for a moment, so a test checking it while another test's
+/// launch does would see it taken, and its Comet would not start.
+///
+/// [`port_taken`]: heronite_launch::galaxy::port_taken
+fn gog_port() -> std::sync::MutexGuard<'static, ()> {
+    static PORT: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    PORT.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 fn galaxy_rig(signed_in: bool) -> (Rig, String) {
     let r = rig();
     let bin = heronite_launch::store_tools::COMET.data_bin(&r.paths);
@@ -1487,6 +1600,7 @@ fn gog_plan() -> ProcessPlan {
 
 #[test]
 fn comet_runs_before_a_gog_game_and_gets_ctrl_c_after_it() {
+    let _port = gog_port();
     // A Comet or GOG Galaxy of this computer holds the port: Comet would not start.
     if heronite_launch::galaxy::port_taken() {
         return;
@@ -1514,6 +1628,7 @@ fn comet_runs_before_a_gog_game_and_gets_ctrl_c_after_it() {
 
 #[test]
 fn gog_games_running_together_share_one_comet() {
+    let _port = gog_port();
     if heronite_launch::galaxy::port_taken() {
         return;
     }
@@ -1548,6 +1663,7 @@ impl heronite_launch::galaxy::GalaxyAccount for FailingAccount {
 
 #[test]
 fn a_failing_gog_account_does_not_stop_the_game() {
+    let _port = gog_port();
     let (r, _) = galaxy_rig(true);
     r.launcher.set_galaxy_account(Arc::new(FailingAccount));
     r.launcher.launch(request("g", LaunchPlan::Native(gog_plan()))).unwrap();
@@ -1560,6 +1676,7 @@ fn a_failing_gog_account_does_not_stop_the_game() {
 
 #[test]
 fn without_a_gog_account_or_a_gog_plan_comet_does_not_start() {
+    let _port = gog_port();
     let (r, _) = galaxy_rig(false);
     r.launcher.launch(request("g", LaunchPlan::Native(gog_plan()))).unwrap();
     next(&r.rx);

@@ -247,6 +247,9 @@ impl SettingsPage {
                 div().flex().flex_col().size_full().child(panel).into_any_element()
             }
             None => {
+                if sec == CSec::Rows(Section::Metadata) {
+                    metadata::ensure_rows(self, window, cx);
+                }
                 let rows = self.console_rows(sec, cx);
                 let entry = (!layer_open).then_some(&[Pad::Right][..]);
                 self.console.list.render_entered("console-settings-rows", &rows, content_focus, entry).size_full().into_any_element()
@@ -343,6 +346,9 @@ impl PadTarget for SettingsPage {
                 if sec == CSec::Rows(Section::ConsoleMode) && console_mode::console_extra_pad(self, pad, cx) {
                     cx.notify();
                     return true;
+                }
+                if sec == CSec::Rows(Section::Metadata) {
+                    metadata::ensure_rows(self, window, cx);
                 }
                 let rows = self.console_rows(sec, cx);
                 match self.console.list.on_pad(pad, &rows) {

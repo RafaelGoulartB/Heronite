@@ -39,6 +39,12 @@ pub struct Message {
     pub stop: Option<LaunchRequest>,
     /// Capture the running game (`heronite://screenshot`).
     pub screenshot: bool,
+    /// Open or close the quick launcher (`heronite://quick-launch`).
+    pub quick_launch: bool,
+    /// The second invocation's `XDG_ACTIVATION_TOKEN` (Wayland), which lets
+    /// the quick launcher it opens take the focus (GNOME refuses it a window
+    /// opened without one).
+    pub activation_token: Option<String>,
     /// `--no-gui` on the second invocation.
     pub no_gui: bool,
     /// `--console` / `--fullscreen` on the second invocation.
@@ -76,6 +82,12 @@ impl Message {
         if self.screenshot {
             line["screenshot"] = true.into();
         }
+        if self.quick_launch {
+            line["quickLaunch"] = true.into();
+        }
+        if let Some(token) = &self.activation_token {
+            line["activationToken"] = token.as_str().into();
+        }
         line.to_string()
     }
 
@@ -104,6 +116,8 @@ impl Message {
             mod_link,
             stop: request("stop"),
             screenshot: flag("screenshot"),
+            quick_launch: flag("quickLaunch"),
+            activation_token: v.get("activationToken").and_then(Value::as_str).filter(|t| !t.is_empty()).map(str::to_string),
             no_gui: flag("noGui"),
             console: flag("console"),
             fullscreen: flag("fullscreen"),
@@ -312,6 +326,8 @@ mod tests {
             open_client: Some(Client::Ubisoft),
             stop: None,
             screenshot: false,
+            quick_launch: false,
+            activation_token: Some("gnome-shell/Heronite/1234-0-host_TIME5678".into()),
             no_gui: true,
             console: true,
             fullscreen: true,
@@ -326,8 +342,12 @@ mod tests {
         assert_eq!(Message::from_line(&plain.to_line()), Some(plain));
         let shot = Message { screenshot: true, ..Default::default() };
         assert_eq!(Message::from_line(&shot.to_line()), Some(shot));
+        let launcher = Message { quick_launch: true, ..Default::default() };
+        assert_eq!(Message::from_line(&launcher.to_line()), Some(launcher));
         // An instance that does not know the key yet reads the rest.
         assert!(!Message::default().to_line().contains("screenshot"));
+        assert!(!Message::default().to_line().contains("quickLaunch"));
+        assert!(!Message::default().to_line().contains("activationToken"));
         assert_eq!(Message::from_line("garbage"), None);
         assert!(!msg().to_line().contains('\n'));
     }

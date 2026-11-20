@@ -256,8 +256,11 @@ pub fn refresh(data_paths: &DataPaths, epic: &Epic) -> Result<RefreshResult> {
     if let Some(e) = &list_error {
         log::error!("Failed to refresh library: {e}");
     }
-    // Windows: the games the Epic Games Launcher installed since (with the
-    // metadata the refresh just fetched).
+    // Windows: the games the Epic Games Launcher updated since, then the ones
+    // it installed (with the metadata the refresh just fetched).
+    if list_error.is_none() {
+        crate::egl::retake_updated(data_paths, epic);
+    }
     let launcher_import = if list_error.is_none() { crate::egl::import_new(data_paths, epic) } else { None };
     if let Some(r) = launcher_import.as_ref().filter(|r| !r.ok) {
         log::warn!("taking in the Epic Games Launcher's games: {}", r.message);

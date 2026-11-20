@@ -22,7 +22,7 @@ use crate::icons::Icon;
 use heronite_i18n::tr;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) enum GameAction {
+pub(crate) enum GameAction {
     /// Play, Stop or Install: the focus panel's main button.
     Primary,
     /// Play an Epic game with one of its ways to start (`None`: the default).
@@ -53,6 +53,8 @@ pub(super) enum GameAction {
     /// An emulated game played as a PC game from now on (a native port).
     PlayAsPc,
     Metadata,
+    /// The game's picture of each cover family and its background.
+    Covers,
     Hide,
     RemoveRecent,
     Log,
@@ -281,14 +283,20 @@ impl CollectionView {
                 "native port pc version executable linux windows nativo versao pc executavel",
             ));
         }
-        // Game settings has its own button; the palette keeps it.
+        v.push(item(
+            A::Metadata,
+            "metadata",
+            tr!("Metadata"),
+            Icon::TravelExplore,
+            "igdb cover art genre description source match metadados capa arte genero descricao fonte",
+        ));
         v.push(
             item(
-                A::Metadata,
-                "metadata",
-                tr!("Collection metadata"),
-                Icon::TravelExplore,
-                "igdb cover art genre description metadados capa arte genero descricao",
+                A::Covers,
+                "covers",
+                tr!("Covers\u{2026}"),
+                Icon::Collections,
+                "cover art square wide banner picture capa arte imagem quadrada",
             )
             .palette_only(),
         );
@@ -386,6 +394,7 @@ impl CollectionView {
             }
             A::PlayAsPc => self.open_play_as_pc(key, window, cx),
             A::Metadata => self.open_metadata_for(key, window, cx),
+            A::Covers => self.open_covers_for(key, window, cx),
             A::Log => self.open_game_log(key, cx),
             A::Troubleshoot => self.troubleshoot_launch(key, None, cx),
             A::Details => self.open_details(key, cx),

@@ -1,5 +1,5 @@
 //! The View menu's panel: search box with tokens, then either the results
-//! or the Presets and Smart groups selects, the "Filter" block (Show, Only,
+//! or the Presets select, the "Filter" block (Show, Only, Categories,
 //! Filter by) and the "Organize" block (Sort, Group by), and a footer with the
 //! count, "Manage" and "Reset all". The selects and the Filter block's rows
 //! are `blocks.rs`.
@@ -78,6 +78,7 @@ impl CollectionView {
                     .child(self.vm_block_head(super::blocks::filter_block()))
                     .child(self.vm_show(cx))
                     .child(self.vm_only(cx))
+                    .child(self.vm_categories(cx))
                     .child(self.vm_filter_by(cx))
                     .child(self.vm_block_head(super::blocks::organize_block()))
                     .child(self.vm_sort(d, cx))
@@ -197,7 +198,7 @@ impl CollectionView {
                 n += 1;
             }
         }
-        if choices::parse_query(&self.view_menu.query).0 == Some(Kind::Category) {
+        if matches!(choices::parse_query(&self.view_menu.query).0, Some(Kind::Category | Kind::Group)) {
             list = list.child(
                 plain_row("vm-manage-cats", false)
                     .child(icon(Icon::Label, px(15.), theme::text_muted()))
@@ -252,20 +253,11 @@ impl CollectionView {
         let d = self.vm_density();
         if !self.view_menu.editing {
             let (presets, naming) = self.vm_views_select(d, cx);
-            let column = |label: &'static str, el: Div| {
-                div().flex_1().min_w_0().flex().flex_col().gap(px(d.head_gap)).child(section_head(label)).child(el)
-            };
             return div()
                 .flex()
                 .flex_col()
                 .gap(px(8.))
-                .child(
-                    div()
-                        .flex()
-                        .gap(px(8.))
-                        .child(column(tr!("Presets"), presets))
-                        .child(column(tr!("Smart groups"), self.vm_groups_select(d, cx))),
-                )
+                .child(div().flex().flex_col().gap(px(d.head_gap)).child(section_head(tr!("Presets"))).child(presets))
                 .children(naming);
         }
         let done = div()

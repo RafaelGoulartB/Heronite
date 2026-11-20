@@ -24,6 +24,19 @@ pub struct CollectionSettingsFile {
     /// Size cap of the downloaded art and its resized copies, in MB (0 = no cap).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_cache_limit_mb: Option<u32>,
+    /// Size of the store videos kept so they start at once, in MB (0 = none).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video_cache_limit_mb: Option<u32>,
+    /// The focused game's first trailer plays by itself, without sound.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video_autoplay: Option<bool>,
+    /// What "Store media" shows: `"both"`, `"videos"` or `"screenshots"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub store_media_kinds: Option<String>,
+    /// Whether Heronite reads the Steam library and adds its games (`None`
+    /// = on).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub read_steam_library: Option<bool>,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -181,6 +194,12 @@ pub struct MetadataSettings {
     pub cover_aspect: String,
     #[serde(default)]
     pub download_images: bool,
+    /// Pictures a source flags as adult (suggestive or explicit covers) are
+    /// kept. Off: they are dropped before the merge, never
+    /// shown as a thumbnail and never downloaded; pictures already saved
+    /// stay. Written only when on.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_adult_covers: bool,
     #[serde(default = "default_true")]
     pub auto_fill_missing: bool,
     /// The board the Collection shows first: `auto` (from the interface
@@ -202,6 +221,52 @@ pub struct MetadataSettings {
     pub how_long_to_beat: bool,
     #[serde(default)]
     pub field_priority: IndexMap<String, Vec<String>>,
+    /// What the user set per metadata source, by source id; see
+    /// [`crate::source_prefs`] for the shape and the keys that stay elsewhere.
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub sources: IndexMap<String, SourcePrefs>,
+    /// Source ids in the order the user dragged them to; empty = the
+    /// registry's order. Ids this build does not know are kept.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_order: Vec<String>,
+    /// Cover families (`square`, `wide`; see [`crate::cover_family`]) the
+    /// fetches fill even while no view uses them. Ids this build does not
+    /// know are kept.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keep_cover_families: Vec<String>,
+    /// When a view starts using a family (the aspect or the console theme
+    /// changes), its covers are fetched for the games that lack them.
+    /// Off unless the user turns it on; written only when on.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fill_cover_families: bool,
+    /// Addresses of the lists of metadata extensions the user added (the
+    /// app's own list is always read and is not here), in the order added.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extension_lists: Vec<String>,
     #[serde(flatten)]
     pub extra: Extra,
+}
+
+/// One source's entry in `settings.metadata.sources`. Every key is optional;
+/// an entry with nothing set is not written.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourcePrefs {
+    /// `None` = on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// The source's own options by key (a string or a bool each).
+    #[serde(default, skip_serializing_if = "Extra::is_empty")]
+    pub options: Extra,
+    /// Field ids this source must not fill.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields_off: Vec<String>,
+    #[serde(flatten)]
+    pub extra: Extra,
+}
+
+impl SourcePrefs {
+    pub fn is_empty(&self) -> bool {
+        self.enabled.is_none() && self.options.is_empty() && self.fields_off.is_empty() && self.extra.is_empty()
+    }
 }

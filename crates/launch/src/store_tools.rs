@@ -215,7 +215,7 @@ impl StoreTool {
 /// Where a download waits until it proved it runs: `<name>.part` next to
 /// `target` (`<name>.part.exe` on Windows, which only starts `.exe` files
 /// as programs).
-fn part_file(target: &Path) -> PathBuf {
+pub(crate) fn part_file(target: &Path) -> PathBuf {
     target.with_extension(format!("part{}", std::env::consts::EXE_SUFFIX))
 }
 

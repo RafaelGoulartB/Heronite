@@ -324,7 +324,7 @@ fn find_art(
     app_name: &str,
     title: &str,
 ) -> Option<(String, String)> {
-    let key = heronite_metadata::covers::steamgrid_api_key(paths);
+    let key = heronite_metadata::covers::steamgrid_key_if_on(paths);
     let meta = heronite_data::models::LocalGameMeta {
         app_name: app_name.to_string(),
         runner: "sideload".into(),

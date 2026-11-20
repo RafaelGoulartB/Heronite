@@ -20,8 +20,9 @@ fn ink(a: f32) -> Hsla {
 }
 
 /// The even fade under everything on the light theme, at least
-/// [`LIGHT_FADE_FLOOR`]: dark text keeps 4.5:1 even over black art (the
-/// dark theme's floor is the art's rolled-off highlights).
+/// [`LIGHT_FADE_FLOOR`]: dark text keeps 4.5:1 even over black art (on the
+/// dark theme, the art's highlights are rolled off as much as the Darkening
+/// asks: `heronite_images::backdrop_rolloff`).
 fn base_fade(dim: f32) -> f32 {
     if crate::theme::is_light() {
         LIGHT_FADE_FLOOR + (1. - LIGHT_FADE_FLOOR) * dim

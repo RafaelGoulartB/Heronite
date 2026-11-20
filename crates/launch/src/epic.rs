@@ -99,7 +99,7 @@ fn epic_launch(ctx: &PlanContext, game: &GameInfo, s: &GameSettings, opts: &Laun
         app_name: launched,
         game: game.app_name.clone(),
         exe_index: None,
-        offline: s.offline_mode,
+        offline: s.offline_mode || opts.offline,
         check_update: !opts.skip_version_check,
         language,
         override_exe: override_exe(s, opts),
@@ -489,6 +489,14 @@ mod tests {
         let alt = LaunchOptions { alt_exe: Some("Binaries/Alt.exe".into()), ..Default::default() };
         let p = epic_process(&settings(json!({"targetExe": "Other.exe"})), &alt);
         assert_eq!(p.epic.unwrap().override_exe.as_deref(), Some("Binaries/Alt.exe"), "\"Play with\" wins over targetExe");
+    }
+
+    #[test]
+    fn play_offline_goes_offline_once() {
+        assert!(!epic_process(&settings(json!({})), &Default::default()).epic.unwrap().offline);
+        let once = LaunchOptions { offline: true, ..Default::default() };
+        assert!(epic_process(&settings(json!({})), &once).epic.unwrap().offline);
+        assert!(epic_process(&settings(json!({"offlineMode": true})), &once).epic.unwrap().offline);
     }
 
     #[test]

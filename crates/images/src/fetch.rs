@@ -40,7 +40,7 @@ pub(crate) fn read_file(path: &Path) -> Result<Vec<u8>> {
 /// Bytes for a URL: shared cache hit, else download + atomic cache write.
 pub(crate) fn url_bytes(url: &str, opts: &Opts) -> Result<Vec<u8>> {
     let path = cache_path(&opts.images_cache_dir, url);
-    if let Some(b) = read_valid_cache(&path) {
+    if let Some(b) = read_valid_cache(&path).filter(|b| usable(b, opts)) {
         return Ok(b);
     }
     if !opts.allow_network {
@@ -52,7 +52,7 @@ pub(crate) fn url_bytes(url: &str, opts: &Opts) -> Result<Vec<u8>> {
     // One download per URL at a time (several variants may want the same URL).
     let lock = url_lock(&path);
     let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(b) = read_valid_cache(&path) {
+    if let Some(b) = read_valid_cache(&path).filter(|b| usable(b, opts)) {
         return Ok(b); // another thread finished while we waited
     }
     let bytes = download(url, opts)?;
@@ -64,7 +64,8 @@ pub(crate) fn url_bytes(url: &str, opts: &Opts) -> Result<Vec<u8>> {
 /// or truncated file) is deleted so it can be re-downloaded.
 fn read_valid_cache(path: &Path) -> Option<Vec<u8>> {
     let bytes = std::fs::read(path).ok()?;
-    if sniff(&bytes) {
+    // A video is kept only when it was asked for as one (`usable`).
+    if sniff(&bytes) || crate::animation::is_video(&bytes) {
         // The mtime is the clock of `evict_downloads`.
         if let Ok(f) = std::fs::File::open(path) {
             crate::thumbs::touch_if_old(&f);
@@ -100,6 +101,15 @@ fn agent(opts: &Opts) -> &'static ureq::Agent {
 }
 
 fn download(url: &str, opts: &Opts) -> Result<Vec<u8>> {
+    // A picture an extension named: public addresses only, each redirect
+    // checked (`public`).
+    if crate::public::is_extension_url(url) {
+        let bytes = crate::public::fetch(url, opts.max_download_bytes, opts.http_timeout).map_err(ImageError::Http)?;
+        if !usable(&bytes, opts) {
+            return Err(ImageError::NotAnImage(format!("{}: not a supported image ({} bytes)", strip(url), bytes.len())));
+        }
+        return Ok(bytes);
+    }
     let mut resp = agent(opts).get(url).call().map_err(|e| ImageError::Http(format!("{url}: {e}")))?; // 4xx/5xx are errors
     let status = resp.status();
     if !status.is_success() {
@@ -111,10 +121,21 @@ fn download(url: &str, opts: &Opts) -> Result<Vec<u8>> {
     }
     let bytes =
         resp.body_mut().with_config().limit(opts.max_download_bytes).read_to_vec().map_err(|e| ImageError::Http(format!("{url}: {e}")))?;
-    if !sniff(&bytes) {
+    if !usable(&bytes, opts) {
         return Err(ImageError::NotAnImage(format!("{url}: body is not a supported image ({} bytes)", bytes.len())));
     }
     Ok(bytes)
+}
+
+/// A picture, or a video when `opts` can draw its first frame
+/// ([`Opts::video_still`]: SteamGridDB's animated art previews are WebM).
+fn usable(bytes: &[u8], opts: &Opts) -> bool {
+    sniff(bytes) || (opts.video_still.is_some() && crate::animation::is_video(bytes))
+}
+
+/// `url` without its query and fragment, for messages.
+fn strip(url: &str) -> &str {
+    url.split(['?', '#']).next().unwrap_or(url)
 }
 
 /// Write `bytes` to `path` via temp file + rename in the same directory.
@@ -207,6 +228,20 @@ mod tests {
 
         // second read is a pure cache hit (server is gone)
         assert_eq!(url_bytes(&ok, &opts).unwrap(), png);
+    }
+
+    #[test]
+    fn an_extensions_picture_never_comes_from_this_computer() {
+        let png = png_bytes();
+        let (base, h) = serve(vec![("/ok.png", 200, "image/png", png.clone())]);
+        let dir = tempfile::tempdir().unwrap();
+        let opts = Opts::new(dir.path().join("images-cache"), None);
+        let marked = crate::public::marked(&format!("{base}/ok.png"));
+        let e = url_bytes(&marked, &opts).unwrap_err();
+        assert!(e.to_string().contains("local network"), "{e}");
+        // The same address from a built-in source still loads.
+        assert_eq!(url_bytes(&format!("{base}/ok.png"), &opts).unwrap(), png);
+        h.join().unwrap();
     }
 
     #[test]

@@ -398,5 +398,8 @@
   "There are no saves to sync yet": "Todavía no hay partidas que sincronizar",
   "Uninstalled, but some files are left in {path}: {error}": "Desinstalado, pero quedaron algunos archivos en {path}: {error}",
   "{app_name} is not in the Epic library: refresh it and try again": "{app_name} no está en la biblioteca de Epic: actualízala y vuelve a intentarlo",
-  "Choose where to install the game": "Elige dónde instalar el juego"
+  "Choose where to install the game": "Elige dónde instalar el juego",
+  "{title} needs your Epic Games account, and you are signed out of it. Log in on the Epic Games page, or turn on \"Play offline\" in the game's settings.": "{title} necesita tu cuenta de Epic Games y no has iniciado sesión en ella. Inicia sesión en la página de Epic Games o activa \"Jugar sin conexión\" en los ajustes del juego.",
+  "Signed out of Epic Games": "Sesión de Epic Games cerrada",
+  "{title} needs your Epic Games account to start, and Heronite is no longer signed in to it: Epic ended the saved session, or you logged out.\nLog in again to play. Play offline starts the game without the account, but some games need it and will not open.": "{title} necesita tu cuenta de Epic Games para iniciarse y Heronite ya no tiene la sesión iniciada: Epic cerró la sesión guardada o cerraste sesión tú.\nInicia sesión de nuevo para jugar. Jugar sin conexión inicia el juego sin la cuenta, pero algunos juegos la necesitan y no se abrirán."
 }

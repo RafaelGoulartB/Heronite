@@ -204,7 +204,7 @@ fn notice_rows(prefs: &Prefs, cx: &mut Context<SettingsPage>) -> Vec<AnyElement>
         .collect()
 }
 
-pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
+pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     let (prefs, bulk) = {
         let svc = service::get(cx);
         let svc = svc.read(cx);
@@ -230,7 +230,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .flex_col()
         .when(!on, |d| d.opacity(0.5))
         .child(caption("RetroAchievements"))
-        .child(retro::card_view(d, cx))
+        .child(retro::card_view(d, super::room(window), cx))
         .child(caption("Steam"))
         .child(card([
             row(

@@ -173,7 +173,9 @@ fn order_by_time(dirs: &GameDirs, list: &ModList, game_dir: &Path, ordered: &[Li
         n += 1;
         let Some(dir) = plugin_dir(&dirs.mod_dir(p.mod_id)) else { continue };
         let time = newest_own + Duration::from_secs(n);
-        if let Err(e) = fs::File::open(dir.join(p.name)).and_then(|f| f.set_modified(time)) {
+        // Opened for writing: Windows refuses to change the time of a file
+        // opened only for reading.
+        if let Err(e) = fs::File::options().write(true).open(dir.join(p.name)).and_then(|f| f.set_modified(time)) {
             log::warn!("mods: could not order {}: {e}", p.name);
         }
     }

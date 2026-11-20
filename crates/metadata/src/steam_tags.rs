@@ -145,9 +145,36 @@ pub fn refresh(
     gap: Duration,
     should_stop: &dyn Fn() -> bool,
 ) -> Result<Refreshed> {
+    fetch(paths, http, ids, steam_language, gap, false, should_stop)
+}
+
+/// [`refresh`] that asks for every app of `ids` again, fresh or not (a bulk
+/// update that refreshes what sources gave).
+pub fn refresh_all(
+    paths: &DataPaths,
+    http: &Http,
+    ids: &[String],
+    steam_language: &str,
+    gap: Duration,
+    should_stop: &dyn Fn() -> bool,
+) -> Result<Refreshed> {
+    fetch(paths, http, ids, steam_language, gap, true, should_stop)
+}
+
+fn fetch(
+    paths: &DataPaths,
+    http: &Http,
+    ids: &[String],
+    steam_language: &str,
+    gap: Duration,
+    all: bool,
+    should_stop: &dyn Fn() -> bool,
+) -> Result<Refreshed> {
     let file = SteamTagsFile::load(paths);
     let now = now_ms();
-    let todo = stale_ids(&file, ids, now);
+    // Against an empty file every valid id is stale.
+    let empty = SteamTagsFile::default();
+    let todo = stale_ids(if all { &empty } else { &file }, ids, now);
     let mut out = Refreshed::default();
     let mut apps: Vec<(String, AppTags)> = Vec::new();
     let mut requests = 0usize;

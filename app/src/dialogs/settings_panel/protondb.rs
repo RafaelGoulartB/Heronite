@@ -5,9 +5,10 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::settings;
 use heronite_data::AppPaths;
 use heronite_i18n::tr;
-use heronite_metadata::{protondb, Endpoints, Http};
+use heronite_metadata::{protondb, sources, Endpoints, Http};
 
 use super::SettingsPanel;
 use crate::theme;
@@ -15,7 +16,8 @@ use crate::theme;
 /// What ProtonDB says about the game.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(super) enum ProtonDb {
-    /// No Steam id to ask with (or the game runs natively).
+    /// No Steam id to ask with, the game runs natively, or ProtonDB is off
+    /// in Settings → Metadata.
     #[default]
     Off,
     Loading,
@@ -97,20 +99,28 @@ impl SettingsPanel {
         let Some(facts) = self.facts().cloned() else { return };
         self.protondb = ProtonDb::Loading;
         let cache = AppPaths::detect().cache.join("protondb");
+        let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
-            let tier = cx
+            let state = cx
                 .background_spawn(async move {
-                    let id = facts.protondb_id.clone().or_else(|| protondb::cached_steam_id_for_title(&cache, &facts.title).flatten());
-                    if let Some((tier, true)) = id.as_deref().and_then(|id| protondb::cached_tier(&cache, id)) {
-                        return Some(tier);
+                    // Off in Settings → Metadata: no tier, no suggestion from it.
+                    if !settings::load(&paths).map(|s| sources::is_on(&s.metadata, sources::ids::PROTONDB)).unwrap_or(true) {
+                        return ProtonDb::Off;
                     }
-                    let http = Http::new(Endpoints::default());
-                    let id = id.or_else(|| protondb::steam_id_for_title(&cache, &http, &facts.title))?;
-                    protondb::tier(&cache, &http, &id)
+                    let tier = (|| {
+                        let id = facts.protondb_id.clone().or_else(|| protondb::cached_steam_id_for_title(&cache, &facts.title).flatten());
+                        if let Some((tier, true)) = id.as_deref().and_then(|id| protondb::cached_tier(&cache, id)) {
+                            return Some(tier);
+                        }
+                        let http = Http::new(Endpoints::default());
+                        let id = id.or_else(|| protondb::steam_id_for_title(&cache, &http, &facts.title))?;
+                        protondb::tier(&cache, &http, &id)
+                    })();
+                    tier.map_or(ProtonDb::NotFound, ProtonDb::Tier)
                 })
                 .await;
             this.update(cx, |this, cx| {
-                this.protondb = tier.map_or(ProtonDb::NotFound, ProtonDb::Tier);
+                this.protondb = state;
                 cx.notify();
             })
             .ok();

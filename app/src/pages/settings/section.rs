@@ -10,6 +10,8 @@ use crate::icons::Icon;
 pub enum Section {
     General,
     Appearance,
+    /// The quick launcher's shortcut (`crate::quick_launch`).
+    QuickLauncher,
     /// Console mode's themes and options (also ☰ → Customize).
     ConsoleMode,
     Advanced,
@@ -25,6 +27,9 @@ pub enum Section {
     Storage,
     /// Mods: the Nexus Mods account, the mod links, what applying mods needs.
     Mods,
+    /// What every controller button does, where, and what can change
+    /// (`controls`).
+    Controls,
     /// The in-game overlay (Guide button).
     Overlay,
     /// The replay buffer: the last seconds of a game, saved on request.
@@ -48,7 +53,7 @@ pub enum Section {
 impl Section {
     /// Left navigation: caption + sections (the caption is translated when drawn).
     pub const GROUPS: [(&'static str, &'static [Section]); 6] = [
-        (n_!("App"), &[Section::General, Section::Appearance, Section::ConsoleMode]),
+        (n_!("App"), &[Section::General, Section::Appearance, Section::ConsoleMode, Section::Controls, Section::QuickLauncher]),
         (n_!("Games"), &[Section::GameDefaults, Section::Downloads, Section::Launchers, Section::Integrations, Section::Mods]),
         (n_!("Collection"), &[Section::Library, Section::Metadata, Section::Achievements]),
         (n_!("While playing"), &[Section::Overlay, Section::Screenshots, Section::Replay]),
@@ -57,10 +62,12 @@ impl Section {
     ];
 
     /// Same order as [`Section::GROUPS`].
-    pub const ALL: [Section; 21] = [
+    pub const ALL: [Section; 23] = [
         Section::General,
         Section::Appearance,
         Section::ConsoleMode,
+        Section::Controls,
+        Section::QuickLauncher,
         Section::GameDefaults,
         Section::Downloads,
         Section::Launchers,
@@ -104,6 +111,7 @@ impl Section {
         match self {
             Section::General => tr!("General"),
             Section::Appearance => tr!("Appearance"),
+            Section::QuickLauncher => tr!("Quick launcher"),
             Section::ConsoleMode => tr!("Console mode"),
             Section::Advanced => tr!("Advanced"),
             Section::GameDefaults => tr!("Game defaults"),
@@ -113,6 +121,7 @@ impl Section {
             Section::Integrations => tr!("Integrations"),
             Section::Storage => tr!("Storage"),
             Section::Mods => tr!("Mods"),
+            Section::Controls => tr!("Controller"),
             Section::Overlay => tr!("Overlay"),
             Section::Replay => tr!("Replay"),
             Section::Metadata => tr!("Metadata"),
@@ -130,6 +139,7 @@ impl Section {
         match self {
             Section::General => Icon::Settings,
             Section::Appearance => Icon::Visibility,
+            Section::QuickLauncher => Icon::FaSearch,
             Section::ConsoleMode => Icon::Tv,
             Section::Advanced => Icon::Build,
             Section::GameDefaults => Icon::Tune,
@@ -139,6 +149,7 @@ impl Section {
             Section::Integrations => Icon::Tv,
             Section::Storage => Icon::FaHardDrive,
             Section::Mods => Icon::CallMerge,
+            Section::Controls => Icon::SportsEsports,
             Section::Overlay => Icon::SportsEsports,
             Section::Replay => Icon::Videocam,
             Section::Metadata => Icon::TravelExplore,
@@ -157,6 +168,7 @@ impl Section {
         match self {
             Section::General => tr!("Language, folders, the tray, shortcuts and where Wine and Proton are looked for."),
             Section::Appearance => tr!("Profiles, the theme and its colours, menus and panels, the picture behind the Collection, covers, text and layout."),
+            Section::QuickLauncher => tr!("The command palette in a small window of its own: open it from anywhere with a key, type a few letters and press Enter to play, without opening Heronite."),
             Section::ConsoleMode => tr!("The controller-first TV mode: its themes, tabs and shelves, covers, background, interface and controls. Changes show at once; ☰ → Customize in console mode has the same options."),
             Section::Advanced => tr!("Logs, folders and cache."),
             Section::GameDefaults => tr!("What new games start with. To change a game you already have, open its own settings."),
@@ -169,9 +181,10 @@ impl Section {
             Section::Integrations => tr!("Sunshine keeps your games in its list, with their covers, so Moonlight can start them from a phone, a TV or another computer."),
             Section::Storage => tr!("What your games take on disk, and what can go."),
             Section::Mods => tr!("Your Nexus Mods account, the download buttons of the mod sites, and what Heronite needs to apply mods when a game starts. Each game's mods are managed from its own Mods."),
+            Section::Controls => tr!("What every button does, where it works, and what you can change."),
             Section::Overlay => crate::overlay::labels::section_blurb(),
             Section::Replay => tr!("The last seconds of a game kept in memory and saved as a moment with Guide + X, and the memory that takes."),
-            Section::Metadata => tr!("Collection uses IGDB first, then Steam and store pages to fill covers, descriptions and tags."),
+            Section::Metadata => tr!("Where the details and pictures of your games come from. Sources are asked from the top of each list down; a field stays with the first one that has it."),
             Section::Achievements => tr!("Achievements from Steam, GOG, Epic Games and RetroAchievements. Heronite keeps its own copy of them, so your history stays even if a store or an account goes away."),
             Section::Screenshots => tr!("Where your captures live, the in-game shortcut and the preview cache of the gallery."),
             Section::Saves => tr!("Game saves backed up with Ludusavi after you close a game, and the folders a game's Saves tab restores them from."),
@@ -187,6 +200,7 @@ impl Section {
         match self {
             Section::General => "general folders tray shortcuts wine proton language theme geral pastas bandeja atalhos idioma tema",
             Section::Appearance => "appearance background blur dim darkening saturation cover aspect grey uninstalled artwork glass opacity transparent transparency solid interface panels menus dialogs colour tint collection accent contrast zoom scale scaling size bigger smaller larger dpi hidpi 4k tv accessibility font density corners badges categories category tags ribbon strip bookmarks hover screenshot slideshow picture animations motion layout sections profile theme light dark mode system import export aparencia plano de fundo desfoque escurecer saturacao capa cinza nao instalados arte vidro opacidade transparente transparencia solido paineis cor colecao destaque contraste zoom escala tamanho maior menor ampliar aumentar diminuir acessibilidade fonte densidade cantos selos categorias categoria etiquetas fita faixa marcadores estrela animacoes movimento secoes perfil tema claro escuro modo sistema importar exportar imagem",
+            Section::QuickLauncher => "quick launcher launch run play search spotlight palette command global shortcut hotkey key anywhere tray lancador rapido iniciar jogar buscar paleta comando atalho global tecla",
             Section::ConsoleMode => "console mode tv couch controller gamepad theme themes tabs shelves layout covers background font scale clock accent colours glyphs hints menu startup customize export import preset modo console televisao sofa controle tema temas abas prateleiras capas fundo fonte tamanho relogio destaque cores botoes dicas menu personalizar exportar importar perfil",
             Section::Advanced => "advanced cache folders copy settings avancado pastas copiar configuracoes",
             Section::GameDefaults => "game defaults wine proton version prefix dxvk nvapi esync fsync sync wayland wow64 gpu performance fps gamescope launch options new games padroes dos jogos versao prefixo desempenho opcoes de inicializacao novos jogos",
@@ -196,10 +210,11 @@ impl Section {
             Section::Integrations => "integrations sunshine moonlight stream streaming remote play tv phone couch integracoes transmitir transmissao jogar remotamente celular sofa",
             Section::Storage => "storage disk space free up clean cleanup size prefixes proton cache leftovers uninstall armazenamento disco espaco liberar limpar limpeza tamanho prefixos sobras desinstalar",
             Section::Mods => "mods nexus thunderstore nxm ror2mm api key account premium links fuse overlayfs fomod mod manager modding mods conta chave link modificacoes gerenciador",
+            Section::Controls => "controls controller gamepad buttons shortcuts guide back start chord bindings console checks steam input conflict controles controle botoes atalhos conflito",
             Section::Overlay => "overlay guide button controller gamepad keyboard in-game volume screenshot shortcut botao guia controle teclado sobreposicao no jogo volume captura atalho",
             Section::Replay => "replay clip video record recording buffer last seconds guide gpu-screen-recorder memory ram vram vulkan nvenc vaapi encoder disk gravar gravacao clipe video ultimos segundos memoria codificador disco",
             Section::Achievements => "achievements trophies retroachievements retro emulator rom steam gog epic unlocked rare points hardcore web api key conquistas trofeus emulador desbloqueadas raras pontos chave",
-            Section::Metadata => "metadata igdb twitch steam lutris covers fill download images priority metadados capas preencher baixar imagens prioridade",
+            Section::Metadata => "metadata sources igdb twitch steam lutris steamgriddb howlongtobeat protondb tags covers backgrounds fill download update images order priority age ratings metadados fontes capas fundos preencher baixar atualizar imagens ordem prioridade classificacao etaria",
             Section::Screenshots => "screenshots capture shortcut hotkey folder thumbnails cache gallery capturas de tela atalho pasta miniaturas galeria",
             Section::Saves => "saves ludusavi backup restore retention locked differential zip compression game list manifest salvamentos restaurar retencao travado diferencial compressao lista de jogos",
             Section::Cloud => "cloud sync synchronize upload backup saves screenshots google drive dropbox onedrive box ftp smb webdav rclone syncthing dual boot windows linux other pc devices space restore sincronizar sincronizacao nuvem outro computador dispositivos enviar backup capturas espaco restaurar",
@@ -222,6 +237,7 @@ impl Section {
         match s {
             "general" => Some(Section::General),
             "appearance" => Some(Section::Appearance),
+            "quick-launcher" | "quick-launch" => Some(Section::QuickLauncher),
             "console-mode" | "console" => Some(Section::ConsoleMode),
             "advanced" => Some(Section::Advanced),
             "defaults" => Some(Section::GameDefaults),
@@ -231,6 +247,7 @@ impl Section {
             "integrations" | "sunshine" => Some(Section::Integrations),
             "storage" | "disk" => Some(Section::Storage),
             "mods" | "nexus" => Some(Section::Mods),
+            "controls" | "shortcuts" | "controller" => Some(Section::Controls),
             "overlay" => Some(Section::Overlay),
             "replay" => Some(Section::Replay),
             "metadata" => Some(Section::Metadata),
@@ -268,6 +285,7 @@ mod tests {
         assert_eq!(Section::parse("mods"), Some(Section::Mods));
         assert_eq!(Section::parse("console-mode"), Some(Section::ConsoleMode));
         assert_eq!(Section::parse("sunshine"), Some(Section::Integrations));
+        assert_eq!(Section::parse("controls"), Some(Section::Controls));
         assert_eq!(Section::parse("nope"), None);
         assert_eq!(crate::pages::Page::from_debug("settings"), Some(crate::pages::Page::Settings));
         assert_eq!(crate::pages::Page::from_debug("settings:about"), Some(crate::pages::Page::Settings));

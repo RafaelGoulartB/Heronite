@@ -9,6 +9,7 @@ use std::time::SystemTime;
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameMetadata, GameInfo, LocalMetaFile};
 use heronite_data::paths::DataPaths;
+use heronite_data::text::platform_names;
 use parking_lot::Mutex;
 use serde_json::Value;
 
@@ -45,7 +46,24 @@ pub fn metadata_from_store_game(app_name: &str, runner: &str, game: &GameInfo) -
     md.websites = unique_names([at(&["storeUrl"])], 2);
     md.cover_url = non_empty(game.art_square.as_deref()).or(non_empty(game.art_cover.as_deref())).map(str::to_owned);
     md.hero_url = non_empty(game.art_background.as_deref()).or(non_empty(game.art_cover.as_deref())).map(str::to_owned);
+    md.cover_wide_url = store_wide_cover(runner, game).map(str::to_owned);
     md
+}
+
+/// The store's wide cover, where its library has one. The names mislead:
+/// Epic's `art_square` is its tall box art (`DieselGameBoxTall`) and
+/// `art_cover` the 16:9 one (`DieselGameBox`), which takes the tall one's
+/// place when the game has none (then both are the same); GOG's `art_cover`
+/// is always a wide picture (its `logo` card or its background). Amazon's
+/// `art_cover` is a background, the other stores' are not known to be
+/// wide, and no store has a square cover (GOG's square icon is an icon).
+fn store_wide_cover<'a>(runner: &str, game: &'a GameInfo) -> Option<&'a str> {
+    let cover = non_empty(game.art_cover.as_deref()).filter(|c| *c != "fallback")?;
+    match runner {
+        "legendary" => (non_empty(game.art_square.as_deref()) != Some(cover)).then_some(cover),
+        "gog" => Some(cover),
+        _ => None,
+    }
 }
 
 type GamesCache = Mutex<HashMap<PathBuf, (SystemTime, u64, Arc<Vec<Value>>)>>;
@@ -147,7 +165,7 @@ pub fn metadata_from_playnite_game(app_name: &str, runner: &str, game: &Playnite
     md.publishers = list(&game.publishers);
     md.genres = list(&game.genres);
     md.themes = list(&game.tags);
-    md.platforms = list(&game.platforms);
+    md.platforms = platform_names(list(&game.platforms));
     md.series = game.series.clone().filter(|s| !s.is_empty());
     md.features = list(&game.features);
     let max = 2 * 1024 * 1024;
@@ -180,6 +198,25 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn store_wide_cover_by_store() {
+        let game = |runner: &str, square: &str, cover: &str| -> GameInfo {
+            serde_json::from_value(json!({"runner": runner, "app_name": "1", "title": "T", "art_square": square, "art_cover": cover}))
+                .unwrap()
+        };
+        let wide = |g: &GameInfo| metadata_from_store_game("1", &g.runner, g).cover_wide_url;
+        // Epic: art_cover is the 16:9 box art unless it stands in for the tall one.
+        assert_eq!(wide(&game("legendary", "https://tall", "https://wide")).as_deref(), Some("https://wide"));
+        assert_eq!(wide(&game("legendary", "https://tall", "https://tall")), None);
+        assert_eq!(wide(&game("legendary", "fallback", "fallback")), None);
+        // Amazon's art_cover is a background; sideloaded games' art has no known shape.
+        assert_eq!(wide(&game("nile", "https://icon", "https://bg")), None);
+        assert_eq!(wide(&game("sideload", "https://a", "https://b")), None);
+        // No store gives a square cover; the tall one stays as it was.
+        let md = metadata_from_store_game("1", "legendary", &game("legendary", "https://tall", "https://wide"));
+        assert_eq!((md.cover_url.as_deref(), md.cover_square_url.as_deref()), (Some("https://tall"), None));
+    }
+
+    #[test]
     fn store_candidate_reads_extra() {
         let game: GameInfo = serde_json::from_value(json!({
             "runner": "gog", "app_name": "1", "title": "Witcher",
@@ -196,6 +233,7 @@ mod tests {
         assert_eq!(md.genres, ["RPG", "Open World"]);
         assert_eq!(md.websites, ["https://gog/x"]);
         assert_eq!(md.cover_url.as_deref(), Some("https://sq"));
+        assert_eq!(md.cover_wide_url.as_deref(), Some("https://cv"), "GOG's art_cover is wide");
         // empty art_background falls back to art_cover
         assert_eq!(md.hero_url.as_deref(), Some("https://cv"));
     }

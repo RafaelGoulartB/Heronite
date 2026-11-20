@@ -13,7 +13,7 @@ use parking_lot::Mutex;
 use serde_json::Value;
 
 use crate::http::Http;
-use crate::types::{ArtKind, WebImage};
+use crate::types::{ArtKind, Lookup, SourceHit, WebImage};
 use crate::util::{encode_uri_component, normalize_title, re};
 
 const SGDB_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Heronite/0.1";
@@ -65,6 +65,16 @@ pub fn steamgrid_api_key(paths: &DataPaths) -> Option<String> {
     Some(key)
 }
 
+/// [`steamgrid_api_key`] while SteamGridDB is on in Settings → Metadata:
+/// what every automatic fetch and search uses.
+pub fn steamgrid_key_if_on(paths: &DataPaths) -> Option<String> {
+    let m = crate::sources::load_metadata_settings(paths);
+    if !crate::sources::is_on(&m, crate::sources::ids::STEAMGRIDDB) {
+        return None;
+    }
+    steamgrid_api_key(paths)
+}
+
 fn title_queries(title: &str) -> Vec<String> {
     let cleaned = re!(r"\s+").replace_all(&title.replace('_', " "), " ").trim().to_owned();
     let colon = re!(r"\s+-\s+").replace_all(&cleaned, ": ").into_owned();
@@ -103,7 +113,7 @@ pub fn score_steam_name(query: &str, name: &str) -> i32 {
 }
 
 /// Words a store adds after a game's name for another edition of the same game.
-const EDITION_WORDS: &[&str] = &[
+pub(crate) const EDITION_WORDS: &[&str] = &[
     "goty",
     "game",
     "of",
@@ -145,15 +155,30 @@ pub fn strict_steam_score(query: &str, name: &str) -> i32 {
     }
 }
 
-/// Keeps the best-scoring Steam app (>= 60); the first wins ties. `strict`
-/// scores with [`strict_steam_score`] instead.
+/// How a search scores the names it finds.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum Mode {
+    /// [`score_steam_name`].
+    #[default]
+    Loose,
+    /// [`strict_steam_score`]: the same name, or with edition words after it.
+    Strict,
+    /// Only the same name (a strict score of 100): an edition is another listing.
+    Exact,
+}
+
+/// Keeps the best-scoring Steam app (>= 60); the first wins ties.
 #[derive(Default)]
-struct BestApp(Option<(String, i32)>, bool);
+struct BestApp(Option<(String, i32)>, Mode);
 
 impl BestApp {
     fn consider(&mut self, id: Option<String>, name: &str, title: &str) {
         let Some(id) = id.filter(|i| !i.is_empty() && i != "0") else { return };
-        let score = if self.1 { strict_steam_score(title, name) } else { score_steam_name(title, name) };
+        let score = match self.1 {
+            Mode::Loose => score_steam_name(title, name),
+            Mode::Strict => strict_steam_score(title, name),
+            Mode::Exact => Some(strict_steam_score(title, name)).filter(|s| *s == 100).unwrap_or(0),
+        };
         if score < 60 {
             return;
         }
@@ -178,12 +203,50 @@ pub fn steam_app_id_exact(http: &Http, title: &str) -> Option<String> {
 }
 
 fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Option<String> {
-    let mut best = BestApp(None, strict);
+    search_app(http, title, if strict { Mode::Strict } else { Mode::Loose }).lookup.into_option()
+}
+
+/// What a search for a Steam app by title found, and how sure its "no".
+pub struct Searched {
+    pub lookup: Lookup<String>,
+    /// Every request answered with what it should: a `NotFound` is then
+    /// Steam's own "no such game", worth remembering. Not so after a request
+    /// that failed, was refused, or came back in another shape.
+    pub complete: bool,
+    /// Steam said to wait (429, 5xx): for how long it asked, if it did.
+    pub busy: Option<std::time::Duration>,
+}
+
+/// [`steam_app_id_exact`] for a search by name: only a game named exactly
+/// as `title` ([`Mode::Exact`]; an edition listed first does not stop the
+/// search), saying whether the "no" is Steam's own and whether it is busy.
+pub fn search_exact_app(http: &Http, title: &str) -> Searched {
+    search_app(http, title, Mode::Exact)
+}
+
+fn search_app(http: &Http, title: &str, mode: Mode) -> Searched {
+    let mut best = BestApp(None, mode);
+    let (mut answered, mut failed, mut busy, mut complete) = (false, None, None::<std::time::Duration>, true);
+    let mut note = |r: &Result<Value>, answered: &mut bool, array: bool| match r {
+        Ok(v) => {
+            *answered = true;
+            complete &= !array || v.is_array();
+        }
+        Err(e) => {
+            complete = false;
+            // A Steam that throttles or fails could not say, whatever it answered before.
+            if let Some(wait) = crate::http::busy_for(e) {
+                busy = Some(busy.map_or(wait, |b| b.max(wait)));
+            }
+            failed = Some(Lookup::<String>::from_error(e));
+        }
+    };
     for query in title_queries(title) {
         let community = http
             .get(format!("{}/actions/SearchApps/{}", http.endpoints.steam_community, encode_uri_component(&query)))
             .send_ok()
             .and_then(|r| r.json::<Value>());
+        note(&community, &mut answered, true);
         match community {
             Ok(Value::Array(hits)) => best_from_search_apps(&mut best, &hits, title),
             Ok(_) => {}
@@ -198,6 +261,7 @@ fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Option<String>
             .query(&[("term", query.as_str()), ("l", "english"), ("cc", "US")])
             .send_ok()
             .and_then(|r| r.json::<Value>());
+        note(&store, &mut answered, false);
         match store {
             Ok(v) => best_from_store_search(&mut best, &v, title),
             Err(e) => log::warn!("Steam store search failed for {query}: {e}"),
@@ -206,7 +270,38 @@ fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Option<String>
             break;
         }
     }
-    best.0.map(|(id, _)| id)
+    let lookup = match (best.0, answered, failed) {
+        (Some((id, _)), ..) => Lookup::Found(id),
+        (None, ..) if busy.is_some() => Lookup::Unreachable,
+        (None, false, Some(failure)) => failure,
+        _ => Lookup::NotFound,
+    };
+    Searched { lookup, complete, busy }
+}
+
+/// The Steam app a typed store or community page names
+/// (`https://store.steampowered.com/app/620/Portal_2/`,
+/// `steamcommunity.com/app/620`), or a SteamDB one.
+pub fn steam_id_in(query: &str) -> Option<String> {
+    let lower = query.trim().to_ascii_lowercase();
+    let from_host = ["store.steampowered.com", "steamcommunity.com", "steamdb.info"].iter().any(|h| lower.contains(h));
+    if !from_host {
+        return None;
+    }
+    let after = lower.split("/app/").nth(1)?;
+    let id: String = after.chars().take_while(char::is_ascii_digit).collect();
+    app_id_digits(&id).then_some(id)
+}
+
+/// The Steam app id a typed number is, when the query is one (a title such
+/// as "2048" is one too: it does not outrank the games of that name).
+pub fn steam_id_alone(query: &str) -> Option<String> {
+    let query = query.trim();
+    app_id_digits(query).then(|| query.to_owned())
+}
+
+fn app_id_digits(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 10 && s.bytes().all(|b| b.is_ascii_digit())
 }
 
 fn best_from_search_apps(best: &mut BestApp, hits: &[Value], title: &str) {
@@ -233,6 +328,68 @@ fn best_of(title: &str, search_apps: &Value, store: &Value) -> Option<String> {
     best_from_search_apps(&mut best, search_apps.as_array().unwrap(), title);
     best_from_store_search(&mut best, store, title);
     best.0.map(|(i, _)| i)
+}
+
+/// Steam apps whose name is like `query` (the store search, else the
+/// community one), add-ons left out, with their library cover. Steam gives
+/// no release year here.
+pub fn search_steam(http: &Http, query: &str) -> Lookup<Vec<SourceHit>> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Lookup::Found(Vec::new());
+    }
+    let store = http
+        .get(format!("{}/api/storesearch/", http.endpoints.steam_store))
+        .query(&[("term", query), ("l", "english"), ("cc", "US")])
+        .send_ok()
+        .and_then(|r| r.json::<Value>());
+    let apps: Vec<(String, String)> = match store {
+        Ok(body) => body
+            .get("items")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|i| i.get("type").and_then(Value::as_str).is_none_or(|t| t.is_empty() || t == "app"))
+            .filter_map(|i| Some((i.get("id")?.as_u64()?.to_string(), i.get("name")?.as_str()?.to_owned())))
+            .collect(),
+        Err(e) => {
+            log::warn!("Steam store search failed for {query}: {e}");
+            let community = http
+                .get(format!("{}/actions/SearchApps/{}", http.endpoints.steam_community, encode_uri_component(query)))
+                .send_ok()
+                .and_then(|r| r.json::<Value>());
+            match community {
+                Ok(Value::Array(hits)) => hits
+                    .iter()
+                    .filter_map(|i| {
+                        let id =
+                            i.get("appid").and_then(|a| a.as_str().map(str::to_owned).or_else(|| a.as_u64().map(|n| n.to_string())))?;
+                        Some((id, i.get("name")?.as_str()?.to_owned()))
+                    })
+                    .collect(),
+                Ok(_) => Vec::new(),
+                Err(e) => return Lookup::from_error(&e),
+            }
+        }
+    };
+    let mut hits: Vec<SourceHit> = Vec::new();
+    for (id, name) in apps {
+        if is_likely_addon(&name, query) || hits.iter().any(|h| h.id.as_deref() == Some(id.as_str())) {
+            continue;
+        }
+        hits.push(SourceHit {
+            source: "steam".into(),
+            thumb_url: crate::steam::steam_cdn_cover(Some(&id)),
+            id: Some(id),
+            title: Some(name),
+            year: None,
+            platform: None,
+            matched_by: None,
+            alt_title: None,
+            thumb_adult: false,
+        });
+    }
+    Lookup::Found(hits)
 }
 
 fn sgdb_get(http: &Http, api_key: &str, path: &str, params: &[(&str, &str)]) -> Result<Value> {
@@ -283,21 +440,222 @@ pub fn covers_from_steamgrid(http: &Http, api_key: &str, sgdb_id: i64) -> Result
     Ok(Covers { art_square: grid.clone(), art_cover: hero.or(grid) })
 }
 
-/// SteamGridDB's art of the first game matching `title`, for the image
-/// search: portrait grids for a cover, heroes for a background, in the order
-/// SteamGridDB ranks them.
-pub fn steamgrid_images(http: &Http, api_key: &str, title: &str, kind: ArtKind) -> Result<Vec<WebImage>> {
-    let Some(game_id) = sgdb_search_first_id(http, api_key, title)? else { return Ok(Vec::new()) };
-    let (path, dimensions) = match kind {
+/// Where SteamGridDB keeps a kind of picture and the sizes that are that
+/// kind: grids by dimension for the covers (portrait for the tall one, the
+/// square sizes, the 460x215 header and its double), heroes for a
+/// background and logos for a logo (any size, as ranked).
+fn steamgrid_query(kind: ArtKind) -> (&'static str, &'static str) {
+    match kind {
         ArtKind::Cover => ("grids", "600x900,342x482,660x930"),
+        ArtKind::CoverSquare => ("grids", "512x512,1024x1024"),
+        ArtKind::CoverWide => ("grids", "460x215,920x430"),
         ArtKind::Hero => ("heroes", ""),
-    };
-    let params: &[(&str, &str)] = if dimensions.is_empty() { &[] } else { &[("dimensions", dimensions)] };
-    let body = sgdb_get(http, api_key, &format!("/{path}/game/{game_id}"), params)?;
-    Ok(parse_steamgrid_images(&body))
+        ArtKind::Logo => ("logos", ""),
+    }
 }
 
-/// The `data` of a grids/heroes answer: `url`, `thumb`, `width`, `height`.
+/// Pages of one kind of a game's art the image search asks for at most
+/// (SteamGridDB gives 50 pictures a page; a popular game has hundreds).
+const STEAMGRID_MAX_PAGES: u64 = 10;
+/// Pages asked for at once.
+const STEAMGRID_PAGES_AT_ONCE: usize = 5;
+
+/// One page (`0` first) of SteamGridDB's art of `kind` of its game
+/// `game_id`. `adult`: pictures it flags as adult too (it leaves them out
+/// unless asked).
+/// `animated`: animated pictures too (SteamGridDB gives still ones alone
+/// unless asked; see [`parse_steamgrid_images`]).
+fn steamgrid_page(http: &Http, api_key: &str, game_id: i64, kind: ArtKind, (adult, animated): (bool, bool), page: u64) -> Result<Value> {
+    let (path, dimensions) = steamgrid_query(kind);
+    let page = page.to_string();
+    let mut params = vec![("nsfw", if adult { "any" } else { "false" }), ("types", if animated { "static,animated" } else { "static" })];
+    if !dimensions.is_empty() {
+        params.push(("dimensions", dimensions));
+    }
+    if page != "0" {
+        params.push(("page", page.as_str()));
+    }
+    sgdb_get(http, api_key, &format!("/{path}/game/{game_id}"), &params)
+}
+
+/// How many pages an answer's `total` and `limit` make, at most
+/// [`STEAMGRID_MAX_PAGES`]; one when it does not say.
+fn steamgrid_page_count(body: &Value) -> u64 {
+    let total = body.get("total").and_then(Value::as_u64).unwrap_or(0);
+    let limit = body.get("limit").and_then(Value::as_u64).filter(|l| *l > 0).unwrap_or(50);
+    total.div_ceil(limit).clamp(1, STEAMGRID_MAX_PAGES)
+}
+
+/// The first page of SteamGridDB's art of `kind` (no adult pictures, no
+/// animated ones), as ranked: what a fetch picks from.
+fn steamgrid_art(http: &Http, api_key: &str, game_id: i64, kind: ArtKind) -> Result<Vec<WebImage>> {
+    Ok(parse_steamgrid_images(&steamgrid_page(http, api_key, game_id, kind, (false, false), 0)?))
+}
+
+/// Every page of SteamGridDB's art of `kind` of its game `game_id` (up to
+/// [`STEAMGRID_MAX_PAGES`]), in its order. A later page that fails is left
+/// out; the first one failing is the error.
+fn steamgrid_all_art(http: &Http, api_key: &str, game_id: i64, kind: ArtKind, adult: bool) -> Result<Vec<WebImage>> {
+    // The image search lists animated backgrounds too, marked.
+    let asked = (adult, kind == ArtKind::Hero);
+    let first = steamgrid_page(http, api_key, game_id, kind, asked, 0)?;
+    let mut images = parse_steamgrid_images(&first);
+    let pages = steamgrid_page_count(&first);
+    let later: Vec<u64> = (1..pages).collect();
+    let mut rest: Vec<(u64, Result<Value>)> = Vec::new();
+    for batch in later.chunks(STEAMGRID_PAGES_AT_ONCE) {
+        std::thread::scope(|s| {
+            let handles: Vec<_> =
+                batch.iter().map(|&p| (p, s.spawn(move || steamgrid_page(http, api_key, game_id, kind, asked, p)))).collect();
+            rest.extend(handles.into_iter().map(|(p, h)| (p, h.join().unwrap_or_else(|_| Err(anyhow!("SteamGridDB page panicked"))))));
+        });
+    }
+    for (page, body) in rest {
+        match body {
+            Ok(body) => images.extend(parse_steamgrid_images(&body)),
+            Err(e) => log::warn!("SteamGridDB {} of game {game_id}, page {page}: {e}", kind.as_str()),
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    images.retain(|img| seen.insert(img.image_url.clone()));
+    Ok(images)
+}
+
+/// What the image search knows of the game it looks for: its title, its
+/// Steam app id and the SteamGridDB game it was matched with. Used only
+/// while the search is for that title.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SteamGridHint {
+    pub title: String,
+    pub steam_app_id: Option<String>,
+    pub steamgrid_id: Option<i64>,
+}
+
+/// The SteamGridDB game the image search for `title` is of: the one the
+/// game was matched with, else the one of its Steam app id, else the first
+/// hit of a search for `title`. The hint counts only when `title` is the
+/// game's own (another title typed is another game).
+fn steamgrid_game_for(http: &Http, api_key: &str, title: &str, hint: Option<&SteamGridHint>) -> Result<Option<i64>> {
+    let known = hint.filter(|h| {
+        let key = crate::rom_names::match_key(title);
+        !key.is_empty() && key == crate::rom_names::match_key(&h.title)
+    });
+    if let Some(id) = known.and_then(|h| h.steamgrid_id) {
+        return Ok(Some(id));
+    }
+    if let Some(steam_id) = known.and_then(|h| h.steam_app_id.as_deref()).filter(|s| !s.is_empty()) {
+        match steamgrid_by_steam_id(http, api_key, steam_id) {
+            Ok(Some(game)) => return Ok(Some(game.id)),
+            Ok(None) => {}
+            Err(e) if crate::http::is_unreachable(&e) => return Err(e),
+            Err(e) => log::info!("SteamGridDB has no game for Steam app {steam_id}: {e}"),
+        }
+    }
+    sgdb_search_first_id(http, api_key, title)
+}
+
+/// SteamGridDB's art of the game `title` is ([`steamgrid_game_for`]), for
+/// the image search: the grids of a cover family ([`ArtKind::cover`]),
+/// heroes for a background, logos for a logo, in the order SteamGridDB ranks
+/// them, every page of it. `adult`: pictures flagged adult too.
+pub fn steamgrid_images(
+    http: &Http,
+    api_key: &str,
+    title: &str,
+    hint: Option<&SteamGridHint>,
+    kind: ArtKind,
+    adult: bool,
+) -> Result<Vec<WebImage>> {
+    let Some(game_id) = steamgrid_game_for(http, api_key, title, hint)? else { return Ok(Vec::new()) };
+    steamgrid_all_art(http, api_key, game_id, kind, adult)
+}
+
+/// The SteamGridDB game a game is, and how it was found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SteamGridGame {
+    pub id: i64,
+    pub name: Option<String>,
+    pub year: Option<i32>,
+    pub matched_by: crate::types::MatchedBy,
+}
+
+fn steamgrid_game(data: &Value, matched_by: crate::types::MatchedBy) -> Option<SteamGridGame> {
+    let id = data.get("id").and_then(Value::as_i64).filter(|i| *i != 0)?;
+    let name = data.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()).map(str::to_owned);
+    let year = data
+        .get("release_date")
+        .and_then(Value::as_i64)
+        .filter(|t| *t > 0)
+        .and_then(|t| chrono::DateTime::from_timestamp(t, 0).map(|d| chrono::Datelike::year(&d)));
+    Some(SteamGridGame { id, name, year, matched_by })
+}
+
+/// The SteamGridDB game of a Steam app, `None` when its answer names none.
+fn steamgrid_by_steam_id(http: &Http, api_key: &str, steam_id: &str) -> Result<Option<SteamGridGame>> {
+    let body = sgdb_get(http, api_key, &format!("/games/steam/{steam_id}"), &[])?;
+    Ok(body.get("data").and_then(|d| steamgrid_game(d, crate::types::MatchedBy::SteamId)))
+}
+
+/// Finds a game on SteamGridDB: by its Steam app id, else by its title
+/// (the first hit of the search; an exact title when the names agree, a
+/// guess otherwise).
+pub fn find_steamgrid_game(http: &Http, api_key: &str, steam_app_id: Option<&str>, title: &str) -> Lookup<SteamGridGame> {
+    use crate::types::MatchedBy;
+    if let Some(steam_id) = steam_app_id.filter(|s| !s.is_empty()) {
+        match steamgrid_by_steam_id(http, api_key, steam_id) {
+            Ok(Some(game)) => return Lookup::Found(game),
+            Ok(None) => {}
+            Err(e) if crate::http::is_unreachable(&e) => return Lookup::Unreachable,
+            // Not on SteamGridDB under its Steam id: the title may still be.
+            Err(e) => log::info!("SteamGridDB has no game for Steam app {steam_id}: {e}"),
+        }
+    }
+    let query = title.trim();
+    if query.is_empty() {
+        return Lookup::NotFound;
+    }
+    match sgdb_get(http, api_key, &format!("/search/autocomplete/{}", encode_uri_component(query)), &[]) {
+        Ok(body) => {
+            let first = body.get("data").and_then(Value::as_array).and_then(|a| a.first());
+            let by = |d: &Value| MatchedBy::by_title(title, d.get("name").and_then(Value::as_str));
+            first.and_then(|d| steamgrid_game(d, by(d))).map_or(Lookup::NotFound, Lookup::Found)
+        }
+        Err(e) => Lookup::from_error(&e),
+    }
+}
+
+/// The first picture SteamGridDB ranks for each of `kinds` of its game
+/// `game_id`; a kind it has none of is left out.
+pub fn steamgrid_pictures(http: &Http, api_key: &str, game_id: i64, kinds: &[ArtKind]) -> Lookup<Vec<(ArtKind, String)>> {
+    let answers: Vec<(ArtKind, Result<Vec<WebImage>>)> = std::thread::scope(|s| {
+        let handles: Vec<_> = kinds.iter().map(|k| (*k, s.spawn(move || steamgrid_art(http, api_key, game_id, *k)))).collect();
+        handles.into_iter().map(|(k, h)| (k, h.join().unwrap_or_else(|_| Err(anyhow!("SteamGridDB lookup panicked"))))).collect()
+    });
+    if !answers.is_empty() && answers.iter().all(|(_, a)| a.as_ref().is_err_and(crate::http::is_unreachable)) {
+        return Lookup::Unreachable;
+    }
+    let found: Vec<(ArtKind, String)> = answers
+        .into_iter()
+        .filter_map(|(k, a)| match a {
+            Ok(images) => images.into_iter().next().map(|img| (k, img.image_url)),
+            Err(e) => {
+                log::warn!("SteamGridDB {} of game {game_id}: {e}", k.as_str());
+                None
+            }
+        })
+        .collect();
+    if found.is_empty() {
+        Lookup::NotFound
+    } else {
+        Lookup::Found(found)
+    }
+}
+
+/// The `data` of a grids/heroes answer: `url`, `thumb`, `width`, `height`,
+/// `style`. An animated one (its `thumb` is a WebM) is that WebM, picture
+/// and preview: a few hundred KB, where its `url` is an animated WebP or
+/// PNG of tens of MB that ffmpeg decodes slowly; its size is the WebM's,
+/// unknown here.
 fn parse_steamgrid_images(body: &Value) -> Vec<WebImage> {
     let size = |v: &Value, key: &str| v.get(key).and_then(Value::as_u64).map_or(0, |n| n.min(u32::MAX as u64) as u32);
     body.get("data")
@@ -307,7 +665,11 @@ fn parse_steamgrid_images(body: &Value) -> Vec<WebImage> {
         .filter_map(|img| {
             let image_url = img.get("url").and_then(Value::as_str).filter(|u| u.starts_with("http"))?.to_owned();
             let thumb_url = img.get("thumb").and_then(Value::as_str).filter(|u| u.starts_with("http")).unwrap_or(&image_url).to_owned();
-            Some(WebImage { image_url, thumb_url, width: size(img, "width"), height: size(img, "height") })
+            let style = img.get("style").and_then(Value::as_str).unwrap_or_default().to_owned();
+            if thumb_url.to_ascii_lowercase().ends_with(".webm") {
+                return Some(WebImage { image_url: thumb_url.clone(), thumb_url, width: 0, height: 0, style, animated: true });
+            }
+            Some(WebImage { image_url, thumb_url, width: size(img, "width"), height: size(img, "height"), style, animated: false })
         })
         .collect()
 }
@@ -422,7 +784,7 @@ pub fn refresh_missing_local_covers(paths: &DataPaths, http: &Http) -> Result<us
         return Ok(0);
     }
     log::info!("Fetching covers for {} local game(s) without artwork", missing.len());
-    let api_key = steamgrid_api_key(paths);
+    let api_key = steamgrid_key_if_on(paths);
 
     let next = AtomicUsize::new(0);
     let results: Mutex<Vec<(String, Covers)>> = Mutex::new(Vec::new());
@@ -466,6 +828,57 @@ mod tests {
 
     fn fixture(name: &str) -> Value {
         serde_json::from_str(&std::fs::read_to_string(format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn an_animated_steamgriddb_picture_is_its_webm() {
+        let body = serde_json::json!({"data": [
+            {"url": "https://cdn2.steamgriddb.com/hero/a.webp", "thumb": "https://cdn2.steamgriddb.com/hero_thumb/a.webm",
+             "width": 1920, "height": 620, "style": "alternate"},
+            {"url": "https://cdn2.steamgriddb.com/hero/b.png", "thumb": "https://cdn2.steamgriddb.com/hero_thumb/b.jpg",
+             "width": 1920, "height": 620, "style": "blurred"}
+        ]});
+        let images = parse_steamgrid_images(&body);
+        assert!(images[0].animated && !images[1].animated);
+        assert_eq!(images[0].image_url, "https://cdn2.steamgriddb.com/hero_thumb/a.webm", "the light WebM, not the big WebP");
+        assert_eq!((images[0].width, images[0].height), (0, 0), "the WebM's size is not the WebP's");
+        assert_eq!(images[1].image_url, "https://cdn2.steamgriddb.com/hero/b.png");
+    }
+
+    #[test]
+    fn steamgriddb_pictures_keep_their_style() {
+        let images = parse_steamgrid_images(&fixture("sgdb_grids_square.json"));
+        let styles: Vec<&str> = images.iter().map(|i| i.style.as_str()).collect();
+        assert_eq!(styles, ["alternate", "material"]);
+    }
+
+    #[test]
+    fn steamgriddb_pages_follow_its_total_up_to_the_cap() {
+        let pages = |v: Value| steamgrid_page_count(&v);
+        assert_eq!(pages(serde_json::json!({"data": []})), 1, "no total said: the first page alone");
+        assert_eq!(pages(serde_json::json!({"total": 0, "limit": 50})), 1);
+        assert_eq!(pages(serde_json::json!({"total": 50, "limit": 50})), 1);
+        assert_eq!(pages(serde_json::json!({"total": 51, "limit": 50})), 2);
+        assert_eq!(pages(serde_json::json!({"total": 357, "limit": 50})), 8);
+        assert_eq!(pages(serde_json::json!({"total": 579, "limit": 50})), STEAMGRID_MAX_PAGES);
+        assert_eq!(pages(serde_json::json!({"total": 120, "limit": 0})), 3, "no limit: SteamGridDB's 50");
+    }
+
+    #[test]
+    fn a_typed_address_or_number_names_a_steam_app() {
+        for typed in [
+            "https://store.steampowered.com/app/620/Portal_2/",
+            "http://store.steampowered.com/app/620",
+            "store.steampowered.com/app/620/",
+            "https://steamcommunity.com/app/620/discussions/",
+            "https://steamdb.info/app/620/charts/",
+        ] {
+            assert_eq!(steam_id_in(typed).as_deref(), Some("620"), "{typed}");
+        }
+        for typed in ["", "Portal 2", "2048 Tiles", "https://example.com/app/620", "https://store.steampowered.com/sub/469", "12345678901"]
+        {
+            assert_eq!(steam_id_in(typed), None, "{typed}");
+        }
     }
 
     #[test]

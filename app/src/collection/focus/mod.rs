@@ -123,6 +123,10 @@ pub(super) struct FocusProps {
 pub(super) struct FocusExtras {
     /// The "Achievements" section.
     pub achievements: Option<AnyElement>,
+    /// "Store media": the store's trailers and screenshots.
+    pub media: Option<AnyElement>,
+    /// "Links": the store pages and sites, as icons.
+    pub links: Option<AnyElement>,
 }
 
 pub(super) struct FocusActions {
@@ -324,6 +328,8 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
         related: (!vm.related.is_empty())
             .then(|| related_panel(&vm.related, related_ui, &cover_for, actions.on_select, actions.on_related)),
         achievements: extras.achievements,
+        media: extras.media,
+        links: extras.links,
         details: details_section(details, details_ui.titles, &actions.on_title),
         hltb: hltb_section(&vm, details_ui.titles, &actions.on_hltb, &actions.on_title),
     };
@@ -441,6 +447,8 @@ pub(super) fn stacked_details(props: StackedProps, actions: FocusActions) -> Div
             related: (!vm.related.is_empty())
                 .then(|| related_panel(&vm.related, related_ui, &cover_for, actions.on_select, actions.on_related)),
             achievements: extras.achievements,
+            media: extras.media,
+            links: extras.links,
             details: details_section(details, details_ui.titles, &actions.on_title),
             hltb: hltb_section(&vm, details_ui.titles, &actions.on_hltb, &actions.on_title),
         },
@@ -474,6 +482,8 @@ struct Sections {
     timeline: Option<AnyElement>,
     related: Option<Div>,
     achievements: Option<AnyElement>,
+    media: Option<AnyElement>,
+    links: Option<AnyElement>,
     details: Div,
     hltb: Option<Div>,
 }
@@ -491,17 +501,18 @@ fn overview(vm: &FocusVm, html_images: &CoverFor, column_w: f32) -> Div {
     })
 }
 
-/// Two columns (screenshots, overview, timeline, related | details, How Long
-/// To Beat, achievements), or one when stacked. The order and the hidden
+/// Two columns (screenshots, store media, overview, timeline, related |
+/// details, How Long To Beat, links, achievements), or one when stacked. The order and the hidden
 /// sections come from Settings → Appearance (by default the short side
 /// sections come right after the overview when stacked, so a long timeline
 /// does not push them out of sight). How Long To Beat travels with
 /// "Details" but stays when it is hidden.
 fn body(lay: &Layout, s: Sections) -> Div {
-    let Sections { screenshots, overview, timeline, related, achievements, details, hltb } = s;
+    let Sections { screenshots, overview, timeline, related, achievements, media, links, details, hltb } = s;
     let look = theme::appearance().sections;
     let mut main_parts = [
         (Section::Screenshots, screenshots),
+        (Section::Media, media),
         (Section::Overview, Some(overview.into_any_element())),
         (Section::Timeline, timeline),
         (Section::Related, related.map(IntoElement::into_any_element)),
@@ -511,12 +522,14 @@ fn body(lay: &Layout, s: Sections) -> Div {
         div().flex().flex_col().gap(px(14.4)).children(look.shown(Section::Details).then_some(details)).children(hltb).into_any_element(),
     );
     let mut achievements = achievements.filter(|_| look.shown(Section::Achievements));
+    let mut links = links.filter(|_| look.shown(Section::Links));
     let mut side_part = |section: Section| match section {
         Section::Details => details.take(),
         Section::Achievements => achievements.take(),
+        Section::Links => links.take(),
         _ => None,
     };
-    let is_side = |s: &Section| matches!(s, Section::Details | Section::Achievements);
+    let is_side = |s: &Section| matches!(s, Section::Details | Section::Achievements | Section::Links);
     if lay.stacked {
         let mut col = div().flex().flex_col().gap(px(24.)).min_w_0();
         for section in look.order() {

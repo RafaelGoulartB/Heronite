@@ -14,13 +14,11 @@ pub trait Probe: Send + Sync {
     fn env_var(&self, key: &str) -> Option<String>;
     fn home(&self) -> String;
     /// Ordered Steam installation candidates, without checking existence.
-    fn steam_roots(&self) -> Vec<PathBuf> {
-        Vec::new()
-    }
+    /// No default: on Windows the Steam client is only found through these,
+    /// so a probe that wraps another must pass them on.
+    fn steam_roots(&self) -> Vec<PathBuf>;
     /// Steam library roots checked before the client's library list.
-    fn steam_system_roots(&self) -> Vec<PathBuf> {
-        Vec::new()
-    }
+    fn steam_system_roots(&self) -> Vec<PathBuf>;
     /// Whether the file at `path` has an execute bit (defaults to `exists`).
     fn is_executable(&self, path: &str) -> bool {
         self.exists(path)

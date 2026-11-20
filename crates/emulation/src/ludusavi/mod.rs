@@ -17,6 +17,7 @@ mod last_backup;
 mod periodic;
 pub mod restore;
 mod runner;
+mod titles;
 
 pub use backup::{
     backup_after_play, backup_for_game, game_wine_prefix, notification, AfterPlay, BackupReason, LudusaviBackupResult, LudusaviEnv,

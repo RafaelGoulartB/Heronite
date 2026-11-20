@@ -12,12 +12,13 @@
 //! Steam closed, the files are edited in place ([`files`], [`vdf_edit`]).
 //!
 //! [`library`] reads the account's library from the client and joins it to
-//! the Collection; [`account`] reads it through Steam's Web API instead,
-//! after a sign-in with a QR code, when the client cannot be read.
+//! the Collection. [`account`] only ends a Steam sign-in an earlier version
+//! saved: Heronite no longer signs in to Steam.
 
 pub mod account;
 pub mod client;
 pub mod files;
+pub mod hidden;
 pub mod library;
 pub mod options;
 pub mod vdf_edit;

@@ -12,7 +12,7 @@ use heronite_i18n::tr;
 
 use crate::http::Http;
 use crate::types::ArtKind;
-use crate::util::{folder_name, local_art_url, normalize_ext, now_ms, sniff_image_ext, ALLOWED_EXT};
+use crate::util::{art_ext_allowed, folder_name, local_art_url, normalize_ext, now_ms, sniff_image_ext};
 
 const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 const DOWNLOAD_UA: &str = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0";
@@ -62,15 +62,22 @@ fn remove_managed(paths: &DataPaths, url: Option<&str>) {
     }
 }
 
-/// `hydrate`: keeps only art whose file exists, with normalized URLs.
+/// `hydrate`: keeps only art whose file exists, with normalized URLs. A
+/// logo written by hand (a web address, a path, a file outside the art
+/// folder) stays as it is: `heronite_data::console_art` reads those too.
 fn hydrate(paths: &DataPaths, art: Option<&CollectionGameArt>) -> CollectionGameArt {
     let mut next = CollectionGameArt::default();
     let Some(art) = art else { return next };
-    if let Some(p) = file_from_url(paths, art.cover_url.as_deref()).filter(|p| p.exists()) {
-        next.cover_url = Some(display_url(paths, &p));
-    }
-    if let Some(p) = file_from_url(paths, art.hero_url.as_deref()).filter(|p| p.exists()) {
-        next.hero_url = Some(display_url(paths, &p));
+    for kind in ArtKind::ALL {
+        let value = kind.of_art(art).filter(|v| !v.is_empty());
+        let file = file_from_url(paths, value);
+        // A missing file of the art folder resolves to nothing: its URL says it.
+        let managed = value.is_some_and(|v| v.starts_with("localart://art/")) || file.as_deref().is_some_and(|p| is_managed(paths, p));
+        if let Some(p) = file.filter(|p| p.exists() && (managed || kind != ArtKind::Logo)) {
+            *kind.of_art_mut(&mut next) = Some(display_url(paths, &p));
+        } else if let Some(v) = value.filter(|_| kind == ArtKind::Logo && !managed) {
+            *kind.of_art_mut(&mut next) = Some(v.to_owned());
+        }
     }
     next
 }
@@ -93,7 +100,7 @@ fn write_art(paths: &DataPaths, runner: &str, app_name: &str, art: &CollectionGa
     let key = art_key(runner, app_name);
     let cleaned = hydrate(paths, Some(art));
     json_store::update::<ArtFile, _>(&paths.art(), |file| {
-        if cleaned.cover_url.is_none() && cleaned.hero_url.is_none() {
+        if ArtKind::ALL.iter().all(|k| k.of_art(&cleaned).is_none()) {
             file.games.shift_remove(&key);
         } else {
             let mut entry = cleaned.clone();
@@ -110,27 +117,20 @@ fn write_art(paths: &DataPaths, runner: &str, app_name: &str, art: &CollectionGa
 fn dest_file(paths: &DataPaths, runner: &str, app_name: &str, kind: ArtKind, ext: &str) -> Result<PathBuf> {
     let dir = paths.art_dir().join(folder_name(runner, app_name));
     fs::create_dir_all(&dir)?;
-    Ok(dir.join(format!("{}-{}.{ext}", kind.as_str(), now_ms())))
+    Ok(dir.join(format!("{}-{}.{ext}", kind.file_stem(), now_ms())))
 }
 
 fn apply_art_file(paths: &DataPaths, runner: &str, app_name: &str, kind: ArtKind, dest: &Path) -> Result<CollectionGameArt> {
     let mut current = get_collection_game_art(paths, runner, app_name)?;
-    match kind {
-        ArtKind::Cover => {
-            remove_managed(paths, current.cover_url.as_deref());
-            current.cover_url = Some(display_url(paths, dest));
-        }
-        ArtKind::Hero => {
-            remove_managed(paths, current.hero_url.as_deref());
-            current.hero_url = Some(display_url(paths, dest));
-        }
-    }
+    remove_managed(paths, kind.of_art(&current));
+    *kind.of_art_mut(&mut current) = Some(display_url(paths, dest));
     write_art(paths, runner, app_name, &current)
 }
 
 /// `setCollectionGameArt`: copies a local image (or a `localart://` one) into
 /// `local_library/art/<runner_app>/<kind>-<ms>.<ext>` and points `art.json`
-/// at it, deleting the previous managed file of that kind.
+/// at it, deleting the previous managed file of that kind. `kind` names the
+/// cover family too ([`ArtKind::cover`]); [`ArtKind::Cover`] is the tall one.
 pub fn set_collection_game_art(
     paths: &DataPaths,
     runner: &str,
@@ -145,7 +145,7 @@ pub fn set_collection_game_art(
     }
     .ok_or_else(|| anyhow!(tr!("Image not found: {path}", path = source_path)))?;
     let ext = normalize_ext(&resolved.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_default());
-    if !ALLOWED_EXT.contains(&ext.as_str()) {
+    if !art_ext_allowed(kind, &ext) {
         bail!(tr!("Unsupported image type: {kind}", kind = if ext.is_empty() { tr!("unknown") } else { &ext }));
     }
     if !resolved.exists() {
@@ -172,14 +172,16 @@ fn ext_from_url(url: &str, content_type: &str) -> String {
     url::Url::parse(url).ok().and_then(|u| Path::new(u.path()).extension().map(|e| normalize_ext(&e.to_string_lossy()))).unwrap_or_default()
 }
 
-fn download_image_bytes(http: &Http, url: &str) -> Result<(Vec<u8>, String)> {
+/// Downloads a picture for `kind` (a video too for the background: an
+/// animated one) and the extension its bytes say.
+fn download_image_bytes(http: &Http, url: &str, kind: ArtKind) -> Result<(Vec<u8>, String)> {
     if !(url.starts_with("http://") || url.starts_with("https://") || url.to_lowercase().starts_with("http")) {
         bail!(tr!("Image URL must be http(s)"));
     }
     let resp = http
         .get(url)
         .header("User-Agent", DOWNLOAD_UA)
-        .header("Accept", "image/avif,image/webp,image/png,image/jpeg,image/gif,*/*;q=0.8")
+        .header("Accept", "image/avif,image/webp,image/png,image/jpeg,image/gif,video/webm,video/mp4,*/*;q=0.8")
         .header("Referer", "https://duckduckgo.com/")
         .timeout_secs(25)
         .max_bytes(MAX_IMAGE_BYTES)
@@ -187,8 +189,16 @@ fn download_image_bytes(http: &Http, url: &str) -> Result<(Vec<u8>, String)> {
     if resp.status != 200 {
         bail!("HTTP {}", resp.status);
     }
-    let ext = sniff_image_ext(&resp.body, true).map(str::to_owned).unwrap_or_else(|| ext_from_url(url, &resp.content_type));
-    if ext.is_empty() || !ALLOWED_EXT.contains(&ext.as_str()) {
+    let video = heronite_images::animation::is_video(&resp.body).then(|| {
+        if resp.body.starts_with(&[0x1a, 0x45, 0xdf, 0xa3]) {
+            "webm"
+        } else {
+            "mp4"
+        }
+    });
+    let ext =
+        video.or_else(|| sniff_image_ext(&resp.body, true)).map(str::to_owned).unwrap_or_else(|| ext_from_url(url, &resp.content_type));
+    if ext.is_empty() || !art_ext_allowed(kind, &ext) {
         bail!(tr!("Unsupported image type: {kind}", kind = if ext.is_empty() { tr!("unknown") } else { &ext }));
     }
     if resp.body.len() < 32 {
@@ -210,7 +220,7 @@ pub fn set_collection_game_art_from_url(
 ) -> Result<CollectionGameArt> {
     let mut last: Option<anyhow::Error> = None;
     for url in [Some(image_url), thumb_url].into_iter().flatten().filter(|u| !u.is_empty()) {
-        match download_image_bytes(http, url) {
+        match download_image_bytes(http, url, kind) {
             Ok((bytes, ext)) => {
                 let dest = dest_file(paths, runner, app_name, kind, &ext)?;
                 fs::write(&dest, bytes)?;
@@ -225,26 +235,20 @@ pub fn set_collection_game_art_from_url(
     Err(anyhow!(tr!("Could not download image: {error}", error = last.map(|e| e.to_string()).unwrap_or_else(|| "undefined".into()))))
 }
 
-/// `clearCollectionGameArt`: reset one kind to the default art.
+/// `clearCollectionGameArt`: reset one kind (a cover family or the
+/// background) to the default art.
 pub fn clear_collection_game_art(paths: &DataPaths, runner: &str, app_name: &str, kind: ArtKind) -> Result<CollectionGameArt> {
     let mut current = get_collection_game_art(paths, runner, app_name)?;
-    match kind {
-        ArtKind::Cover => {
-            remove_managed(paths, current.cover_url.as_deref());
-            current.cover_url = None;
-        }
-        ArtKind::Hero => {
-            remove_managed(paths, current.hero_url.as_deref());
-            current.hero_url = None;
-        }
-    }
+    remove_managed(paths, kind.of_art(&current));
+    *kind.of_art_mut(&mut current) = None;
     write_art(paths, runner, app_name, &current)
 }
 
-/// `removeAllCollectionGameArt`.
+/// `removeAllCollectionGameArt`: every kind, every cover family.
 pub fn remove_all_collection_game_art(paths: &DataPaths, runner: &str, app_name: &str) -> Result<()> {
-    clear_collection_game_art(paths, runner, app_name, ArtKind::Cover)?;
-    clear_collection_game_art(paths, runner, app_name, ArtKind::Hero)?;
+    for kind in ArtKind::ALL {
+        clear_collection_game_art(paths, runner, app_name, kind)?;
+    }
     Ok(())
 }
 
@@ -304,6 +308,79 @@ mod tests {
         assert_eq!(raw["games"]["sideload:other"], json!({"heroUrl": "x"}));
         let left: Vec<_> = fs::read_dir(paths.art_dir().join("sideload_steam_9")).unwrap().collect();
         assert!(left.is_empty());
+    }
+
+    #[test]
+    fn a_logo_has_its_own_slot_and_one_written_by_hand_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("cfg"));
+        fs::create_dir_all(paths.local_library()).unwrap();
+        let src = dir.path().join("pic.png");
+        fs::write(&src, png()).unwrap();
+
+        // Another picture of the game keeps the logo set by hand, a web
+        // address or a file of the user's.
+        let own = format!("file://{}", src.display());
+        for logo in ["https://example.org/logo.png", own.as_str()] {
+            fs::write(paths.art(), json!({"games": {"sideload:g": {"logoUrl": logo}}}).to_string()).unwrap();
+            let art = set_collection_game_art(&paths, "sideload", "g", ArtKind::Cover, src.to_str().unwrap()).unwrap();
+            assert_eq!(art.logo_url.as_deref(), Some(logo));
+            let raw = json_store::read_value(&paths.art()).unwrap();
+            assert_eq!(raw["games"]["sideload:g"]["logoUrl"], logo);
+        }
+
+        let art = set_collection_game_art(&paths, "sideload", "g", ArtKind::Logo, src.to_str().unwrap()).unwrap();
+        let url = art.logo_url.clone().unwrap();
+        assert!(url.starts_with("localart://art/sideload_g/logo-"), "{url}");
+        let file = paths.resolve_localart(&url, None).unwrap();
+        assert!(file.exists());
+        let art = clear_collection_game_art(&paths, "sideload", "g", ArtKind::Logo).unwrap();
+        assert!(art.logo_url.is_none() && art.cover_url.is_some());
+        assert!(!file.exists(), "its file goes with it");
+
+        // A logo of the art folder whose file is gone is dropped, like a cover.
+        let art = set_collection_game_art(&paths, "sideload", "g", ArtKind::Logo, src.to_str().unwrap()).unwrap();
+        fs::remove_file(paths.resolve_localart(art.logo_url.as_deref().unwrap(), None).unwrap()).unwrap();
+        assert!(get_collection_game_art(&paths, "sideload", "g").unwrap().logo_url.is_none());
+    }
+
+    #[test]
+    fn each_cover_family_has_its_own_slot_and_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("cfg"));
+        let src = dir.path().join("pic.png");
+        fs::write(&src, png()).unwrap();
+        let tall = set_collection_game_art(&paths, "sideload", "g", ArtKind::Cover, src.to_str().unwrap()).unwrap();
+        let square = set_collection_game_art(&paths, "sideload", "g", ArtKind::CoverSquare, src.to_str().unwrap()).unwrap();
+        let url = square.cover_square_url.clone().unwrap();
+        assert!(url.starts_with("localart://art/sideload_g/cover-square-"), "{url}");
+        assert_eq!(square.cover_url, tall.cover_url, "the tall cover stays");
+        let wide = set_collection_game_art(&paths, "sideload", "g", ArtKind::CoverWide, src.to_str().unwrap()).unwrap();
+        assert!(wide.cover_wide_url.as_deref().is_some_and(|u| u.contains("/cover-wide-")));
+        let raw = json_store::read_value(&paths.art()).unwrap();
+        assert_eq!(raw["games"]["sideload:g"]["coverSquareUrl"], url);
+
+        // Reset of one family leaves the others and removes only its file.
+        let square_file = paths.resolve_localart(&url, None).unwrap();
+        let after = clear_collection_game_art(&paths, "sideload", "g", ArtKind::CoverSquare).unwrap();
+        assert!(after.cover_square_url.is_none() && after.cover_url.is_some() && after.cover_wide_url.is_some());
+        assert!(!square_file.exists());
+        // Removing the game's art removes every family's file.
+        remove_all_collection_game_art(&paths, "sideload", "g").unwrap();
+        assert!(json_store::read_value(&paths.art()).unwrap()["games"].get("sideload:g").is_none());
+        assert_eq!(fs::read_dir(paths.art_dir().join("sideload_g")).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn a_video_can_be_a_background_but_not_a_cover() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("cfg"));
+        let clip = dir.path().join("clip.WebM");
+        fs::write(&clip, [0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0]).unwrap();
+        let art = set_collection_game_art(&paths, "sideload", "g", ArtKind::Hero, clip.to_str().unwrap()).unwrap();
+        assert!(art.hero_url.as_deref().is_some_and(|u| u.ends_with(".webm")), "{art:?}");
+        let e = set_collection_game_art(&paths, "sideload", "g", ArtKind::Cover, clip.to_str().unwrap()).unwrap_err();
+        assert_eq!(e.to_string(), "Unsupported image type: webm");
     }
 
     #[test]

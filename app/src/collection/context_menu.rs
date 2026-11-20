@@ -38,6 +38,8 @@ pub(super) enum Flyout {
     Shortcuts,
     /// "Help": the game's log and Troubleshoot.
     Help,
+    /// "Metadata" of a selection (`metadata_menu.rs`).
+    Metadata,
 }
 
 /// Groups of a game's context menu, in order: play, organize (status,
@@ -94,9 +96,10 @@ fn menu_place(action: &GameAction) -> (usize, u8) {
 
         A::Settings => (2, 0),
         A::EditGame => (2, 1),
-        A::OpenFolder => (2, 2),
-        A::Ludusavi | A::AutoBackup { .. } => (2, 3),
-        A::Details | A::Metadata | A::EditPlaytime | A::Epic(E::Sync) => (2, 4),
+        A::Metadata => (2, 2),
+        A::OpenFolder => (2, 3),
+        A::Ludusavi | A::AutoBackup { .. } => (2, 4),
+        A::Details | A::Covers | A::EditPlaytime | A::Epic(E::Sync) => (2, 5),
         A::Epic(E::Verify) => (3, 0),
         A::Epic(E::Modify) => (3, 1),
         A::Epic(E::Move) => (3, 2),
@@ -132,6 +135,24 @@ pub(super) fn item(id: impl Into<ElementId>) -> Stateful<Div> {
         .text_color(theme::text_primary())
         .cursor_pointer()
         .hover(|s| s.bg(theme::menu_item_hover()).text_color(theme::text_bright()))
+}
+
+/// A line that cannot be clicked: the sparkle and "In: …" with the smart
+/// categories `names` (the menus and the dock).
+pub(super) fn smart_in_line(id: impl Into<ElementId>, names: &[String]) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex()
+        .items_center()
+        .gap(px(12.))
+        .px(px(12.))
+        .py(px(6.))
+        .min_h(px(34.))
+        .text_size(px(13.))
+        .text_color(theme::text_muted())
+        .child(icon(Icon::AutoAwesome, px(18.), theme::text_dim()))
+        .child(div().flex_1().min_w_0().truncate().child(tr!("In: {names}", names = names.join(", ")).to_string()))
+        .tooltip(crate::ui::tooltip(tr!("Smart categories: their rules put the game in them.")))
 }
 
 /// Inner padding of the menu (and its flyouts).
@@ -178,6 +199,9 @@ impl CollectionView {
         if let Some(m) = self.context_menu.as_mut().filter(|m| m.open != which) {
             m.open = which;
             cx.notify();
+        }
+        if which == Some(Flyout::Metadata) {
+            self.ensure_meta_counts(cx);
         }
     }
 
@@ -228,6 +252,9 @@ impl CollectionView {
         groups[0].push(self.primary_row(&game, &key, playing, open == Some(Flyout::Install), flyout_left, cx).into_any_element());
         groups[1].push(Self::status_row(&lib, &game, &key, open == Some(Flyout::Status), flyout_left, cx).into_any_element());
         groups[1].push(self.categories_row(&game, &key, open == Some(Flyout::Categories), flyout_left, cx).into_any_element());
+        if let Some(row) = self.smart_in_row(&game, cx) {
+            groups[1].push(row.into_any_element());
+        }
         // Everything else comes from the game's action list (shared with the
         // command palette, see `game_actions.rs`).
         let mut actions: Vec<GameActionItem> = self.game_actions(&game, cx).into_iter().filter(|a| a.in_menu).collect();
@@ -292,6 +319,7 @@ impl CollectionView {
             div().id("cm-b-st-list").flex().flex_col().gap(px(2.)).overflow_y_scroll().children(self.batch_status_rows(&games, "cm-b", cx)),
         );
         let cats_fly = paper().w(px(320.)).child(self.batch_categories_body(&games, "cm-b", cx));
+        let meta_fly = paper().w(px(300.)).children(self.metadata_rows("cm-b", false, cx));
         let fold = |which: Option<Flyout>| {
             cx.listener(move |this: &mut Self, h: &bool, _, cx: &mut Context<Self>| {
                 if *h {
@@ -314,13 +342,15 @@ impl CollectionView {
         };
         let status =
             sub("cm-b-status", Icon::Flag, tr!("Status").into(), open == Some(Flyout::Status), status_fly, fold(Some(Flyout::Status)));
-        let cats = sub(
-            "cm-b-cats",
-            Icon::Label,
-            tr!("Categories").into(),
-            open == Some(Flyout::Categories),
-            cats_fly,
-            fold(Some(Flyout::Categories)),
+        let cats =
+            sub("cm-b-cats", Icon::Label, tr!("Add to").into(), open == Some(Flyout::Categories), cats_fly, fold(Some(Flyout::Categories)));
+        let meta = sub(
+            "cm-b-meta",
+            Icon::CloudDownload,
+            tr!("Metadata").into(),
+            open == Some(Flyout::Metadata),
+            meta_fly,
+            fold(Some(Flyout::Metadata)),
         );
         let all_fav = games.iter().all(|g| g.favourite);
         let all_hidden = games.iter().all(|g| g.hidden);
@@ -354,11 +384,7 @@ impl CollectionView {
                 .on_hover(fold(None))
                 .on_click(cx.listener(|this, _, _, cx| this.batch_hide(cx))),
             )
-            .child(
-                plain("cm-b-meta", Icon::CloudDownload, tr!("Download metadata"))
-                    .on_hover(fold(None))
-                    .on_click(cx.listener(|this, _, _, cx| this.batch_metadata(cx))),
-            )
+            .child(meta)
             .child(
                 plain("cm-b-edit", Icon::Edit, tr!("Edit fields…"))
                     .child(div().flex_1())
@@ -453,14 +479,27 @@ impl CollectionView {
         status_row
     }
 
-    /// "Categories" row with its flyout: every category with a check (a
+    /// The smart categories the game is in, read only (its rules put it
+    /// there): "In: Unplayed, Short ones". None while it is in none.
+    fn smart_in_row(&self, game: &CollectionGame, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        let names: Vec<String> = self.smart_categories_of(game).into_iter().map(|g| g.name.clone()).collect();
+        (!names.is_empty()).then(|| {
+            smart_in_line("cm-smart-in", &names).on_hover(cx.listener(|this, h: &bool, _, cx| {
+                if *h {
+                    this.show_flyout(None, cx);
+                }
+            }))
+        })
+    }
+
+    /// "Add to" row with its flyout: every manual category with a check (a
     /// click puts the game in or out, the menu stays open), then "Manage
     /// categories…".
     fn categories_row(&self, game: &CollectionGame, key: &SharedString, open: bool, flyout_left: bool, cx: &mut Context<Self>) -> Div {
         let mut row = div().relative().child(
             item("cm-categories")
                 .child(icon(Icon::Label, px(18.), theme::text_muted()))
-                .child(tr!("Categories"))
+                .child(tr!("Add to"))
                 .child(div().flex_1())
                 .child(icon(Icon::ChevronRight, px(18.), theme::text_muted()))
                 .on_hover(cx.listener(|this, h: &bool, _, cx| {

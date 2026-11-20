@@ -24,6 +24,7 @@ struct Loaded {
     actions: HashMap<String, Vec<heronite_data::game_actions::Action>>,
     covers: HashMap<SharedString, Vec<ImageRef>>,
     stages: HashMap<SharedString, Vec<ImageRef>>,
+    families: super::family_art::FamilyChains,
 }
 
 fn load_all(data_paths: &DataPaths, cache: &std::path::Path, include_hidden: bool) -> anyhow::Result<Loaded> {
@@ -38,13 +39,15 @@ fn load_all(data_paths: &DataPaths, cache: &std::path::Path, include_hidden: boo
     let ctx = ArtContext::new(data_paths, shots.as_deref());
     let mut covers = HashMap::new();
     let mut stages = HashMap::new();
+    let mut families = super::family_art::FamilyChains::default();
     for g in &lib.games {
         let key: SharedString = g.key.clone().into();
         covers.insert(key.clone(), to_chain(&art::card_cover(&ctx, g)));
+        families.add(&ctx, &key, g);
         stages.insert(key, to_chain(&art::stage_art(&ctx, g)));
     }
     log::info!("library: {} games loaded in {:?}", lib.games.len(), t.elapsed());
-    Ok(Loaded { lib, wiki, categories, smart_groups, extras, actions, covers, stages })
+    Ok(Loaded { lib, wiki, categories, smart_groups, extras, actions, covers, stages, families })
 }
 
 /// A first load started just before the window opens, so it runs while the
@@ -121,6 +124,7 @@ impl CollectionView {
     }
 
     pub(super) fn reload(&mut self, cx: &mut Context<Self>) {
+        self.forget_meta_counts(cx);
         if self.refreshing {
             // The running load may have read the files before this change.
             self.reload_again = true;
@@ -139,13 +143,14 @@ impl CollectionView {
         self.scrim = stage::Scrim { dim: bg.dimming.get() as f32 / 100., scrim: bg.scrim.get() as f32 / 100. };
         self.blur_px = bg.blur.get() as f32;
         self.saturation = bg.saturation.get() as f32 / 100.;
+        self.rolloff = heronite_images::backdrop_rolloff(self.scrim.dim);
         self.stage_enabled = bg.enabled;
         self.grey_uninstalled = s.grey_uninstalled_games && !s.all_tiles_in_color;
         self.set_card_shape(s.cover_aspect);
         // Textures are keyed by game, not by image: a game whose art changed
         // (custom cover/background, metadata) must load it again.
         let mut stale: Vec<String> = Vec::new();
-        for (key, chain) in &self.cover_chains {
+        for (key, chain) in self.cover_chains.iter() {
             if l.covers.get(key) != Some(chain) {
                 stale.push(format!("c:{key}:"));
             }
@@ -155,11 +160,13 @@ impl CollectionView {
                 stale.extend([format!("s:{key}:"), format!("g:{key}:"), format!("b:{key}:")]);
             }
         }
+        stale.extend(self.family_chains.stale(&l.families));
         if !stale.is_empty() {
             self.images.invalidate(&stale);
         }
-        self.cover_chains = l.covers;
+        self.cover_chains = std::rc::Rc::new(l.covers);
         self.stage_chains = l.stages;
+        self.family_chains = l.families;
         self.wiki = Arc::new(l.wiki);
         self.categories = l.categories;
         self.smart_groups = l.smart_groups;
@@ -211,13 +218,21 @@ impl CollectionView {
         let debug_select = first.then(|| crate::env::value("HERONITE_DEBUG_SELECT")).flatten();
         // `HERONITE_DEBUG_SELECT` shows its game (captures need it in sight).
         let reveal = debug_select.is_some();
-        let focused =
-            if first { debug_select.or_else(|| self.ui.focused_game.clone()) } else { self.selected.as_ref().map(|s| s.to_string()) };
+        // Settings → Appearance → "Open with the last game selected" off: the
+        // Collection opens with none, on the Home's picture.
+        let with_game = crate::theme::appearance().open_with_game || reveal;
+        let focused = if first {
+            debug_select.or_else(|| with_game.then(|| self.ui.focused_game.clone()).flatten())
+        } else {
+            self.selected.as_ref().map(|s| s.to_string())
+        };
         // The remembered game, else (first start, a removed game) the first
         // card, so the panel on the right is never empty when there are games.
         let exists = |k: &String| self.lib.as_ref().is_some_and(|lib| lib.get(k).is_some());
         let focused = focused.filter(exists).or_else(|| {
-            (first || was_empty).then(|| self.groups.iter().flat_map(|g| g.cards.iter()).next().map(|c| c.key.to_string())).flatten()
+            ((first && with_game) || (!first && was_empty))
+                .then(|| self.groups.iter().flat_map(|g| g.cards.iter()).next().map(|c| c.key.to_string()))
+                .flatten()
         });
         // The list opens at its top (#195): the remembered game stays
         // selected, and the first move from it scrolls it back into sight.

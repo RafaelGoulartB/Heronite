@@ -24,11 +24,13 @@ the UI.
 
 ```
 app (bin heronite-rs) ── GPUI UI, desktop integration
- ├─ heronite-i18n       interface language: tr!/trn! and the pt-BR, es and de strings (no GPUI)
+ ├─ heronite-i18n       interface language: tr!/trn! and the pt-BR, es, de and fr strings (no GPUI)
  ├─ heronite-data       data folder files, paths, Heroic migration, safe writes, processes
  ├─ heronite-backup     backups of the data folder and app state:
  │                      incremental snapshots, retention, restore    → data
- ├─ heronite-images     decode/resize/blur pipeline and thumbnail cache (no GPUI)
+ ├─ heronite-images     decode/resize/blur pipeline and thumbnail cache (no GPUI);
+ │                      `public`: what an extension causes to be fetched
+ │                      reaches public addresses only
  ├─ heronite-sync       the cloud account: the library synced between PCs,
  │                      backups, game saves, screenshots (rclone)    → data, backup, metadata, launch
  ├─ heronite-depot      store-agnostic downloads: chunks fetched in
@@ -62,14 +64,22 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      per-game display settings (DisplayConfig;
  │                      kscreen-doctor, Mutter, wlr-randr, hyprctl),
  │                      read-only so far                             → platform
- ├─ heronite-metadata   IGDB/Steam/Lutris/HLTB metadata and artwork  → data
+ ├─ heronite-metadata   registry of metadata sources (IGDB, Steam,
+ │                      Lutris, LaunchBox, HLTB, ...), the merge,  
+ │                      the review of unsure matches, artwork, the
+ │                      stores' trailers and screenshots
+ │                      (`store_media`: list, HLS, kept starts)      → data, images
+ ├─ heronite-metadata-ext metadata sources as extensions: manifest,
+ │                      package (folder / zip), installed ones, the
+ │                      QuickJS sandbox that runs their scripts      → data, metadata, images
  ├─ heronite-achievements achievements of Steam (the client's files),
  │                      GOG, Epic and RetroAchievements (ROM hashes
  │                      by the vendored rcheevos), and the local copy
  │                      that keeps them                → data, metadata, gog, epic, steam, launch
  ├─ heronite-media      screenshots: listing, thumbnails, capture,
  │                      lossless PNG → WebP compression, posters of
- │                      replays (ffmpeg)                             → data, images
+ │                      replays and store trailers played into
+ │                      frames (`stream`; both ffmpeg)               → data, images
  ├─ heronite-overlay    in-game overlay backend: controller input
  │                      (evdev, Guide button, grabs; XInput with
  │                      Back + Start on Windows), audio (pactl; Core
@@ -117,7 +127,8 @@ text size) and applies it.
   unknown keys kept), `temps` (atomic writes and the startup `.tmp` sweep),
   `proc` (`guard` and `Run`: helper processes die with the app), and one
   module per data file: `library`, `collection`, `sideload`, `game_config`,
-  `settings`, `status`, `status_history` (when each game's status changed, in
+  `settings` (and `source_prefs`, the per-source part of its metadata),
+  `status`, `status_history` (when each game's status changed, in
   `local_library/status-history.json`, recorded by the status setters), `sessions`, `playtime`, `ui_state`, `appearance`,
   `stats` (the Statistics page's numbers: periods cut into hours, the history
   indexed by time and by game so a period reads only its slice, `game` for a
@@ -129,10 +140,21 @@ text size) and applies it.
   `console_theme` (console mode themes: the shareable JSON format with every option, read leniently so themes of
   other versions load; built-in `presets`; `store` for saved themes, export and import; `ConsolePrefs` in
   `console.json`), `console_art` (where console mode finds a game's logo),
+  `cover_family` (covers per shape: `CoverFamily` Tall / Square / Wide, the
+  family of each Cover aspect and console tile shape, and `CoverFamilies`:
+  which families are in use (the desktop's aspect, the console theme's tiles;
+  the tall one always) and which the user keeps besides, `keepCoverFamilies`;
+  a record keeps the square and wide covers in `coverSquareUrl` /
+  `coverWideUrl`, sourced as `coverSquare` / `coverWide`, `art.json` the same
+  keys), `art` (each view's picture chain; `family_cover` / `pick_family`:
+  a family's own art, else for Wide the background, else the tall cover
+  cropped, with where it came from),
   `clients` (the store clients, under Wine on Linux and as they are on Windows: their ids, settings file, prefix and program, where they install on Windows, and
   `local_library/clients.json`: when each was synced and the games the user took out),
   `replay_prefs` (Settings → Replay, `replay.json` in the app state: the
   switch, the options every game uses and the games that have it on or off on their own),
+  `quick_launch_prefs` (Settings → Quick launcher, `quick-launch.json` in the app state: the
+  launcher's keyboard shortcut),
   `language`, `install_size` (size on disk of a game its store gives none for: ROM files, a bounded and cached folder walk), `field_names` (the library fields manager: renames, merges and
   removals of genres, companies, series, themes, features and platforms, kept
   as rules in `local_library/names.json` that the metadata service and the
@@ -146,7 +168,7 @@ text size) and applies it.
   version wrote are kept as read, and a condition on a value the game lacks never matches).
 - **heronite-i18n:** English text is the key (`tr!("Play")`); Portuguese
   lives in `locales/pt-BR/*.json`, Spanish (neutral, `tú`) in
-  `locales/es/*.json` and German (`du`) in `locales/de/*.json`, embedded at build time (one folder per language) and
+  `locales/es/*.json`, German (`du`) in `locales/de/*.json` and French (`vous`) in `locales/fr/*.json`, embedded at build time (one folder per language) and
   loaded the first time it is needed. The language follows the system unless one is
   picked in Settings → General (`language` in `appearance.json`); switching
   redraws the windows. `tests/coverage.rs` scans the workspace: every key
@@ -200,7 +222,7 @@ text size) and applies it.
   DXVK / VKD3D-Proton or gamescope; Heroic's separate limiters are read as
   a fallback). `live_fps` makes that limit changeable while the game runs when MangoHud or gamescope applies it
   (MangoHud reads it from a config file of ours in `$XDG_RUNTIME_DIR/heronite/mangohud`, rewritten by the in-game
-  overlay; gamescope's is its `GAMESCOPE_FPS_LIMIT` atom, set by `heronite_overlay::gamescope`). `gpu` holds a game's graphics card settings (the card that draws it,
+  overlay, which also holds whether its HUD shows (`no_display`) so the overlay can hide it; `running.json` keeps it with the session, so a game picked up again by the next run of the app still has it; gamescope's is its `GAMESCOPE_FPS_LIMIT` atom, set by `heronite_overlay::gamescope`). `gpu` holds a game's graphics card settings (the card that draws it,
   NVIDIA Smooth Motion and Reflex, the DLSS / FSR 4 / XeSS upgrades of GE-Proton and
   Proton-CachyOS, Mesa's Anti-Lag and glthread, vsync and what DXVK tells DirectX games)
   as variables, and `gpu::detect` finds the cards (sysfs, `vulkaninfo`, `pci.ids`) and the
@@ -347,8 +369,9 @@ text size) and applies it.
   that asks the launcher to start them, the launcher's play time moves up
   when it is ahead, and a game gone from the launcher stays as not
   installed. `heroic` copies the games added by hand in Heroic (they start
-  here, with their `GamesConfig`) and adds its Epic, GOG and Amazon install
-  records to this app's. Which launchers are imported lives in
+  here) and adds its Epic, GOG and Amazon install records to this app's;
+  each of those games gets Heroic's `GamesConfig` (its Wine prefix) while
+  it has none here. Which launchers are imported lives in
   `local_library/launcher-imports.json`; the app's `services::launcher_imports`
   keeps them in sync. A `launcher` game's plan is a native process with a
   `Handoff`: when the launcher returns at once (Lutris already open passes
@@ -441,14 +464,17 @@ text size) and applies it.
   with Steam closed, `files` edits `localconfig.vdf` and `config.vdf` in
   place (`vdf_edit` touches only the changed entry). `wrap` writes the script
   that runs the before/after scripts from the launch options. `library`
-  reads the account's library from the client (or, through `account`, from
-  Steam's Web API after an optional sign-in with a QR code, when the client
-  cannot be read; the tokens live in `local_library/steam-account.json`,
-  sealed with DPAPI on Windows; signing out ends the sign-in on Steam with
-  `RevokeToken`, so it leaves the account's authorized devices, and
-  deletes the file even when Steam cannot be reached) (games only: no tools,
-  soundtracks, demos, test servers or games hidden in Steam), caches it and
-  adds the games the Collection does not have yet; Steam's play time moves
+  reads the account's library from the client (Heronite never signs in to
+  Steam: the QR sign-in of 1.5.0 and 1.6.0, a session of the mobile app's kind
+  made from a PC, got accounts locked by Steam's security; `account` only
+  ends a sign-in those versions saved in `local_library/steam-account.json`,
+  at start, with `RevokeToken`, so it leaves the account's authorized
+  devices, and deletes the file even when Steam cannot be reached) (games only: no tools,
+  soundtracks, demos or test servers), caches it and adds the games the
+  Collection does not have yet (a game hidden in Steam comes in hidden, read
+  from the client or, for the account, from Steam's
+  `userdata/<id>/config/cloudstorage` files; the app's `steam_library` service
+  does not read at all while the user turned reading Steam off); Steam's play time moves
   the Steam entries up when it is ahead. A Steam entry still "Not played"
   (the status the scan of the installed games gave it before the library was
   read; the scan now starts a game as "Played" when the cached library has
@@ -589,6 +615,394 @@ text size) and applies it.
   whether the user asked for it). `usage` measures, on this PC only (the account is never asked), what
   each kind would take in the cloud by game or part, by the uploads' own rules, and the
   screenshots' monthly growth, for the space bar and treemap of Settings → Cloud.
+- **heronite-metadata:** the Collection's details and pictures. `sources` is
+  the registry of sources: each has a `SourceDescriptor` (plain data, the
+  shape an extension's manifest will carry: id, name, kind details /
+  pictures / extras, the fields it provides, the games it applies to
+  (`AppliesTo`), how it finds a game, what it needs, whether it uses the
+  network, hidden or offered). Details sources implement `MetadataSource`
+  (`lookup` of a `SourceGame` with a `SourceContext`: paths, HTTP,
+  settings); thin adapters in `sources/builtin` wrap the provider modules
+  (`igdb`, `steam`, `providers` for the store and Playnite, `lutris`),
+  in the order candidates are merged. `launchbox` is the LaunchBox Games Database: no API, the
+  whole database is one archive (`Metadata.zip`, ~105 MB, daily) that the
+  user downloads from the source's row; `fetch` downloads it into the
+  data folder's cache area (`store_cache/sources/launchbox/`, out of
+  backups and sync; resumed with `Range` / `If-Range`, refreshed only when
+  its ETag changed), `build` streams `Metadata.xml` and `Files.xml` out of
+  the zip (`parse`, quick-xml, a record at a time) into `index` (SQLite:
+  games, names and alternate names as `rom_names::match_key` keys by
+  platform, LaunchBox's file → title table, the pictures used with packed
+  file names, the overviews deflated 64 games a block; ~80 MB for all
+  190,000 games, built in ~8 s with ~50 MB of memory, a lookup ~0.15 ms),
+  built as `index.sqlite.part` and renamed over the old one only once it
+  opens with games, so a failed or cancelled refresh keeps the old one; a
+  failed refresh is recorded in `state.json` and the idle maintenance waits
+  a day, two, four, then a week before the next (`DownloadState::retry_at`),
+  the archive is kept for it unless it does not read (`BadArchive`), and a
+  record whose text does not read is left out and counted. An index that
+  no longer opens is not ready (the source is not asked) and is downloaded
+  again whole at the next idle pass.
+  A lookup of an emulated game stays on its platform's LaunchBox
+  platforms (`platforms`): the dump's file in LaunchBox's file table,
+  then the dump name cleaned, then the title (exact and alone on all of
+  the platform's LaunchBox platforms → `ExactTitle`; a longer name or a
+  shorter one, or two games, the Famicom Disk System's beside the NES's
+  among them → `FuzzyTitle`);
+  a PC game (the "Also for PC games" option) is looked up on Windows / DOS,
+  by its Steam id first; a search by hand spans every platform and shows
+  which: the names that are the query, then those starting with it, then
+  those holding it (shortest first), digits a name and an id too. `map` fills the record (box art by the "Box art region" option,
+  automatic from the interface language; the fan art background; the
+  square cover; the 0..5 rating as a score from 5 votes; game modes from
+  the players). The database has no picture sizes: while this PC keeps the
+  square or the wide family, the box art's size is read from its first bytes
+  (`LaunchBox::picture_size`, `Request::send_head`: the image server ignores
+  `Range`, so the answer is dropped once `picture_size` reads the PNG header
+  or the JPEG frame header; remembered by file name) and the box is also the
+  cover of the family its shape says (`picture_size::family_of`, libretro's
+  rule): a landscape box the wide cover (LaunchBox is in its default order,
+  ahead of SteamGridDB), a CD case the square one, ahead of LaunchBox's own
+  square art; the tall cover is the box whatever its shape. The Covers dialog
+  asks `service/launchbox_art` for the game's pictures (`map::choices`: every
+  region's box, those of the slot's shape first, with sizes). `platforms` is the table of the app's platform ids (the
+  emulator catalog's and Playnite's), how the Collection names them and
+  how each database a source reads names them (a column per database:
+  LaunchBox's and libretro's folders), plus `resolve`, an emulated game's platform from
+  its entry (the `platformId`, else the ROM's extension, the emulator's
+  name, the ROM's folders, the record's platforms) and `rom_file`, the
+  file its dump is named by (the folder above a boot file such as
+  `EBOOT.BIN`). `rom_names` cleans No-Intro / Redump / TOSEC names (tags,
+  "Legend of Zelda, The", discs, safe roman numerals). `SourceGame`
+  carries `emulated`, `platform`, `rom_file` and `rom_hashes` (empty: the
+  app keeps no ROM hash yet; a lookup never hashes a file). `libretro` is
+  libretro-thumbnails (`thumbnails.libretro.com/<System>/Named_Boxarts/<Game>.png`,
+  the box art RetroArch uses: no API, key, account or search, 512 px wide at
+  most): a pictures source for the emulated games of the 43 platforms that
+  have a system folder (the `platforms` column; PlayStation 3 / 4, Vita,
+  Xbox 360 have under 70 pictures, arcade is named by MAME's descriptions,
+  DOS and ScummVM by titles, so they have none). `libretro::names` makes
+  the file names: the dump's own (extension off, the characters RetroArch scrubs, `& * / : ` " < > ? \ |`, as `_`),
+  then without the tags after region and languages, with the region alone,
+  the title (article last, `: ` as ` - `: the file's own, or the game's when
+  the file has no tags) with each region of the interface language, the title
+  alone (RetroArch's own tries are the file's name, the playlist label and the
+  title before the first ` (`). A try is one `Range: bytes=0-31` GET: 404 for a
+  missing file (404 or 410, remembered for an hour so another family's pass
+  does not ask again), 206 with the PNG's header for a picture, whose size picks the
+  cover family (`family_of`: width/height under 0.85 tall, under 1.33 square,
+  else wide: Genesis and NES boxes are tall, PlayStation, Game Boy Advance and
+  Dreamcast square, Super Nintendo and Nintendo 64 landscape); the dump's own
+  name is asked on each folder the ROM's extension may be of, the others on
+  the first, and a game costs 8 requests at most (`MAX_REQUESTS`). The dump's
+  own name is `ExactTitle` (only a ROM's: a title alone is a guess), any
+  other `FuzzyTitle`; any other status is unreachable for the game (a 429's
+  `Retry-After` of 5 s at most is waited out once), and requests go 100 ms
+  apart (`Libretro`, the client the source keeps). It has no background (its screenshots are 240 to 512 px wide).
+  It leads for emulated games like LaunchBox (after it in each order). A descriptor
+  may say a source needs a download (`needs: download`, `download`:
+  its size and refresh days); `sources/download` is the contract
+  (`DownloadState`, `DownloadProgress` with cancel, the trait's
+  `download_state` / `download` / `remove_download`), Settings draws it
+  for any such source, `service/source_settings` runs it
+  (`download_source`, `refresh_due_source_downloads` for the idle
+  maintenance: weekly, only a database the user downloaded, only while the
+  source is on), and `gather` never asks a source before its download
+  (`NotAsked::NeedsDownload`). A descriptor may widen its audience by a
+  switch option (`alsoFor`) and name an audience it leads for
+  (`leadsFor`, see `sources/order`: for an emulated game LaunchBox found
+  surely, it goes ahead of the sources that found the game only by its
+  title, in each field whose order is still the default one). A descriptor may say a source is asked only as a
+  fallback (`Asked::AsFallback`; no built-in source is, the VNDB and
+  Wikipedia extensions are) and name the kind of game it is
+  about (`GameKind`: a name for Settings and the genre / theme / Steam tag
+  names that signal it). `service/gather` asks the sources: a fallback
+  source goes with the others when the game is identified with it (a
+  pinned or stored match), when the request names it
+  (`SourceRegistry::names_fallback`: only fallback details sources asked),
+  or when the record or the game's cached Steam tags carry its signal;
+  otherwise it is asked after them, only when no online details source
+  found the game for sure or one of their candidates carries the signal,
+  and never when they were all unreachable (the fetch is offline). A search
+  by hand asks it like any searchable source. Not asked, it says why
+  (`NotAsked::Fallback`); a job's fillable fields leave it out unless the
+  job names it. A candidate may flag pictures as adult
+  (`MetadataCandidate::adult_pictures`, `SourceHit::thumb_adult`; an
+  extension per picture, as the VNDB extension does from its users'
+  votes, or for all its pictures with `adult = true`): unless
+  `settings.metadata.allowAdultCovers` is on, the gather,
+  `SourceRegistry::lookup_id` / `search` and `review_entry` drop them, so
+  the next source fills the picture and none is shown or downloaded; saved
+  pictures stay. A source added after `fieldPriority` lists were saved (or
+  later added to more fields: LaunchBox to the wide cover, after libretro) is
+  in `heronite_data::settings::ADDED_SOURCES`: the old default list, without
+  any of them, still reads as the default, and a list the user set gets it at its end (a
+  pictures source too: libretro-thumbnails is in `ADDED_SOURCES` and in the
+  covers' default orders, not in `SOURCE_IDS`). The default lists of the
+  builds where VNDB was built in name `vndb`, last of the sources of then:
+  `heronite_data::settings::DEFAULT_LISTED_EXTENSIONS` keeps such a list
+  reading as the default, and the VNDB extension, once installed, joins
+  its end like any extension (a list the user set keeps `vndb` where it
+  is, and it answers there). The fallback rule's tests add a fallback
+  source of their own (`SourceRegistry::for_tests_with_fallback`,
+  `tests/common`'s `fallback`). SteamGridDB, web images, HowLongToBeat,
+  Steam tags and ProtonDB are listed as descriptors only and still run on
+  their own paths (`covers`, `web_images`, `hltb`, `steam_tags`,
+  `protondb`), but SteamGridDB also has a lookup: a pictures source asked
+  only for the cover families it is in the order of (the square and wide
+  covers by default, only while kept), whose unsure match never sends a
+  game to review (`fetch::decide`). A cover family is a field of its own
+  (`coverSquare`, `coverWide`: `heronite_data::settings::ALL_FIELDS`, own
+  source, lock, order, file `cover-square.*` / `cover-wide.*` beside
+  `cover.*`); a fetch fills the kept families only, and
+  `BulkArgs::download_covers` / `service/families` (`cover_family_job`, what a
+  view that starts using a family queues, once while one runs or waits)
+  fill one for the games with details, or found in no source, lacking it
+  (a game never fetched is left to the idle fill, `counts::waits_for_details`:
+  a fetch of pictures only neither marks a game as fetched nor as failed,
+  and only a details source's answer counts as finding a game); `family_lack` lists those games (and whether a source
+  that gives the family can be asked now) whatever the automatic download
+  says, for the notices and the "Download <family> covers" rows (a source
+  counts only when it is for some game: a Collection without emulated games
+  is not offered libretro's covers). `service` asks the sources that apply to a game in parallel,
+  marks a fetch offline when every network source asked was unreachable
+  (what a fetch writes in each case, found, unsure, in no source with its
+  sure pictures, or not answered, is the rule of `service/fetch`'s docs,
+  decided with the registry the gather used),
+  and `merge` combines the candidates field by field
+  (`settings.metadata.fieldPriority`, whose defaults stay in
+  `heronite_data::settings`; a registry test checks the two agree). Each
+  candidate says how it was found (`MatchedBy`: the game's own record, an
+  id, the Steam id, an exact or a fuzzy title). Settings → Metadata and the
+  per-game dialog list the offered details sources from the registry.
+  What the user sets per source is stored by `heronite_data::source_prefs`
+  (`settings.metadata.sources`: on or off, options, fields switched off;
+  `sourceOrder`; the older switches `steamTags`, `howLongToBeat`, the IGDB
+  keys, `steamTagLimit` and the global `steamGridDbApiKey` stay where they
+  were). In `sources`, `options` (a descriptor's options as data, read and
+  written where each is kept), `order` (each field's order: the user's
+  `fieldPriority` for that field, else the default list until a source is
+  moved, then the user's order of the sources that fill it; sources off and
+  fields switched off left out) and `rows` (status and rows for Settings);
+  `service/source_settings` has the entry points. A source that is off is
+  not asked: `gather`, the idle fill, the age ratings fill, and the side paths
+  (`covers::steamgrid_key_if_on`, web images, ProtonDB in the app).
+  Updating several games is a bulk job: `job` says what one asks for
+  (`BulkArgs` with an `UpdateMode` — fill what is empty, refresh what
+  sources gave, replace everything — chosen fields and sources; presets
+  such as `BulkArgs::fill_missing`) and what it reports per game
+  (`GameResult`: outcome, fields changed and their source). In `service`,
+  `bulk` runs one job at a time with a FIFO queue (Stop, clear the queue)
+  and keeps the idle fills apart from jobs (a fill gives way to a job);
+  `job_run` maps the mode onto the merge's options and runs each game
+  (Steam tags in one pass, 50 games per request); `undo` puts back what the
+  last job wrote, part by part, leaving what changed after it, and the
+  `metadata-art` pictures it replaced (copies in `local_library/metadata-undo`)
+  and the review queue entries it changed;
+  `counts` reads, without network, what a set of games lacks.
+  An unsure match is not saved: `confidence` is the rule (sure candidates
+  and the guesses that are the same game as one are used; guesses alone
+  only when enough sources agree; else nothing is saved), applied by every
+  automatic path (jobs, the idle fill) through `service/gather` (asking
+  the sources) and `service/fetch` (the decision, the merge a preview
+  proposes and the saves).
+  `review` is the queue of the games sent to review with what each source
+  proposed (`local_library/metadata-review.json`, safe to delete), and
+  `service/review` its entry points (list, read, search the sources by
+  name, and the answers: use a match, in no source, skip). `record` reads
+  and writes what a record keeps beside its fields, in additive keys: the
+  game of each source (`sourceMatches`; the IGDB id, Steam id and Lutris
+  slug stay in their own keys), pinned or not; the locked fields
+  (`lockedFields`, kept by every update); the user's "in no source"
+  (`noMatch`). Searchable sources (`SourceDescriptor::searchable`: IGDB,
+  Steam, Lutris) implement `search` and `lookup_id`, so a pinned game is
+  looked up by its id (a pin is asked whatever the source's audience).
+  Steam is for games with a Steam id (`HasSteamId`), but `link_for`
+  (`SourceDescriptor`, Steam's is `Pc`: not emulated games) lets the user
+  link a game that is not on it to its Steam page by hand: `gather` says
+  `NotAsked::NotLinked` for it (the dialog keeps its row, "Link"), and the
+  pin is the record's `steamAppId` plus a pinned `sourceMatches.steam`
+  entry. That id is metadata only: the game's own Steam id (its overlay
+  entry, `CollectionGame::steam_app_id`: what launches, installs and
+  imports playtime) is never written. What reads the record's id is the
+  metadata side (Steam details, tags, ProtonDB, links, `tag_steam_id`) and
+  the join with a copy of the same game the user owns on Steam ("Also on
+  Steam", `steam_joins`: the record's id counts there as an IGDB-found one
+  does; nothing joins when the account does not own the app).
+  "Unlink" (a `None` pin of a `link_for` source on a game with no Steam id of
+  its own) clears the id and the match and marks the game as not on that
+  source (`record::unlink`, the record's `notOn` list; `unlink_sources` when
+  no source found anything to save with it). A game so marked is not
+  searched on that source by name again; linking it by hand clears the mark.
+  Steam's option "Find games not on Steam by name" (`byName`, off by default,
+  `also_for` `Pc`) makes `lookup` of a game with no id search the store by
+  the exact title (`steam_name`: the strict search, then only a game whose
+  name is the title once normalized, with no edition words, and whose year
+  is within `YEAR_SLACK` of the record's when both are known) and take that
+  game as `ExactTitle`: nothing pinned, nothing taken when only alike, none
+  for a game marked `notOn`. The search itself takes only an exact name
+  (an edition listed first does not stop it). It is remembered in
+  `store_cache/sources/steam/titles/<hash>.json`, one small file per title
+  (a game a month, none three days, and a "none" only when every request
+  answered with what it should; ProtonDB's own `titles.json` is another
+  cache, of a search that also accepts editions, in the app's cache folder,
+  which the service does not know). A Steam that said to wait (429, 5xx) is
+  left alone for what it asked, five minutes by default, per Steam address
+  (`Unreachable`: never "in no source", never remembered). A game found and
+  saved is later asked for by its id (`gather`'s `remembered`), checked
+  again each time against the record's title and year
+  (`steam_name::match_is_current`): after a rename, or once a year says it
+  is another game, the link is dropped (`record::drop_link`, no `notOn`) and
+  the search may find another. A game found by name is left out when its
+  year is not (beyond `YEAR_SLACK`) that of another sure candidate's (IGDB).
+  A game marked `notOn` keeps no Steam id in its record whatever a source
+  (IGDB) reports (`propose`), unless its library entry has one. Neither a
+  link by hand nor a match by name joins the game to a Steam copy the user
+  owns by id, or groups copies by id (`library::steam_id_is_a_link`, read in
+  `steam_joins` and `copies`; an id IGDB reports still does; a Steam copy of
+  the same title still joins by its title, as it always did), and "own Steam
+  id" for unlinking is the library entry's (`has_own_steam_id`, read only
+  when a link may go), not a joined copy's.
+  `service/attention` classifies a set of games from
+  disk (waiting for review, no details, failed last time, no description,
+  no cover; in no source apart; the games showing a cover family in use
+  cropped are listed apart, per family, and are not a reason to need
+  attention).
+
+  Extensions are sources too (`heronite-metadata-ext`): the registry
+  holds the built-in sources then the extensions, and the service swaps it
+  whole when one is added or removed (`MetadataService::add_source` /
+  `remove_source`, `sources()` returns the registry of the moment, a
+  gather keeps the one it started with); a built-in id is never taken
+  (`sources::is_reserved_id`). A descriptor with `extension`
+  (`ExtensionInfo`: version, author, homepage, adult) is an extension's:
+  it joins the end of each field order it fills (`order`), and its fields
+  can be switched and its row moved whatever its kind. A source says
+  whether it can be asked (`MetadataSource::health`: `LoadFailed`,
+  `Failing`); one that is not ok is not asked (`NotAsked::Failing`) and
+  shows `SourceStatus::LoadFailed` / `Failing` with `SourceRow::problem`;
+  switching it on calls `reset_health`. Extras and pictures sources only
+  follow the details ones in `fetch::decide`. `SourceGame` carries the
+  record's year and `file_name` (the ROM's, else the install folder's
+  name, never a path) beside the platform and ROM the emulated-game
+  sources use; `http` answers keep their headers, a request may refuse
+  redirects, a body over its cap is `BodyTooLarge`, and
+  `Endpoints::origins` sends whole origins to a test server
+  (`Http::route`).
+
+  *Adding a built-in source* (what LaunchBox and libretro-thumbnails needed; no screen code; a
+  source that needs neither a database nor the app's own state is better written as an extension):
+  1. A provider module (`crates/metadata/src/<source>.rs`, or a folder
+     when it has a local database: `launchbox/`): the client (base URLs in
+     `http::Endpoints`, and their test prefixes in `tests/common`'s
+     `Server::endpoints`; the API's limits; `http::APP_UA` when it asks
+     clients to say who they are), and the mapping of an answer to a
+     `CollectionGameMetadata` (text through `util::clip` / plain text,
+     lists through `unique_names12`, dates as `YYYY[-MM[-DD]]`, only `http`
+     picture URLs, a cover family only when the source has art of that
+     shape: check its real sizes), with unit tests on recorded answers in
+     `tests/fixtures/` (trimmed by hand from the real data, a few hundred
+     KB at most) and a `HERONITE_LIVE` check in `tests/live.rs`.
+  2. A descriptor in `sources/builtin`'s `BUILTIN`, in merge order: id,
+     name, kind, `provides` (only fields it really fills), `applies_to`
+     (and `also_for` when an option widens it), `finds_by`, `needs`,
+     `network` (false for a local database: it never counts towards
+     "offline"), `searchable`, `asked` and `game_kind` when it is a
+     fallback for a kind of game, `about` (a `n_!` line for its open row,
+     with "Heronite is not affiliated with …"), `options` (`n_!` labels,
+     help and choice labels, defaults), `download` for a database it
+     downloads, `leads_for` when it should go ahead of title-only matches
+     for its audience. Options not in the legacy keys are stored under
+     `sources.<id>.options` by themselves.
+  3. An adapter implementing `MetadataSource` (`lookup` with an honest
+     `MatchedBy`, and for a searchable source `lookup_id` and `search`,
+     whose hits name the platform when the source has several), with
+     `match_id` set, `adult_pictures` / `thumb_adult` when the source rates
+     its pictures, and `download_state` / `download` / `remove_download`
+     for a database; listed in `builtin::registry` (shared client state
+     goes in `Shared`, and `SourceRegistry::for_tests`). A pictures source
+     answers only for the fields asked of it (`SourceGame::fields`: the
+     covers kept), picks the cover family from the picture itself when the
+     source has pictures of several shapes, has no "Found as" row (only
+     details sources are listed) and is not searchable.
+  4. `heronite_data::settings`: the id in `SOURCE_IDS` (a details source;
+     a pictures source is not), in `default_field_priority` for each field it
+     fills, and at the end of `ADDED_SOURCES` (in the order sources were
+     added: a list saved between two of them still reads as the default);
+     the registry tests check the two agree. A pictures source also needs
+     its place in the registry's order (`BUILTIN`: after SteamGridDB), its
+     lookup in the registry (`has_lookup` is true for it), and a check that a
+     source with a narrow audience does not make `family_askable` say yes
+     for a Collection it is not for. Expect the tests that list the sources
+     or a field's order (`sources/tests`, `order`, `rows`, `merge`, `settings`, `bulk_jobs`,
+     `review`, `sources`, `cover_families`) to change on purpose.
+  5. A monogram colour in `theme::source_colour` (or a logo in
+     `pages/settings/metadata/labels::logo`), the de / es / pt-BR
+     translations of its descriptor's strings (reusing the words already
+     translated: regions, "Automatic"), and, when it adds an `AppliesTo`,
+     `NotAsked` or status variant, its words in `labels` and `found_as`.
+  6. Integration tests against the fixture server (`tests/common`): lookup,
+     id, search, when it is asked and when it is not (never before a
+     download), offline, and the debug states that show it in a capture
+     (`dialogs/metadata/fake.rs`, `HERONITE_DEBUG_SOURCE_DOWNLOAD`).
+- **heronite-metadata-ext:** metadata sources the community writes
+  (`docs/EXTENSIONS.md` is the authors' reference). `manifest` parses and
+  checks `source.toml` into the `SourceDescriptor` (contract version
+  `API_VERSION`; unknown keys refused in `[network]`, left out with a
+  warning elsewhere; `[applies]` gives `applies_to` — `pc` is
+  `AppliesTo::Pc`, `platforms` are read through `platforms::by_name` into
+  the app's platform ids — `asked` and `game_kind`; an extension never has
+  a `download`, `also_for` or `leads_for`, so it never goes ahead of the
+  sources already in a field's order); `package` reads a folder or a zip
+  (only the expected files, no links, no path out, size caps; SHA-256);
+  `store` keeps the
+  installed ones in `<data>/extensions/metadata/<id>/` with `install.json`,
+  replaced whole by renames (`.kept/<id>.json`: who made one removed with
+  its settings kept, and its hosts); `engine` is the sandbox: QuickJS (`rquickjs`),
+  the script compiled once to bytecode, each lookup in a fresh runtime on
+  a thread of its own (memory, stack and time limits, no `eval`, no module
+  loader; `arrays` wraps the generic `Array.prototype` methods against
+  array-likes the interrupt handler cannot stop), whose caller waits at
+  most each call's time and `GRACE`: past that the thread is left running
+  (`Limit::Stuck`, the extension stopped at once, a few such threads at
+  most per extension and in all), `ctx` the only host object (`request`:
+  the manifest's hosts over https, checked again on every redirect, sent
+  through `net::public_client`, which connects to public addresses only,
+  the app's user agent, the manifest's rate, per-call request and byte
+  budgets, every string copied out of the engine bounded first;
+  `unreachable`: an error that ends the call as unreachable, not as a
+  failure, for a script that sees its service busy or down; `html`:
+  CSS selectors over `dom_query`, documents per call bounded); `record`
+  checks and clamps what scripts return like the built-in mappings
+  (a hit's title or its `altTitle`, a name in another script, is what the
+  title rule compares), and
+  marks the pictures it names (`heronite_images::public::marked`) so the
+  images cache and the copy to `metadata-art` fetch them from public
+  addresses only; `source::ScriptSource` is the
+  `MetadataSource` (failures in a row stop it, kept in `install.json`),
+  `BrokenExtension` one that could not be loaded; `service::ExtensionsExt`
+  is what the app calls on its `MetadataService` (`load_extensions` at
+  startup, `inspect_extension`, `install_extension`, `install_approved`
+  — the package shown, by its SHA-256, its saved settings kept or not as
+  the user chose when its author or its hosts changed —,
+  `remove_extension`, `installed_extensions`). `index` reads a list of extensions
+  (`index.json`, format 1, strictly: https only, sizes and ids checked; its
+  `type` is `"metadata"` or absent, any other is refused);
+  `lists` is the gallery's client: the app's list (`HERONITE_LIST`) and
+  the user's (`settings.metadata.extensionLists`), fetched with the
+  service's `Http`, the last good copy kept in
+  `store_cache/extensions/metadata/`, `prepare` (both files downloaded and
+  checked against the entry's SHA-256, then `inspect`, then the manifest
+  compared with the entry) and `install_prepared` / `install_approved`
+  (records the list in `install.json`), `updates` (never applied by itself) and `Origin`
+  (file, the app's list, a list added, a list removed).
+  `scripts/extensions-index.py` writes `extensions/metadata/index.json` from the
+  folders; `tests/lists.rs` fails when it is out of date. The app's
+  screens are `app/src/dialogs/extensions/` (gallery and installer) and
+  Settings → Metadata's `extension.rs` / `more.rs`. `examples/run.rs` runs an extension against a
+  title. The example extensions are in `extensions/metadata/` (Wikipedia, VNDB),
+  each tested against recorded answers (`tests/examples.rs`,
+  `tests/vndb.rs`).
 - **heronite-achievements:** every game's achievements, whatever its store.
   `target` says which sources a Collection game has (its store, its Steam
   twin, RetroAchievements for a ROM). `sources/` reads them: `steam` the
@@ -649,13 +1063,14 @@ text size) and applies it.
 | `main.rs` | logging, CLI, single instance, signals, the GPUI loop |
 | `env.rs` | `HERONITE_*` switches (`flag`, `value`, `parse`) |
 | `system/` | lifecycle `hub/` (window, quit, launch requests, tray events), `cli`, `single_instance`, `signals`, `tray`, `notify`, `shortcuts` |
-| `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `script_install` (the install from a script: worker thread, questions, progress), `update/` (app updates: checks, download, restart), `replay` (the replay buffer, Settings → Replay, off by default, on or off per game in Game settings → Performance: starts gpu-screen-recorder a few seconds after a game is running, again when the options change (one recorder at a time, never during a save) and ends it with the last game, a game that has it off, or when the overlay turns it off for the session; it owns `replay.json` and writes it in order; a save moves the file from the hidden `.heronite-replay` folder of the captures root into `<game folder>/replays/`, named like the captures), `proton_setup` (the newest GE-Proton downloaded on its own when an install dialog finds no Wine or Proton, through the app's one `WineManager`, which the Wine Manager page shares; it becomes the default Wine; it also keeps the installed `-latest` builds up to date (`autoUpdateLatestProton`, on by default): three minutes after the start and then every six hours it checks only the sources that have one, through `heronite_wine::checks` (the release feed first, an API call only when something was published), and downloads a new release in the background, never while a game runs. `HERONITE_WINE_ONLY_TOOLS=1` makes the detection see only the data folder's builds, to try it with a copy), `launcher_imports` (the games of Heroic, Lutris, Bottles and Faugus, Heroic and Playnite on Windows: which are on this PC, turning an import on or off, keeping the ones on in sync every quarter of an hour and on the refresh button of the ☰ menu; Heroic is turned on only in Settings → Other launchers, never from the Collection's welcome or the first-start dialog), `clients/` (the store clients, `heronite_clients`, under Wine on Linux and as they are on Windows: their setup, opening, closing and sign-in; it starts with the app and costs nothing while none is set up: it looks at them ten seconds after the start and every quarter of an hour, syncing the installed ones' games into the Collection; whether a client runs is asked every 3 s while its page is on screen and every 15 s while a client opened from here runs, and one that closes, or whose game ended, is synced; `HERONITE_DEBUG_CLIENT=<id>:<state>` shows a state without Wine, see `debug.rs`), `achievements` (each game's local copy read when the Collection shows it and refreshed when older than six hours, 20 s after a session ends, from the focus panel, the dialog and Settings → "Update now", one game at a time; new unlocks become a desktop notification (off by default); it also signs the emulators in to RetroAchievements: at start, on sign-in, when the options change and after a game for one that was open, and on sign-out clears only the emulators holding this account), `sync` (the cloud account, `heronite_sync`: the library sync 20 s after start, 5 s after each game and every ten minutes, never during a game, plus "Sync now"; it connects the account on a thread of its own while the browser sign-in waits, and a sync that changed the Collection makes it reload; `uploads` is one queue for the rest: a backup as it is made (`upkeep`), the saves after each game, the screenshots when the compression has nothing left, one upload at a time on a thread of its own, stopped by a game launch and resumed after it, tried again after 2, 5, 15 then 30 minutes when the account refuses requests, stopped when the app quits and resumed at the next start; `cloud_backups` lists, brings and restores the backups in the account), `steam_library` (reads the Steam library while Steam runs: every few seconds until the first read, then every ten minutes; opens and restarts Steam for the welcome, and tells "starting" from "needs a restart" by the `steamwebhelper` command line; with a Steam account signed in by QR code, `account.rs`, it reads the library from the account when the client cannot be read, at most every ten minutes by itself), `widgets`, `mods/` (see `docs/MODS.md`: one entity with each game's mod list shared with the job threads (a change shows at once and is saved in the background, always from the latest list), the jobs (a thread each: download, unpack, FOMOD questions, commit; installs of a game take turns, three downloads at most), `nxm://` / `ror2mm://` links matched to an installed game (`links.rs`) or asked with a picker, the Nexus Mods account, `xdg-mime` handlers (`handlers.rs`), Steam launch options for DLL overrides (`steam.rs`), and the launch hook `ModsLaunch` (`launch.rs`, the `heronite_launch::GameMods` that mounts the mods around a session); Settings → Mods is `pages/settings/mods.rs`), `game_folders` (where a game's files are: shared by the Details panel and the mods) |
+| `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `script_install` (the install from a script: worker thread, questions, progress), `update/` (app updates: checks, download, restart), `replay` (the replay buffer, Settings → Replay, off by default, on or off per game in Game settings → Performance: starts gpu-screen-recorder a few seconds after a game is running, again when the options change (one recorder at a time, never during a save) and ends it with the last game, a game that has it off, or when the overlay turns it off for the session; it owns `replay.json` and writes it in order; a save moves the file from the hidden `.heronite-replay` folder of the captures root into `<game folder>/replays/`, named like the captures), `proton_setup` (the newest GE-Proton downloaded on its own when an install dialog finds no Wine or Proton, through the app's one `WineManager`, which the Wine Manager page shares; it becomes the default Wine; it also keeps the installed `-latest` builds up to date (`autoUpdateLatestProton`, on by default): three minutes after the start and then every six hours it checks only the sources that have one, through `heronite_wine::checks` (the release feed first, an API call only when something was published), and downloads a new release in the background, never while a game runs. `HERONITE_WINE_ONLY_TOOLS=1` makes the detection see only the data folder's builds, to try it with a copy), `launcher_imports` (the games of Heroic, Lutris, Bottles and Faugus, Heroic and Playnite on Windows: which are on this PC, turning an import on or off, keeping the ones on in sync every quarter of an hour and on the refresh button of the ☰ menu; Heroic is turned on only in Settings → Other launchers, never from the Collection's welcome or the first-start dialog), `clients/` (the store clients, `heronite_clients`, under Wine on Linux and as they are on Windows: their setup, opening, closing and sign-in; it starts with the app and costs nothing while none is set up: it looks at them ten seconds after the start and every quarter of an hour, syncing the installed ones' games into the Collection; whether a client runs is asked every 3 s while its page is on screen and every 15 s while a client opened from here runs, and one that closes, or whose game ended, is synced; `HERONITE_DEBUG_CLIENT=<id>:<state>` shows a state without Wine, see `debug.rs`), `achievements` (each game's local copy read when the Collection shows it and refreshed when older than six hours, 20 s after a session ends, from the focus panel, the dialog and Settings → "Update now", one game at a time; new unlocks become a desktop notification (off by default); it also signs the emulators in to RetroAchievements: at start, on sign-in, when the options change and after a game for one that was open, and on sign-out clears only the emulators holding this account), `sync` (the cloud account, `heronite_sync`: the library sync 20 s after start, 5 s after each game and every ten minutes, never during a game, plus "Sync now"; it connects the account on a thread of its own while the browser sign-in waits, and a sync that changed the Collection makes it reload; `uploads` is one queue for the rest: a backup as it is made (`upkeep`), the saves after each game, the screenshots when the compression has nothing left, one upload at a time on a thread of its own, stopped by a game launch and resumed after it, tried again after 2, 5, 15 then 30 minutes when the account refuses requests, stopped when the app quits and resumed at the next start; `cloud_backups` lists, brings and restores the backups in the account), `steam_library` (reads the Steam library while Steam runs: every few seconds until the first read, then every ten minutes; opens and restarts Steam for the welcome, and tells "starting" from "needs a restart" by the `steamwebhelper` command line; at start it ends and deletes a Steam sign-in an earlier version saved. Stores → Steam has a switch, "Read my Steam library" (`readSteamLibrary` in `local_library/settings.json`, on by default): off, the service never looks at Steam (state `Off`: no check, no read, no open or restart, no Collection pill) and `refresh_local_install_states` adds no installed Steam game; the Steam games already in the Collection stay. "Remove Steam games" (`steam_library/remove.rs`, asked first in the page's card) turns reading off (waiting for a read that runs), deletes the Steam entries the app added (`heroniteSteamAuto`, or the Playnite id `steam_<id>` that scans before the mark wrote) in one pass over each file, like "Remove from Collection" but without touching Steam's own files, removing only the shortcuts whose command names the game and leaving running games in, and empties the cached library, so a game from another store or one the user added stays, only without Steam's copy as its twin. The switch is saved by one writer at a time with the latest value; the cached library's `installed` flags keep following the manifests while reading is off), `widgets`, `mods/` (see `docs/MODS.md`: one entity with each game's mod list shared with the job threads (a change shows at once and is saved in the background, always from the latest list), the jobs (a thread each: download, unpack, FOMOD questions, commit; installs of a game take turns, three downloads at most), `nxm://` / `ror2mm://` links matched to an installed game (`links.rs`) or asked with a picker, the Nexus Mods account, `xdg-mime` handlers (`handlers.rs`), Steam launch options for DLL overrides (`steam.rs`), and the launch hook `ModsLaunch` (`launch.rs`, the `heronite_launch::GameMods` that mounts the mods around a session); Settings → Mods is `pages/settings/mods.rs`), `game_folders` (where a game's files are: shared by the Details panel and the mods) |
 | `runtime.rs` | bridge between `heronite-launch` and the UI |
 | `diagnosis/` | the launch diagnosis for the UI: `gather` reads what `heronite_launch::diagnose` needs for a game, `apply` applies a fix (winetricks components, game settings, the best Proton, ending a wineserver, `vm.max_map_count` through `pkexec`), `text` says it; the fixes applied this run are remembered so one that did not help is not offered as the answer again. The Collection runs it when a game ends within `FAILED_LAUNCH_WINDOW` and opens `dialogs/launch_problem`; without a window the cause goes into the notification |
 | `overlay/` | the in-game overlay (off by default): `OverlayService` follows the launch events like `services::session`, runs `heronite_overlay::input` while a game runs, and opens the panel (`panel/`, its Notes tab in `notes.rs` with the compact on-screen keyboard, its Achievements tab in `achievements.rs` from `services::achievements` when the game has a set) and notices (`toast.rs`; achievement notices queue) through `window.rs`: Wayland layer-shell on Linux, native topmost tool windows on Windows (`window/windows.rs`, HWND placement/focus in `heronite-platform::overlay_window`). Windows notices do not activate and pass pointer input through; a keyboard panel returns focus only while it still owns foreground. The keyboard shortcut uses the existing capture `GlobalHotkey` (Windows: `RegisterHotKey`, Ctrl+Shift+G default). `labels.rs` has every text that names the controller chord (Guide on Linux, Back + Start on Windows), for Settings, its search, the palette, "Getting started" and the panel. `moment.rs` marks a moment in the game's journal (a capture and an empty note); Linux-only `Feature::Replay` gates `services::replay` and its controls independently of the overlay; `replay.rs` saves the replay and marks it as a moment (`clip` in the journal entry) |
-| `collection/` | the main screen (`CollectionView`): list, header and its View menu (`view_menu`: filter search, views, sort, grouping), the Focus / Grid switch (`view_mode`) and its options menu (`view_options`), focus panel, grid view (`grid`, `grid_drawer`), wider list and drawer by dragging their edge (`resize`), Settings → Appearance on the Collection (`look`: background picture and slideshow, accent from the game, start view, Focus or Grid by the window's width), selecting several games (`selection`: Ctrl / Shift click, Ctrl A, the batch changes and their undo; `dock`: the bar that shows them), stage, context menu, command palette, screenshots, the game's Journal (`journal/`: the Timeline's other view, notes written in place), and the glue to dialogs and services; `welcome/` is the empty Collection of a new setup: what Heronite found on this PC and brings in by itself (Steam's library, with "Open Steam" or "Restart Steam" when that is what is missing; emulators and the usual ROM folders, set up once with `heronite_emulation::setup`), the other sources, the other launchers found with games (a click turns their import on), the stores, and a shelf of empty covers (`HERONITE_DEBUG_WELCOME=<steam>[:<emulation>]` shows a state); `launchers` reloads the Collection when another launcher's games come in; `onboarding` hosts "Getting started" (`dialogs/onboarding`: three cards, your games, your look and while you play, that open inside it or switch things on in place, plus tips; `art` draws its pictures without needing games: empty covers, a preview of the Collection in the current look and chosen view (the bare layout until there are games) and the overlay panel; the look view puts Focus and Grid first, over the preview), which opens by itself once per setup (on a new setup, once the first games arrive), from the bulb in the header until it is closed once, and from the command palette (`onboarding.json` in the app state) |
-| `dialogs/` | one view per dialog; they talk back through `DialogEvent` |
-| `pages/` | ☰ pages (Settings, Downloads, Epic, GOG, Amazon Games, Steam, the store clients' `clients/`: Battle.net, EA app, Ubisoft Connect, Rockstar Games, Wine Manager, Emulators); they talk back through `PageEvent`. `methods` is the layout of a store read in two ways (Steam, Xbox): a library strip, then "Method 1 · Local" (no login) and "Method 2 · Online · Optional" (the account) side by side |
+| `quick_launch/` | the quick launcher: the command palette (`collection::palette`, `Mode::Launcher`) in a window of its own, opened without the main window by `--quick-launch` / `heronite://quick-launch` (the running instance's socket; with none, one starts without its window) and, the same request again, closed. `window` is the surface (Wayland layer-shell centred on the focused screen with the keyboard, else a borderless window, on Windows a topmost pop-up on the foreground window's screen that does not open over exclusive fullscreen; the view alone, without the component library's `Root`, which would paint the theme's background and a window frame around the panel), `view` its root view (the pages and actions at once, the library's games once read off the UI thread), `run` what a choice does: play, stop, open the folder, favourites, hide, the logs folder and quit run there (`hub::play_game`, `hub::stop_running`, like the tray's recent games), anything else opens the window and runs as Ctrl K would (`CollectionView::run_from_launcher`, once its library is loaded). Favourites and hiding go through the open window when there is one, so it reloads and shows the change at once (without changing its page or selection). `hotkey` registers its keyboard shortcut (none unless set in Settings → Quick launcher) while the app runs, in the tray too, like the overlay's (`GlobalHotkey`; on Hyprland the bind sends `SIGRTMIN+2`), and the quit removes it. `HERONITE_DEBUG_QUICK_LAUNCH=<query>` opens it alone at start in a normal window |
+| `collection/` | the main screen (`CollectionView`): list, header and its View menu (`view_menu`: filter search, views, sort, grouping), the Focus / Grid switch (`view_mode`) and its options menu (`view_options`), focus panel, grid view (`grid`, `grid_drawer`), wider list and drawer by dragging their edge (`resize`), Settings → Appearance on the Collection (`look`: background picture and slideshow, accent from the game, start view, Focus or Grid by the window's width), the picture with no game selected (`home`: yours, or a random game's art or screenshot, a new one every 20 seconds; also behind glass), covers by family (`family_art`: each view's picture of the family it draws, keeping the tall cover's and the background's texture ids), selecting several games (`selection`: Ctrl / Shift click, Ctrl A, the batch changes and their undo; `dock`: the bar that shows them; `metadata_menu`: the menu of its Metadata button and the selection's context menu; `metadata_pill`: the header pill of a bulk metadata update and of the idle fill's games to review; `metadata_review`: opens "Review matches" on the queue, a job's games or the selection, and the debug openers of the review and of the one-game "Metadata"), stage, context menu, command palette, screenshots, the game's Journal (`journal/`: the Timeline's other view, notes written in place), and the glue to dialogs and services; `welcome/` is the empty Collection of a new setup: what Heronite found on this PC and brings in by itself (Steam's library, with "Open Steam" or "Restart Steam" when that is what is missing; emulators and the usual ROM folders, set up once with `heronite_emulation::setup`), the other sources, the other launchers found with games (a click turns their import on), the stores, and a shelf of empty covers (`HERONITE_DEBUG_WELCOME=<steam>[:<emulation>]` shows a state); `launchers` reloads the Collection when another launcher's games come in; `onboarding` hosts "Getting started" (`dialogs/onboarding`: three cards, your games, your look and while you play, that open inside it or switch things on in place, plus tips; `art` draws its pictures without needing games: empty covers, a preview of the Collection in the current look and chosen view (the bare layout until there are games) and the overlay panel; the look view puts Focus and Grid first, over the preview), which opens by itself once per setup (on a new setup, once the first games arrive), from the bulb in the header until it is closed once, and from the command palette (`onboarding.json` in the app state) |
+| `dialogs/` | one view per dialog; they talk back through `DialogEvent`. `metadata_update/` is "Update metadata" (three steps: games, what to update, results), `families` (a view that starts drawing a cover family queues its download) and, in `hub`, the `MetadataHub` that owns the metadata service, the bulk jobs' progress, their undo and the idle fill, read by the dialog, the Metadata menu, the header pill and Settings → Metadata; it also keeps the review queue the pill and the palette read. `metadata_review/` is "Review matches" (the game on the left, the games the sources proposed on the right, a search of every source by another name, and the answers: use a match, in no source, skip; `fake.rs` makes it up for the debug hooks). `metadata/` is the "Metadata" of one game: "Found as" (`found_as`, and `change` to pick another game of one source), a row per field (a cover row per kept family) with the sources to take it from and a lock (`fields`), and what it asks and saves (`actions`). `covers/` is "Covers", a game's picture of each cover family and its background (`slots` the left column, `found` the pictures LaunchBox (the game's boxes of every region, with their region and size), SteamGridDB and the web found for the picked slot, `actions` what it searches and saves, `words` how a family reads on every screen that names one, `console` the same in console mode, `fake` the debug searches); Game settings → Images, the one-game Metadata, the palette and, in console mode, the game page's Manage open it. `extensions/` is "Get more sources" and the installer of an extension, one dialog with two faces (`gallery` the entries a list offers and the picked one's panel, `confirm` the installer, shared by a file and a list's entry, `lists_manager` "Lists…", `permissions` the "What it is allowed to do" lines, `words` every error, origin and trust sentence, `actions` what reads, downloads, installs and adds lists off the UI thread, `state` what the hub keeps of the installed extensions and the lists, `fake` the debug lists); Settings → Metadata, the palette and the Collection's debug hooks open it through `HubEvent::OpenSources`. `metadata_update/family_notice.rs` is the notice under both Cover aspect pickers (offer, started, no source) and the hub's `download_family`; `metadata_update/source_downloads.rs` the hub's downloads of the sources' databases (start, cancel, remove, the progress Settings draws, the idle refresh) |
+| `pages/` | ☰ pages (Settings, Downloads, Epic, GOG, Amazon Games, Steam, the store clients' `clients/`: Battle.net, EA app, Ubisoft Connect, Rockstar Games, Wine Manager, Emulators); they talk back through `PageEvent`. Settings → Metadata (`pages/settings/metadata/`) is drawn from the source registry; its `extension.rs` is what an extension's open row adds to a source's (the "Extension · 1.0.0" pill, the problem block, who made it, where it came from, where it connects, "Update from a file…", "Remove") and `more.rs` the dashed "Get more sources" row under the sources; its `shapes.rs` is the "Cover shapes" card (a row per cover family, the automatic download switch, the downloads of the families shown cropped) and its Console mode rows. `methods` is the layout of a store read in two ways (Steam, Xbox): a library strip, then "Method 1 · Local" (no login) and "Method 2 · Online · Optional" (the account) side by side |
 | `ui/` | building blocks: `controls`, `fields`, `dialog`/`drawer`, `dropdown`, `glass`, `scrollbar`; `window_area` (`content_size` / `content_bounds`: the room the views have inside a client-side window frame; layouts size from it, never from `window.viewport_size()`) |
 | `theme/` | colour, font, layout and glass tokens, plus the runtime appearance and the light or dark scheme |
 | `images.rs` | UI side of the image pipeline (texture cache, eviction) |

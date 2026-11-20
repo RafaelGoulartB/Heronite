@@ -1,0 +1,229 @@
+{
+ "more": false,
+ "results": [
+  {
+   "aliases": [
+    "ミッドナイトゼミナール"
+   ],
+   "alttitle": "真夜中のゼミナール",
+   "description": "A mystery visual novel set in an old school. Sample entry used by the tests for a cover flagged as explicit.",
+   "developers": [
+    {
+     "id": "p72",
+     "name": "Sample Studio",
+     "original": "サンプルスタジオ"
+    }
+   ],
+   "id": "v9",
+   "image": {
+    "dims": [
+     542,
+     768
+    ],
+    "sexual": 2,
+    "thumbnail": "https://t.vndb.org/cv.t/00/1.jpg",
+    "url": "https://t.vndb.org/cv/00/1.jpg",
+    "violence": 0,
+    "votecount": 14
+   },
+   "olang": "ja",
+   "platforms": [
+    "win",
+    "lin",
+    "mac",
+    "and",
+    "dvd",
+    "psp",
+    "mob"
+   ],
+   "rating": 70.1,
+   "released": "2000-07-14",
+   "screenshots": [
+    {
+     "dims": [
+      640,
+      480
+     ],
+     "sexual": 0,
+     "url": "https://t.vndb.org/sf/00/1.jpg",
+     "violence": 0,
+     "votecount": 14
+    },
+    {
+     "dims": [
+      640,
+      480
+     ],
+     "sexual": 0,
+     "url": "https://t.vndb.org/sf/00/2.jpg",
+     "violence": 0,
+     "votecount": 14
+    },
+    {
+     "dims": [
+      640,
+      480
+     ],
+     "sexual": 2,
+     "url": "https://t.vndb.org/sf/00/3.jpg",
+     "violence": 0,
+     "votecount": 14
+    },
+    {
+     "dims": [
+      640,
+      480
+     ],
+     "sexual": 0.2,
+     "url": "https://t.vndb.org/sf/00/4.jpg",
+     "violence": 0,
+     "votecount": 15
+    },
+    {
+     "dims": [
+      640,
+      480
+     ],
+     "sexual": 1.06,
+     "url": "https://t.vndb.org/sf/00/5.jpg",
+     "violence": 0.29,
+     "votecount": 17
+    },
+    {
+     "dims": [
+      640,
+      480
+     ],
+     "sexual": 0.64,
+     "url": "https://t.vndb.org/sf/00/6.jpg",
+     "violence": 0,
+     "votecount": 22
+    },
+    {
+     "dims": [
+      640,
+      480
+     ],
+     "sexual": 1.44,
+     "url": "https://t.vndb.org/sf/00/7.jpg",
+     "violence": 0,
+     "votecount": 16
+    },
+    {
+     "dims": [
+      640,
+      480
+     ],
+     "sexual": 0.87,
+     "url": "https://t.vndb.org/sf/00/8.jpg",
+     "violence": 0,
+     "votecount": 15
+    },
+    {
+     "dims": [
+      640,
+      480
+     ],
+     "sexual": 0,
+     "url": "https://t.vndb.org/sf/00/9.jpg",
+     "violence": 0,
+     "votecount": 14
+    },
+    {
+     "dims": [
+      640,
+      480
+     ],
+     "sexual": 1.87,
+     "url": "https://t.vndb.org/sf/00/10.jpg",
+     "violence": 0,
+     "votecount": 15
+    }
+   ],
+   "tags": [
+    {
+     "category": "cont",
+     "id": "g4",
+     "lie": false,
+     "name": "Mystery",
+     "rating": 2.71764707565308,
+     "spoiler": 0
+    },
+    {
+     "category": "cont",
+     "id": "g47",
+     "lie": false,
+     "name": "School",
+     "rating": 2.55172419548035,
+     "spoiler": 0
+    },
+    {
+     "category": "cont",
+     "id": "g133",
+     "lie": false,
+     "name": "Male Protagonist",
+     "rating": 2.58620691299438,
+     "spoiler": 0
+    },
+    {
+     "category": "cont",
+     "id": "g143",
+     "lie": false,
+     "name": "Modern Day",
+     "rating": 0.372807025909424,
+     "spoiler": 0
+    },
+    {
+     "category": "tech",
+     "id": "g32",
+     "lie": false,
+     "name": "ADV",
+     "rating": 2.90000009536743,
+     "spoiler": 0
+    },
+    {
+     "category": "ero",
+     "id": "g23",
+     "lie": false,
+     "name": "Romance Scenes",
+     "rating": 2.35238099098206,
+     "spoiler": 0
+    },
+    {
+     "category": "cont",
+     "id": "g117",
+     "lie": false,
+     "name": "Plot Twist",
+     "rating": 2.63636374473572,
+     "spoiler": 2
+    },
+    {
+     "category": "cont",
+     "id": "g406",
+     "lie": true,
+     "name": "Unreliable Narrator",
+     "rating": 2,
+     "spoiler": 0
+    }
+   ],
+   "title": "Midnight Seminar",
+   "titles": [
+    {
+     "lang": "en",
+     "latin": null,
+     "main": false,
+     "official": true,
+     "title": "Midnight Seminar"
+    },
+    {
+     "lang": "ja",
+     "latin": null,
+     "main": true,
+     "official": true,
+     "title": "真夜中のゼミナール"
+    }
+   ],
+   "votecount": 2171
+  }
+ ]
+}

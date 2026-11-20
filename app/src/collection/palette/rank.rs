@@ -488,7 +488,7 @@ mod tests {
         let pages = search(&e, "", Filter::Pages, &[]);
         assert_eq!(pages.count(), 14 + crate::pages::settings::Section::ALL.len());
         let actions = search(&e, "", Filter::Actions, &[]);
-        assert_eq!(actions.count(), 14);
+        assert_eq!(actions.count(), 17);
         let games = search(&e, "", Filter::Games, &[]);
         assert_eq!(captions(&games), ["Recently played", "Games"]);
         assert_eq!(games.count(), 5);
@@ -680,7 +680,7 @@ mod tests {
         use heronite_data::collection::{FacetOption, FacetOptions};
         let mut e = corpus();
         let facets = FacetOptions { genre: vec![FacetOption { value: "Roguelike".into(), count: 3 }], ..Default::default() };
-        e.extend(view_entries(&Default::default(), &facets, &Default::default()));
+        e.extend(view_entries(&Default::default(), &facets, &Default::default(), &[]));
         let r = search(&e, "", Filter::Actions, &[]);
         assert!(!titles(&e, &r).iter().any(|t| t.contains("Roguelike")));
         let r = search(&e, "roguelike", Filter::All, &[]);

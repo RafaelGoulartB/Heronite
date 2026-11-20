@@ -1,0 +1,44 @@
+# VNDB, the Visual Novel Database, as a metadata source: visual novels and
+# Japanese titles, through VNDB's public API (no key).
+id = "vndb"
+name = "VNDB"
+version = "1.0.0"
+api = 1
+author = "Heronite"
+homepage = "https://vndb.org"
+kind = "details"
+description = "The Visual Novel Database (vndb.org), for visual novels and Japanese titles: found by the Japanese, romaji or English name, or by a VNDB id such as v17. Not affiliated with VNDB."
+
+[provides]
+fields = ["description", "releaseDate", "developers", "genres", "themes", "criticScore", "cover", "hero"]
+
+[applies]
+to = "all"
+asked = "fallback"
+game_kind = { name = "Visual novels", signals = ["Visual Novel"] }
+
+[network]
+hosts = ["api.vndb.org"]
+# Covers, thumbnails and screenshots.
+images = ["t.vndb.org"]
+# VNDB allows 200 requests per 5 minutes (40 a minute); 36 keeps a margin
+# for a 429's second try and other VNDB clients on the same connection.
+rate = "36/min"
+
+[[settings]]
+key = "titleOrder"
+label = "Title to show"
+type = "select"
+options = [
+  { value = "latin", label = "Romaji / English first" },
+  { value = "original", label = "Original (Japanese) first" },
+]
+default = "latin"
+help = "The name of the match it shows; your game keeps its own."
+
+[[settings]]
+key = "screenshotBackground"
+label = "Use a screenshot as background"
+type = "switch"
+default = true
+help = "VNDB has no background art."

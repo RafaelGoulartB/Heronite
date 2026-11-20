@@ -8,6 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::cover_family::CoverFamily;
 use crate::library::CollectionGame;
 use crate::paths::{percent_decode, DataPaths};
 
@@ -187,12 +188,17 @@ pub fn card_cover(ctx: &ArtContext<'_>, game: &CollectionGame) -> Vec<ImageRef> 
 /// - Collection metadata hero
 /// - cached Steam hero (`local_library/heroes/{id}.jpg`)
 /// - `art_background`
+/// - Steam `library_hero_2x.jpg`, then `library_hero.jpg`, on both CDNs
+///   (needs `meta.steamAppId`; older games only have the 1x one)
 /// - Heroic override `art_cover`
 /// - `art_cover`
-/// - Steam `library_hero_2x.jpg` (needs `meta.steamAppId`)
 /// - `art_square`
 ///
-/// The last five skip `localart:` values. Empty means no stage.
+/// The Steam hero (1920 or 3840 px wide, made to be a background) comes
+/// before the covers: a game's `art_cover` is often Steam's `header.jpg`
+/// (460×215), which a full window would show stretched five times.
+///
+/// The last ones skip `localart:` values. Empty means no stage.
 pub fn stage_art(ctx: &ArtContext<'_>, game: &CollectionGame) -> Vec<ImageRef> {
     let info = &game.game;
     let mut chain = Vec::new();
@@ -211,20 +217,116 @@ pub fn stage_art(ctx: &ArtContext<'_>, game: &CollectionGame) -> Vec<ImageRef> {
         }
     }
 
-    let steam_hero = game.steam_app_id.as_deref().map(steam_library_hero);
-    let defaults = [
-        present(info.art_background.as_deref()),
+    let background = [present(info.art_background.as_deref())];
+    // The hero URLs; the last download URL is Steam's generated page
+    // background, which is darkened and blurred: not a hero.
+    let steam_id = game.steam_app_id.as_deref().filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()));
+    let steam_hero = steam_id.map(steam_hero_download_urls);
+    let steam_hero = steam_hero.iter().flat_map(|urls| urls[..4].iter().map(|u| Some(u.as_str())));
+    let covers = [
         present(game.overrides.as_ref().and_then(|o| o.art_cover.as_deref())),
         present(info.art_cover.as_deref()),
-        present(steam_hero.as_deref()),
         present(info.art_square.as_deref()),
     ];
-    for value in defaults.into_iter().flatten().filter(|v| !is_managed_art(v)) {
+    for value in background.into_iter().chain(steam_hero).chain(covers).flatten().filter(|v| !is_managed_art(v)) {
         if let Some(item) = ctx.resolve(value) {
             push_unique(&mut chain, item);
         }
     }
     chain
+}
+
+/// Where the picture a view draws for a cover family comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoverOrigin {
+    /// The game's own picture of that family (for the tall family: its cover
+    /// chain, whatever it holds).
+    Own,
+    /// The game's background, cropped (a wide view without a wide cover:
+    /// what the Banner aspect always showed).
+    Background,
+    /// The tall cover, cropped.
+    Tall,
+}
+
+impl CoverOrigin {
+    /// Not a picture of the family: shown cropped from another one.
+    pub fn is_cropped(self) -> bool {
+        self != Self::Own
+    }
+}
+
+/// The game's own pictures of `family`: the one set by hand (`art.json`),
+/// then the fetched one (`metadata.json`); missing local files left out.
+/// Empty for [`CoverFamily::Tall`], whose pictures are [`card_cover`].
+pub fn family_art(ctx: &ArtContext<'_>, game: &CollectionGame, family: CoverFamily) -> Vec<ImageRef> {
+    let (custom, fetched) = match family {
+        CoverFamily::Tall => return Vec::new(),
+        CoverFamily::Square => (
+            game.art.as_deref().and_then(|a| a.cover_square_url.as_deref()),
+            game.metadata.as_deref().and_then(|m| m.cover_square_url.as_deref()),
+        ),
+        CoverFamily::Wide => (
+            game.art.as_deref().and_then(|a| a.cover_wide_url.as_deref()),
+            game.metadata.as_deref().and_then(|m| m.cover_wide_url.as_deref()),
+        ),
+    };
+    let mut chain = Vec::new();
+    for value in [custom, fetched].into_iter().flatten().filter(|v| !v.is_empty()) {
+        let item = if ArtContext::is_local(value) { ctx.resolve(value) } else { Some(format_remote(value, &game.runner)) };
+        if let Some(item) = item.filter(|i| *i != ImageRef::Fallback) {
+            push_unique(&mut chain, item);
+        }
+    }
+    chain
+}
+
+/// What a view of `family` draws, from the parts already resolved: `own`
+/// ([`family_art`]), `stage` ([`stage_art`]) and `tall` ([`card_cover`]).
+/// Own art goes first, with the rest after it in case it fails to load;
+/// without it a wide view takes the background (when there is one) and
+/// every other view the tall cover, cropped. The tall family is `tall`.
+///
+/// Generic over the chain's item so the app can pass the chains it keeps.
+pub fn pick_family<T: Clone>(family: CoverFamily, own: &[T], stage: &[T], tall: &[T]) -> (Vec<T>, CoverOrigin) {
+    let origin = family_origin(family, !own.is_empty(), !stage.is_empty());
+    let behind = if family == CoverFamily::Wide && !stage.is_empty() { stage } else { tall };
+    let chain = match origin {
+        CoverOrigin::Own if family == CoverFamily::Tall => tall.to_vec(),
+        CoverOrigin::Own => own.iter().chain(behind).cloned().collect(),
+        CoverOrigin::Background => stage.to_vec(),
+        CoverOrigin::Tall => tall.to_vec(),
+    };
+    (chain, origin)
+}
+
+/// Where [`pick_family`] takes the picture from, without building the
+/// chain: `has_own` the game has art of the family, `has_stage` a
+/// background.
+pub fn family_origin(family: CoverFamily, has_own: bool, has_stage: bool) -> CoverOrigin {
+    match family {
+        CoverFamily::Tall => CoverOrigin::Own,
+        _ if has_own => CoverOrigin::Own,
+        CoverFamily::Wide if has_stage => CoverOrigin::Background,
+        _ => CoverOrigin::Tall,
+    }
+}
+
+/// The picture a view of `family` draws for `game`, and where it comes
+/// from (see [`pick_family`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FamilyCover {
+    pub chain: Vec<ImageRef>,
+    pub origin: CoverOrigin,
+}
+
+/// [`pick_family`] for one game: every cover request goes through it (the
+/// app through the parts it keeps per game).
+pub fn family_cover(ctx: &ArtContext<'_>, game: &CollectionGame, family: CoverFamily) -> FamilyCover {
+    let own = family_art(ctx, game, family);
+    let stage = if family == CoverFamily::Wide { stage_art(ctx, game) } else { Vec::new() };
+    let (chain, origin) = pick_family(family, &own, &stage, &card_cover(ctx, game));
+    FamilyCover { chain, origin }
 }
 
 #[cfg(test)]
@@ -309,13 +411,48 @@ mod tests {
                 ImageRef::File(paths.heroes_dir().join("42.jpg")),
                 // no ?h=400 on the stage, even for Epic
                 ImageRef::Url("https://cdn/bg.jpg".into()),
-                ImageRef::Url("https://cdn/cover.jpg".into()),
+                // The Steam hero before the covers (#275), 1x when there is no 2x.
                 ImageRef::Url(steam_library_hero("42")),
+                ImageRef::Url("https://cdn.cloudflare.steamstatic.com/steam/apps/42/library_hero.jpg".into()),
+                ImageRef::Url("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/42/library_hero_2x.jpg".into()),
+                ImageRef::Url("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/42/library_hero.jpg".into()),
+                ImageRef::Url("https://cdn/cover.jpg".into()),
                 ImageRef::Url("https://cdn/square.jpg".into()),
             ]
         );
         let bare = game_with("y", "sideload", |_, _, _, _, _| {});
         assert!(stage_art(&ctx, &bare).is_empty());
+    }
+
+    /// #275: a game whose covers came from Steam (`art_cover` is the 460x215
+    /// `header.jpg`) and that has no hero yet shows the Steam hero, not the
+    /// header stretched over the window.
+    #[test]
+    fn stage_prefers_the_steam_hero_to_the_header() {
+        let (_d, paths) = setup();
+        let ctx = ArtContext::new(&paths, None);
+        let g = game_with("x", "sideload", |info, _, _, meta, overrides| {
+            info.art_cover = Some(steam_header_image("357190"));
+            info.art_square = Some(steam_library_cover("357190"));
+            overrides.art_cover = Some("https://cdn/override".into());
+            meta.steam_app_id = Some("357190".into());
+        });
+        let heroes = steam_hero_download_urls("357190");
+        let mut expected: Vec<ImageRef> = heroes[..4].iter().map(|u| ImageRef::Url(u.clone())).collect();
+        expected.extend([
+            ImageRef::Url("https://cdn/override".into()),
+            ImageRef::Url(steam_header_image("357190")),
+            ImageRef::Url(steam_library_cover("357190")),
+        ]);
+        assert_eq!(stage_art(&ctx, &g), expected);
+        // No usable Steam id: the covers only.
+        for id in ["", "../x"] {
+            let g = game_with("x", "sideload", |info, _, _, meta, _| {
+                info.art_cover = Some(steam_header_image("357190"));
+                meta.steam_app_id = Some(id.into());
+            });
+            assert_eq!(stage_art(&ctx, &g), vec![ImageRef::Url(steam_header_image("357190"))], "{id:?}");
+        }
     }
 
     #[test]
@@ -329,6 +466,93 @@ mod tests {
             info.art_cover = Some(format!("file://{}", img.to_string_lossy().replace(' ', "%20")));
         });
         assert_eq!(card_cover(&ctx, &g), vec![ImageRef::File(img), ImageRef::Fallback]);
+    }
+
+    #[test]
+    fn each_family_takes_its_own_art_then_falls_back() {
+        let (_d, paths) = setup();
+        fs::write(paths.art_dir().join("sideload_x/cover-square-1.png"), b"x").unwrap();
+        let ctx = ArtContext::new(&paths, None);
+        let tall_only = game_with("x", "sideload", |info, _, metadata, _, _| {
+            info.art_background = Some("https://cdn/bg.jpg".into());
+            metadata.cover_url = Some("https://cdn/tall.jpg".into());
+        });
+        let tall = card_cover(&ctx, &tall_only);
+        // Only a tall cover: every family draws today's pictures.
+        assert_eq!(family_cover(&ctx, &tall_only, CoverFamily::Tall), FamilyCover { chain: tall.clone(), origin: CoverOrigin::Own });
+        assert_eq!(family_cover(&ctx, &tall_only, CoverFamily::Square), FamilyCover { chain: tall.clone(), origin: CoverOrigin::Tall });
+        let wide = family_cover(&ctx, &tall_only, CoverFamily::Wide);
+        assert_eq!((wide.chain, wide.origin), (stage_art(&ctx, &tall_only), CoverOrigin::Background));
+        let bare = game_with("y", "sideload", |_, _, metadata, _, _| metadata.cover_url = Some("https://cdn/t.jpg".into()));
+        let wide = family_cover(&ctx, &bare, CoverFamily::Wide);
+        assert_eq!((wide.chain, wide.origin), (card_cover(&ctx, &bare), CoverOrigin::Tall), "no background: the tall cover");
+        assert!(CoverOrigin::Tall.is_cropped() && CoverOrigin::Background.is_cropped() && !CoverOrigin::Own.is_cropped());
+
+        // Custom first, then fetched, then what the view had before.
+        let own = game_with("x", "legendary", |info, art, metadata, _, _| {
+            info.art_background = Some("https://cdn/bg.jpg".into());
+            metadata.cover_url = Some("https://cdn/tall.jpg".into());
+            art.cover_square_url = Some("localart://art/sideload_x/cover-square-1.png".into());
+            metadata.cover_square_url = Some("https://cdn/sq.jpg".into());
+            metadata.cover_wide_url = Some("https://cdn/wide.jpg".into());
+        });
+        let square = family_cover(&ctx, &own, CoverFamily::Square);
+        assert_eq!(square.origin, CoverOrigin::Own);
+        assert_eq!(
+            square.chain[..2],
+            [
+                ImageRef::File(paths.art_dir().join("sideload_x/cover-square-1.png")),
+                ImageRef::Url("https://cdn/sq.jpg?h=400&resize=1&w=300".into())
+            ]
+        );
+        assert_eq!(square.chain[2..], card_cover(&ctx, &own)[..]);
+        let wide = family_cover(&ctx, &own, CoverFamily::Wide);
+        assert_eq!(wide.origin, CoverOrigin::Own);
+        assert_eq!(wide.chain[0], ImageRef::Url("https://cdn/wide.jpg?h=400&resize=1&w=300".into()));
+        assert_eq!(wide.chain[1..], stage_art(&ctx, &own)[..]);
+        // A custom file that is gone is not a picture of the family.
+        let gone = game_with("z", "sideload", |_, art, _, _, _| art.cover_square_url = Some("localart://art/z/none.png".into()));
+        assert_eq!(family_cover(&ctx, &gone, CoverFamily::Square).origin, CoverOrigin::Tall);
+    }
+
+    #[test]
+    fn pick_family_order() {
+        let (own, stage, tall) = (["o"], ["s"], ["t"]);
+        assert_eq!(pick_family(CoverFamily::Tall, &own, &stage, &tall), (vec!["t"], CoverOrigin::Own));
+        assert_eq!(pick_family(CoverFamily::Square, &own, &stage, &tall), (vec!["o", "t"], CoverOrigin::Own));
+        assert_eq!(pick_family(CoverFamily::Wide, &own, &stage, &tall), (vec!["o", "s"], CoverOrigin::Own));
+        assert_eq!(pick_family::<&str>(CoverFamily::Wide, &[], &stage, &tall), (vec!["s"], CoverOrigin::Background));
+        assert_eq!(pick_family::<&str>(CoverFamily::Wide, &[], &[], &tall), (vec!["t"], CoverOrigin::Tall));
+        assert_eq!(pick_family::<&str>(CoverFamily::Wide, &own, &[], &tall), (vec!["o", "t"], CoverOrigin::Own));
+        assert_eq!(pick_family::<&str>(CoverFamily::Square, &[], &stage, &tall), (vec!["t"], CoverOrigin::Tall));
+    }
+
+    #[test]
+    fn resolving_every_family_of_two_thousand_games_is_fast() {
+        let (_d, paths) = setup();
+        let ctx = ArtContext::new(&paths, None);
+        let games: Vec<_> = (0..2000)
+            .map(|i| {
+                game_with(&format!("g{i}"), "sideload", |info, _, metadata, meta, _| {
+                    info.art_square = Some(format!("https://cdn/{i}/square.jpg"));
+                    metadata.cover_url = Some(format!("https://cdn/{i}/c.jpg"));
+                    if i % 3 == 0 {
+                        metadata.cover_square_url = Some(format!("https://cdn/{i}/sq.jpg"));
+                    }
+                    meta.steam_app_id = Some(i.to_string());
+                })
+            })
+            .collect();
+        let start = std::time::Instant::now();
+        let mut cropped = 0;
+        for g in &games {
+            for family in CoverFamily::ALL {
+                cropped += usize::from(family_cover(&ctx, g, family).origin.is_cropped());
+            }
+        }
+        let took = start.elapsed();
+        assert_eq!(cropped, 2000 + 1333, "every wide one, two square ones in three");
+        assert!(took < std::time::Duration::from_secs(2), "{took:?}");
     }
 
     #[test]

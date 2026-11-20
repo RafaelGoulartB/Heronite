@@ -13,8 +13,8 @@ use gpui_kit::component::slider::{Slider, SliderEvent, SliderState, SliderValue}
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::{
-    Appearance, BackgroundSource, Corners, CoverHover, Density, InterfaceMode, Section, INTERFACE_BLUR_RANGE, INTERFACE_BLUR_STEP,
-    INTERFACE_OPACITY_RANGE,
+    Appearance, BackgroundSource, Corners, CoverFit, CoverHover, Density, InterfaceMode, Section, INTERFACE_BLUR_RANGE,
+    INTERFACE_BLUR_STEP, INTERFACE_OPACITY_RANGE,
 };
 use heronite_data::models::BackgroundSettings;
 use heronite_data::settings::{self, CoverAspect, PartialBackground};
@@ -85,6 +85,13 @@ pub(super) struct LookMenu {
     sliders: Vec<LookSlider>,
 }
 
+impl LookMenu {
+    /// Opens the covers' section (where the Cover aspect and its notice are).
+    pub(super) fn open_covers(&mut self) {
+        self.open = Some(LookGroup::Covers);
+    }
+}
+
 impl Default for LookMenu {
     fn default() -> Self {
         Self { open: Some(LookGroup::Background), more: false, sliders: Vec::new() }
@@ -136,6 +143,8 @@ fn section_name(s: Section) -> &'static str {
         Section::Achievements => tr!("Achievements"),
         Section::Timeline => tr!("Timeline"),
         Section::Related => tr!("Related games"),
+        Section::Media => tr!("Store media"),
+        Section::Links => tr!("Links"),
     }
 }
 
@@ -186,7 +195,11 @@ impl CollectionView {
                     Density::Comfortable => tr!("Comfortable"),
                     Density::Compact => tr!("Compact"),
                 };
-                (0, Icon::ViewCovers, tr!("Covers"), format!("{shape} · {corners} · {density}").into())
+                let summary = match a.cover_fit {
+                    CoverFit::Crop => format!("{shape} · {corners} · {density}"),
+                    CoverFit::Whole => format!("{shape} · {} · {corners} · {density}", tr!("Whole cover")),
+                };
+                (0, Icon::ViewCovers, tr!("Covers"), summary.into())
             }
             LookGroup::Background => {
                 let picture = pictures().into_iter().find(|(p, ..)| *p == a.background).map_or("", |(_, name, _)| name);
@@ -413,6 +426,7 @@ impl CollectionView {
         let corners = [(Corners::Square, tr!("Square")), (Corners::Soft, tr!("Soft")), (Corners::Round, tr!("Round"))];
         let density = [(Density::Comfortable, tr!("Comfortable")), (Density::Compact, tr!("Compact"))];
         let hover = [(CoverHover::Nothing, tr!("Nothing")), (CoverHover::Lift, tr!("Lift")), (CoverHover::Glow, tr!("Glow"))];
+        let fit = [(CoverFit::Crop, tr!("Crop")), (CoverFit::Whole, tr!("Whole cover"))];
         div()
             .flex()
             .flex_col()
@@ -421,6 +435,11 @@ impl CollectionView {
                 let mut tiles = tiles.into_iter();
                 [0, 1].map(|_| div().flex().gap(px(SHAPE_GAP)).children(tiles.by_ref().take(3)))
             }))
+            .children(crate::dialogs::metadata_update::family_notice::notice("view-notice", cx))
+            .child(option_row(
+                tr!("Cover fit"),
+                segments("cover-fit", &fit, a.cover_fit, false, cx, |this, v, cx| this.set_look(|a| a.cover_fit = v, cx)),
+            ))
             .child(option_row(
                 tr!("Corners"),
                 segments("cover-corners", &corners, a.cover_corners, false, cx, |this, v, cx| this.set_look(|a| a.cover_corners = v, cx)),
@@ -642,7 +661,14 @@ impl CollectionView {
     /// A slider moved: applied at once, saved when let go.
     fn slide_look(&mut self, field: LookField, v: f32, release: bool, cx: &mut Context<Self>) {
         match field {
-            LookField::Dimming => self.scrim.dim = v / 100.,
+            LookField::Dimming => {
+                self.scrim.dim = v / 100.;
+                // The roll-off is a new raster of the art: it follows when
+                // the slider is let go.
+                if release {
+                    self.rolloff = heronite_images::backdrop_rolloff(self.scrim.dim);
+                }
+            }
             LookField::Scrim => self.scrim.scrim = v / 100.,
             // Each blur and colour intensity is a new raster of the art:
             // they change when the slider is let go.
@@ -732,6 +758,7 @@ impl CollectionView {
         let (a, d) = (theme::appearance(), Appearance::DEFAULT);
         let covers = self.card_shape == CoverAspect::default()
             && a.cover_corners == d.cover_corners
+            && a.cover_fit == d.cover_fit
             && a.density == d.density
             && a.cover_hover == d.cover_hover
             && a.cover_badges == d.cover_badges
@@ -782,19 +809,22 @@ impl CollectionView {
         self.blur_px = bg.blur.get() as f32;
         self.saturation = bg.saturation.get() as f32 / 100.;
         self.scrim = super::stage::Scrim { dim: bg.dimming.get() as f32 / 100., scrim: bg.scrim.get() as f32 / 100. };
+        self.rolloff = heronite_images::backdrop_rolloff(self.scrim.dim);
         self.save_background(cx);
         self.save_card_shape(CoverAspect::default(), cx);
         self.set_look(
             |a| {
                 let d = Appearance::DEFAULT;
                 (a.cover_corners, a.density, a.cover_hover, a.cover_badges) = (d.cover_corners, d.density, d.cover_hover, d.cover_badges);
+                a.cover_fit = d.cover_fit;
                 a.cover_categories = d.cover_categories;
                 a.cover_stores = d.cover_stores;
                 (a.background, a.collection_opacity) = (d.background, d.collection_opacity);
                 (a.interface_mode, a.interface_opacity, a.interface_blur) = (d.interface_mode, d.interface_opacity, d.interface_blur);
                 if !grid {
+                    // Back to each section's own default: some start hidden.
                     for s in Section::ALL {
-                        if !a.sections.shown(*s) {
+                        if a.sections.shown(*s) != d.sections.shown(*s) {
                             a.sections = a.sections.toggled(*s);
                         }
                     }
@@ -825,6 +855,11 @@ impl CollectionView {
         if self.card_shape == shape {
             return;
         }
+        if cx.has_global::<crate::dialogs::metadata_update::hub::HubGlobal>() {
+            let before = self.card_shape;
+            crate::dialogs::metadata_update::hub::hub(cx).update(cx, |h, cx| h.aspect_picked(before, shape, cx));
+        }
+        crate::dialogs::metadata_update::families::aspect_changed(self.card_shape, shape);
         self.set_card_shape(shape);
         if let Some(lib) = &self.lib {
             let mut patch = lib.settings.metadata.clone();

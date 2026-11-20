@@ -18,12 +18,14 @@
 //! `image::Frame::new(decoded.into_image_buffer())` (the `image` crate is the
 //! same 0.25 line GPUI uses, so the types are identical).
 
+pub mod animation;
 mod decode;
 mod error;
 mod fetch;
 pub mod fx;
 pub mod geometry;
 mod loader;
+pub mod public;
 mod resize;
 pub mod thumbs;
 
@@ -38,11 +40,38 @@ use std::time::Duration;
 
 /// Default blur (physical px) used behind translucent panels.
 pub const PANEL_GLASS_BLUR_PX: f32 = 20.0;
-/// Relative luminance (linear light) above which [`Variant::Backdrop`] rolls
-/// the art off, and the level it never goes past: white text keeps a 4.5:1
-/// contrast over the brightest art once the Collection's scrims are on top.
+/// Relative luminance (linear light) above which [`Variant::Backdrop`] at full
+/// strength rolls the art off, and the level it never goes past: white text
+/// keeps a 4.5:1 contrast over the brightest art once the Collection's scrims
+/// are on top.
 pub const BACKDROP_KNEE: f32 = 0.15;
 pub const BACKDROP_CAP: f32 = 0.26;
+/// The Collection's Darkening (0-1) from which the roll-off is at full
+/// strength ([`backdrop_rolloff`]). The default Darkening is above it.
+pub const BACKDROP_FULL_DIM: f32 = 0.15;
+
+/// Strength (0-1) of [`Variant::Backdrop`]'s highlight roll-off for the
+/// Collection's Darkening `dim` (0-1). The roll-off is part of the darkening
+/// the user asked for: it eases out below [`BACKDROP_FULL_DIM`] and is off at
+/// 0, where the art is shown as it is. Rounded to tenths, so moving the slider
+/// does not make a new raster at every step.
+pub fn backdrop_rolloff(dim: f32) -> f32 {
+    if dim.is_nan() || dim <= 0. {
+        return 0.;
+    }
+    ((dim / BACKDROP_FULL_DIM).min(1.) * 10.).round() / 10.
+}
+
+/// The knee and cap ([`fx::compress_highlights`]) of a roll-off of strength
+/// `rolloff` (0-1): from 1 and 1 (nothing above the knee, so nothing
+/// changes) to [`BACKDROP_KNEE`] and [`BACKDROP_CAP`] at full strength.
+pub fn backdrop_knee_cap(rolloff: f32) -> (f32, f32) {
+    if rolloff.is_nan() || rolloff <= 0. {
+        return (1., 1.);
+    }
+    let rest = 1. - rolloff.min(1.);
+    (BACKDROP_KNEE + (1. - BACKDROP_KNEE) * rest, BACKDROP_CAP + (1. - BACKDROP_CAP) * rest)
+}
 /// The part of a cover's height its [`Variant::Reflection`] mirrors.
 pub const REFLECTION_PART: f32 = 0.3;
 
@@ -122,9 +151,10 @@ pub enum Variant {
     Glass { blur_px: f32, saturation: f32 },
     /// `Stage` for art that sits behind text (the Collection background):
     /// its brightest parts are also rolled off ([`fx::compress_highlights`]
-    /// with [`BACKDROP_KNEE`] / [`BACKDROP_CAP`]) so white text stays legible
-    /// over white or bright art, while darker art is untouched.
-    Backdrop { blur_px: f32, saturation: f32 },
+    /// with [`backdrop_knee_cap`] of `rolloff`, 0-1, see [`backdrop_rolloff`])
+    /// so white text stays legible over white or bright art, while darker art
+    /// is untouched. A `rolloff` of 0 is exactly `Stage`.
+    Backdrop { blur_px: f32, saturation: f32, rolloff: f32 },
     /// A cover's reflection on a glossy floor (console mode's Carousel): the
     /// image covered to the target like [`Variant::Cover`], then its bottom
     /// [`REFLECTION_PART`] upside down, softened and fading out downwards
@@ -141,7 +171,7 @@ impl std::hash::Hash for Variant {
             Variant::Fit { ink: Some(ink) } => (5u8, ink).hash(h),
             Variant::Stage { blur_px, saturation } => (1u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
             Variant::Glass { blur_px, saturation } => (2u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
-            Variant::Backdrop { blur_px, saturation } => (3u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
+            Variant::Backdrop { blur_px, saturation, rolloff } => (3u8, blur_px.to_bits(), saturation.to_bits(), rolloff.to_bits()).hash(h),
             Variant::Reflection => 6u8.hash(h),
         }
     }
@@ -169,10 +199,18 @@ pub struct Opts {
     pub thumb_compression: bool,
     /// How long a failed URL is not retried (needs `thumbs_dir`).
     pub negative_ttl: Duration,
-    /// Upper bound on stage raster width (it is upscaled by the GPU).
+    /// Upper bound on stage raster width (it is upscaled by the GPU) when the
+    /// blur hides the stretch ([`geometry::stage_size`]).
     pub stage_max_width: u32,
+    /// Upper bound on the width of a stage with little or no blur, which is
+    /// drawn at the window's size: unblurred art on a 1080p window is sharp.
+    pub stage_sharp_max_width: u32,
     /// Target sigma (px) of the blurred stage raster; smaller => fewer pixels.
     pub stage_sigma_out: f32,
+    /// The first frame of the video at a path, as a picture's bytes (PNG):
+    /// a video then loads as that frame wherever a picture would
+    /// ([`animation::is_video`]). `None`: a video is not a picture.
+    pub video_still: Option<fn(&std::path::Path) -> Option<Vec<u8>>>,
 }
 
 impl Opts {
@@ -189,7 +227,9 @@ impl Opts {
             thumb_compression: true,
             negative_ttl: Duration::from_secs(24 * 3600),
             stage_max_width: 960,
+            stage_sharp_max_width: 1920,
             stage_sigma_out: 8.0,
+            video_still: None,
         }
     }
 }
@@ -219,10 +259,18 @@ pub fn load_stage(chain: &[ImageRef], target_w: u32, target_h: u32, blur_px: f32
     load(chain, target_w, target_h, Variant::Stage { blur_px, saturation }, opts)
 }
 
-/// [`load_stage`] for art behind text, with its highlights rolled off
-/// ([`Variant::Backdrop`]).
-pub fn load_backdrop(chain: &[ImageRef], target_w: u32, target_h: u32, blur_px: f32, saturation: f32, opts: &Opts) -> Result<Decoded> {
-    load(chain, target_w, target_h, Variant::Backdrop { blur_px, saturation }, opts)
+/// [`load_stage`] for art behind text, with its highlights rolled off by
+/// `rolloff` (0-1, [`Variant::Backdrop`]).
+pub fn load_backdrop(
+    chain: &[ImageRef],
+    target_w: u32,
+    target_h: u32,
+    blur_px: f32,
+    saturation: f32,
+    rolloff: f32,
+    opts: &Opts,
+) -> Result<Decoded> {
+    load(chain, target_w, target_h, Variant::Backdrop { blur_px, saturation, rolloff }, opts)
 }
 
 /// Like [`load_stage`] with a stronger blur ([`PANEL_GLASS_BLUR_PX`] is a good
@@ -300,6 +348,56 @@ pub fn load(chain: &[ImageRef], target_w: u32, target_h: u32, variant: Variant, 
     Err(ImageError::AllFailed(errors))
 }
 
+/// A file's bytes, or its first frame's when it is a video.
+fn file_bytes(path: &std::path::Path, opts: &Opts) -> Result<Vec<u8>> {
+    // A video can be hundreds of MB: only its first bytes are read here.
+    let mut head = [0u8; 16];
+    let read = {
+        use std::io::Read;
+        std::fs::File::open(path).and_then(|mut f| f.read(&mut head)).unwrap_or(0)
+    };
+    if animation::is_video(&head[..read]) {
+        return video_still(path, opts);
+    }
+    fetch::read_file(path)
+}
+
+/// A downloaded picture's bytes, or its first frame's when it is a video
+/// (SteamGridDB's animated art previews are WebM), read by
+/// [`Opts::video_still`] from the download kept in the cache.
+fn url_picture_bytes(url: &str, opts: &Opts) -> Result<Vec<u8>> {
+    let bytes = fetch::url_bytes(url, opts)?;
+    if !animation::is_video(&bytes) {
+        return Ok(bytes);
+    }
+    drop(bytes);
+    video_still(&cache_path(&opts.images_cache_dir, url), opts)
+}
+
+fn video_still(path: &std::path::Path, opts: &Opts) -> Result<Vec<u8>> {
+    let read = opts.video_still.ok_or_else(|| ImageError::NotAnImage("a video".into()))?;
+    read(path).ok_or_else(|| ImageError::Decode("no frame could be read from the video".into()))
+}
+
+/// The raster a video frame of the stage is drawn at for a `tw`x`th` window
+/// target with `blur_px` of blur: [`Variant::Backdrop`]'s size
+/// ([`geometry::stage_size`]), but at most `max_w` wide even with no blur (a
+/// moving picture is not looked at as closely), and the scale applied.
+pub fn stage_frame_size(tw: u32, th: u32, blur_px: f32, max_w: u32, opts: &Opts) -> (u32, u32, f32) {
+    geometry::stage_size(tw, th, blur_px, opts.stage_max_width.min(max_w), opts.stage_sharp_max_width.min(max_w), opts.stage_sigma_out)
+}
+
+/// Gives a video frame of the stage ([`stage_frame_size`], BGRA, opaque) the
+/// highlights' `rolloff` [`Variant::Backdrop`] gives a picture; its blur and
+/// colour are ffmpeg's (`gblur`, `eq`), done before it reaches here.
+pub fn backdrop_frame_rolloff(frame: &mut Decoded, rolloff: f32) {
+    let px = &mut frame.bgra;
+    fx::swap_rb(px);
+    let (knee, cap) = backdrop_knee_cap(rolloff);
+    fx::compress_highlights(px, knee, cap);
+    fx::swap_rb(px);
+}
+
 fn is_definitive(e: &ImageError) -> bool {
     match e {
         ImageError::NotAnImage(_) | ImageError::Decode(_) => true,
@@ -310,9 +408,9 @@ fn is_definitive(e: &ImageError) -> bool {
 
 fn produce(cand: &ImageRef, tw: u32, th: u32, variant: Variant, opts: &Opts) -> Result<Decoded> {
     let bytes = match cand {
-        ImageRef::File(p) => fetch::read_file(p)?,
-        ImageRef::Url(u) => fetch::url_bytes(u, opts)?,
-        ImageRef::Find { .. } => fetch::read_file(&cand.local_path().ok_or_else(|| ImageError::Io(format!("{cand:?}: not found")))?)?,
+        ImageRef::File(p) => file_bytes(p, opts)?,
+        ImageRef::Url(u) => url_picture_bytes(u, opts)?,
+        ImageRef::Find { .. } => file_bytes(&cand.local_path().ok_or_else(|| ImageError::Io(format!("{cand:?}: not found")))?, opts)?,
     };
     match variant {
         Variant::Fit { ink } => {
@@ -345,16 +443,18 @@ fn produce(cand: &ImageRef, tw: u32, th: u32, variant: Variant, opts: &Opts) -> 
             fx::swap_rb(&mut px);
             Ok(Decoded { width: tw, height: rows, bgra: px })
         }
-        Variant::Stage { blur_px, saturation } | Variant::Glass { blur_px, saturation } | Variant::Backdrop { blur_px, saturation } => {
-            let (ow, oh, scale) = geometry::stage_size(tw, th, blur_px, opts.stage_max_width, opts.stage_sigma_out);
+        Variant::Stage { blur_px, saturation } | Variant::Glass { blur_px, saturation } | Variant::Backdrop { blur_px, saturation, .. } => {
+            let (ow, oh, scale) =
+                geometry::stage_size(tw, th, blur_px, opts.stage_max_width, opts.stage_sharp_max_width, opts.stage_sigma_out);
             let raster = decode::decode(&bytes, ow, oh, opts.jpeg_scaled_decode)?;
             drop(bytes);
             let mut px = resize::cover_to_rgba(raster, ow, oh, opts.filter)?;
             fx::flatten_over_black(&mut px);
             fx::gaussian_blur(&mut px, ow as usize, oh as usize, blur_px * scale);
             fx::saturate(&mut px, saturation, false);
-            if matches!(variant, Variant::Backdrop { .. }) {
-                fx::compress_highlights(&mut px, BACKDROP_KNEE, BACKDROP_CAP);
+            if let Variant::Backdrop { rolloff, .. } = variant {
+                let (knee, cap) = backdrop_knee_cap(rolloff);
+                fx::compress_highlights(&mut px, knee, cap);
             }
             fx::swap_rb(&mut px);
             Ok(Decoded { width: ow, height: oh, bgra: px })

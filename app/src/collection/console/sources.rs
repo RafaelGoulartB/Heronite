@@ -13,6 +13,7 @@ use heronite_data::categories::Categories;
 use heronite_data::console_theme::ShelfSpec;
 use heronite_data::hltb::WikiCache;
 use heronite_data::organize::{GameExtras, Organize};
+use heronite_data::smart_groups::SmartGroups;
 use heronite_data::{CollectionGame, Library};
 
 use super::super::CollectionView;
@@ -89,6 +90,8 @@ struct Inputs {
     extras: Arc<GameExtras>,
     wiki: Arc<WikiCache>,
     categories: Categories,
+    /// The smart categories' rules (their games follow from them).
+    smart: SmartGroups,
     epoch: u64,
     day: i64,
 }
@@ -114,6 +117,7 @@ impl SourceCache {
                 && b.epoch == epoch
                 && b.day == day
                 && b.categories == view.categories
+                && b.smart == view.smart_groups
         });
         if !same {
             self.games.clear();
@@ -123,6 +127,7 @@ impl SourceCache {
                 extras: view.game_extras.clone(),
                 wiki: view.wiki.clone(),
                 categories: view.categories.clone(),
+                smart: view.smart_groups.clone(),
                 epoch,
                 day,
             });
@@ -133,6 +138,19 @@ impl SourceCache {
 impl CollectionView {
     pub(super) fn organize(&self) -> Organize<'_> {
         Organize { extras: Some(&self.game_extras), categories: Some(&self.categories), ..Default::default() }
+    }
+
+    /// `g` is in the smart category `id`.
+    fn in_smart(&self, id: &str, g: &CollectionGame) -> bool {
+        self.smart_groups.get(id).is_some_and(|s| self.group_members(s).contains(&g.key))
+    }
+
+    /// The name of a status key, or of a whole `smart:<id>` kind.
+    fn shelf_name(&self, lib: &Library, value: &str) -> String {
+        match value.strip_prefix("smart:") {
+            Some(id) => self.smart_groups.get(id).map_or_else(|| id.to_owned(), |g| g.name.clone()),
+            None => status_name(lib, value),
+        }
     }
 
     /// Whether `g` belongs to a tab's `source` (see `TabSpec::source`).
@@ -146,6 +164,7 @@ impl CollectionView {
             "emulated" => self.game_extras.systems.contains_key(&g.key),
             "status" => status_is(lib, g, value),
             "category" => self.categories.contains(value, &g.runner, &g.app_name),
+            "smart" => self.in_smart(value, g),
             "store" => g.source_label == value,
             "platform" => self.organize().platform(g) == value,
             _ => true,
@@ -215,7 +234,7 @@ impl CollectionView {
                 let total = keys.len();
                 keys.truncate(limit);
                 (!keys.is_empty()).then(|| Shelf {
-                    title: theme_rows::shelf_title(spec, |v| status_name(lib, v)).into(),
+                    title: theme_rows::shelf_title(spec, |v| self.shelf_name(lib, v)).into(),
                     keys,
                     total,
                     kind: spec.kind.clone().into(),
@@ -274,6 +293,7 @@ impl CollectionView {
             }
             "genre" => by_last_played(pick(&|g| g.metadata.as_ref().is_some_and(|m| m.genres.iter().any(|x| x == value)))),
             "category" => by_last_played(pick(&|g| self.categories.contains(value, &g.runner, &g.app_name))),
+            "smart" => by_last_played(pick(&|g| self.in_smart(value, g))),
             _ => Vec::new(),
         }
     }

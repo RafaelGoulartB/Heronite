@@ -25,7 +25,7 @@ use windows as sys;
 #[cfg(all(windows, test))]
 pub(crate) use windows::split_command_line_for_tests;
 #[cfg(windows)]
-pub use windows::{command_line, exe_path, in_tracked_group, snapshot, start_time, ProcessEntry};
+pub use windows::{command_line, exe_path, in_tracked_group, package_family, snapshot, start_time, ProcessEntry};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Signal {

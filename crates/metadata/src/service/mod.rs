@@ -7,13 +7,29 @@
 //! `Send + Sync`, keep it in an `Arc`.
 
 mod age_fill;
+mod attention;
 mod bulk;
+mod counts;
+mod families;
+mod fetch;
+mod gather;
+mod job_run;
+mod launchbox_art;
+mod picture_sizes;
+mod review;
+mod source_settings;
+mod store_media;
 mod tag_fill;
+mod undo;
 
+pub use attention::Attention;
 pub use bulk::AUTO_FILL_BATCH;
+pub use families::FamilyLack;
+pub use fetch::{is_sent_to_review, SentToReview};
+pub use review::{MatchUnavailable, Resolution, Resolved, SourceSearch};
 
-/// Providers that need the network; the rest read local files.
-const ONLINE_SOURCES: [&str; 3] = ["igdb", "steam", "lutris"];
+/// The `fetchError` of a game no source had.
+const NO_DATA: &str = "No metadata sources returned data";
 
 /// No online provider could be reached, so nothing was saved: the game stays
 /// unfetched and the next fill or manual fetch tries again.
@@ -33,21 +49,13 @@ pub fn is_offline(err: &anyhow::Error) -> bool {
     err.downcast_ref::<Offline>().is_some()
 }
 
-/// What the providers returned and whether the online ones answered at all.
-struct Gathered {
-    candidates: Vec<MetadataCandidate>,
-    offline: bool,
-}
-
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Arc;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use heronite_data::field_names::NameRules;
-use heronite_data::json_store;
-use heronite_data::models::{CollectionGameArt, CollectionGameMetadata, LocalMetaFile, MetadataSettings};
+use heronite_data::models::{CollectionGameArt, CollectionGameMetadata, MetadataSettings};
 use heronite_data::paths::DataPaths;
-use heronite_data::settings;
 use heronite_i18n::tr;
 use indexmap::IndexMap;
 use parking_lot::{Mutex, RwLock};
@@ -57,31 +65,45 @@ use crate::edit;
 use crate::hltb::{self, HltbClient, HltbLookup, HltbQuery, HowLongToBeat, SearchHit};
 use crate::http::{Endpoints, Http};
 use crate::igdb::{Igdb, IgdbCredentials};
-use crate::images::materialize_metadata_image;
-use crate::lutris::fetch_lutris_metadata;
-use crate::merge::{merge_metadata, with_preferred_source, MergeArgs, MergeCandidate};
-use crate::providers::{
-    fetch_playnite_metadata, metadata_from_playnite_game, metadata_from_store_game, PlayniteGame, PlayniteSource, StoreLibraries,
-};
+use crate::merge::{merge_metadata, MergeArgs, MergeCandidate};
+use crate::providers::{metadata_from_playnite_game, PlayniteGame, PlayniteSource, StoreLibraries};
+use crate::sources::rows::TestResults;
+use crate::sources::{self, ids, Shared, SourceRegistry};
 use crate::steam::{self, SteamAppDetails, SteamState};
-use crate::store::{as_runner, current_or_blank, get_game_metadata, list_game_metadata, upsert_game_metadata};
+use crate::store::{as_runner, get_game_metadata, list_game_metadata, upsert_game_metadata};
 use crate::types::*;
-use crate::util::now_iso;
 use crate::{covers, web_images};
 
 pub struct MetadataService {
     pub paths: DataPaths,
     pub http: Http,
-    igdb: Igdb,
-    steam: SteamState,
+    igdb: Arc<Igdb>,
+    steam: Arc<SteamState>,
     hltb: HltbClient,
-    stores: StoreLibraries,
-    playnite: RwLock<Option<Arc<dyn PlayniteSource>>>,
-    bulk: Mutex<BulkProgress>,
-    bulk_cancel: AtomicBool,
-    bulk_running: AtomicBool,
+    playnite: Arc<RwLock<Option<Arc<dyn PlayniteSource>>>>,
+    /// Swapped whole when an extension is added or removed; readers keep
+    /// the one they took.
+    sources: RwLock<Arc<SourceRegistry>>,
+    tests: TestResults,
+    /// Bulk jobs: progress, queue and the last one's undo.
+    jobs: Mutex<bulk::Jobs>,
+    /// The id of the job asked to stop (ids start at 1).
+    stop_job: AtomicU64,
+    /// Held by an Undo while it writes and by a job while it starts, so
+    /// the two never overlap.
+    undo_gate: Mutex<()>,
     filling: AtomicBool,
     rating_fill: AtomicBool,
+    /// Bumped on every change of the review queue this service makes.
+    review_revision: AtomicU64,
+    /// The Steam tags file, read when a fallback source looks for its kind of game.
+    steam_tags: gather::SteamTagsCache,
+    /// The sources' downloads running now, by source id.
+    downloads: source_settings::Downloads,
+    /// LaunchBox's index, shared with its source: the Covers dialog asks it too.
+    launchbox: Arc<crate::launchbox::LaunchBox>,
+    /// The picture sizes read for the dialogs.
+    sizes: picture_sizes::Sizes,
 }
 
 impl MetadataService {
@@ -91,19 +113,36 @@ impl MetadataService {
 
     /// Custom base URLs (tests point them at a local server).
     pub fn with_endpoints(paths: DataPaths, endpoints: Endpoints) -> Self {
+        let igdb = Arc::new(Igdb::new());
+        let steam = Arc::new(SteamState::default());
+        let playnite = Arc::new(RwLock::new(None));
+        let launchbox = Arc::new(crate::launchbox::LaunchBox::new());
+        let sources = SourceRegistry::builtin(Shared {
+            igdb: igdb.clone(),
+            steam: steam.clone(),
+            stores: Arc::new(StoreLibraries::default()),
+            playnite: playnite.clone(),
+            launchbox: launchbox.clone(),
+        });
         Self {
             paths,
             http: Http::new(endpoints),
-            igdb: Igdb::new(),
-            steam: SteamState::default(),
+            igdb,
+            steam,
             hltb: HltbClient::new(),
-            stores: StoreLibraries::default(),
-            playnite: RwLock::new(None),
-            bulk: Mutex::new(BulkProgress::default()),
-            bulk_cancel: AtomicBool::new(false),
-            bulk_running: AtomicBool::new(false),
+            playnite,
+            sources: RwLock::new(Arc::new(sources)),
+            tests: TestResults::default(),
+            jobs: Mutex::new(bulk::Jobs::default()),
+            stop_job: AtomicU64::new(0),
+            undo_gate: Mutex::new(()),
             filling: AtomicBool::new(false),
             rating_fill: AtomicBool::new(false),
+            review_revision: AtomicU64::new(0),
+            steam_tags: Default::default(),
+            downloads: Default::default(),
+            launchbox,
+            sizes: Default::default(),
         }
     }
 
@@ -112,9 +151,15 @@ impl MetadataService {
         *self.playnite.write() = source;
     }
 
+    /// The metadata sources, in the order candidates are listed: the
+    /// registry as it is now (an extension added later is not in it).
+    pub fn sources(&self) -> Arc<SourceRegistry> {
+        self.sources.read().clone()
+    }
+
     /// Effective (normalized) `settings.metadata`.
     pub fn metadata_settings(&self) -> MetadataSettings {
-        settings::load(&self.paths).map(|s| s.metadata).unwrap_or_else(|_| settings::normalize_metadata(None))
+        sources::load_metadata_settings(&self.paths)
     }
 
     fn credentials(&self) -> IgdbCredentials {
@@ -153,203 +198,6 @@ impl MetadataService {
         list_game_metadata(&self.paths)
     }
 
-    fn steam_id_for(&self, args: &MetadataApplyArgs) -> Option<String> {
-        if let Some(id) = args.steam_app_id.clone().filter(|s| !s.is_empty()) {
-            return Some(id);
-        }
-        let meta: LocalMetaFile = json_store::read(&self.paths.local_meta()).ok()?;
-        meta.games.get(&args.app_name)?.steam_app_id.clone().filter(|s| !s.is_empty())
-    }
-
-    fn candidate_for(&self, source: &str, game: &MetadataApplyArgs) -> Lookup<MetadataCandidate> {
-        let (app, runner) = (game.app_name.as_str(), game.runner.as_str());
-        // Local providers have nothing to be unreachable about.
-        let local = |found: Option<CollectionGameMetadata>| found.map_or(Lookup::NotFound, Lookup::Found);
-        let lookup = match source {
-            "igdb" => {
-                self.igdb.fetch(&self.http, &self.credentials(), app, runner, &game.title, self.steam_id_for(game).as_deref(), game.igdb_id)
-            }
-            "steam" => steam::fetch_steam_metadata(
-                &self.paths,
-                &self.http,
-                &self.steam,
-                app,
-                runner,
-                self.steam_id_for(game).as_deref(),
-                game.language.as_deref(),
-            ),
-            "store" => local(self.stores.find(&self.paths, runner, app).map(|g| metadata_from_store_game(app, runner, &g))),
-            "lutris" => fetch_lutris_metadata(&self.http, app, runner, &game.title, game.lutris_slug.as_deref()),
-            "playnite" => {
-                let src = self.playnite.read().clone();
-                local(fetch_playnite_metadata(&self.paths, src.as_deref(), app, runner))
-            }
-            _ => Lookup::Skipped,
-        };
-        lookup.map(|metadata| {
-            let match_year = metadata.release_date.as_deref().and_then(|d| {
-                let head: String = d.chars().take(4).collect();
-                head.trim().parse::<i32>().ok().filter(|y| *y != 0)
-            });
-            MetadataCandidate { source: source.to_owned(), match_name: metadata.title.clone(), match_year, metadata }
-        })
-    }
-
-    /// `gatherCandidates`: asks every provider at once (IGDB calls queue
-    /// among themselves) and keeps those that answered, in provider order.
-    pub fn gather_candidates(&self, game: &MetadataApplyArgs) -> Vec<MetadataCandidate> {
-        self.gather(game).candidates
-    }
-
-    fn gather(&self, game: &MetadataApplyArgs) -> Gathered {
-        let current = get_game_metadata(&self.paths, &game.runner, &game.app_name).ok().flatten();
-        let mut with_ids = game.clone();
-        with_ids.igdb_id = game.igdb_id.or_else(|| current.as_ref().and_then(|c| c.igdb_id).map(|n| n.get() as i64));
-        with_ids.lutris_slug = game.lutris_slug.clone().or_else(|| current.as_ref().and_then(|c| c.lutris_slug.clone()));
-        let lookups: Vec<(&str, Lookup<MetadataCandidate>)> = std::thread::scope(|scope| {
-            let handles: Vec<_> = PROVIDER_ORDER
-                .iter()
-                .map(|source| {
-                    let with_ids = &with_ids;
-                    scope.spawn(move || self.candidate_for(source, with_ids))
-                })
-                .collect();
-            handles
-                .into_iter()
-                .zip(PROVIDER_ORDER)
-                .map(|(h, source)| match h.join() {
-                    Ok(l) => (source, l),
-                    Err(_) => {
-                        log::warn!("Metadata source {source} failed for {}: panicked", game.title);
-                        (source, Lookup::NotFound)
-                    }
-                })
-                .collect()
-        });
-        // Offline: every online provider that was asked failed to connect.
-        let mut asked = lookups.iter().filter(|(s, l)| ONLINE_SOURCES.contains(s) && !matches!(l, Lookup::Skipped)).peekable();
-        let offline = asked.peek().is_some() && asked.all(|(_, l)| matches!(l, Lookup::Unreachable));
-        let candidates = lookups
-            .into_iter()
-            .filter_map(|(_, l)| match l {
-                Lookup::Found(c) => Some(c),
-                _ => None,
-            })
-            .collect();
-        Gathered { candidates, offline }
-    }
-
-    /// The merge of `candidates` into `current` that a preview proposes.
-    fn propose(
-        &self,
-        args: &MetadataApplyArgs,
-        current: Option<&CollectionGameMetadata>,
-        candidates: &[MetadataCandidate],
-    ) -> CollectionGameMetadata {
-        let has_picks = args.field_picks.as_ref().is_some_and(|p| !p.is_empty());
-        let overwrite = args.overwrite_existing != Some(false);
-        let preserve_manual = if has_picks { false } else { args.preserve_manual.unwrap_or(args.overwrite_existing == Some(false)) };
-        let priority = with_preferred_source(&self.metadata_settings().field_priority, args.source.as_deref());
-        let merge_candidates: Vec<MergeCandidate<'_>> =
-            candidates.iter().map(|c| MergeCandidate { source: &c.source, metadata: &c.metadata }).collect();
-        let mut proposed = merge_metadata(MergeArgs {
-            app_name: &args.app_name,
-            runner: &args.runner,
-            current,
-            candidates: &merge_candidates,
-            priority: &priority,
-            overwrite_existing: overwrite,
-            preserve_manual,
-            field_picks: args.field_picks.as_ref(),
-        });
-        // The merge only fills an empty IGDB id, so a game picked on purpose
-        // (re-matching a wrong one) has to be carried over here.
-        if args.igdb_id.is_some() {
-            if let Some(igdb) = candidates.iter().find(|c| c.source == "igdb").filter(|c| c.metadata.igdb_id.is_some()) {
-                proposed.igdb_id = igdb.metadata.igdb_id;
-                proposed.igdb_slug = igdb.metadata.igdb_slug.clone();
-            }
-        }
-        // Names the user renamed, merged or removed in the fields manager.
-        NameRules::load(&self.paths).apply_metadata(&mut proposed);
-        proposed
-    }
-
-    /// `previewGameMetadata`: what each provider returned and what the merge
-    /// would store. Nothing is written.
-    pub fn preview_game_metadata(&self, args: &MetadataApplyArgs) -> Result<MetadataPreview> {
-        let runner = as_runner(&args.runner).to_owned();
-        let current = get_game_metadata(&self.paths, &runner, &args.app_name)?;
-        let mut args = args.clone();
-        args.runner = runner;
-        let Gathered { candidates, offline } = self.gather(&args);
-        let proposed = self.propose(&args, current.as_ref(), &candidates);
-        Ok(MetadataPreview {
-            app_name: args.app_name.clone(),
-            current,
-            proposed,
-            candidates,
-            igdb_configured: self.igdb_configured(),
-            offline,
-        })
-    }
-
-    /// `persistImages`.
-    fn persist_images(&self, mut md: CollectionGameMetadata, download: bool) -> CollectionGameMetadata {
-        md.cover_url = materialize_metadata_image(
-            &self.paths,
-            &self.http,
-            &md.runner,
-            &md.app_name,
-            ArtKind::Cover,
-            md.cover_url.as_deref(),
-            download,
-        );
-        md.hero_url =
-            materialize_metadata_image(&self.paths, &self.http, &md.runner, &md.app_name, ArtKind::Hero, md.hero_url.as_deref(), download);
-        md
-    }
-
-    /// `applyGameMetadata`: fetch, merge and store. When no provider answers
-    /// the record is stored with `fetchError` so the idle fill retries after
-    /// a week. When none could be reached at all nothing is stored
-    /// ([`Offline`]): local data alone must not count as a fetch.
-    pub fn apply_game_metadata(&self, args: &MetadataApplyArgs) -> Result<CollectionGameMetadata> {
-        let preview = self.preview_game_metadata(args)?;
-        if preview.offline {
-            return Err(Offline.into());
-        }
-        if preview.candidates.is_empty() {
-            let mut failed = current_or_blank(&self.paths, as_runner(&args.runner), &args.app_name)?;
-            failed.fetch_error = Some("No metadata sources returned data".into());
-            failed.fetched_at = Some(now_iso());
-            return upsert_game_metadata(&self.paths, failed);
-        }
-        let download = args.download_images.unwrap_or(self.metadata_settings().download_images);
-        let saved = self.persist_images(preview.proposed, download);
-        upsert_game_metadata(&self.paths, saved)
-    }
-
-    /// Stores what the user saw in `preview` without asking the providers
-    /// again: the preview's candidates are merged with `args` (`field_picks`
-    /// and the merge options) over the saved record. Nothing is written, and
-    /// an error returned, when the preview holds no online data.
-    pub fn apply_preview(&self, preview: &MetadataPreview, args: &MetadataApplyArgs) -> Result<CollectionGameMetadata> {
-        if preview.offline {
-            return Err(Offline.into());
-        }
-        if preview.candidates.is_empty() {
-            bail!(tr!("No metadata sources returned data"));
-        }
-        let runner = as_runner(&args.runner).to_owned();
-        let current = get_game_metadata(&self.paths, &runner, &args.app_name)?;
-        let mut args = args.clone();
-        args.runner = runner;
-        let proposed = self.propose(&args, current.as_ref(), &preview.candidates);
-        let download = args.download_images.unwrap_or(self.metadata_settings().download_images);
-        upsert_game_metadata(&self.paths, self.persist_images(proposed, download))
-    }
-
     /// `seedPlayniteMetadata`: first import of a Playnite game's own metadata
     /// (skipped when the game already has field sources).
     pub fn seed_playnite_metadata(
@@ -364,18 +212,31 @@ impl MetadataService {
         if let Some(e) = existing.as_ref().filter(|e| !e.field_sources.is_empty()) {
             return Ok(e.clone());
         }
-        let from_playnite = metadata_from_playnite_game(app_name, runner, game, library_path);
+        let settings = self.metadata_settings();
+        let from_playnite = MetadataCandidate::new(
+            "playnite",
+            metadata_from_playnite_game(app_name, runner, game, library_path),
+            Some(MatchedBy::SourceId),
+        );
+        let usable = Self::usable(&settings, std::slice::from_ref(&from_playnite));
+        let Some((_, from_playnite)) = usable.first() else {
+            return Ok(existing.unwrap_or_else(|| crate::util::blank_metadata(app_name, runner)));
+        };
         let mut merged = merge_metadata(MergeArgs {
             app_name,
             runner,
             current: existing.as_ref(),
-            candidates: &[MergeCandidate { source: "playnite", metadata: &from_playnite }],
-            priority: &self.metadata_settings().field_priority,
+            candidates: &[MergeCandidate { source: "playnite", metadata: from_playnite }],
+            priority: &self.sources().field_orders(&settings),
             overwrite_existing: false,
             preserve_manual: true,
             field_picks: None,
+            fields: None,
         });
         NameRules::load(&self.paths).apply_metadata(&mut merged);
+        for field in existing.as_ref().map(crate::record::locked_fields).unwrap_or_default() {
+            crate::merge::copy_field(existing.as_ref(), &mut merged, &field);
+        }
         upsert_game_metadata(&self.paths, self.persist_images(merged, false))
     }
 
@@ -402,12 +263,15 @@ impl MetadataService {
         art::get_all_collection_art(&self.paths)
     }
 
-    /// Custom cover/hero from a local file.
+    /// Custom art from a local file (or a screenshot): `kind` is the
+    /// background or a cover family ([`ArtKind::cover`]; `Cover` is the tall
+    /// one).
     pub fn set_art_from_file(&self, runner: &str, app_name: &str, kind: ArtKind, source_path: &str) -> Result<CollectionGameArt> {
         art::set_collection_game_art(&self.paths, runner, app_name, kind, source_path)
     }
 
-    /// Custom cover/hero downloaded from a URL (`thumb_url` is the fallback).
+    /// Custom art of `kind` downloaded from a URL (`thumb_url` is the
+    /// fallback).
     pub fn set_art_from_url(
         &self,
         runner: &str,
@@ -419,7 +283,8 @@ impl MetadataService {
         art::set_collection_game_art_from_url(&self.paths, &self.http, runner, app_name, kind, image_url, thumb_url)
     }
 
-    /// Back to the default art for `kind`.
+    /// Back to the default art for `kind` (one cover family, or the
+    /// background); its file is removed.
     pub fn reset_art(&self, runner: &str, app_name: &str, kind: ArtKind) -> Result<CollectionGameArt> {
         art::clear_collection_game_art(&self.paths, runner, app_name, kind)
     }
@@ -444,27 +309,68 @@ impl MetadataService {
         covers::refresh_missing_local_covers(&self.paths, &self.http)
     }
 
-    /// `searchCollectionWebImages`.
+    /// `searchCollectionWebImages`; nothing while web images are off.
     pub fn search_web_images(&self, query: &str, transparent: bool) -> Result<Vec<WebImage>> {
-        web_images::search_web_images(&self.http, query, transparent)
+        self.search_web_images_shaped(query, transparent, None)
     }
 
-    /// The art picker's image search: SteamGridDB's art when an API key is
-    /// set (not for transparent images, which it does not have) and the web's,
-    /// apart. A failing SteamGridDB only leaves its part empty; the web's
-    /// results leave out the images SteamGridDB already gave.
+    /// [`search_web_images`](Self::search_web_images) favouring pictures of
+    /// a cover family's shape (`None`, or the tall family: no filter, as
+    /// the search always was).
+    pub fn search_web_images_shaped(&self, query: &str, transparent: bool, family: Option<CoverFamily>) -> Result<Vec<WebImage>> {
+        if !self.source_on(ids::WEB_IMAGES) {
+            return Ok(Vec::new());
+        }
+        web_images::search_web_images_shaped(&self.http, query, transparent, family)
+    }
+
+    /// The art picker's image search: SteamGridDB's art when it is on and an
+    /// API key is set (not for transparent images, which it does not have,
+    /// but for its logos) and the web's (when on), apart. A failing SteamGridDB only leaves its part empty; the web's
+    /// results leave out the images SteamGridDB already gave. `kind` names
+    /// the cover family ([`ArtKind::cover`]): SteamGridDB gives grids of
+    /// that shape and the web search favours it.
     pub fn search_art_images(&self, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
-        let key = if transparent { None } else { covers::steamgrid_api_key(&self.paths) };
+        self.search_art_images_of(None, query, kind, transparent)
+    }
+
+    /// [`search_art_images`](Self::search_art_images) for `game`: while the
+    /// query is for its title, SteamGridDB's art is of the SteamGridDB game it
+    /// was matched with, else of its Steam app id, before a search by title.
+    pub fn search_game_images(&self, game: &MetadataApplyArgs, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
+        self.search_art_images_of(Some(game), query, kind, transparent)
+    }
+
+    /// What the SteamGridDB search knows of `game`: its title, Steam app id
+    /// and the SteamGridDB game its record was surely matched with (not a
+    /// fuzzy title guess, which a Steam id beats).
+    fn steamgrid_hint(&self, game: &MetadataApplyArgs) -> covers::SteamGridHint {
+        let current = get_game_metadata(&self.paths, &game.runner, &game.app_name).ok().flatten();
+        let view = self.source_game(&self.sources(), game, current.as_ref());
+        let steamgrid_id = current
+            .as_ref()
+            .and_then(|md| crate::record::source_match(md, ids::STEAMGRIDDB))
+            .filter(|m| m.is_sure())
+            .and_then(|m| m.id.parse().ok());
+        covers::SteamGridHint { title: game.title.clone(), steam_app_id: view.steam_app_id, steamgrid_id }
+    }
+
+    fn search_art_images_of(&self, game: Option<&MetadataApplyArgs>, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
+        let key = if transparent && kind != ArtKind::Logo { None } else { covers::steamgrid_key_if_on(&self.paths) };
         let title = web_images::title_of_query(query);
+        let hint = key.as_ref().and(game).map(|g| self.steamgrid_hint(g));
+        // Adult pictures only where the settings keep them.
+        let adult = key.is_some() && self.metadata_settings().allow_adult_covers;
         let (sgdb, web) = std::thread::scope(|s| {
             let sgdb = s.spawn(|| match key.as_deref() {
-                Some(key) if !title.is_empty() => covers::steamgrid_images(&self.http, key, &title, kind).unwrap_or_else(|e| {
-                    log::warn!("SteamGridDB image search failed for \"{title}\": {e:#}");
-                    Vec::new()
-                }),
+                Some(key) if !title.is_empty() => covers::steamgrid_images(&self.http, key, &title, hint.as_ref(), kind, adult)
+                    .unwrap_or_else(|e| {
+                        log::warn!("SteamGridDB image search failed for \"{title}\": {e:#}");
+                        Vec::new()
+                    }),
                 _ => Vec::new(),
             });
-            let web = self.search_web_images(query, transparent);
+            let web = self.search_web_images_shaped(query, transparent, kind.family());
             (sgdb.join().unwrap_or_default(), web)
         });
         let web = match web {
@@ -474,7 +380,7 @@ impl MetadataService {
         };
         let mut seen: std::collections::HashSet<String> = sgdb.iter().map(|img| img.image_url.clone()).collect();
         let web = web.into_iter().filter(|img| seen.insert(img.image_url.clone())).collect();
-        Ok(ArtImages { steamgrid: sgdb, web })
+        Ok(ArtImages { steamgrid: sgdb, web, ..Default::default() })
     }
 
     /// HowLongToBeat for a game (cache first; see [`hltb::get_or_fetch_hltb`]).

@@ -135,6 +135,11 @@ impl State {
         self.lib.as_deref().map(|l| (l, &self.chains, &self.stages))
     }
 
+    /// The library the Collection handed over, for work off the UI thread.
+    pub(in crate::pages::settings) fn library(&self) -> Option<Arc<Library>> {
+        self.lib.clone()
+    }
+
     /// Stops the walk running (another section is shown).
     pub fn stop(&mut self) {
         if self.loading {

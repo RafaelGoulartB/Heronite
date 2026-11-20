@@ -316,6 +316,25 @@ pub fn chart_series(i: usize) -> Rgba {
 /// charts' series, told apart on dark and light panels.
 pub const GROUP_COLOURS: [&str; 6] = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9"];
 
+/// The monogram tile of a metadata source without a logo (Settings →
+/// Metadata): its letters in this colour (through [`readable`]) on a tint of
+/// it. A source not named here takes one of [`GROUP_COLOURS`] by its id.
+pub fn source_colour(id: &str) -> Rgba {
+    match id {
+        "igdb" => rgb(0xb18cff),
+        "lutris" => rgb(0xf0a202),
+        "steamgriddb" => rgb(0x6cb6ff),
+        "howlongtobeat" => rgb(0x2ec4b6),
+        "protondb" => rgb(0xf0727a),
+        "launchbox" => rgb(0x8bc34a),
+        "libretro" => rgb(0xe8845a),
+        _ => {
+            let i = id.bytes().fold(0usize, |h, b| h.wrapping_mul(31).wrapping_add(b as usize)) % GROUP_COLOURS.len();
+            parse_hex(GROUP_COLOURS[i]).unwrap_or_else(|| rgb(0x9085e9))
+        }
+    }
+}
+
 /// `#rrggbb` as a colour.
 pub fn parse_hex(s: &str) -> Option<Rgba> {
     let hex = s.strip_prefix('#').filter(|h| h.len() == 6)?;

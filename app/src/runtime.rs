@@ -92,6 +92,11 @@ impl GameRuntime {
         (Self { launcher, paths, sessions: Mutex::new(HashMap::new()) }, frx)
     }
 
+    /// Pid of a running game's process, once known.
+    pub fn pid_of(&self, app_name: &str) -> Option<u32> {
+        self.launcher.pid_of(app_name)
+    }
+
     /// Names of the games with a running session.
     pub fn running_apps(&self) -> Vec<String> {
         self.launcher.running_apps()
@@ -164,7 +169,33 @@ impl GameRuntime {
         self.launch_with(game, None, opts).map(|_| ())
     }
 
+    /// "Play offline" for an Epic game while signed out: it starts without
+    /// signing in, this time only.
+    pub fn play_offline(&self, game: &CollectionGame) -> Result<(), String> {
+        let opts = LaunchOptions { offline: true, ..Default::default() };
+        self.launch_with(game, None, opts).map(|_| ())
+    }
+
+    /// An installed Epic game that would sign in to Epic, with no Epic
+    /// sign-in saved: the launch cannot sign it in. A sign-in Epic refused
+    /// for good (expired, revoked) is forgotten, so after such a failed start
+    /// this is true too. Reads the game's settings only when
+    /// signed out.
+    pub fn needs_epic_sign_in(&self, game: &CollectionGame) -> bool {
+        if game.runner != "legendary" || !game.store_installed() || heronite_epic::user::is_logged_in(&self.paths) {
+            return false;
+        }
+        let global = heronite_launch::settings::GlobalSettings::load(&self.paths);
+        !heronite_launch::settings::load_game_settings(&self.paths, &game.app_name, &global, &SystemProbe).offline_mode
+    }
+
     fn launch_with(&self, game: &CollectionGame, rom: Option<String>, mut opts: LaunchOptions) -> Result<Option<String>, String> {
+        // Every launch comes through here: the windowless ones (tray, quick
+        // launcher, shortcuts) are told why instead of the sign-in's error.
+        // The Play button asks first (`Request::SignedOut`).
+        if !opts.offline && self.needs_epic_sign_in(game) {
+            return Err(epic_signed_out_message(&game.title));
+        }
         let ctx = PlanContext::load(&self.paths);
         if game.launch_kind.as_deref() == Some("emulator") {
             let wanted = rom.clone().or_else(|| game.meta.as_ref().and_then(|m| m.selected_rom_path.clone()));
@@ -179,15 +210,20 @@ impl GameRuntime {
             Some(app_id) => steam_plan(&ctx, game, app_id),
             None => {
                 // Mods are mounted after the plan is built: their files count as the game's.
-                let probe = crate::services::mods::ModsProbe::for_game(&self.paths, game);
-                let plan = build_plan(&ctx, &probe, &game.game, game.meta.as_deref(), &opts);
+                // Where mods are off (Windows, the Flatpak) the plan sees the system as it is.
+                let mods_probe = crate::services::mods::available().then(|| crate::services::mods::ModsProbe::for_game(&self.paths, game));
+                let probe: &dyn heronite_launch::probe::Probe = match &mods_probe {
+                    Some(p) => p,
+                    None => &SystemProbe,
+                };
+                let plan = build_plan(&ctx, probe, &game.game, game.meta.as_deref(), &opts);
                 match &plan {
                     // No default Wine yet: pick one found on this PC and try again.
                     LaunchPlan::Unavailable(reason)
                         if heronite_launch::wine::is_no_wine_error(reason)
                             && heronite_wine::default::ensure_default(&self.paths).is_some() =>
                     {
-                        build_plan(&PlanContext::load(&self.paths), &probe, &game.game, game.meta.as_deref(), &opts)
+                        build_plan(&PlanContext::load(&self.paths), probe, &game.game, game.meta.as_deref(), &opts)
                     }
                     _ => plan,
                 }
@@ -326,6 +362,14 @@ pub fn failed_launch_message(title: &str, exit: ExitInfo) -> String {
         (None, Some(signal)) => tr!("{title} crashed right after starting (signal {signal})", title, signal),
         _ => tr!("{title} closed right after starting", title),
     }
+}
+
+/// Why an Epic game does not start while Heronite is signed out of Epic.
+pub fn epic_signed_out_message(title: &str) -> String {
+    tr!(
+        "{title} needs your Epic Games account, and you are signed out of it. Log in on the Epic Games page, or turn on \"Play offline\" in the game's settings.",
+        title
+    )
 }
 
 /// Opens `app_id` through the Steam client, with the game's scripts and

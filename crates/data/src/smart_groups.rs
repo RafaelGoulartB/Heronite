@@ -658,7 +658,7 @@ impl SmartGroups {
 pub fn save(paths: &DataPaths, groups: &[SmartGroup]) -> Result<()> {
     for g in groups {
         if g.name.trim().is_empty() {
-            bail!("{}", heronite_i18n::tr!("The group needs a name"));
+            bail!("{}", heronite_i18n::tr!("The category needs a name"));
         }
     }
     json_store::update_value(&paths.smart_groups(), |doc| {

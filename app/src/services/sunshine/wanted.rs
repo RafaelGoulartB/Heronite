@@ -13,6 +13,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use heronite_data::cover_family::CoverFamily;
 use heronite_data::{art, AppPaths, ArtContext, CollectionGame, DataPaths, Library};
 use heronite_i18n::tr;
 use heronite_sunshine::entry::{Entry, CONSOLE_ID};
@@ -168,7 +169,8 @@ pub fn entries(data_paths: &DataPaths, lib: &Library, prefs: &Prefs) -> Vec<Entr
             id: g.key.clone(),
             name: g.title.clone(),
             cmd: launch_cmd(&exe, g),
-            image_path: image(cover(&dir, &g.key, &art::card_cover(&ctx, g), &opts)),
+            // Moonlight shows box art: the tall family.
+            image_path: image(cover(&dir, &g.key, &art::family_cover(&ctx, g, CoverFamily::Tall).chain, &opts)),
             undo: prefs.stop_on_quit.then(|| stop_cmd(&exe, g)),
         })
         .collect();

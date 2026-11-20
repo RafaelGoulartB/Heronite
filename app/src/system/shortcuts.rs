@@ -25,6 +25,7 @@
 
 use std::path::{Path, PathBuf};
 
+use heronite_data::cover_family::CoverFamily;
 use heronite_data::game_config::load_global;
 use heronite_data::{art, AppPaths, ArtContext, CollectionGame, DataPaths, Library};
 use heronite_i18n::tr;
@@ -227,11 +228,13 @@ fn steam_art(data_paths: &DataPaths, lib: &Library, game: &CollectionGame) -> Ar
     let dir = AppPaths::for_data(data_paths).cache.join("steam-art").join(format!("{}_{}", game.runner, game.app_name));
     let cover_chain = art::card_cover(&ctx, game);
     let stage_chain = art::stage_art(&ctx, game);
-    // Wide images come from the stage/hero chain, else the cover.
+    // Steam's header is the wide cover family (the game's own wide cover,
+    // else the background, else the cover); its hero the background, else the cover.
+    let header = art::family_cover(&ctx, game, CoverFamily::Wide).chain;
     let wide = if stage_chain.is_empty() { &cover_chain } else { &stage_chain };
     ArtFiles {
         cover: render(&cover_chain, 600, 900, &dir.join("cover.jpg"), false, &opts),
-        header: render(wide, 920, 430, &dir.join("header.jpg"), false, &opts),
+        header: render(&header, 920, 430, &dir.join("header.jpg"), false, &opts),
         hero: render(wide, 1920, 620, &dir.join("hero.jpg"), false, &opts),
         logo: None,
     }

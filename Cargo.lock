@@ -3512,6 +3512,8 @@ version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 dependencies = [
+ "allocator-api2",
+ "equivalent",
  "foldhash 0.2.0",
 ]
 
@@ -3554,7 +3556,7 @@ checksum = "e17592d60ebacc7d5e169f4663c5f84f9161cc90328abcfe8456f41e4dfcb284"
 
 [[package]]
 name = "heronite"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "ashpd",
@@ -3583,6 +3585,7 @@ dependencies = [
  "heronite-launch",
  "heronite-media",
  "heronite-metadata",
+ "heronite-metadata-ext",
  "heronite-mods",
  "heronite-overlay",
  "heronite-platform",
@@ -3595,12 +3598,12 @@ dependencies = [
  "heronite-wine",
  "heronite-xbox",
  "image",
+ "indexmap",
  "ksni",
  "libc",
  "log",
  "notify",
  "notify-rust",
- "qrcodegen",
  "raw-window-handle",
  "rust-embed",
  "serde_json",
@@ -3609,11 +3612,12 @@ dependencies = [
  "smallvec",
  "tempfile",
  "trash",
+ "usvg 0.46.0",
 ]
 
 [[package]]
 name = "heronite-achievements"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "aes",
  "anyhow",
@@ -3638,7 +3642,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-amazon"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "heronite-data",
@@ -3656,7 +3660,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-backup"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3672,7 +3676,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-clients"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3689,7 +3693,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-data"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3730,7 +3734,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-display"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "heronite-platform",
  "log",
@@ -3742,7 +3746,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-emulation"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3763,7 +3767,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-epic"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3810,7 +3814,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-epic-login"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "embed-resource",
  "gtk",
@@ -3824,7 +3828,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-gog"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "flate2",
@@ -3868,14 +3872,14 @@ dependencies = [
 
 [[package]]
 name = "heronite-i18n"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "heronite-images"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "fast_image_resize",
  "image",
@@ -3886,12 +3890,13 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "ureq",
+ "url",
  "zstd",
 ]
 
 [[package]]
 name = "heronite-import"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3906,7 +3911,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-installer"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "heronite-data",
@@ -3928,7 +3933,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-launch"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3952,7 +3957,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-media"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "ashpd",
  "async-io",
@@ -3983,26 +3988,56 @@ dependencies = [
 
 [[package]]
 name = "heronite-metadata"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "flate2",
  "heronite-data",
  "heronite-i18n",
+ "heronite-images",
+ "heronite-platform",
  "indexmap",
  "log",
  "parking_lot",
+ "quick-xml",
  "regex",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
  "ureq",
  "url",
+ "zip",
+]
+
+[[package]]
+name = "heronite-metadata-ext"
+version = "1.7.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "dom_query",
+ "heronite-data",
+ "heronite-images",
+ "heronite-metadata",
+ "heronite-platform",
+ "log",
+ "parking_lot",
+ "rquickjs",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "toml 0.8.23",
+ "url",
+ "zip",
 ]
 
 [[package]]
 name = "heronite-mods"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "heronite-data",
@@ -4020,7 +4055,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-overlay"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "evdev",
  "heronite-data",
@@ -4034,7 +4069,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-platform"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "ashpd",
  "dirs 6.0.0",
@@ -4050,7 +4085,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-shortcuts"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
@@ -4064,7 +4099,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-steam"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4085,7 +4120,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-storage"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
@@ -4102,7 +4137,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-sunshine"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4115,7 +4150,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-sync"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4135,7 +4170,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-update"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "heronite-data",
@@ -4154,7 +4189,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-wine"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
@@ -4172,7 +4207,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-xbox"
-version = "1.5.0"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -6748,12 +6783,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "qrcodegen"
-version = "1.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4339fc7a1021c9c1621d87f5e3505f2805c8c105420ba2f2a4df86814590c142"
-
-[[package]]
 name = "quick-error"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7153,6 +7182,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
+name = "relative-path"
+version = "2.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38540a682c6e9bca04a8bca9e5ec5a6ba168dfbb04c9998fe517a9befb92eb68"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
 name = "renderdoc-sys"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7244,6 +7282,35 @@ name = "rpkg-config"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a2d2f3481209a6b42eec2fbb49063fb4e8d35b57023401495d4fe0f85c817f0"
+
+[[package]]
+name = "rquickjs"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0a22bf72f515cc4189dd7c63d016f6de92a11eee98ddf7dd64794198f6eb34e"
+dependencies = [
+ "rquickjs-core",
+]
+
+[[package]]
+name = "rquickjs-core"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6657979a24d543e5fc66f32cef2f47ca82ce8eb55cec5f7d59a12b7b570bbf24"
+dependencies = [
+ "hashbrown 0.17.1",
+ "relative-path",
+ "rquickjs-sys",
+]
+
+[[package]]
+name = "rquickjs-sys"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cee271d0eeba64f0915b846cb7ae02e16faf3dfdffdca91731101d9d30fe3423"
+dependencies = [
+ "cc",
+]
 
 [[package]]
 name = "rsqlite-vfs"

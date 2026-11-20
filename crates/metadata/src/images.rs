@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use heronite_data::paths::DataPaths;
+use heronite_images::public;
 
 use crate::http::Http;
 use crate::types::ArtKind;
@@ -26,7 +27,7 @@ pub fn remove_metadata_art(paths: &DataPaths, runner: &str, app_name: &str) {
 fn dest_file(paths: &DataPaths, runner: &str, app_name: &str, kind: ArtKind, ext: &str) -> std::io::Result<PathBuf> {
     let dir = paths.metadata_art_dir().join(folder_name(runner, app_name));
     fs::create_dir_all(&dir)?;
-    Ok(dir.join(format!("{}.{ext}", kind.as_str())))
+    Ok(dir.join(format!("{}.{ext}", kind.file_stem())))
 }
 
 pub fn is_remote_image(url: Option<&str>) -> bool {
@@ -52,6 +53,7 @@ fn write_atomic(dest: &Path, bytes: &[u8]) -> std::io::Result<()> {
 ///
 /// - `localart://` URLs are kept;
 /// - a local file path is copied to `metadata-art/<runner_app>/<kind>.<ext>`
+///   ([`ArtKind::file_stem`]: `cover`, `hero`, `cover-square`, `cover-wide`)
 ///   and becomes a `localart://metadata-art/...` URL (`None` if missing or not
 ///   an image);
 /// - a remote URL is downloaded the same way when `download` is set (max
@@ -82,8 +84,10 @@ pub fn materialize_metadata_image(
         }
         let ext = if ext == "jpeg" { "jpg".to_owned() } else { ext };
         let dest = dest_file(paths, runner, app_name, kind, &ext).ok()?;
-        fs::copy(src, &dest).ok()?;
-        return Some(local_art_url("metadata-art", &[&folder, &format!("{}.{ext}", kind.as_str())]));
+        // Through a new file, never into the old one: a bulk job's Undo keeps
+        // the old picture as a hard link to it.
+        write_atomic(&dest, &fs::read(src).ok()?).ok()?;
+        return Some(local_art_url("metadata-art", &[&folder, &format!("{}.{ext}", kind.file_stem())]));
     }
 
     if !download || !is_remote_image(Some(source)) {
@@ -91,23 +95,31 @@ pub fn materialize_metadata_image(
     }
 
     let fetched = (|| -> anyhow::Result<Option<String>> {
-        let resp = http.get(source).timeout_secs(20).max_bytes(MAX_IMAGE_BYTES).send()?;
-        if resp.status != 200 {
-            anyhow::bail!("HTTP {}", resp.status);
-        }
-        let ext = sniff_image_ext(&resp.body, false).unwrap_or("jpg");
-        if !ALLOWED_EXT.contains(&ext) || resp.body.len() < 32 {
+        // A picture an extension named: public addresses only, each redirect
+        // checked again.
+        let body = if public::is_extension_url(source) {
+            public::fetch(source, MAX_IMAGE_BYTES, std::time::Duration::from_secs(20)).map_err(anyhow::Error::msg)?
+        } else {
+            let resp = http.get(source).timeout_secs(20).max_bytes(MAX_IMAGE_BYTES).send()?;
+            if resp.status != 200 {
+                anyhow::bail!("HTTP {}", resp.status);
+            }
+            resp.body
+        };
+        let ext = sniff_image_ext(&body, false).unwrap_or("jpg");
+        if !ALLOWED_EXT.contains(&ext) || body.len() < 32 {
             return Ok(None);
         }
         let dest = dest_file(paths, runner, app_name, kind, ext)?;
-        write_atomic(&dest, &resp.body)?;
-        Ok(Some(local_art_url("metadata-art", &[&folder, &format!("{}.{ext}", kind.as_str())])))
+        write_atomic(&dest, &body)?;
+        Ok(Some(local_art_url("metadata-art", &[&folder, &format!("{}.{ext}", kind.file_stem())])))
     })();
     match fetched {
         Ok(Some(url)) => Some(url),
         Ok(None) => Some(source.to_owned()),
         Err(e) => {
-            log::warn!("Metadata image download skipped for {source}: {e}");
+            let shown = source.split(['?', '#']).next().unwrap_or(source);
+            log::warn!("Metadata image download skipped for {shown}: {e}");
             Some(source.to_owned())
         }
     }
@@ -142,7 +154,44 @@ mod tests {
             Some("localart://heroes/1.jpg")
         );
         assert!(materialize_metadata_image(&paths, &http, "sideload", "x", ArtKind::Hero, None, true).is_none());
+        // Each cover family has its own file next to the tall one.
+        let sq = materialize_metadata_image(&paths, &http, "sideload", "steam_1", ArtKind::CoverSquare, src.to_str(), false).unwrap();
+        assert_eq!(sq, "localart://metadata-art/sideload_steam_1/cover-square.jpg");
+        let wide = materialize_metadata_image(&paths, &http, "sideload", "steam_1", ArtKind::CoverWide, src.to_str(), false).unwrap();
+        assert_eq!(wide, "localart://metadata-art/sideload_steam_1/cover-wide.jpg");
+        assert!(paths.metadata_art_dir().join("sideload_steam_1/cover.jpg").exists());
         remove_metadata_art(&paths, "sideload", "steam_1");
         assert!(!paths.metadata_art_dir().join("sideload_steam_1").exists());
+    }
+
+    #[test]
+    fn an_extensions_picture_is_never_copied_from_this_computer() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for mut s in listener.incoming().flatten() {
+                let mut buf = [0u8; 1024];
+                let _ = s.read(&mut buf);
+                let mut body = b"\x89PNG\r\n\x1a\n".to_vec();
+                body.resize(64, 0);
+                let head =
+                    format!("HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+                let _ = s.write_all(head.as_bytes());
+                let _ = s.write_all(&body);
+            }
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("cfg"));
+        let http = Http::default();
+        let url = format!("{base}/c.png");
+        // A built-in source's picture there is copied as before.
+        let copied = materialize_metadata_image(&paths, &http, "sideload", "a", ArtKind::Cover, Some(&url), true).unwrap();
+        assert!(copied.starts_with("localart://"), "{copied}");
+        // An extension's is not fetched: it stays the address it was.
+        let marked = public::marked(&url);
+        let kept = materialize_metadata_image(&paths, &http, "sideload", "b", ArtKind::Cover, Some(&marked), true).unwrap();
+        assert_eq!(kept, marked);
+        assert!(!paths.metadata_art_dir().join("sideload_b").exists());
     }
 }

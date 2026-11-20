@@ -76,11 +76,20 @@ pub struct State {
     preview_chain: Vec<ImageRef>,
     preview: Option<Arc<RenderImage>>,
     preview_task: Option<Task<()>>,
+    /// The theme the preview was made for (its highlights are rolled off on
+    /// the dark one only): a switch makes it again.
+    preview_light: bool,
     opts: Opts,
     aspect_open: bool,
+    /// Follows the metadata hub while its Cover aspect notice may show.
+    notice_watch: Option<Subscription>,
     /// The "Under the cover" and background picture selects are open.
     label_open: bool,
     picture_open: bool,
+    /// ffmpeg is there to play animated backgrounds (looked for when the page opens).
+    ffmpeg: bool,
+    /// The "With no game selected" select is open.
+    home_open: bool,
     /// The Collection background's finer sliders (blur, colour intensity,
     /// edge shading) show.
     more_background: bool,
@@ -163,7 +172,7 @@ impl State {
                     Field::AutoViewWidth => a.ui.auto_view.width = v,
                     Field::InterfaceScale => {}
                 }
-                if matches!(field, Field::Blur | Field::Saturation) {
+                if matches!(field, Field::Blur | Field::Saturation | Field::Dimming) {
                     schedule_preview(d, cx);
                 }
                 if matches!(field, Field::CollectionOpacity | Field::PanelOpacity | Field::PanelBlur | Field::AutoViewWidth) {
@@ -191,10 +200,17 @@ impl State {
             preview_chain,
             preview: None,
             preview_task: None,
-            opts: Opts::new(ctx.data_paths.images_cache_dir(), Some(ctx.app.thumbs_dir())),
+            preview_light: theme::is_light(),
+            opts: Opts {
+                video_still: Some(heronite_media::stills::video_still),
+                ..Opts::new(ctx.data_paths.images_cache_dir(), Some(ctx.app.thumbs_dir()))
+            },
             aspect_open: false,
+            notice_watch: None,
             label_open: false,
             picture_open: false,
+            home_open: false,
+            ffmpeg: heronite_media::stream::available(),
             more_background: false,
             profiles: None,
             profiles_task: None,
@@ -248,7 +264,23 @@ impl State {
 }
 
 /// Recomputes the blurred preview off the UI thread (debounced 60ms).
+/// The Cover aspect picked here: the notice about the new family (kept by
+/// the metadata hub, which the page follows from now on).
+fn aspect_picked(d: &mut SettingsPage, after: CoverAspect, cx: &mut Context<SettingsPage>) {
+    use crate::dialogs::metadata_update::hub::{hub, HubGlobal};
+    if !cx.has_global::<HubGlobal>() {
+        return;
+    }
+    let h = hub(cx);
+    if d.appearance.notice_watch.is_none() {
+        d.appearance.notice_watch = Some(cx.observe(&h, |_, _, cx| cx.notify()));
+    }
+    let before = d.settings.cover_aspect;
+    h.update(cx, |h, cx| h.aspect_picked(before, after, cx));
+}
+
 fn schedule_preview(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
+    d.appearance.preview_light = theme::is_light();
     let a = &d.appearance;
     if a.preview_chain.is_empty() {
         return;
@@ -256,9 +288,11 @@ fn schedule_preview(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     let chain = a.preview_chain.clone();
     let opts = a.opts.clone();
     let (blur, sat) = (a.blur, a.saturation / 100.);
+    // As the Collection draws it (`collection/backdrop.rs`).
+    let rolloff = if a.preview_light { 0. } else { heronite_images::backdrop_rolloff(a.dimming / 100.) };
     d.appearance.preview_task = Some(cx.spawn(async move |this, cx| {
         cx.background_executor().timer(Duration::from_millis(60)).await;
-        let decoded = cx.background_spawn(async move { heronite_images::load_backdrop(&chain, 776, 148, blur, sat, &opts) }).await;
+        let decoded = cx.background_spawn(async move { heronite_images::load_backdrop(&chain, 776, 148, blur, sat, rolloff, &opts) }).await;
         if let Ok(decoded) = decoded {
             let frame = image::Frame::new(decoded.into_image_buffer());
             let img = Arc::new(RenderImage::new(smallvec::smallvec![frame]));
@@ -410,7 +444,7 @@ fn reset_theme(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Setti
 }
 
 pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
-    if d.appearance.preview.is_none() && d.appearance.preview_task.is_none() {
+    if (d.appearance.preview.is_none() && d.appearance.preview_task.is_none()) || d.appearance.preview_light != theme::is_light() {
         schedule_preview(d, cx);
     }
     let a = &d.appearance;
@@ -457,6 +491,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     // Off: nothing else applies, so nothing else shows.
     if a.enabled {
         rows.push(look::picture_row(d, cx));
+        rows.push(look::home_row(d, cx));
+        rows.push(look::animated_row(d, cx));
         let a = &d.appearance;
         let more = a.more_background;
         let mut extra = Vec::new();
@@ -535,10 +571,13 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             d.appearance.aspect_open = false;
             let mut patch = d.settings.metadata.clone();
             patch.cover_aspect = ASPECTS[i].0.as_str().to_string();
+            aspect_picked(d, ASPECTS[i].0, cx);
+            crate::dialogs::metadata_update::families::aspect_changed(d.settings.cover_aspect, ASPECTS[i].0);
             let res = settings::save_metadata(&d.ctx.data_paths, &patch);
             d.saved(res, cx);
         },
     );
+    let aspect_notice = crate::dialogs::metadata_update::family_notice::notice("ap-notice", cx);
 
     let grey = d.settings.grey_uninstalled_games;
     let reset = button("bg-reset", ButtonKind::Glass, tr!("Reset background")).on_click(cx.listener(|d, _, window, cx| {
@@ -571,12 +610,17 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let cover_rows = look::cover_rows(d, cx);
     let covers = card(
         [
-            row(
-                tr!("Cover aspect"),
-                Some(tr!("Shape of the covers in the grid, the details panel and related games.")),
-                div().w(px(200.)).child(aspect_select),
-            )
-            .into_any_element(),
+            div()
+                .flex()
+                .flex_col()
+                .child(row(
+                    tr!("Cover aspect"),
+                    Some(tr!("Shape of the covers in the grid, the details panel and related games.")),
+                    div().w(px(200.)).child(aspect_select),
+                ))
+                .children(aspect_notice.map(|n| n.mb(px(12.))))
+                .into_any_element(),
+            look::fit_row(d, cx),
             toggle_row("grey-uninstalled", tr!("Show uninstalled games in grey"), None, grey)
                 .on_click(cx.listener(move |d, _, _, cx| {
                     let res = settings::save_grey_uninstalled(&d.ctx.data_paths, !grey);
@@ -686,6 +730,8 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
     let aspect = CoverAspect::parse(&d.settings.metadata.cover_aspect);
     let ai = ASPECTS.iter().position(|(x, _)| *x == aspect).unwrap_or(0);
     rows.push(Row::choice("aspect", tr!("Cover aspect"), ASPECTS.iter().map(|(_, l)| SharedString::from(tr(l))).collect(), ai));
+    let (fits, fi) = console_choice(&look::fit_items(), d.appearance.ui.cover_fit);
+    rows.push(Row::choice("cover-fit", tr!("Cover fit"), fits, fi));
     rows.push(Row::toggle("grey", tr!("Show uninstalled games in grey"), d.settings.grey_uninstalled_games));
     rows.extend(console_look_rows(d));
     rows
@@ -699,6 +745,12 @@ fn console_choice<T: Copy + PartialEq>(items: &[(T, &'static str)], active: T) -
 /// The pictures console mode offers: not "Your own picture" (it needs a file picker).
 fn console_pictures() -> Vec<(heronite_data::appearance::BackgroundSource, &'static str)> {
     look::picture_items().into_iter().filter(|(p, _)| *p != heronite_data::appearance::BackgroundSource::Custom).collect()
+}
+
+/// "With no game selected" without a picture of your own, which is picked on
+/// the desktop (a file dialog).
+fn console_home_pictures() -> Vec<(heronite_data::appearance::HomeBackground, &'static str)> {
+    look::home_items().into_iter().filter(|(h, _)| *h != heronite_data::appearance::HomeBackground::Custom).collect()
 }
 
 /// Console rows of `look.rs` and the profiles (the sections' order stays a desktop setting).
@@ -716,6 +768,17 @@ fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         Row::choice("cover-categories", tr!("Categories on covers"), console_categories().0, console_categories_index(&a)),
         choice("bg-picture", tr!("Picture"), console_choice(&console_pictures(), a.background)),
         Row::toggle("bg-slideshow", tr!("Change the screenshot by itself"), a.background_slideshow),
+        choice("bg-home", tr!("With no game selected"), console_choice(&console_home_pictures(), a.home_background)),
+        // Console mode has no header pill: ffmpeg missing is said here.
+        Row::toggle("bg-animated", tr!("Animated backgrounds"), a.animated_backgrounds).desc(
+            if a.animated_backgrounds && !d.appearance.ffmpeg {
+                tr!("ffmpeg, which plays them, was not found, so backgrounds stay still.")
+            } else if a.animated_backgrounds && a.motion != heronite_data::appearance::Motion::Full {
+                tr!("Animations are not on Full (Text and motion), so backgrounds stay still.")
+            } else {
+                tr!("A background that is a video or an animated picture plays; off, it stays still")
+            },
+        ),
         Row::header(tr!("Colour")),
         choice("theme", tr!("Theme"), console_choice(&scheme::theme_items(), a.theme)).desc(tr!("Console mode stays dark")),
         choice("accent", tr!("Accent colour"), console_choice(&accents, a.accent)),
@@ -738,6 +801,7 @@ fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         choice("motion", tr!("Animations"), console_choice(&look::motion_items(), a.motion)),
         Row::header(tr!("Layout")),
         choice("start-view", tr!("Open the Collection in"), console_choice(&look::start_items(), a.start_view)),
+        Row::toggle("open-with-game", tr!("Open with the last game selected"), a.open_with_game),
         Row::action("reset-widths", tr!("Reset widths")),
         Row::header(tr!("Profiles")),
     ];
@@ -789,6 +853,11 @@ fn console_apply_look(
                 look::set_look(d, cx, |a| a.cover_label = v)
             }
         }
+        ("cover-fit", i, _) => {
+            if let Some(v) = pick(&look::fit_items(), i) {
+                look::set_look(d, cx, |a| a.cover_fit = v)
+            }
+        }
         ("cover-hover", i, _) => {
             if let Some(v) = pick(&look::hover_items(), i) {
                 look::set_look(d, cx, |a| a.cover_hover = v)
@@ -807,6 +876,11 @@ fn console_apply_look(
         ("bg-picture", i, _) => {
             if let Some(v) = pick(&console_pictures(), i) {
                 look::set_look(d, cx, |a| a.background = v)
+            }
+        }
+        ("bg-home", i, _) => {
+            if let Some(v) = pick(&console_home_pictures(), i) {
+                look::set_look(d, cx, |a| a.home_background = v)
             }
         }
         ("theme", i, _) => {
@@ -844,6 +918,8 @@ fn console_apply_look(
         }
         ("cover-badges", _, Some(on)) => look::set_look(d, cx, |a| a.cover_badges = on),
         ("bg-slideshow", _, Some(on)) => look::set_look(d, cx, |a| a.background_slideshow = on),
+        ("bg-animated", _, Some(on)) => look::set_look(d, cx, |a| a.animated_backgrounds = on),
+        ("open-with-game", _, Some(on)) => look::set_look(d, cx, |a| a.open_with_game = on),
         ("high-contrast", _, Some(on)) => look::set_look(d, cx, |a| a.high_contrast = on),
         ("ui-scale-system", _, Some(on)) => {
             let percent = (!on).then(|| ui_scale::percent_of(&theme::appearance()));
@@ -913,6 +989,9 @@ pub(super) fn console_apply(
                 _ => return,
             };
             set_sliders(a, &[(field, v)], window, cx);
+            if matches!(field, Field::Blur | Field::Saturation | Field::Dimming) {
+                schedule_preview(d, cx);
+            }
             if matches!(field, Field::CollectionOpacity | Field::PanelOpacity | Field::PanelBlur) {
                 apply_interface(d, true, cx);
             } else {
@@ -944,6 +1023,7 @@ pub(super) fn console_apply(
             "aspect" => {
                 let mut patch = d.settings.metadata.clone();
                 patch.cover_aspect = ASPECTS[index].0.as_str().to_string();
+                crate::dialogs::metadata_update::families::aspect_changed(d.settings.cover_aspect, ASPECTS[index].0);
                 let res = settings::save_metadata(&d.ctx.data_paths, &patch);
                 d.saved(res, cx);
             }
@@ -969,6 +1049,7 @@ pub(super) fn console_apply(
                 set_sliders(a, &values, window, cx);
                 apply_interface(d, true, cx);
                 save_background(d, cx);
+                schedule_preview(d, cx);
             }
             "ui-reset" => reset_theme(d, window, cx),
             _ => {}

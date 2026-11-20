@@ -278,7 +278,7 @@ fn summary_lines(s: &LastSummary) -> Vec<String> {
             parts.push(trn!(s.playtime, "{n} play time", "{n} play times"));
         }
         if s.groups > 0 {
-            parts.push(trn!(s.groups, "{n} smart group", "{n} smart groups"));
+            parts.push(trn!(s.groups, "{n} smart category", "{n} smart categories"));
         }
         if s.fields > 0 {
             parts.push(trn!(s.fields, "{n} other change", "{n} other changes"));

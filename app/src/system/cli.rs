@@ -17,6 +17,11 @@
 //!   it in the desktop's settings stands in for that shortcut where Heronite
 //!   cannot register one (a desktop without a global shortcuts portal).
 //!
+//! * `heronite://quick-launch` (or `--quick-launch`) opens the quick launcher,
+//!   or closes it when it is open: a key bound to it in the desktop's
+//!   settings stands in for its shortcut. With no instance running, one
+//!   starts without its window.
+//!
 //! Mod links (`nxm://` from Nexus Mods' "Mod manager download", `ror2mm://`
 //! from Thunderstore's "Install with mod manager") go to the mods service.
 //!
@@ -59,6 +64,8 @@ pub enum UrlAction {
     Stop(LaunchRequest),
     /// Capture the running game.
     Screenshot,
+    /// Open (or close) the quick launcher.
+    QuickLaunch,
     Ping,
 }
 
@@ -75,6 +82,9 @@ pub struct Cli {
     /// `--screenshot` or `heronite://screenshot`: capture the game the
     /// running instance has open.
     pub screenshot: bool,
+    /// `--quick-launch` or `heronite://quick-launch`: open (or close) the
+    /// quick launcher.
+    pub quick_launch: bool,
     /// `--no-gui`.
     pub no_gui: bool,
     /// `--console`: switch to console mode.
@@ -104,6 +114,7 @@ Usage:
   heronite-rs <nxm://..|ror2mm://..>  install a mod from Nexus Mods or Thunderstore
   heronite-rs --open-client <client>  open battlenet, ea, ubisoft or rockstar (no window)
   heronite-rs --screenshot            capture the running game (for a key bound in the desktop's settings)
+  heronite-rs --quick-launch          open or close the quick launcher (for a key bound in the desktop's settings)
   --no-gui                            do not show the window (the process exits when the game ends)
   --console                           open in console mode (it stays on until you leave it)
   --fullscreen                        open the window fullscreen (F11 switches back)
@@ -188,6 +199,7 @@ pub fn parse_url(url: &str) -> Option<UrlAction> {
     match host.to_ascii_lowercase().as_str() {
         "ping" => Some(UrlAction::Ping),
         "screenshot" => Some(UrlAction::Screenshot),
+        "quick-launch" => Some(UrlAction::QuickLaunch),
         host @ ("launch" | "stop") => {
             let mut req = LaunchRequest { gui_false: param("gui").is_some_and(|g| gui_false(&g)), ..Default::default() };
             let (app_name, runner);
@@ -229,6 +241,7 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
             HANDOFF => cli.handoff = true,
             "--autostart" => cli.autostart = true,
             "--screenshot" => cli.screenshot = true,
+            "--quick-launch" => cli.quick_launch = true,
             "-h" | "--help" => cli.help = true,
             "--launch" => {
                 let first = args.get(i + 1).filter(|s| !s.starts_with("--"));
@@ -280,6 +293,7 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
                     Some(UrlAction::Launch(req)) if cli.launch.is_none() => cli.launch = Some(req),
                     Some(UrlAction::Stop(req)) => cli.stop = Some(req),
                     Some(UrlAction::Screenshot) => cli.screenshot = true,
+                    Some(UrlAction::QuickLaunch) => cli.quick_launch = true,
                     _ => {}
                 }
             }
@@ -467,6 +481,16 @@ mod tests {
         let c = p(&["--screenshot", "--launch", "gog_1"]);
         assert!(c.screenshot);
         assert_eq!(c.launch, Some(req(Some("gog"), "1")));
+    }
+
+    #[test]
+    fn quick_launch_requests() {
+        assert_eq!(parse_url("heronite://quick-launch"), Some(UrlAction::QuickLaunch));
+        assert_eq!(parse_url("heronite://quick-launch/"), Some(UrlAction::QuickLaunch));
+        assert!(p(&["heronite://quick-launch"]).quick_launch);
+        let c = p(&["--quick-launch"]);
+        assert!(c.quick_launch && c.launch.is_none() && c.errors.is_empty());
+        assert!(!p(&[]).quick_launch);
     }
 
     #[test]

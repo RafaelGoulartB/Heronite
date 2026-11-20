@@ -13,7 +13,7 @@ use parking_lot::Mutex;
 use serde::Deserialize;
 
 use crate::http::Http;
-use crate::types::{IgdbCredentialTest, Lookup, MetadataSearchHit};
+use crate::types::{IgdbCredentialTest, Lookup, MetadataSearchHit, SourceHit};
 use crate::util::{blank_metadata, clip, pick_best_match, title_queries, unique_names, unique_names12, MIN_MATCH_SCORE};
 
 /// `external_game_source` / old `category` value of Steam.
@@ -405,37 +405,102 @@ impl Igdb {
 
     /// `searchIgdbGames`: up to 8 hits for the title queries.
     pub fn search(&self, http: &Http, creds: &IgdbCredentials, title: &str) -> Vec<MetadataSearchHit> {
-        if !creds.configured() || title.trim().is_empty() {
-            return Vec::new();
+        let rows = match self.search_rows(http, creds, title) {
+            Lookup::Found(rows) => rows,
+            _ => return Vec::new(),
+        };
+        rows.into_iter()
+            .filter_map(|game| {
+                Some(MetadataSearchHit {
+                    source: "igdb".into(),
+                    id: game.id.to_string(),
+                    name: game.name.clone().filter(|n| !n.is_empty())?,
+                    year: year_from_unix(game.first_release_date),
+                    extra: game.slug.clone(),
+                })
+            })
+            .collect()
+    }
+
+    /// The same search as hits of the review: with the platforms and cover.
+    pub fn search_hits(&self, http: &Http, creds: &IgdbCredentials, title: &str) -> Lookup<Vec<SourceHit>> {
+        self.search_rows(http, creds, title).map(|rows| {
+            rows.into_iter()
+                .filter_map(|game| {
+                    let platforms: Vec<&str> = game.platforms.iter().filter_map(|p| p.name.as_deref()).take(3).collect();
+                    Some(SourceHit {
+                        source: "igdb".into(),
+                        id: Some(game.id.to_string()),
+                        title: Some(game.name.clone().filter(|n| !n.is_empty())?),
+                        year: year_from_unix(game.first_release_date),
+                        platform: (!platforms.is_empty()).then(|| platforms.join(", ")),
+                        thumb_url: igdb_image_url(game.cover.as_ref().and_then(|c| c.image_id.as_deref()), "cover_small"),
+                        matched_by: None,
+                        alt_title: None,
+                        thumb_adult: false,
+                    })
+                })
+                .collect()
+        })
+    }
+
+    /// Up to 8 rows (named, one per id) for the title queries. Unreachable
+    /// when no query got an answer.
+    fn search_rows(&self, http: &Http, creds: &IgdbCredentials, title: &str) -> Lookup<Vec<IgdbGame>> {
+        if !creds.configured() {
+            return Lookup::Skipped;
         }
-        let mut hits: Vec<MetadataSearchHit> = Vec::new();
+        if title.trim().is_empty() {
+            return Lookup::Found(Vec::new());
+        }
+        let mut rows: Vec<IgdbGame> = Vec::new();
+        let mut failed = None;
+        let mut answered = false;
         for query in title_queries(title) {
-            let body = format!("search \"{}\"; fields name,slug,first_release_date; limit 8;", escape_apicalypse(&query));
+            let body = format!(
+                "search \"{}\"; fields name,slug,first_release_date,cover.image_id,platforms.name; limit 8;",
+                escape_apicalypse(&query)
+            );
             match self.query_games(http, creds, &body) {
                 Ok(games) => {
+                    answered = true;
                     for game in games {
-                        let id = game.id.to_string();
-                        let Some(name) = game.name.clone().filter(|n| !n.is_empty()) else { continue };
-                        if hits.iter().any(|h| h.id == id) {
-                            continue;
+                        if game.name.as_deref().is_some_and(|n| !n.is_empty()) && !rows.iter().any(|r| r.id == game.id) {
+                            rows.push(game);
                         }
-                        hits.push(MetadataSearchHit {
-                            source: "igdb".into(),
-                            id,
-                            name,
-                            year: year_from_unix(game.first_release_date),
-                            extra: game.slug.clone(),
-                        });
                     }
-                    if hits.len() >= 8 {
+                    if rows.len() >= 8 {
                         break;
                     }
                 }
-                Err(e) => log::warn!("IGDB search failed for {query}: {e}"),
+                Err(e) => {
+                    log::warn!("IGDB search failed for {query}: {e}");
+                    failed = Some(Lookup::from_error(&e));
+                }
             }
         }
-        hits.truncate(8);
-        hits
+        match failed {
+            Some(lookup) if !answered => lookup,
+            _ => {
+                rows.truncate(8);
+                Lookup::Found(rows)
+            }
+        }
+    }
+
+    /// The game of IGDB id `id` only (no other way of finding it).
+    pub fn fetch_id(&self, http: &Http, creds: &IgdbCredentials, app_name: &str, runner: &str, id: i64) -> Lookup<CollectionGameMetadata> {
+        if !creds.configured() {
+            return Lookup::Skipped;
+        }
+        match self.by_id(http, creds, id) {
+            Ok(Some(game)) => Lookup::Found(map_game(app_name, runner, &game)),
+            Ok(None) => Lookup::NotFound,
+            Err(e) => {
+                log::warn!("IGDB fetch of {id} failed: {e}");
+                Lookup::from_error(&e)
+            }
+        }
     }
 
     fn by_id(&self, http: &Http, creds: &IgdbCredentials, id: i64) -> Result<Option<IgdbGame>> {

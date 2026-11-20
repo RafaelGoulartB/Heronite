@@ -265,7 +265,7 @@ impl CollectionView {
         }
         let steam = crate::services::steam_library(cx);
         cx.subscribe(&steam, |this, _, ev: &SteamLibraryEvent, cx| {
-            let SteamLibraryEvent::Imported(report) = ev;
+            let SteamLibraryEvent::Imported(report) = ev else { return };
             // One toast: a second would replace the first.
             let mut said: Vec<String> = Vec::new();
             if report.added > 0 {
@@ -277,6 +277,16 @@ impl CollectionView {
                 said.push(
                     trn!(report.family_added, "Added {n} game your Steam Family shares", "Added {n} games your Steam Family shares")
                         .to_string(),
+                );
+            }
+            if report.hidden_added > 0 {
+                said.push(
+                    trn!(
+                        report.hidden_added,
+                        "Added {n} game you hid in Steam, hidden here too",
+                        "Added {n} games you hid in Steam, hidden here too"
+                    )
+                    .to_string(),
                 );
             }
             if report.family_removed > 0 {

@@ -182,8 +182,11 @@ mod tests {
         std::fs::create_dir_all(dirs.mods_dir().join("half.partial")).unwrap();
         std::fs::create_dir_all(root.cache_dir()).unwrap();
         startup(&p, &[], false);
-        assert!(!dirs.staging().exists());
-        assert!(!dirs.mods_dir().join("half.partial").exists());
+        // Where the mod manager is off (Windows, for now) startup leaves
+        // every folder alone.
+        let swept = super::super::available();
+        assert_eq!(dirs.staging().exists(), !swept);
+        assert_eq!(dirs.mods_dir().join("half.partial").exists(), !swept);
         assert!(root.cache_dir().exists());
     }
 }

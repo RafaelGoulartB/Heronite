@@ -1,5 +1,5 @@
 //! Scans the workspace sources for `tr!`, `trn!`, `trc!` and `n_!` and checks
-//! them against every `locales/<lang>/*.json` (`pt-BR`, `es`):
+//! them against every `locales/<lang>/*.json` (`pt-BR`, `es`, `de`, `fr`):
 //!
 //! - every key has a translation, and every translation is a key in use;
 //! - a key translated in two files gets the same text;

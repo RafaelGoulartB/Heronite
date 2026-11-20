@@ -14,7 +14,7 @@ use heronite_i18n::tr;
 use super::{activate, export_name, movable, removable, run, Arg, Command, Ctx, Data, Step, StoreOp};
 use crate::console::browser::PickKind;
 use crate::console::list::{Outcome, Row};
-use crate::console::{hint, themes, Btn, Hint, Pad};
+use crate::console::{hint, sound, themes, Btn, Hint, Pad};
 
 /// What a view that shows the theme rows keeps.
 pub struct ThemeState {
@@ -124,6 +124,7 @@ pub fn change<H: Host>(h: &mut H, cmd: &Command, cx: &mut Context<H>) -> bool {
     if !run(&mut probe, cmd, &st.data) {
         return false;
     }
+    let before = st.prefs.theme.clone();
     st.prefs = match cmd.id.as_str() {
         "startup.open_in" => {
             crate::console::startup::set_open_in(&app, probe.open_in);
@@ -135,8 +136,16 @@ pub fn change<H: Host>(h: &mut H, cmd: &Command, cx: &mut Context<H>) -> bool {
         }
         "startup.auto_console" => {
             crate::console::startup::set_auto_console(&app, probe.auto_console);
+            crate::console::summon::options_changed(cx);
             themes::prefs(&app)
         }
+        "startup.console_button" => {
+            crate::console::startup::set_console_button(&app, probe.console_button);
+            crate::console::summon::options_changed(cx);
+            themes::prefs(&app)
+        }
+        // The controller's, not the theme's: no Undo step.
+        "controls.glyphs" | "controls.confirm" => themes::update(&app, |p| p.controller = probe.controller),
         _ => {
             st.remember(cmd);
             let data = &st.data;
@@ -146,8 +155,59 @@ pub fn change<H: Host>(h: &mut H, cmd: &Command, cx: &mut Context<H>) -> bool {
         }
     };
     st.notice = None;
+    preview_sound(&app, &cmd.id, &st.prefs.theme);
+    let after = st.prefs.theme.clone();
+    covers_notice(&before, &after, cx);
     cx.notify();
     true
+}
+
+/// A sound option changed (and sounds are on): plays a sound the way the
+/// options now make it, so the choice is heard when it is made.
+fn preview_sound(app: &AppPaths, id: &str, theme: &ConsoleTheme) {
+    let c = &theme.controls;
+    if !c.sounds || !id.starts_with("controls.sound") {
+        return;
+    }
+    let sound = if id == "controls.sound_volume" { sound::Sound::Move } else { sound::Sound::Confirm };
+    sound::preview(&app.cache, sound, sound::Settings::of(c));
+}
+
+/// The theme now draws a cover family the one before did not: the line
+/// under the rows says how many games lack it, or that their download
+/// started (console mode's idiom of the Cover aspect notice).
+fn covers_notice<H: Host>(before: &ConsoleTheme, after: &ConsoleTheme, cx: &mut Context<H>) {
+    use crate::dialogs::covers::words;
+    use crate::dialogs::metadata_update::hub::{hub, HubGlobal};
+    use heronite_data::cover_family::{console_families, CoverFamily};
+    let old = console_families(before);
+    let Some(family) = console_families(after).into_iter().find(|f| *f != CoverFamily::Tall && !old.contains(f)) else { return };
+    if !cx.has_global::<HubGlobal>() {
+        return;
+    }
+    let service = hub(cx).read(cx).service.clone();
+    cx.spawn(async move |this, cx| {
+        let read =
+            cx.background_spawn(async move { (service.family_lack(family, None), service.metadata_settings().fill_cover_families) }).await;
+        let (Some(lack), fill) = read else { return };
+        let n = lack.games.len();
+        if n == 0 {
+            return;
+        }
+        let text = match (lack.can_download, fill) {
+            (true, true) => words::downloading(family, n),
+            (true, false) => format!("{} {}", words::lacking(family, n, false), tr!("Download them in Settings \u{2192} Metadata.")),
+            (false, _) => format!("{} {}", words::lacking(family, n, false), words::no_source(family)),
+        };
+        this.update(cx, |h, cx| {
+            if let Some(st) = h.theme_state() {
+                st.notice = Some((text, false));
+            }
+            cx.notify();
+        })
+        .ok();
+    })
+    .detach();
 }
 
 impl ThemeState {

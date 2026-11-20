@@ -23,8 +23,6 @@ pub(in crate::collection) enum More {
     Sort,
     /// The kinds after "Filter by"'s pills.
     Filters,
-    /// The smart groups select's list.
-    Groups,
     /// The footer's "Manage" list.
     Manage,
 }

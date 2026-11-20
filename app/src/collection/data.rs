@@ -143,6 +143,7 @@ pub(super) fn build_groups(
     is_playing: &dyn Fn(&str) -> bool,
     launch_step: &dyn Fn(&str) -> Option<SharedString>,
     organize: &Organize,
+    smart: &[organize::SmartSection],
 ) -> Vec<GroupVm> {
     let mut filtered = collection::filter_games_organized(&lib.games, &view_query(ui, search), keep, organize);
     if ui.group_copies {
@@ -155,7 +156,7 @@ pub(super) fn build_groups(
         card_vm_with(g, is_playing(&g.key), step.or_else(|| chosen_caption(g, lib, ui, organize)), &copies(g))
     };
     let icon = group_icon(ui.group_by);
-    organize::group_games(&filtered, ui.group_by, organize)
+    organize::group_games_with(&filtered, ui.group_by, organize, smart)
         .into_iter()
         .map(|sg| GroupVm {
             collapsed: ui.group_by != GroupBy::None && ui.collapsed_groups.contains(&sg.id),

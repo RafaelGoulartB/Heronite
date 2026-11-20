@@ -1,0 +1,7 @@
+{
+  "Another program on this PC uses port {port}, which Steam needs to let Heronite read your library. Close the program that uses it (a torrent client or a development server, for example) or change its port, then restart Steam.": "Un autre programme sur ce PC utilise le port {port}, dont Steam a besoin pour autoriser Heronite à lire votre bibliothèque. Fermez le programme qui l’utilise (un client torrent ou un serveur de développement, par exemple) ou modifiez son port, puis redémarrez Steam.",
+  "Another program on this PC uses the port Steam needs to let Heronite in. The Steam page says which.": "Un autre programme sur ce PC utilise le port dont Steam a besoin pour autoriser l’accès à Heronite. La page Steam indique lequel.",
+  "Another program on this PC, {program}, uses port {port}, which Steam needs to let Heronite read your library. Close {program} or change its port, then restart Steam.": "Un autre programme sur ce PC, {program}, utilise le port {port}, dont Steam a besoin pour autoriser Heronite à lire votre bibliothèque. Fermez {program} ou modifiez son port, puis redémarrez Steam.",
+  "From your Steam account": "Depuis votre compte Steam",
+  "Port in use": "Port utilisé"
+}

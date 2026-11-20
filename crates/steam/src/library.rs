@@ -2,8 +2,10 @@
 //! login or API key: the client is signed in already), cached in
 //! `store_cache/steam_library.json` and joined to the Collection:
 //!
-//! * only games: no tools, soundtracks, demos, test servers, playtests or
-//!   games hidden in Steam;
+//! * only games: no tools, soundtracks, demos, test servers or playtests;
+//! * a game hidden in Steam comes in hidden in the Collection too (shown
+//!   with "Show hidden games"). Only when its entry is added: unhidden here
+//!   later, it stays unhidden;
 //! * a game the Collection has from another source becomes that entry's
 //!   Steam twin (`heronite_data::steam_owned`) instead of a new entry;
 //! * the others are added as Steam entries, installed or not;
@@ -37,7 +39,7 @@ use serde_json::{json, Map, Value};
 pub struct ImportReport {
     /// Games in the Steam library (after the filters).
     pub owned: usize,
-    /// New Steam entries in the Collection.
+    /// New Steam entries in the Collection, not counting `hidden_added`.
     pub added: usize,
     /// Steam entries whose play time or last played date moved up.
     pub playtime: usize,
@@ -45,8 +47,12 @@ pub struct ImportReport {
     pub promoted: usize,
     /// Games the Steam Family shares (after the filters).
     pub family: usize,
-    /// New Steam entries for games the Steam Family shares (not in `added`).
+    /// New Steam entries for games the Steam Family shares (not in `added`
+    /// nor in `hidden_added`).
     pub family_added: usize,
+    /// New Steam entries, the account's or the Family's, for games hidden in
+    /// Steam: added hidden in the Collection.
+    pub hidden_added: usize,
     /// Family entries removed: the game is neither shared nor owned any more.
     pub family_removed: usize,
 }
@@ -54,7 +60,12 @@ pub struct ImportReport {
 impl ImportReport {
     /// Whether the Collection has to be read again.
     pub fn changed(&self) -> bool {
-        self.added > 0 || self.playtime > 0 || self.promoted > 0 || self.family_added > 0 || self.family_removed > 0
+        self.added > 0
+            || self.playtime > 0
+            || self.promoted > 0
+            || self.family_added > 0
+            || self.hidden_added > 0
+            || self.family_removed > 0
     }
 }
 
@@ -106,10 +117,11 @@ pub fn read_library(client: &SteamClient) -> Result<LibraryRead> {
         appId: String(a.appid),
         name: a.display_name ?? '',
         installed: !!a.installed,
+        hidden: hidden(a.appid),
         minutes: a.minutes_playtime_forever ?? 0,
         lastPlayed: a.rt_last_time_played ?? 0,
       })
-      const games = appStore.allApps.filter((a) => a.app_type === 1 && !a.BIsShortcut() && !a.BIsDemo() && !hidden(a.appid))
+      const games = appStore.allApps.filter((a) => a.app_type === 1 && !a.BIsShortcut() && !a.BIsDemo())
       const owned = games.filter((a) => a.BIsOwned() && !a.owner_account_id)
       const shared = games.filter((a) => a.visible_in_game_list && !!a.owner_account_id)
       const details = (id) => { try { return appDetailsStore.GetAppDetails(id) } catch (e) { return null } }
@@ -163,6 +175,7 @@ fn game_of(g: &Value) -> Option<SteamOwnedGame> {
         app_id,
         name,
         installed: g.get("installed").and_then(Value::as_bool).unwrap_or(false),
+        hidden: g.get("hidden").and_then(Value::as_bool).unwrap_or(false),
         playtime_minutes: g.get("minutes").and_then(Value::as_u64).unwrap_or(0),
         last_played: g.get("lastPlayed").and_then(Value::as_i64).filter(|t| *t > 0),
         share: None,
@@ -266,11 +279,24 @@ pub fn import_from(paths: &DataPaths, read: LibraryRead, steam_bin: Option<&str>
         }
         (info, meta)
     };
-    let new: Vec<_> = owned.iter().chain(&family).filter(|g| !known.contains(&g.app_id)).map(entry).collect();
-    report.family_added = new.iter().filter(|(_, m)| m.extra.contains_key(FAMILY_KEY)).count();
-    report.added = new.len() - report.family_added;
+    let new_games: Vec<&SteamOwnedGame> = owned.iter().chain(&family).filter(|g| !known.contains(&g.app_id)).collect();
+    let new: Vec<_> = new_games.iter().map(|g| entry(g)).collect();
+    // Hidden in Steam: hidden here too, from the start.
+    let hide: Vec<(String, String, bool)> = new_games
+        .iter()
+        .zip(&new)
+        .filter(|(g, _)| g.hidden)
+        .map(|(_, (info, meta))| (meta.app_name.clone(), info.title.clone(), true))
+        .collect();
+    report.hidden_added = hide.len();
+    report.family_added = new_games.iter().filter(|g| g.share.is_some() && !g.hidden).count();
+    report.added = new.len() - report.family_added - report.hidden_added;
     report.family_removed = gone.len();
     if !new.is_empty() || !gone.is_empty() {
+        // Before the entries: a game is hidden only when its entry is added,
+        // so an entry written without its mark would stay shown for good. A
+        // mark without its entry is set again by the next read.
+        heronite_data::config_games::set_hidden(paths, &hide)?;
         json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |file| {
             file.games.retain(|app, _| !gone.contains(app));
             for (_, meta) in &new {
@@ -299,6 +325,9 @@ pub fn import_from(paths: &DataPaths, read: LibraryRead, steam_bin: Option<&str>
         }
         if report.family_added > 0 {
             log::info!("Added {} game(s) the Steam Family shares to the Collection", report.family_added);
+        }
+        if report.hidden_added > 0 {
+            log::info!("Added {} game(s) hidden in Steam to the Collection, hidden", report.hidden_added);
         }
         if !gone.is_empty() {
             log::info!("Removed {} Steam Family game(s) that are no longer shared", gone.len());
@@ -397,6 +426,7 @@ mod tests {
             playtime_minutes: minutes,
             last_played: last,
             share: None,
+            hidden: false,
             extra: Default::default(),
         }
     }
@@ -476,6 +506,35 @@ mod tests {
 
         // Again: nothing new.
         assert_eq!(import_owned(&paths, games, Some("/usr/bin/steam")).unwrap(), ImportReport { owned: 4, ..Default::default() });
+    }
+
+    #[test]
+    fn games_hidden_in_steam_come_in_hidden_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let hidden = |g: SteamOwnedGame| SteamOwnedGame { hidden: true, ..g };
+        let read = || LibraryRead {
+            owned: vec![hidden(owned("620", "Portal 2", false, 0, None)), owned("400", "Portal", false, 0, None)],
+            family: vec![hidden(shared("10", "Counter-Strike", false, 0))],
+        };
+        let report = import(&paths, read(), Some("/usr/bin/steam")).unwrap();
+        assert_eq!(report, ImportReport { owned: 2, family: 1, added: 1, hidden_added: 2, ..Default::default() });
+        assert!(report.changed());
+        let shown: Vec<_> = Library::load(&paths).unwrap().games.iter().map(|g| g.app_name.clone()).collect();
+        assert_eq!(shown, ["steam_400"]);
+        let all = Library::load_with(&paths, true).unwrap();
+        let flags: Vec<_> = all.games.iter().map(|g| (g.app_name.as_str(), g.hidden)).collect();
+        assert_eq!(flags, [("steam_620", true), ("steam_400", false), ("steam_10", true)]);
+        let list = heronite_data::config_games::list_entries(&paths, "hidden");
+        assert_eq!(list, [("steam_620".to_string(), "Portal 2".to_string()), ("steam_10".to_string(), "Counter-Strike".to_string())]);
+        // The cache keeps the mark, for the scan of the installed games.
+        assert!(SteamOwnedFile::read(&paths).get("620").unwrap().hidden);
+
+        // Unhidden here: the next read leaves it shown.
+        heronite_data::config_games::unhide_game(&paths, "steam_620").unwrap();
+        let again = import(&paths, read(), Some("/usr/bin/steam")).unwrap();
+        assert_eq!(again, ImportReport { owned: 2, family: 1, ..Default::default() });
+        assert_eq!(heronite_data::config_games::list_entries(&paths, "hidden").len(), 1);
     }
 
     /// Steam entries as the scan of the installed games left them: `(app id,

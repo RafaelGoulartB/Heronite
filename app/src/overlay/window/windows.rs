@@ -3,18 +3,21 @@ use heronite_data::overlay_prefs::Side;
 use heronite_platform::overlay_window::{self, FocusReturn, Screen};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn open<V: Render>(
     cx: &mut App,
     screen: std::io::Result<Screen>,
     namespace: &str,
     size: Size<Pixels>,
     side: Side,
+    bottom: bool,
     margin: f32,
     build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
 ) -> anyhow::Result<(WindowHandle<V>, Task<anyhow::Result<Option<FocusReturn>>>)> {
     let screen = screen?;
-    let notice = namespace == "overlay-notice";
-    let handle = cx.open_window(super::options(namespace, size, side, px(margin), true, false), |window, cx| {
+    // Notices never take the foreground nor the clicks.
+    let notice = namespace.ends_with("notice");
+    let handle = cx.open_window(super::options(namespace, size, side, bottom, px(margin), true, false), |window, cx| {
         window.set_window_title(if notice { "Heronite overlay notice" } else { "Heronite overlay" });
         build(window, cx)
     })?;
@@ -35,7 +38,7 @@ pub(super) fn open<V: Render>(
     // Native placement sends synchronous size/DPI messages into GPUI. Its
     // foreground executor runs this after all App/Window borrows unwind.
     let shown = cx.foreground_executor().spawn(async move {
-        Ok(overlay_window::show(hwnd, screen, (size.width.into(), size.height.into()), side == Side::Right, margin, notice)?)
+        Ok(overlay_window::show(hwnd, screen, (size.width.into(), size.height.into()), side == Side::Right, bottom, margin, notice)?)
     });
     Ok((handle, shown))
 }

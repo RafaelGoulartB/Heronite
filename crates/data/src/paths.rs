@@ -112,6 +112,23 @@ impl DataPaths {
     pub fn metadata_art_dir(&self) -> PathBuf {
         self.j("local_library/metadata-art")
     }
+    /// The pictures of `metadata-art` the last bulk metadata job replaced,
+    /// kept for its Undo until the next job starts.
+    pub fn metadata_undo_dir(&self) -> PathBuf {
+        self.j("local_library/metadata-undo")
+    }
+    /// The games whose metadata waits for the user to pick the match
+    /// (`heronite_metadata::review`). Safe to delete.
+    pub fn metadata_review(&self) -> PathBuf {
+        self.j("local_library/metadata-review.json")
+    }
+    /// `extensions/metadata/`: installed metadata extensions
+    /// (`heronite-metadata-ext`), a folder per extension id with its files
+    /// and `install.json`. Other kinds of extensions get a folder of their
+    /// own beside `metadata/`.
+    pub fn metadata_extensions_dir(&self) -> PathBuf {
+        self.j("extensions/metadata")
+    }
     pub fn steam_details_dir(&self) -> PathBuf {
         self.j("local_library/steam-details")
     }
@@ -207,6 +224,18 @@ impl DataPaths {
     /// `store_cache/<name>.json`.
     pub fn store_cache(&self, name: &str) -> PathBuf {
         self.j("store_cache").join(format!("{name}.json"))
+    }
+    /// `store_cache/sources/<id>/`: what a metadata source downloads (a
+    /// database it is asked from). A cache: backups leave it out and nothing
+    /// syncs it between PCs.
+    pub fn source_cache_dir(&self, id: &str) -> PathBuf {
+        self.j("store_cache").join("sources").join(id)
+    }
+    /// `store_cache/extensions/metadata/`: the last good copy of each list of
+    /// metadata extensions (`heronite-metadata-ext`), and the files of an
+    /// entry while it is checked before installing. A cache.
+    pub fn extension_lists_cache_dir(&self) -> PathBuf {
+        self.j("store_cache/extensions/metadata")
     }
     /// `gog_store/<name>.json`.
     pub fn gog_store(&self, name: &str) -> PathBuf {
@@ -383,6 +412,11 @@ impl AppPaths {
     pub fn custom_background(&self) -> PathBuf {
         self.config.join("background-image")
     }
+    /// The picture behind the Collection while no game is selected
+    /// (`HomeBackground::Custom`).
+    pub fn home_background(&self) -> PathBuf {
+        self.config.join("home-background-image")
+    }
     /// Screenshot options specific to this app (see `heronite_data::screenshot_prefs`).
     pub fn screenshot_prefs(&self) -> PathBuf {
         self.config.join("screenshots.json")
@@ -407,6 +441,10 @@ impl AppPaths {
     pub fn replay_prefs(&self) -> PathBuf {
         self.config.join("replay.json")
     }
+    /// Quick launcher options (see `heronite_data::quick_launch_prefs`).
+    pub fn quick_launch_prefs(&self) -> PathBuf {
+        self.config.join("quick-launch.json")
+    }
     /// Settings → Integrations → Sunshine (see `heronite_sunshine::prefs`).
     pub fn sunshine_prefs(&self) -> PathBuf {
         self.config.join("sunshine.json")
@@ -427,6 +465,12 @@ impl AppPaths {
     }
     pub fn thumbs_dir(&self) -> PathBuf {
         self.cache.join("thumbs")
+    }
+    /// The stores' trailers and screenshots lists, and the start of some
+    /// trailers (`heronite_metadata::store_media`): deleted when the "Store
+    /// media" section is turned off.
+    pub fn store_media_dir(&self) -> PathBuf {
+        self.cache.join("store-media")
     }
     /// Settings → Sync of this PC: where the library syncs and this PC's id
     /// (see `heronite_sync::prefs`).

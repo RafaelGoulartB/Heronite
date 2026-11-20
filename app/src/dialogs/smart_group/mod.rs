@@ -147,7 +147,7 @@ fn op_number(op: &Op) -> Option<f64> {
 
 impl SmartGroupDialog {
     pub fn new(ctx: DialogCtx, facts: GroupCtx, group: SmartGroup, is_new: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let name = text_input(window, cx, &group.name, tr!("Name of the group"));
+        let name = text_input(window, cx, &group.name, tr!("Name of the category"));
         let filter = text_input(window, cx, "", tr!("Search"));
         cx.subscribe(&filter, |_, _, ev: &InputEvent, cx| {
             if matches!(ev, InputEvent::Change) {
@@ -341,7 +341,7 @@ impl SmartGroupDialog {
     fn save(&mut self, cx: &mut Context<Self>) {
         let name = self.name.read(cx).value().trim().to_string();
         if name.is_empty() {
-            self.error = Some(tr!("The group needs a name").into());
+            self.error = Some(tr!("The category needs a name").into());
             cx.notify();
             return;
         }

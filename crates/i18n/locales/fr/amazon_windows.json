@@ -1,0 +1,16 @@
+{
+  "The game's files belong to the Amazon Games app and were left in {folder}. Uninstall it there to delete them.": "Les fichiers du jeu appartiennent à l’application Amazon Games et ont été laissés dans {folder}. Désinstallez le jeu depuis cette application pour les supprimer.",
+  "The game's files belong to the Amazon Games app: move the game there": "Les fichiers du jeu appartiennent à l’application Amazon Games : déplacez le jeu depuis cette application",
+  "The Amazon Games app was not found on this PC": "L’application Amazon Games est introuvable sur ce PC",
+  "{n} game of the Amazon Games app could not be added ({title}: {error})": "{n} jeu de l’application Amazon Games n’a pas pu être ajouté ({title} : {error})",
+  "{n} games of the Amazon Games app could not be added ({title}: {error})": "{n} jeux de l’application Amazon Games n’ont pas pu être ajoutés ({title} : {error})",
+  "Added {n} game from the Amazon Games app": "{n} jeu ajouté depuis l’application Amazon Games",
+  "Added {n} games from the Amazon Games app": "{n} jeux ajoutés depuis l’application Amazon Games",
+  "The Amazon Games app has no other games to add": "L’application Amazon Games n’a pas d’autres jeux à ajouter",
+  "Could not add the games of the Amazon Games app: {error}": "Impossible d’ajouter les jeux de l’application Amazon Games : {error}",
+  "Games of the Amazon Games app": "Jeux de l’application Amazon Games",
+  "Add the games the Amazon Games app installed on this PC, without downloading them again.": "Ajoutez les jeux installés sur ce PC par l’application Amazon Games sans les télécharger à nouveau.",
+  "Adding...": "Ajout...",
+  "Add games": "Ajouter des jeux",
+  "Add the games of the Amazon Games app": "Ajouter les jeux de l’application Amazon Games"
+}

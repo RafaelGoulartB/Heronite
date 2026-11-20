@@ -1,0 +1,2788 @@
+<?xml version="1.0" standalone="yes"?>
+<LaunchBox>
+  <Game>
+    <Name>Street Fighter Alpha 2</Name>
+    <ReleaseDate>1996-03-06</ReleaseDate>
+    <Overview>In this sequel, players learn more about the warriors' past. This game allows Custom Combos, unlike the the previous Alpha version.
+
+Street Fighter Alpha 2, known as Street Fighter Zero 2 (ストリートファイターZERO 2) in Japan, Asia and South America, is a 1996 fighting game originally released for the CPS II arcade hardware by Capcom. The game is both a sequel and a remake to the previous year's Street Fighter Alpha: Warriors' Dreams, which is itself a prequel to the Street Fighter II series in terms of plot and setting. The game featured a number of improvements over the original, such as new endings, stages, moves and gameplay systems.</Overview>
+    <MaxPlayers>2</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>https://www.youtube.com/watch?v=TLwI7ZahySw</VideoURL>
+    <DatabaseID>2532</DatabaseID>
+    <CommunityRating>4.36244541484716</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Street_Fighter_Alpha_2</WikipediaURL>
+    <Platform>Arcade</Platform>
+    <ESRB>Not Rated</ESRB>
+    <CommunityRatingCount>229</CommunityRatingCount>
+    <Genres>Fighting</Genres>
+    <Developer>Capcom</Developer>
+    <Publisher>Capcom</Publisher>
+  </Game>
+  <Game>
+    <Name>Metroid Fusion</Name>
+    <ReleaseDate>2002-11-01</ReleaseDate>
+    <Overview>Samus Aran returns in an all-new Metroid adventure!
+
+While lending mission support on planet SR388, interstellar bounty hunter Samus Aran is attacked by an X parasite, an organism with the ability to mimic the abilities of any creature it infects. Near death, Samus is saved by a vaccine made from the DNA of the last Metroid -- the X parasite's only natural predator. When the X spread to a research station in orbit around SR388, a weakened Samus is forced to exterminate them all ... or die trying.</Overview>
+    <MaxPlayers>1</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>https://www.youtube.com/watch?v=BR1b7guTmhE</VideoURL>
+    <DatabaseID>2638</DatabaseID>
+    <CommunityRating>4.44481981981982</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Metroid_Fusion</WikipediaURL>
+    <Platform>Nintendo Game Boy Advance</Platform>
+    <ESRB>E - Everyone</ESRB>
+    <CommunityRatingCount>444</CommunityRatingCount>
+    <Genres>Action; Adventure; Platform</Genres>
+    <Developer>Nintendo R&amp;D1</Developer>
+    <Publisher>Nintendo</Publisher>
+  </Game>
+  <Game>
+    <Name>Pokémon FireRed Remixed</Name>
+    <ReleaseDate>2015-07-10</ReleaseDate>
+    <Overview>Hey everyone! This is my first, and final hack. Ever since I've gotten into Nuzlocke, I've wanted an adventure where anything can happen. Unfortunately, everyone always catch the same Pokemon because of the small encounter lists per area. I wanted a ROM where everyone would have a VERY different collection by the time you arrive at the Elite 4. I once saw a similar ROM where you could catch gens 1-3, but most of them were only on the islands.
+
+
+So here it is. All Kanto, Johto and Hoenn Pokemon can be obtained in the wild. One species of EVERY evolution line can be obtained before you fight the Elite 4 (Legends an exception). A definitive Nuzlocke experience! Several additional features were added for fun. Now includes Gen 3 Special split!
+
+
+Features
+
+- One of every evolution line can be found in the wild
+- Evolutions fixed. Trade and Hold Item Evolutions now use either levels or Sun/Moon Stones.
+- New items added to Celadon. Training items, Evolution Stones, and cheap vitamins!
+- Move Relearner now lives with the Deleter in Fuschia.
+- Wild Legendaries! Special Legend Hunters will tell you where they hide.
+- [7/10/2015] Now includes a different version that has the Physical/Special split. Take your pick!
+
+And more! The rest will be detailed in the included text files.</Overview>
+    <MaxPlayers>1</MaxPlayers>
+    <ReleaseType>ROM Hack</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <DatabaseID>165406</DatabaseID>
+    <CommunityRating>4.125</CommunityRating>
+    <Platform>Nintendo Game Boy Advance</Platform>
+    <ESRB>Not Rated</ESRB>
+    <CommunityRatingCount>4</CommunityRatingCount>
+    <Genres>Adventure; Role-Playing</Genres>
+    <Developer>RemixV4</Developer>
+  </Game>
+  <Game>
+    <Name>Pokémon FireRed Version</Name>
+    <ReleaseDate>2004-01-29</ReleaseDate>
+    <Overview>Pokémon FireRed and LeafGreen take place mostly in the fictional region of Kanto. This is one distinct region of many in the Pokémon world, which includes varied geographical habitats for the Pokémon species, human-populated towns and cities, and routes between locations. Some areas are only accessible once the player acquires a special item or one of the player's Pokémon learns a special ability. Near the end of the plot, the protagonist is able to venture to the Sevii Islands, a new area not available in the original Red or Blue games. It consists of an archipelago of seven islands that contain Pokémon normally exclusive to the Johto region.</Overview>
+    <MaxPlayers>4</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>https://www.youtube.com/watch?v=g4G2hRpVw8A</VideoURL>
+    <DatabaseID>3490</DatabaseID>
+    <CommunityRating>4.49194991055456</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Pok%C3%A9mon_FireRed_and_LeafGreen</WikipediaURL>
+    <Platform>Nintendo Game Boy Advance</Platform>
+    <ESRB>E - Everyone</ESRB>
+    <CommunityRatingCount>559</CommunityRatingCount>
+    <Genres>Adventure; Role-Playing</Genres>
+    <Developer>Game Freak</Developer>
+    <Publisher>Nintendo</Publisher>
+  </Game>
+  <Game>
+    <Name>Sonic the Hedgehog 2</Name>
+    <ReleaseDate>1992-11-21</ReleaseDate>
+    <Overview>Super Speed! Sonic's back and better than ever. He's a blur in blue! A blaze of action! With his new Spin Dash. And a new, fabulous friend, "Tails" Miles Prower. You won't believe it 'til you see it. And when you play, you won't stop. Super Play! Defy gravity in hair-raising loop-de-loops. Grab Power Sneakers and race like lightning through the mazes. Dash in a dizzying whirl across corkscrew speedway. Bounce like a pinball through the bumpers and springs of the amazing Zones. All at break-neck speed! Super Power! Sonic's attitude is can-do. The mad scientist Dr. Robotnik is planning a world takeover. Sonic gets tough in the fight to save his friends and squash Robotnik for good!</Overview>
+    <MaxPlayers>2</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>true</Cooperative>
+    <VideoURL>https://youtu.be/xMJyL9SBgO8</VideoURL>
+    <DatabaseID>108429</DatabaseID>
+    <CommunityRating>4.54945054945055</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Sonic_the_Hedgehog_2</WikipediaURL>
+    <Platform>Sega Genesis</Platform>
+    <ESRB>Not Rated</ESRB>
+    <CommunityRatingCount>728</CommunityRatingCount>
+    <Genres>Platform</Genres>
+    <Developer>Sonic Team</Developer>
+    <Publisher>Sega of America</Publisher>
+  </Game>
+  <Game>
+    <Name>Street Fighter II': Special Champion Edition</Name>
+    <ReleaseDate>1993-09-28</ReleaseDate>
+    <Overview>From the corners of the globe come twelve of the toughest fighters to ever prowl the streets. Choose your champion and step into the arena as one of the eight original challengers or as one of the four Grand Masters! Pound your opponent as Balrog and knock them out for the count. Tower over your prey as Sagat and daze them with your awesome Tiger Shot. Slash your opponent with Vega's claw and send them running for cover. Or strike fear into your enemies as M. Bison, the greatest Grand Master of them all!</Overview>
+    <MaxPlayers>2</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>https://youtu.be/6ZitUXPaTpI?si=riE00ikNFBVRN1ie</VideoURL>
+    <DatabaseID>7394</DatabaseID>
+    <CommunityRating>4.27295918367347</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Street_Fighter_II:_Champion_Edition#Mega_Drive/Genesis</WikipediaURL>
+    <Platform>Sega Genesis</Platform>
+    <ESRB>Not Rated</ESRB>
+    <CommunityRatingCount>196</CommunityRatingCount>
+    <Genres>Fighting</Genres>
+    <Developer>Capcom</Developer>
+    <Publisher>Capcom</Publisher>
+  </Game>
+  <Game>
+    <Name>Streets of Rage 2</Name>
+    <ReleaseDate>1993-01-13</ReleaseDate>
+    <Overview>Original rumblers Axel and Blaze slam the asphalt with bigger, better, totally devastating attacks! Skull-crushing ex-wrestler Max Thunder joins up with earth-shattering body slams and spinning fist attacks. New thrasher Skate slices punks with high speed in-line skate attacks and spinning jump kicks.
+
+Go maniac with jaw-shattering, bone-busting punches, head-cracking jump kicks and secret weapons. Gangs of dirt bikers dive into you from every side. Smash 'em with a pipe as they speed by.
+
+- 16 gigantic megs of compound fractures! All new moves, and more of 'em!
+- Bust knuckles with a friend in an all-new 2-player head-to-head mode!</Overview>
+    <MaxPlayers>2</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>true</Cooperative>
+    <VideoURL>https://www.youtube.com/watch?v=-fd5wRZ7hP8</VideoURL>
+    <DatabaseID>694</DatabaseID>
+    <CommunityRating>4.60865874363328</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Streets_of_Rage_2</WikipediaURL>
+    <Platform>Sega Genesis</Platform>
+    <ESRB>Not Rated</ESRB>
+    <CommunityRatingCount>589</CommunityRatingCount>
+    <Genres>Beat 'em Up</Genres>
+    <Developer>Ancient</Developer>
+    <Publisher>Sega of America</Publisher>
+  </Game>
+  <Game>
+    <Name>Super Mario World</Name>
+    <ReleaseYear>1998</ReleaseYear>
+    <Overview>Super Mario World, also known as Super Mario Bros. (超級瑪莉兄弟), is a hack of Squirrel King loosely based on the Super Mario series of platforming games. Both the developers and publishers of the game are Gamtec, and another person gaoing by the name Jazz Dark.  The first two acts are replaced with levels from the original Super Mario Bros. and Super Mario Bros.: The Lost Levels, with Bowser serving as the boss at the end of each one. Everything else remains the same as Squirrel King, this means elements such as the pipes and blocks in the "Mario" stages do not function at all. The third act starts on Forest Adventure and the fourth act starts on Traverse Red Ravine; with the rest of the acts following in normal order (without repeating Forest Adventure).</Overview>
+    <ReleaseType>ROM Hack</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>https://www.youtube.com/watch?v=D7NQdTGXIr0&amp;t=104s</VideoURL>
+    <DatabaseID>451348</DatabaseID>
+    <CommunityRating>2.5</CommunityRating>
+    <Platform>Sega Genesis</Platform>
+    <CommunityRatingCount>5</CommunityRatingCount>
+    <Genres>Platform</Genres>
+    <Developer>Gametec</Developer>
+    <Publisher>Gamtec</Publisher>
+  </Game>
+  <Game>
+    <Name>Castlevania: Symphony of the Night</Name>
+    <ReleaseDate>1997-10-02</ReleaseDate>
+    <Overview>Five years ago, Richter Belmont, the latest in the Belmont lineage and the one destined to be a Vampire Hunter, defeated Dracula in a brutal battle which nearly cost him the love of his life, Annette, and her sister, Maria. Now, Richter has suddenly vanished, CastleVania has mysteriously reappeared, and Maria, now a young woman, sets off to find Richter. Alucard, the son of Dracula, is awakened from his eternal slumber after this large shift in power, and enters into Castlevania to find some answers and perhaps destroy the castle once again.
+
+Symphony of the Night is a direct sequel to Dracula X: Rondo of Blood. The game is set in a castle which you can explore freely with many different paths, although often items in certain areas need to be found that will allow passage to others. The action-based gameplay incorporates now strong RPG elements. The hero receives experience points for defeating enemies, gains levels and becomes more powerful. There is also money to be found in the game, and various accessories to buy. In a separate screen, players need to equip attack weapons, shields and other items. Magic plays an important role, as well as secondary weapons and a large amount of "special moves" that are executed similar to advanced one-on-one fighting games.</Overview>
+    <MaxPlayers>1</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>http://www.youtube.com/watch?v=d2JsYKbWubY</VideoURL>
+    <DatabaseID>511</DatabaseID>
+    <CommunityRating>4.72186046511628</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Castlevania:_Symphony_of_the_Night</WikipediaURL>
+    <Platform>Sony Playstation</Platform>
+    <ESRB>T - Teen</ESRB>
+    <CommunityRatingCount>1075</CommunityRatingCount>
+    <Genres>Action; Adventure; Platform</Genres>
+    <Developer>Konami</Developer>
+    <Publisher>Konami</Publisher>
+  </Game>
+  <Game>
+    <Name>Chrono Trigger</Name>
+    <ReleaseDate>1999-11-11</ReleaseDate>
+    <Overview>Chrono Trigger is a Japanese-style role-playing game in which the player takes control of a party consisting of up to seven characters, developing the combat skills of its members and managing their equipment. There are no random encounters in the game: all the enemies are either visibly walking on the field maps and can be avoided by the player, or are waiting to ambush the party. No enemy encounters occur when the player navigates characters over the world map.</Overview>
+    <MaxPlayers>1</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>https://www.youtube.com/watch?v=ib4KbKEOTZ0</VideoURL>
+    <DatabaseID>10848</DatabaseID>
+    <CommunityRating>4.6015625</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Chrono_Trigger</WikipediaURL>
+    <Platform>Sony Playstation</Platform>
+    <ESRB>T - Teen</ESRB>
+    <CommunityRatingCount>64</CommunityRatingCount>
+    <Genres>Role-Playing</Genres>
+    <Developer>Square</Developer>
+    <Publisher>Square</Publisher>
+  </Game>
+  <Game>
+    <Name>Final Fantasy VI</Name>
+    <ReleaseDate>1999-09-30</ReleaseDate>
+    <Overview>Learn from the past.
+
+Many centuries have passed since the war of the Magi - civilizations have been rebuilt with iron, machines and technology. But the forces of magic have begun to return, and when an ancient Esper is discovered, the risk of war resurfaces.
+
+Featuring all-new CG cinematic sequences exclusive to this edition. Discover the origins of special features later developed in the subsequent FINAL FANTASY series, including summoning magic, mini quests, the Active Time Battle system and much more. Numerous weapons, items, magic spells and special skills allow for incredible gameplay depth and strategy.</Overview>
+    <MaxPlayers>1</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>http://www.youtube.com/watch?v=j_lr12kgGeU</VideoURL>
+    <DatabaseID>5630</DatabaseID>
+    <CommunityRating>4.1865671641791</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Final_Fantasy_VI</WikipediaURL>
+    <Platform>Sony Playstation</Platform>
+    <ESRB>T - Teen</ESRB>
+    <CommunityRatingCount>67</CommunityRatingCount>
+    <Genres>Role-Playing</Genres>
+    <Developer>Squaresoft</Developer>
+    <Publisher>Squaresoft</Publisher>
+  </Game>
+  <Game>
+    <Name>Final Fantasy VII</Name>
+    <ReleaseDate>1997-01-31</ReleaseDate>
+    <Overview>Mako—the discovery of this natural resource drawn directly from the planet’s life force marked the dawn of a new era, and now the energy sustains the lives of people across the world. However, the Shinra Company has monopolized Mako production, and in doing so established a powerful hegemony--its influence reaching the far corners of the globe.
+
+Cloud, a former member of Shinra's military organization, SOLDIER, joins the anti-Shinra resistance group AVALANCHE, despite caring little for their motives. During one of the group’s attempts to stop the company, they learn of the return of Sephiroth, Cloud’s nemesis, and that with his reemergence, the planet is in greater danger than anyone had expected. With the fate of the world riding on their success, Cloud and his allies set out to quell this deadly threat.
+
+Experience the game that popularized the JRPG in the West and propelled Final Fantasy to become the quintessential RPG franchise across the globe and in the video game history.</Overview>
+    <MaxPlayers>1</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>https://www.youtube.com/watch?v=TEN-p5e2WkM</VideoURL>
+    <DatabaseID>525</DatabaseID>
+    <CommunityRating>4.62357954545455</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Final_Fantasy_VII</WikipediaURL>
+    <Platform>Sony Playstation</Platform>
+    <ESRB>T - Teen</ESRB>
+    <CommunityRatingCount>704</CommunityRatingCount>
+    <Genres>Role-Playing</Genres>
+    <Developer>Square</Developer>
+    <Publisher>Sony Computer Entertainment Europe</Publisher>
+  </Game>
+  <Game>
+    <Name>Metal Gear Solid</Name>
+    <ReleaseDate>1998-09-03</ReleaseDate>
+    <Overview>Metal Gear Solid follows Solid Snake, a soldier who infiltrates a nuclear weapons facility to neutralize the terrorist threat from FOXHOUND, a renegade special forces unit. Snake must liberate two hostages, the head of DARPA and the president of a major arms manufacturer, confront the terrorists, and stop them from launching a nuclear strike.
+
+Note: For those who don't have the box art of the back, this game uses a security feature of the time of telling you to use the station number on the back of the box. That radio frequency is "140.15"</Overview>
+    <MaxPlayers>1</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>https://youtu.be/qqb7mBBfy_4</VideoURL>
+    <DatabaseID>196</DatabaseID>
+    <CommunityRating>4.67837078651685</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Metal_Gear_Solid_(1998_video_game)</WikipediaURL>
+    <Platform>Sony Playstation</Platform>
+    <ESRB>M - Mature</ESRB>
+    <CommunityRatingCount>712</CommunityRatingCount>
+    <Genres>Shooter; Stealth</Genres>
+    <Developer>Konami Computer Entertainment Japan</Developer>
+    <Publisher>Konami</Publisher>
+  </Game>
+  <Game>
+    <Name>Chrono Trigger</Name>
+    <ReleaseDate>1995-03-11</ReleaseDate>
+    <Overview>The millennium. A portal is opened. The chain of time is broken. A young man is transported into the past, altering the course of history and the outcome of the future. He has to find his way home, but first he must travel to the outer edges of time to repair the world's chronology. On the way he encounters strange friends and foes, utilizes incredible devices and vehicles, and penetrates and neutralizes the fortresses of the past, present, and future. A paradox has been created. If he does not restore the order of time, nothing will ever be the same. He is the one who will become a hero. He is Crono.</Overview>
+    <MaxPlayers>1</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>https://youtube.com/watch?v=J7hzHlIsjwY</VideoURL>
+    <DatabaseID>1255</DatabaseID>
+    <CommunityRating>4.74975369458128</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Chrono_Trigger</WikipediaURL>
+    <Platform>Super Nintendo Entertainment System</Platform>
+    <ESRB>E - Everyone</ESRB>
+    <CommunityRatingCount>1015</CommunityRatingCount>
+    <Genres>Role-Playing</Genres>
+    <Developer>Square</Developer>
+    <Publisher>Squaresoft</Publisher>
+  </Game>
+  <Game>
+    <Name>Final Fantasy VI</Name>
+    <ReleaseDate>1994-04-02</ReleaseDate>
+    <Overview>A thousand years ago, the War of the Magi occurred. People remember it as one of the most horrible tragedies in history. Since the War of the Magi, magic has been all but forgotten, technology began to grow, and people returned to seemingly normal lives. The only true worry people have is the Empire, whose leaders are looking to revive the great force once known as "magic".
+
+The Empire had heard word of the remains of a mystical being, known as "Esper", being found in the mining town of Narshe. Quickly, three soldiers were dispatched to find this Esper and bring it to the Emperor. One of the soldiers, a young girl, triggers a power in the Esper that initiates a dangerous series of events. The only ones who can help her are a rag-tag band of rebels and heroes, who offer their very hearts and souls to save the world from the mad plans of the Empire.
+
+The sixth entry in the Final Fantasy series was dubbed Final Fantasy III in the West because three out of the five previous installments of the series had not been released there at the time. Similar to its predecessors, this is a role-playing game where the player controls a party of characters, traveling between various locales in the world, fighting randomly appearing regular enemies and bosses, and making the characters stronger by improving their skills and getting better equipment for them. The game maintains the ATB (active time battle) system of the two previous installments in the series, spicing traditional turn-based combat engine with a real-time element.</Overview>
+    <MaxPlayers>2</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>true</Cooperative>
+    <VideoURL>https://www.youtube.com/watch?v=RDMWp1oLoA0</VideoURL>
+    <DatabaseID>108333</DatabaseID>
+    <CommunityRating>4.67765567765568</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Final_Fantasy_VI</WikipediaURL>
+    <Platform>Super Nintendo Entertainment System</Platform>
+    <ESRB>E - Everyone</ESRB>
+    <CommunityRatingCount>546</CommunityRatingCount>
+    <Genres>Role-Playing</Genres>
+    <Developer>Square</Developer>
+    <Publisher>Squaresoft</Publisher>
+  </Game>
+  <Game>
+    <Name>Sonic the Hedgehog 2</Name>
+    <ReleaseYear>1998</ReleaseYear>
+    <Overview>Sonic the Hedgehog 2 is a pirate SNES hack of Sparkster made by Twin Eagles Group, a Peruvian scene group that were also responsible for the SNES hack Sonic the Hedgehog (also known as Sonic the Hedgehog 4). It was released in May 1998.
+
+An original cartridge of the hack has not yet been found nor dumped, though "Mr. Byte", founder of Twin Eagles Group, confirmed that it did in fact release. The original master ROM is lost as well, as when "Mr. Byte" was contacted in the early 2010s, they were not able to find it in their own archives. Despite this, they were able to provide Sonic's graphics for the hack in an ILBM (Amiga format) file. Using the provided sprites, a fan-made recreation of the hack was made and released online, which provides a basic idea of what the original hack was like.</Overview>
+    <MaxPlayers>1</MaxPlayers>
+    <ReleaseType>Unlicensed</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>https://www.youtube.com/watch?v=C6tYPJE5oF8&amp;t=2161s</VideoURL>
+    <DatabaseID>457477</DatabaseID>
+    <CommunityRating>4.5</CommunityRating>
+    <Platform>Super Nintendo Entertainment System</Platform>
+    <ESRB>Not Rated</ESRB>
+    <CommunityRatingCount>1</CommunityRatingCount>
+    <Genres>Platform</Genres>
+    <Developer>Twin Eagles Group</Developer>
+    <Publisher>Twin Eagles Group</Publisher>
+  </Game>
+  <Game>
+    <Name>Street Fighter II</Name>
+    <ReleaseDate>1992-06-10</ReleaseDate>
+    <Overview>GET READY TO RUMBLE!
+
+From across the globe comes eight of the wildest fighters the world has ever known. Choose your champion, gather your courage and prepare to battle your opponents in a bare knuckle brawl. Face Ken and his devastating "Dragon Punch"! Watch the temperature rise as Dhalsim incinerates you with his mystical Yoga Flame! Hear your spine crack as Zangief smashes you to the pavement with his spinning pile driver! Cover your ears as Guile breaks the sound barrier with the awesome power of the Sonic Boom!
+
+Annihilate your competition and claim the right to test your skills against the bone-crushing power of the Grand Masters! Can you survive? Can Anyone?</Overview>
+    <MaxPlayers>2</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>https://www.youtube.com/watch?v=GPP_RcMdqW4</VideoURL>
+    <DatabaseID>3122</DatabaseID>
+    <CommunityRating>4.27966101694915</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Street_Fighter_II%3A_The_World_Warrior</WikipediaURL>
+    <Platform>Super Nintendo Entertainment System</Platform>
+    <ESRB>Not Rated</ESRB>
+    <CommunityRatingCount>295</CommunityRatingCount>
+    <Genres>Fighting</Genres>
+    <Developer>Capcom</Developer>
+    <Publisher>Capcom</Publisher>
+  </Game>
+  <Game>
+    <Name>Street Fighter II Turbo</Name>
+    <ReleaseDate>1993-07-10</ReleaseDate>
+    <Overview>They're back and they're badder than ever! Faster, stronger and with all new moves, twelve of the greatest fighters from across the globe are ready to do battle! Choose your champion and get ready for the big brawl as they try to earn the right to battle M. Bison for the title. And just when you think you've mastered it all, crank it up a notch and go TURBO!</Overview>
+    <MaxPlayers>2</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>https://www.youtube.com/watch?v=3s3uiUPkSqE</VideoURL>
+    <DatabaseID>2538</DatabaseID>
+    <CommunityRating>4.55779569892473</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Street_Fighter_II_Turbo</WikipediaURL>
+    <Platform>Super Nintendo Entertainment System</Platform>
+    <ESRB>Not Rated</ESRB>
+    <CommunityRatingCount>372</CommunityRatingCount>
+    <Genres>Fighting</Genres>
+    <Developer>Capcom</Developer>
+    <Publisher>Capcom</Publisher>
+  </Game>
+  <Game>
+    <Name>Super Mario World</Name>
+    <ReleaseDate>1990-11-21</ReleaseDate>
+    <Overview>Mario is having a vacation in Dinosaur Land when he learns that Princess Peach Toadstool has been kidnapped by the evil King Koopa Bowser. When Mario starts searching for her he finds a giant egg with a dinosaur named Yoshi hatching out of it. Yoshi tells Mario that his fellow dinosaurs have been imprisoned in eggs by Bowser's underlings. The intrepid plumber has to travel to their castles, rescue the dinosaurs, and eventually face King Koopa himself, forcing him to release the princess.
+
+Super Mario World is a jump-and-run platformer and a follow-up to Super Mario Bros. 3. The gameplay is similar to previous installments and includes fast-paced platforming in (mostly) side-view stages populated by various enemies and traps, which must be completed within time limits. Mario has access to his traditional power-ups — the Super Mushroom that makes him bigger, the Fire Flower that allows him to throw little fireballs at enemies, and others. A new power-up is the Cape Feather: when wearing the cape, Mario can spin to hurt enemies, and fly as long as the player is able to sustain his balance in the air. Another new feature is the possibility to ride the dinosaur Yoshi, who can eat enemies and gain special attacks from some of them. In order to unlock certain areas, it is sometimes necessary to physically pick up and carry items (e.g. keys) and use them in appropriate places.
+
+The game's world is divided into several large areas, each containing a number of stages. Outdoor scenarios prevail, but there are also many underground and underwater levels. Each large area has at least one ghost house, typically containing more elaborate traps and ghostly non-destructible enemies. In order to venture to the next area, the player usually has to visit a castle (a more difficult stage with harder enemies and dangerous traps) and defeat the boss enemy guarding it.
+
+Many stages have secret exits, which lead to optional areas, such as fortresses with recurrent boss enemies, interconnected stages of the Star World, and Switch Palaces, which allow the player to materialize specifically colored bricks in all the stages, gaining access to power-ups and other secrets. Secret areas may also open access to other dinosaur types, with different abilities such as breathing fire or flying.</Overview>
+    <MaxPlayers>2</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>https://www.youtube.com/watch?v=OWQP9YUrUF4</VideoURL>
+    <DatabaseID>136</DatabaseID>
+    <CommunityRating>4.73358449946179</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Super_Mario_World</WikipediaURL>
+    <Platform>Super Nintendo Entertainment System</Platform>
+    <ESRB>Not Rated</ESRB>
+    <CommunityRatingCount>1858</CommunityRatingCount>
+    <Genres>Platform</Genres>
+    <Developer>Nintendo EAD</Developer>
+    <Publisher>Nintendo</Publisher>
+  </Game>
+  <Game>
+    <Name>Super Metroid</Name>
+    <ReleaseDate>1994-03-19</ReleaseDate>
+    <Overview>Take on a legion of Space Pirates and a new Metroid force as you forge into the covert underworld of Planet Zebes!  It’s up to you and Samus to recapture the long-surviving Metroid hatchling before evil hands unleash its energy.
+
+An army of ominous creatures are poised for battle at every turn of Zebes’ twisted, threatening passageways… including the menacing Ridley and the great lizard Kraid.  Knock down enemies with a killer somersault and swing on an electric beam through narrow passageways!  They’re no match for you and Samus… but wait!  It seems the Mother Brain has returned…</Overview>
+    <MaxPlayers>1</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>https://www.youtube.com/watch?v=0l34aHGb2_8</VideoURL>
+    <DatabaseID>299</DatabaseID>
+    <CommunityRating>4.69331395348837</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Super_Metroid</WikipediaURL>
+    <Platform>Super Nintendo Entertainment System</Platform>
+    <ESRB>Not Rated</ESRB>
+    <CommunityRatingCount>1032</CommunityRatingCount>
+    <Genres>Adventure; Platform; Shooter</Genres>
+    <Developer>Intelligent Systems</Developer>
+    <Publisher>Nintendo</Publisher>
+  </Game>
+  <Game>
+    <Name>The Legend of Zelda: A Link to the Past</Name>
+    <ReleaseDate>1991-11-21</ReleaseDate>
+    <Overview>Recently, famine and drought have plagued Hyrule. When all seemed lost, a mysterious wizard, Agahnim, appeared and stopped these strange happenings from occurring. But there is talk that Agahnim now rules the country with his magic, behind the scenes. And then, one night, the Princess of Hyrule, Zelda, calls out for help - and the one who hears her pleas is a young lad named Link.
+
+The Legend of Zelda: A Link to the Past is a top-down action game with puzzle-solving elements (similar to the original Legend of Zelda). Players assume the role of Link, and their goal is to rescue Princess Zelda and save the land of Hyrule. All combat in the game is action-oriented - the player can make the protagonist swing the sword at enemies with a press of a button, or spin the sword around for a more powerful attack by holding down the button until it is charged.
+
+Progression through the game is done by conquering a series of dungeons - each dungeon has its own special item associated with it, such as the hookshot (which latches onto a far-off object and pulls Link across) or the hammer (which can be used to flatten objects in your way). Most of these dungeons are rendered impassable until the dungeon's particular item is acquired; from there, the rest of the dungeon becomes accessible due to Link's latest new ability. The bosses of each dungeon are also themed to that level's particular item.
+
+Link starts out with only three units of health; however, these can be increased by defeating dungeon bosses, which give one additional heart container, or by finding four 'pieces of heart'; which can be given for anything from passing a small trial to winning a mini-game. Some of Link's items also use magic - this can be refilled with collectible green magic pots. After defeating the initial three dungeons, Link gains access to the Dark World - many puzzles and difficulties come from alternating between the Light World (Hyrule) and the Dark World to make his way past previously impassable obstacles.</Overview>
+    <MaxPlayers>1</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>https://www.youtube.com/watch?v=tkwQR3yznFM</VideoURL>
+    <DatabaseID>1318</DatabaseID>
+    <CommunityRating>4.73640319071791</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/The_Legend_of_Zelda:_A_Link_to_the_Past</WikipediaURL>
+    <Platform>Super Nintendo Entertainment System</Platform>
+    <ESRB>E - Everyone</ESRB>
+    <CommunityRatingCount>1379</CommunityRatingCount>
+    <Genres>Action; Adventure</Genres>
+    <Developer>Nintendo EAD</Developer>
+    <Publisher>Nintendo</Publisher>
+  </Game>
+  <Game>
+    <Name>Final Fantasy VII</Name>
+    <ReleaseDate>1998-06-25</ReleaseDate>
+    <Overview>The seventh main installment of the Final Fantasy series takes place in a post-industrial fantasy and science-fiction world where advanced technology, magic, monsters, bioengineered creatures, and ancient powers coexist.
+
+The story begins in the city of Midgar, which is controlled by the Shinra Electric Power Company, a powerful corporation responsible for much of the world’s technology and political influence. Shinra’s power is built on Mako energy, a resource extracted from the planet itself. While Mako fuels modern civilization, it is also the lifeblood of the planet, and Shinra’s continued exploitation of it is gradually damaging the natural world.
+
+Like its predecessors, Final Fantasy VII is a Japanese-style role-playing game featuring turn-based battles with a real-time element through the Active Time Battle system. Enemies are usually encountered randomly while exploring hostile areas, and combat is fought by selecting commands such as attacks, magic, items, and special abilities as each character’s time gauge fills. The player recruits multiple characters over the course of the story, usually forming an active party of three. Each character has distinct weapons, statistics, and Limit Breaks, while most magical and command abilities can be reassigned through the Materia system.</Overview>
+    <MaxPlayers>1</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>http://cdn.akamai.steamstatic.com/steam/apps/2028802/movie_max.webm?t=1447358072</VideoURL>
+    <DatabaseID>5496</DatabaseID>
+    <CommunityRating>4.44329896907217</CommunityRating>
+    <SteamAppId>3837340</SteamAppId>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Final_Fantasy_VII</WikipediaURL>
+    <Platform>Windows</Platform>
+    <ESRB>T - Teen</ESRB>
+    <CommunityRatingCount>97</CommunityRatingCount>
+    <Genres>Role-Playing</Genres>
+    <Developer>Square Enix</Developer>
+    <Publisher>Square Enix</Publisher>
+  </Game>
+  <Game>
+    <Name>Half-Life 2</Name>
+    <ReleaseDate>2004-11-16</ReleaseDate>
+    <Overview>Following the period of instability caused by the events described in Half-Life, an interdimensional organization known as the Combine invades the Earth, defeating the human forces in the Seven Hour War. A Combine Citadel is erected in City 17, a town in Eastern Europe reminiscent of World War II ghettos. Dr. Wallace Breen, a human scientist, rules the city on behalf of his new masters. An energy field prevents humans from procreating, and no new children are born. Earth is turning into a grim, oppressive police state.
+
+Meanwhile, Gordon Freeman, the man who was at the center of the events that took place shortly before the rise of the Combine, awakens from his stasis and is inserted into a train to City 17 by the mysterious G-man. Gordon is soon brought into a resistance group and makes a seemingly futile attempt to bring down the Combine and liberate the Earth.
+
+Half-Life 2 is a linear first-person shooter with light puzzle-solving elements and many setpieces, similar to its predecessor in concept. The player guides Gordon Freeman through City 17 and the wilderness that surrounds it. On his way, he'll encounter a few friendly characters, but also fight dangerous foes. The game features a realistic physics system: Gordon can pick up objects and toss them freely, and many of the puzzles are physics-based - for example, at one point the player has to weigh down a seesaw with bricks at one end to turn it into a ramp.</Overview>
+    <MaxPlayers>1</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>http://cdn.akamai.steamstatic.com/steam/apps/904/movie_max.webm?t=1699003201</VideoURL>
+    <DatabaseID>146</DatabaseID>
+    <CommunityRating>4.58636363636364</CommunityRating>
+    <SteamAppId>220</SteamAppId>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Half-Life_2</WikipediaURL>
+    <Platform>Windows</Platform>
+    <ESRB>M - Mature</ESRB>
+    <CommunityRatingCount>330</CommunityRatingCount>
+    <Genres>Shooter</Genres>
+    <Developer>Valve</Developer>
+    <Publisher>Sierra Entertainment</Publisher>
+  </Game>
+  <Game>
+    <Name>Hollow Knight</Name>
+    <ReleaseDate>2017-02-23</ReleaseDate>
+    <Overview>Forge your own path in Hollow Knight! An epic action adventure through a vast ruined kingdom of insects and heroes. Explore twisting caverns, battle tainted creatures and befriend bizarre bugs, all in a classic, hand-drawn 2D style.
+
+Hollow Knight Expands with Free Content
+• Godmaster - Take your place amongst the Gods. New Characters and Quest. New Boss Fights. Available Now!
+• Lifeblood - A Kingdom Upgraded! New Boss. Upgraded Bosses. Tweaks and Refinements across the whole game.
+• The Grimm Troupe - Light the Nightmare Lantern. Summon the Troupe. New Major Quest. New Boss Fights. New Charms. New Enemies. New Friends.
+• Hidden Dreams - Mighty new foes emerge! New Boss fights. New Upgrades. New Music.
+
+Brave the Depths of a Forgotten Kingdom
+Beneath the fading town of Dirtmouth sleeps an ancient, ruined kingdom. Many are drawn below the surface, searching for riches, or glory, or answers to old secrets.
+
+Hollow Knight is a classically styled 2D action adventure across a vast interconnected world. Explore twisting caverns, ancient cities and deadly wastes; battle tainted creatures and befriend bizarre bugs; and solve ancient mysteries at the kingdom's heart.
+
+Game Features
+• Classic side-scrolling action, with all the modern trimmings.
+• Tightly tuned 2D controls. Dodge, dash and slash your way through even the most deadly adversaries.
+• Explore a vast interconnected world of forgotten highways, overgrown wilds and ruined cities.
+• Forge your own path! The world of Hallownest is expansive and open. Choose which paths you take, which enemies you face and find your own way forward.
+• Evolve with powerful new skills and abilities! Gain spells, strength and speed. Leap to new heights on ethereal wings.
+• Dash forward in a blazing flash. Blast foes with fiery Soul!
+• Equip Charms! Ancient relics that offer bizarre new powers and abilities. Choose your favourites and make your journey unique!
+• An enormous cast of cute and creepy characters all brought to life with traditional 2D frame-by-frame animation.
+• Over 130 enemies! 30 epic bosses! Face ferocious beasts and vanquish ancient knights on your quest through the kingdom. Track down every last twisted foe and add them to your Hunter's Journal!
+• Leap into minds with the Dream Nail. Uncover a whole other side to the characters you meet and the enemies you face.
+• Beautiful painted landscapes, with extravagant parallax, give a unique sense of depth to a side-on world.
+• Chart your journey with extensive mapping tools. Buy compasses, quills, maps and pins to enhance your understanding of Hollow Knight’s many twisting landscapes.
+• A haunting, intimate score accompanies the player on their journey, composed by Christopher Larkin. The score echoes the majesty and sadness of a civilisation brought to ruin.
+• Complete Hollow Knight to unlock Steel Soul Mode, the ultimate challenge!
+
+An Evocative Hand-Crafted World
+The world of Hollow Knight is brought to life in vivid, moody detail, its caverns alive with bizarre and terrifying creatures, each animated by hand in a traditional 2D style.
+
+Every new area you’ll discover is beautifully unique and strange, teeming with new creatures and characters. Take in the sights and uncover new wonders hidden off of the beaten path.
+
+If you like classic gameplay, cute but creepy characters, epic adventure and beautiful, gothic worlds, then Hollow Knight awaits!</Overview>
+    <MaxPlayers>1</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>http://cdn.akamai.steamstatic.com/steam/apps/256679401/movie_max.webm?t=1497589417</VideoURL>
+    <DatabaseID>123770</DatabaseID>
+    <CommunityRating>4.62867647058824</CommunityRating>
+    <SteamAppId>367520</SteamAppId>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Hollow_Knight</WikipediaURL>
+    <Platform>Windows</Platform>
+    <ESRB>E10+ - Everyone 10+</ESRB>
+    <CommunityRatingCount>408</CommunityRatingCount>
+    <Genres>Action; Adventure; Platform</Genres>
+    <Developer>Team Cherry</Developer>
+    <Publisher>Team Cherry</Publisher>
+  </Game>
+  <Game>
+    <Name>Portal 2</Name>
+    <ReleaseDate>2011-04-19</ReleaseDate>
+    <Overview>Portal 2 is the sequel to Portal and offers the same first-person puzzle-platform gameplay. Players continue the story taking the role of the young woman Chell, who defeated the artificial intelligence computer system GLaDOS in the first game. After the events of the first game, she was placed in stasis until eventually woken up again. The sequel still takes place at Aperture Science Labs, but it is now overrun by decay and nature. Much more than in the first game, Chell moves past the clean test chambers and explores the gloomy industrial setting of the laboratory.
+
+Just like in the first game, the gameplay is based around portals. By shooting a starting portal and ending portal at suitable surfaces, certain uncrossable gaps can be bridged. Just like in the first game, there are also many test chambers where puzzles need to be solved, using cubes, turrets, platforms and special portal tricks to gain a lot of speed. GLaDOS makes a return to tease Chell and she plots revenge for her destruction, but there are a large number of twists that make her role very different from in the first game. Chell receives help from Wheatley, a small robot who opens entrances for her and provides witty insights about the environment.
+
+New elements to the sequel's gameplay include light bridges, laser redirection and paint-like gels, incorporated through the work of the student project Tag: The Power of Paint. Gels provide extra speed, a jump or neutralize the effects. They can also be used with objects such as cubes or turrets.
+
+The game’s two-player cooperative mode is entirely new and features its own entirely separate campaign with a unique story, test chambers, and two new player characters (Atlas and P-body). The PlayStation 3 version incorporates some elements of the Steamworks toolset and allows for cross-platform games against PC players.</Overview>
+    <MaxPlayers>2</MaxPlayers>
+    <ReleaseType>Released</ReleaseType>
+    <Cooperative>true</Cooperative>
+    <VideoURL>http://cdn.akamai.steamstatic.com/steam/apps/5787/movie_max.webm?t=1682715616</VideoURL>
+    <DatabaseID>914</DatabaseID>
+    <CommunityRating>4.63768115942029</CommunityRating>
+    <SteamAppId>620</SteamAppId>
+    <WikipediaURL>https://en.wikipedia.org/wiki/Portal_2</WikipediaURL>
+    <Platform>Windows</Platform>
+    <ESRB>E10+ - Everyone 10+</ESRB>
+    <CommunityRatingCount>345</CommunityRatingCount>
+    <Genres>Platform; Puzzle</Genres>
+    <Developer>Valve</Developer>
+    <Publisher>Valve</Publisher>
+  </Game>
+  <Game>
+    <Name>Super Metroid</Name>
+    <ReleaseYear>2023</ReleaseYear>
+    <Overview>Take on a legion of Space Pirates and a new Metroid force as you forge into the covert underworld of Planet Zebes!  It’s up to you and Samus to recapture the long-surviving Metroid hatchling before evil hands unleash its energy.
+
+An army of ominous creatures are poised for battle at every turn of Zebes’ twisted, threatening passageways… including the menacing Ridley and the great lizard Kraid.  Knock down enemies with a killer somersault and swing on an electric beam through narrow passageways!  They’re no match for you and Samus… but wait!  It seems the Mother Brain has returned…
+
+This port is a de-compilation of the SNES ROM made to run on PC.</Overview>
+    <MaxPlayers>1</MaxPlayers>
+    <ReleaseType>Homebrew</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <DatabaseID>418887</DatabaseID>
+    <CommunityRating>3.75</CommunityRating>
+    <Platform>Windows</Platform>
+    <ESRB>Not Rated</ESRB>
+    <CommunityRatingCount>2</CommunityRatingCount>
+    <Genres>Adventure; Platform; Shooter</Genres>
+    <Developer>SNESREV</Developer>
+    <Publisher>SNESREV</Publisher>
+  </Game>
+  <Game>
+    <Name>The Legend of Zelda: A Link to the Past</Name>
+    <ReleaseDate>2022-10-29</ReleaseDate>
+    <Overview>The story is set many years before the events of the first two Zelda games. The player assumes the role of Link as he journeys to save Hyrule, defeat the demon king Ganon, and rescue the descendants of the Seven Sages. It returns to a top-down perspective similar to the original The Legend of Zelda, dropping the side-scrolling gameplay of Zelda II: The Adventure of Link. It introduced series staples such as parallel worlds and items including the Master Sword.
+
+This port is a de-compilation of the SNES ROM made to run on PC.
+
+A bunch of features have been added that are not supported by the original game. Some of them are:
+
+Support for pixel shaders.
+
+Support for enhanced aspect ratios of 16:9 or 16:10.
+
+Higher quality world map.
+
+Support for MSU audio tracks.
+
+Secondary item slot on button X (Hold X in inventory to select).
+
+Switching current item with L/R keys.</Overview>
+    <MaxPlayers>1</MaxPlayers>
+    <ReleaseType>Homebrew</ReleaseType>
+    <Cooperative>false</Cooperative>
+    <VideoURL>https://www.youtube.com/watch?v=zynoNRslRyo</VideoURL>
+    <DatabaseID>219063</DatabaseID>
+    <CommunityRating>4.29411764705882</CommunityRating>
+    <WikipediaURL>https://en.wikipedia.org/wiki/The_Legend_of_Zelda:_A_Link_to_the_Past</WikipediaURL>
+    <Platform>Windows</Platform>
+    <ESRB>Not Rated</ESRB>
+    <CommunityRatingCount>17</CommunityRatingCount>
+    <Genres>Adventure; Role-Playing; Strategy</Genres>
+    <Developer>SNESREV</Developer>
+    <Publisher>SNESREV</Publisher>
+  </Game>
+  <Platform>
+    <Name>Arcade</Name>
+    <Emulated>true</Emulated>
+    <ReleaseDate>1971-11-01T00:00:00+00:00</ReleaseDate>
+    <Developer>Sega‚ Konami, Namco, Nintendo, Capcom, etc.</Developer>
+    <Manufacturer>Sega‚ Konami, Namco, Nintendo, Capcom, etc.</Manufacturer>
+    <Cpu>Various</Cpu>
+    <Memory>Various</Memory>
+    <Graphics>8-256 bit, 2D, 3D, and vector</Graphics>
+    <Sound>Stereo, Mono, and QSound</Sound>
+    <Display>CRT, LCD, OLED and Plasma</Display>
+    <Media>Arcade</Media>
+    <MaxControllers>6</MaxControllers>
+    <Notes>Beginning with Computer Space in 1971, the earliest form of video games were Arcade games, which are games that required you to insert a quarter to play. Various forms of Arcade machines existed, including traditional joystick and button configurations to dedicated and special cabinets with unique screens, controls, and cabinets. </Notes>
+    <Category>Arcade</Category>
+    <UseMameFiles>true</UseMameFiles>
+  </Platform>
+  <Platform>
+    <Name>Nintendo Game Boy Advance</Name>
+    <Emulated>true</Emulated>
+    <ReleaseDate>2001-06-11T00:00:00+00:00</ReleaseDate>
+    <Developer>Nintendo</Developer>
+    <Manufacturer>Nintendo</Manufacturer>
+    <Cpu>ARM7TDMI @16.78 MHz and Sharp LR35902 @ 4.19 MHz</Cpu>
+    <Memory>32 KB + 96 KB VRAM (CPU), 256 KB DRAM (ex CPU)</Memory>
+    <Graphics>Custom 2D core</Graphics>
+    <Sound>Dual 8-bit DAC plus all Gameboy legacy channels</Sound>
+    <Display>240x160</Display>
+    <Media>ROM cartridge</Media>
+    <MaxControllers>1</MaxControllers>
+    <Notes>The Game Boy Advance (abbreviated as GBA) is a 32-bit handheld video game console developed, manufactured and marketed by Nintendo as the successor to the Game Boy Color. It was released in Japan on March 21, 2001, in North America on June 11, 2001, in Australia and Europe on June 22, 2001, and in mainland China on June 8, 2004 (iQue Player). Nintendo's competitors in the handheld market at the time were the Neo Geo Pocket Color, WonderSwan, GP32, Tapwave Zodiac, and the N-Gage. Despite the competitors' best efforts, Nintendo maintained a majority market share with the Game Boy Advance.  As of June 30, 2010, the Game Boy Advance series has sold 81.51 million units worldwide. Its successor, the Nintendo DS, was released in November 2004 and is also compatible with Game Boy Advance software.</Notes>
+    <Category>Handhelds</Category>
+    <UseMameFiles>false</UseMameFiles>
+  </Platform>
+  <Platform>
+    <Name>Sega Genesis</Name>
+    <Emulated>true</Emulated>
+    <ReleaseDate>1989-08-14T00:00:00+00:00</ReleaseDate>
+    <Developer>Sega Enterprises</Developer>
+    <Manufacturer>Sega Enterprises</Manufacturer>
+    <Cpu>Motorola 68000, Zilog Z80 co-processor</Cpu>
+    <Memory>64 KB main RAM and 64 KB video RAM</Memory>
+    <Graphics>Yahama YM7101 VDP</Graphics>
+    <Sound>Yamaha YM2612, Texas Instruments SN76489A</Sound>
+    <Display>256x224, 256x448, 320x224, 320x448</Display>
+    <Media>ROM cartridge</Media>
+    <MaxControllers>8</MaxControllers>
+    <Notes>The Sega Genesis, known as the Mega Drive in most regions outside North America, is a 16-bit home video game console which was developed and sold by Sega Enterprises, Ltd. The Genesis was Sega's third console and the successor to the Master System. Sega first released the console as the Mega Drive in Japan in 1988, followed by a North American debut under the Genesis moniker in 1989. In 1990, the console was distributed as the Mega Drive by Virgin Mastertronic in Europe, by Ozisoft in Australasia, and by Tec Toy in Brazil. In South Korea, the systems were distributed by Samsung and were known as the Super Gam*Boy, and later the Super Aladdin Boy.
+
+The main microprocessor of the Genesis is a 16/32-bit Motorola 68000 CPU clocked at 7.6 MHz. The console also includes a Zilog Z80 sub-processor, which was mainly used to control the sound hardware and also provides backwards compatibility with the Master System.</Notes>
+    <Category>Consoles</Category>
+    <UseMameFiles>false</UseMameFiles>
+  </Platform>
+  <Platform>
+    <Name>Sony Playstation</Name>
+    <Emulated>true</Emulated>
+    <ReleaseDate>1994-12-03T00:00:00+00:00</ReleaseDate>
+    <Developer>Sony Computer Entertainment</Developer>
+    <Manufacturer>Sony Computer Entertainment</Manufacturer>
+    <Cpu>LSI MIPS I R3000A @ 33.86 MHz</Cpu>
+    <Memory>2 MB RAM, 1 MB video RAM</Memory>
+    <Graphics>32-bit Sony GPU @ 53 MHz</Graphics>
+    <Sound>16-bit Sony SPU, 24 channel ADPCM</Sound>
+    <Display>256x224 to 640x480</Display>
+    <Media>CD-ROM</Media>
+    <MaxControllers>2 (up to 8 with 2 Multitaps)</MaxControllers>
+    <Notes>The Sony PlayStation, or PS for short, is a fifth generation (1993–2005) home video game console developed and distributed by Sony Interactive Entertainment. It was released on December 3, 1994 in Japan at a retail price of ¥37,000. The console was later released in North America (1995), Europe (1995), Australia (1995), and Korea (1996). The PlayStation was known for standardizing disc based games over cartridges, as well as controllers with two analog sticks and vibration feedback.  The console was discontinued on March 23, 2006.</Notes>
+    <Category>Consoles</Category>
+    <UseMameFiles>false</UseMameFiles>
+  </Platform>
+  <Platform>
+    <Name>Super Nintendo Entertainment System</Name>
+    <Emulated>true</Emulated>
+    <ReleaseDate>1990-11-21T00:00:00+00:00</ReleaseDate>
+    <Developer>Nintendo</Developer>
+    <Manufacturer>Nintendo</Manufacturer>
+    <Cpu>Ricoh 5A22</Cpu>
+    <Memory>Main 128 KB DRAM, Video 64 KB SRAM</Memory>
+    <Graphics>16 bit PPU</Graphics>
+    <Sound>Sony SPC700 and Sony DSP</Sound>
+    <Display>512x478 max</Display>
+    <Media>ROM cartridge</Media>
+    <MaxControllers>2</MaxControllers>
+    <Notes>The Super Nintendo Entertainment System (also known as the Super NES, SNES or Super Nintendo, as well as the Super Famicom in Japan) is a 16-bit home video game console developed by Nintendo that was released in 1990 in Japan, 1991 in North America, 1992 in Europe and Australasia (Oceania), and 1993 in South America.In Japan, the system is called the Super Famicom, officially adopting the abbreviated name of its predecessor, the Family Computer, or SFC for short.In South Korea, it is known as the Super Comboy and was distributed by Hyundai Electronics.Although each version is essentially the same, several forms of regional lockout prevent the different versions from being compatible with one another.</Notes>
+    <Category>Consoles</Category>
+    <UseMameFiles>false</UseMameFiles>
+  </Platform>
+  <Platform>
+    <Name>Windows</Name>
+    <Emulated>false</Emulated>
+    <ReleaseDate>1985-11-20T00:00:00+00:00</ReleaseDate>
+    <Developer>Microsoft</Developer>
+    <Notes>Microsoft introduced an operating environment named Windows on November 20, 1985 as a graphical operating system shell for MS-DOS in response to the growing interest in graphical user interfaces (GUIs). Microsoft Windows came to dominate the world's personal computer market with over 90% market share, overtaking Mac OS, which had been introduced in 1984.</Notes>
+    <Category>Computers</Category>
+    <UseMameFiles>false</UseMameFiles>
+  </Platform>
+  <GameAlternateName>
+    <AlternateName>Super Mario World: Super Mario Bros. 4</AlternateName>
+    <DatabaseID>136</DatabaseID>
+    <Region>Japan</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>超级马里奥世界</AlternateName>
+    <DatabaseID>136</DatabaseID>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Hλlf-Life²</AlternateName>
+    <DatabaseID>146</DatabaseID>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>超级银河战士</AlternateName>
+    <DatabaseID>299</DatabaseID>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Akumajō Dracula X: Gekka no Yasoukyoku</AlternateName>
+    <DatabaseID>511</DatabaseID>
+    <Region>Japan</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Akumajou Dracula X: Gekka no Yasoukyoku</AlternateName>
+    <DatabaseID>511</DatabaseID>
+    <Region>Japan</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Final Fantasy 7</AlternateName>
+    <DatabaseID>525</DatabaseID>
+    <Region>World</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Final Fantasy VII</AlternateName>
+    <DatabaseID>525</DatabaseID>
+    <Region>Japan</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>ファイナルファンタジーⅦ</AlternateName>
+    <DatabaseID>525</DatabaseID>
+    <Region>Japan</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Bare Knuckle II: Requiem to the Deadly Struggle</AlternateName>
+    <DatabaseID>694</DatabaseID>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Bare Knuckle II: Shitou e no Requiem</AlternateName>
+    <DatabaseID>694</DatabaseID>
+    <Region>Japan</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Bare Knuckle II: Streets of Rage II</AlternateName>
+    <DatabaseID>694</DatabaseID>
+    <Region>Asia</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Streets of Rage II</AlternateName>
+    <DatabaseID>694</DatabaseID>
+    <Region>Europe</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>怒之铁拳 2</AlternateName>
+    <DatabaseID>694</DatabaseID>
+    <Region>China</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Chrono Trigger: Kurono Torigaa</AlternateName>
+    <DatabaseID>1255</DatabaseID>
+    <Region>Japan</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>A Lenda De Zelda: Um Elo Com O Passado</AlternateName>
+    <DatabaseID>1318</DatabaseID>
+    <Region>Brazil</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Zelda no Densetsu: Kamigami no Triforce</AlternateName>
+    <DatabaseID>1318</DatabaseID>
+    <Region>Japan</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Street Fighter Zero 2</AlternateName>
+    <DatabaseID>2532</DatabaseID>
+    <Region>Asia</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Street Fighter II Turbo: Hyper Fighting</AlternateName>
+    <DatabaseID>2538</DatabaseID>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Miteluode Ronghe</AlternateName>
+    <DatabaseID>2638</DatabaseID>
+    <Region>China</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>密特罗德 融合</AlternateName>
+    <DatabaseID>2638</DatabaseID>
+    <Region>China</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Street Fighter 2</AlternateName>
+    <DatabaseID>3122</DatabaseID>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Street Fighter II - The World Warrior</AlternateName>
+    <DatabaseID>3122</DatabaseID>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Street Fighter II:  The World Warrior</AlternateName>
+    <DatabaseID>3122</DatabaseID>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Pocket Monsters FireRed</AlternateName>
+    <DatabaseID>3490</DatabaseID>
+    <Region>Japan</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Pocket Monsters: FireRed</AlternateName>
+    <DatabaseID>3490</DatabaseID>
+    <Region>Japan</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Pokémon: Edición Rojo Fuego</AlternateName>
+    <DatabaseID>3490</DatabaseID>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Pokémon Feuerrote Edition</AlternateName>
+    <DatabaseID>3490</DatabaseID>
+    <Region>Germany</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Pokemon FireRed</AlternateName>
+    <DatabaseID>3490</DatabaseID>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Pokémon FireRed</AlternateName>
+    <DatabaseID>3490</DatabaseID>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Pokemon: FireRed Version</AlternateName>
+    <DatabaseID>3490</DatabaseID>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Pokémon: FireRed Version</AlternateName>
+    <DatabaseID>3490</DatabaseID>
+    <Region>United Kingdom</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Pokémon Rojo Fuego</AlternateName>
+    <DatabaseID>3490</DatabaseID>
+    <Region>Spain</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Pokémon Rosso Fuoco</AlternateName>
+    <DatabaseID>3490</DatabaseID>
+    <Region>Italy</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Pokémon Rouge Feu</AlternateName>
+    <DatabaseID>3490</DatabaseID>
+    <Region>France</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Pokémon Versione Rosso Fuoco</AlternateName>
+    <DatabaseID>3490</DatabaseID>
+    <Region>Italy</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>口袋妖怪 火红</AlternateName>
+    <DatabaseID>3490</DatabaseID>
+    <Region>China</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Final Fantasy VII (2013) </AlternateName>
+    <DatabaseID>5496</DatabaseID>
+    <Region>World</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>~ST II' Turbo</AlternateName>
+    <DatabaseID>7394</DatabaseID>
+    <Region>World</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>~Street Fighter II': Champion Edition</AlternateName>
+    <DatabaseID>7394</DatabaseID>
+    <Region>World</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Street Fighter II' Plus: Champion Edition</AlternateName>
+    <DatabaseID>7394</DatabaseID>
+    <Region>Japan</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Final Fantasy III</AlternateName>
+    <DatabaseID>108333</DatabaseID>
+    <Region>North America</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Final Fantasy VI</AlternateName>
+    <DatabaseID>108333</DatabaseID>
+    <Region>Europe</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Final Fantasy VI</AlternateName>
+    <DatabaseID>108333</DatabaseID>
+    <Region>Japan</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>最终幻想6</AlternateName>
+    <DatabaseID>108333</DatabaseID>
+    <Region>China</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Sonic 2</AlternateName>
+    <DatabaseID>108429</DatabaseID>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Sonic The Hedgehog 2</AlternateName>
+    <DatabaseID>108429</DatabaseID>
+    <Region>Japan</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>ソニック・ザ・ヘッジホッグ2</AlternateName>
+    <DatabaseID>108429</DatabaseID>
+    <Region>Japan</Region>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Pokémon FireRed Remixed</AlternateName>
+    <DatabaseID>165406</DatabaseID>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>The Legend of Zelda: A Link to the Past - PC Port</AlternateName>
+    <DatabaseID>219063</DatabaseID>
+  </GameAlternateName>
+  <GameAlternateName>
+    <AlternateName>Super Mario Bros. </AlternateName>
+    <DatabaseID>451348</DatabaseID>
+    <Region>China</Region>
+  </GameAlternateName>
+  <GameImage>
+    <DatabaseID>136</DatabaseID>
+    <FileName>39ba46cc-33f7-472e-9fc2-36781a4ca886.png</FileName>
+    <Type>Banner</Type>
+    <CRC32>1846544596</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>136</DatabaseID>
+    <FileName>47e31fbe-dca3-4fd9-8d9a-c90bf5ccb88f.jpg</FileName>
+    <Type>Banner</Type>
+    <CRC32>4169007702</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>136</DatabaseID>
+    <FileName>26001864-a123-4d4c-a771-77ac7cf02641.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>France</Region>
+    <CRC32>436233792</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>136</DatabaseID>
+    <FileName>1a175c33-1c72-4524-bc46-9f88b566cb16.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Brazil</Region>
+    <CRC32>1115726887</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>136</DatabaseID>
+    <FileName>72860dbf-227f-4267-93f1-69fe537441c4.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Canada</Region>
+    <CRC32>1548189829</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>136</DatabaseID>
+    <FileName>b2adf678-d2e5-4853-a8f2-5e632ab331a6.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Australia</Region>
+    <CRC32>1171556093</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>136</DatabaseID>
+    <FileName>00fb4aca-c22f-4ca9-84d0-90cf8c22d4af.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>342788642</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>136</DatabaseID>
+    <FileName>34e02901-7af2-4f0b-8683-470bcb0a9d9d.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>Spain</Region>
+    <CRC32>262307724</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>136</DatabaseID>
+    <FileName>f2245576-ece9-4c82-bc77-db61da196bc5.png</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>United Kingdom</Region>
+    <CRC32>3345196004</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>136</DatabaseID>
+    <FileName>c5bf5cab-7ae6-4280-84ca-65761ac96361.jpg</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>North America</Region>
+    <CRC32>3262998477</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>136</DatabaseID>
+    <FileName>efea302c-5892-4b76-bace-bb5fe45c51a2.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Japan</Region>
+    <CRC32>4160795026</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>136</DatabaseID>
+    <FileName>r2_d99d82fd-5d28-4990-bae3-1b598f9d0cc9.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>World</Region>
+    <CRC32>1690848846</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>136</DatabaseID>
+    <FileName>02749e7e-c645-4807-84df-618e3ed7599a.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>3652273023</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>136</DatabaseID>
+    <FileName>7d29489c-8f7a-42db-9bee-80ab80733d8f.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>1242019831</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>136</DatabaseID>
+    <FileName>17d7ad04-ca93-4a7d-a1fe-c1297b6cbd81.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>2849973065</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>136</DatabaseID>
+    <FileName>41b26549-1fb0-4e77-b1df-7c1cedeb98e2.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>3016667985</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>146</DatabaseID>
+    <FileName>97261c57-e406-4dde-803d-860c1f37e646.png</FileName>
+    <Type>Banner</Type>
+    <CRC32>1106622846</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>146</DatabaseID>
+    <FileName>bb106912-bf0b-46fa-b5ba-9f4cecf0cb83.png</FileName>
+    <Type>Banner</Type>
+    <CRC32>1677326742</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>146</DatabaseID>
+    <FileName>r2_cf7f0df8-bdb7-4fd3-80fc-b9bc1d2f8e1c.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Europe</Region>
+    <CRC32>664943857</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>146</DatabaseID>
+    <FileName>3265efe7-a168-4f2d-b1e0-2ff3f4b72693.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>2326087896</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>146</DatabaseID>
+    <FileName>r2_b263d0e1-ccf0-48ec-8876-094ba40f2ffd.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>United Kingdom</Region>
+    <CRC32>3469573982</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>146</DatabaseID>
+    <FileName>r2_2a37f2b6-65bb-43f3-ae79-3775378fe7e7.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Brazil</Region>
+    <CRC32>3899076593</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>146</DatabaseID>
+    <FileName>r2_29b7e466-deb9-420a-9cc4-e9b115c6912b.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Asia</Region>
+    <CRC32>4136516734</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>146</DatabaseID>
+    <FileName>55b16b69-ce21-4267-aca4-cb3f1cdc2e70.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>204215563</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>146</DatabaseID>
+    <FileName>r2_a01a3a66-9338-471a-9854-bb0b6662f9c2.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>World</Region>
+    <CRC32>2235009426</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>146</DatabaseID>
+    <FileName>5acb82aa-cf79-44db-bba3-e4168178f81f.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>World</Region>
+    <CRC32>2507714389</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>146</DatabaseID>
+    <FileName>a33d6bb1-e3f8-45e5-ae7a-ac9e8594372d.png</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>2225174937</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>146</DatabaseID>
+    <FileName>2bb4e6bc-10b6-4ede-b742-5ccd4b166ed6.png</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>2620478326</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>146</DatabaseID>
+    <FileName>c315cbae-c364-4a54-8ffe-d5a0921a7fc0.jpg</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>1097185180</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>146</DatabaseID>
+    <FileName>97783ddd-adac-4e3d-a99b-06f6d94d8cb8.jpg</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>1755873108</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>196</DatabaseID>
+    <FileName>83de9a66-a028-4baa-bd12-d6c6abcdb2a8.png</FileName>
+    <Type>Banner</Type>
+    <Region>North America</Region>
+    <CRC32>99256981</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>196</DatabaseID>
+    <FileName>4487eb0f-51f7-4414-902e-e424e3f7e326.jpg</FileName>
+    <Type>Banner</Type>
+    <CRC32>3742294655</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>196</DatabaseID>
+    <FileName>34e3a80f-5167-4ed3-8e06-2938fd63947b.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Europe</Region>
+    <CRC32>1034416453</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>196</DatabaseID>
+    <FileName>75178cc3-0032-48db-8899-8314e17f1d32.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>2104636595</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>196</DatabaseID>
+    <FileName>r2_d810b36e-fd9e-435f-9e1b-32ef76459e66.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>3896142673</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>196</DatabaseID>
+    <FileName>73fe6ed6-34b2-4b12-aeb1-db1c95884591.png</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>North America</Region>
+    <CRC32>2708106949</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>196</DatabaseID>
+    <FileName>a517be4d-79d4-4be8-91d9-764da03321c7.jpg</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>Europe</Region>
+    <CRC32>3269239721</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>196</DatabaseID>
+    <FileName>1cff1abd-797a-4f98-95a8-0510f486cfc7.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Japan</Region>
+    <CRC32>2894901982</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>196</DatabaseID>
+    <FileName>r2_0d09edea-764c-4617-ac97-4e1d000cb15e.png</FileName>
+    <Type>Clear Logo</Type>
+    <CRC32>494045139</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>196</DatabaseID>
+    <FileName>303f39ec-057c-491c-bc42-25e164f99e31.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>1982029750</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>196</DatabaseID>
+    <FileName>3f3fcfbe-7d1f-4ee4-a201-9f992a905057.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>1653194484</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>196</DatabaseID>
+    <FileName>r2_70990db4-aa25-4f7d-b45d-ca9a7aaee221.jpg</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>1402639873</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>196</DatabaseID>
+    <FileName>92f5d708-c6c9-43ab-8afe-f9ee68afa2d9.jpg</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>1176219125</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>299</DatabaseID>
+    <FileName>34195363-1e94-4d14-a6ef-7f849c5e8b3f.png</FileName>
+    <Type>Banner</Type>
+    <Region>World</Region>
+    <CRC32>3246024753</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>299</DatabaseID>
+    <FileName>r2_ba567978-2fbc-4774-9502-12d15629e395.png</FileName>
+    <Type>Banner</Type>
+    <Region>World</Region>
+    <CRC32>2616090297</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>299</DatabaseID>
+    <FileName>r2_c5833799-b477-4ed0-875b-5a4d7888e241.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Spain</Region>
+    <CRC32>435800272</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>299</DatabaseID>
+    <FileName>f7c47195-b22a-4d12-8e75-f79f23418f7f.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Germany</Region>
+    <CRC32>3871586533</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>299</DatabaseID>
+    <FileName>cb1c9cdf-02f9-44e2-a04f-3ec45a9b8cb2.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Oceania</Region>
+    <CRC32>267357904</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>299</DatabaseID>
+    <FileName>r2_4f09af04-78b8-43e9-97a9-a8d9c4bb0b85.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>2287281111</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>299</DatabaseID>
+    <FileName>cc0a933e-52b2-498b-bc3b-3e1d520d70f9.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>738465660</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>299</DatabaseID>
+    <FileName>26de1e16-ab8c-48f1-8083-97def9f99153.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>United Kingdom</Region>
+    <CRC32>3847310806</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>299</DatabaseID>
+    <FileName>r2_fee396c6-ba48-4e91-8d95-6e029ed80ff4.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Europe</Region>
+    <CRC32>2756538848</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>299</DatabaseID>
+    <FileName>r2_9250bfb0-9e98-4862-8689-e24a9031a475.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Japan</Region>
+    <CRC32>3651704309</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>299</DatabaseID>
+    <FileName>f6516646-ce9e-4ed1-99cd-4bb43da67255.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>2313878460</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>299</DatabaseID>
+    <FileName>r2_ac4ae22f-57ab-4f7f-9561-b4d6e2a7a77c.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>2068982009</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>299</DatabaseID>
+    <FileName>977c25f6-9ac6-45f8-86db-5d4ea3024dff.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>3757535905</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>299</DatabaseID>
+    <FileName>a7476d24-ded6-41dc-8c4d-ea96db34ad05.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>2760028742</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>299</DatabaseID>
+    <FileName>r2_321db153-e1cf-425a-bd76-680e84ba85d1.png</FileName>
+    <Type>Square</Type>
+    <Region>Japan</Region>
+    <CRC32>4291417764</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>299</DatabaseID>
+    <FileName>r2_d83a0c0b-789d-4624-8bd5-a455e4401cc0.png</FileName>
+    <Type>Square</Type>
+    <Region>World</Region>
+    <CRC32>1929737308</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>511</DatabaseID>
+    <FileName>20170994-78b5-4187-ab8a-75206bfb56f0.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Europe</Region>
+    <CRC32>3943463688</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>511</DatabaseID>
+    <FileName>r2_bcde5969-75c3-41d5-9c23-0de7f3c50235.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>482194325</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>511</DatabaseID>
+    <FileName>857a9a42-9cf9-4043-a466-55f2cdb3d81e.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>3997061610</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>511</DatabaseID>
+    <FileName>r2_280ac270-f910-4ff2-b93d-707ec05c5f4d.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>1045231222</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>511</DatabaseID>
+    <FileName>r2_1902e547-bdcc-4e76-bbd2-690add174449.png</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>North America</Region>
+    <CRC32>1225238855</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>511</DatabaseID>
+    <FileName>6ccc451f-72f8-4702-8d7a-7ea7b7c58e55.png</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>North America</Region>
+    <CRC32>1343689069</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>511</DatabaseID>
+    <FileName>d55e4ee5-0906-428b-8258-03248204a8c6.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Europe</Region>
+    <CRC32>3151824482</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>511</DatabaseID>
+    <FileName>f0345e32-e3e7-476d-a7f9-04897407e1d1.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Europe</Region>
+    <CRC32>3892940968</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>511</DatabaseID>
+    <FileName>d0e319a9-777f-4fed-9cb8-9b5a205f02d7.png</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>1793407533</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>511</DatabaseID>
+    <FileName>2dd9538a-1e85-4247-a0e8-cbc0b839bb74.png</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>3294229153</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>511</DatabaseID>
+    <FileName>32312db8-fdb3-4467-976e-5354d2df933d.jpg</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>295276206</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>511</DatabaseID>
+    <FileName>4631cfa4-0ccf-4a85-96cf-f1b0a1ee75a7.jpg</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>2827376683</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>525</DatabaseID>
+    <FileName>105ed0ab-e781-4f8a-975f-e6c950367a95.jpg</FileName>
+    <Type>Banner</Type>
+    <Region>World</Region>
+    <CRC32>2405865752</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>525</DatabaseID>
+    <FileName>3cc235ce-1aad-4f38-ba17-1752cbb0c919.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>Europe</Region>
+    <CRC32>723881865</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>525</DatabaseID>
+    <FileName>r2_b55e4cc2-0545-4f19-8742-7492d07dd8ef.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>2455105620</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>525</DatabaseID>
+    <FileName>r2_809dbd84-313e-4408-94f3-726899fe26c4.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>669009298</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>525</DatabaseID>
+    <FileName>ebfe9599-228b-48be-8e49-3d7a4f935133.png</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>North America</Region>
+    <CRC32>2552926463</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>525</DatabaseID>
+    <FileName>aa8ec575-c195-4c12-a1ae-61617b0462cd.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Japan</Region>
+    <CRC32>3707749667</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>525</DatabaseID>
+    <FileName>2aed1267-b7be-48ad-a5c4-9a27d29fd6ea.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>World</Region>
+    <CRC32>2962211472</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>525</DatabaseID>
+    <FileName>r2_1bf03a0b-48dc-41cc-b998-38ffc9cb7f67.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>91356392</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>525</DatabaseID>
+    <FileName>r2_b14ffa88-85eb-427e-b80e-d7ee7cef77c0.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>3181203845</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>525</DatabaseID>
+    <FileName>r2_5033cecf-066a-4f0f-af3e-db069b382974.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>3847385665</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>525</DatabaseID>
+    <FileName>r2_feca1738-af13-4301-b497-d3bbbe77845e.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>1418704298</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>694</DatabaseID>
+    <FileName>7e2426de-36e4-4ce4-a7cd-94a9e609b92a.jpg</FileName>
+    <Type>Banner</Type>
+    <Region>Europe</Region>
+    <CRC32>4193638127</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>694</DatabaseID>
+    <FileName>006bfff3-5727-4fcb-bcf4-c3eeadd374a5.jpg</FileName>
+    <Type>Banner</Type>
+    <Region>North America</Region>
+    <CRC32>4163131253</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>694</DatabaseID>
+    <FileName>facb83d3-5f29-4003-9f13-24d0e5ab4218.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Europe</Region>
+    <CRC32>3888979970</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>694</DatabaseID>
+    <FileName>e5e6873e-107a-4728-9650-745a4c9d32a3.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>2821652721</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>694</DatabaseID>
+    <FileName>ca04021e-975f-47a1-8f98-74fb4736ddac.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>2120526692</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>694</DatabaseID>
+    <FileName>r2_a88f77f1-fda5-4675-94d9-3d418f80092a.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Brazil</Region>
+    <CRC32>3148023154</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>694</DatabaseID>
+    <FileName>6df52345-1ff2-4eeb-8169-afe5f1eb49bb.jpg</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>Europe</Region>
+    <CRC32>668298671</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>694</DatabaseID>
+    <FileName>0df54a4a-8c08-4bf1-bd62-fb7db5338673.png</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>Europe</Region>
+    <CRC32>1957392301</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>694</DatabaseID>
+    <FileName>r2_d8c8cace-1058-447c-a9be-14e600b7fef0.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Japan</Region>
+    <CRC32>1428396658</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>694</DatabaseID>
+    <FileName>bf98ff18-930a-46ce-819b-035dda9021b0.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Europe</Region>
+    <CRC32>2088987899</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>694</DatabaseID>
+    <FileName>232e26af-d21d-4c51-95b1-516488a2f0cf.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>1089069724</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>694</DatabaseID>
+    <FileName>5643a922-ed63-452a-84e5-a4ce2f0c367c.png</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>3233269083</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>694</DatabaseID>
+    <FileName>874b0658-0e47-46f4-8dc0-728b931e01a6.jpg</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>1556406701</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>694</DatabaseID>
+    <FileName>6dfce29c-c017-424d-b423-760ad45a73b9.jpg</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>2880759835</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>914</DatabaseID>
+    <FileName>95e100bb-14c1-4d0b-b43d-0bf340e97dba.jpg</FileName>
+    <Type>Banner</Type>
+    <CRC32>439558396</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>914</DatabaseID>
+    <FileName>5aa7e40a-e9be-46ab-b917-6345bb3c63c4.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>1163037877</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>914</DatabaseID>
+    <FileName>2482b61d-9706-419d-bb71-72aabf5bca59.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>World</Region>
+    <CRC32>2676441304</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>914</DatabaseID>
+    <FileName>r2_6d24b58a-e087-4cba-863b-6cf4d44815b8.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>World</Region>
+    <CRC32>431382649</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>914</DatabaseID>
+    <FileName>30b58d9a-4d94-49fc-a43e-d465de6637d6.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>1791238276</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>914</DatabaseID>
+    <FileName>03d012b1-ccb3-4db5-95c6-9a50fc0f95cb.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>963447507</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>914</DatabaseID>
+    <FileName>543f38b3-246e-4d2a-ad74-45b5231bb234.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>2613692178</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>914</DatabaseID>
+    <FileName>56f0dd58-d21b-4bca-8e44-8a49da989663.jpg</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>2222599481</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>914</DatabaseID>
+    <FileName>r2_a14a1b22-aa99-4eb7-b863-5edbefb71778.jpg</FileName>
+    <Type>Square</Type>
+    <Region>World</Region>
+    <CRC32>3597930614</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1255</DatabaseID>
+    <FileName>fca2d530-1924-42ec-a514-8fb00cb4174b.jpg</FileName>
+    <Type>Banner</Type>
+    <Region>North America</Region>
+    <CRC32>1595020832</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1255</DatabaseID>
+    <FileName>c4ce35fa-c12b-491c-8bb3-6fd6c320f8a3.jpg</FileName>
+    <Type>Banner</Type>
+    <Region>Japan</Region>
+    <CRC32>458473799</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1255</DatabaseID>
+    <FileName>5db08b42-02db-4a10-b073-6a44abf60720.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>2720023109</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1255</DatabaseID>
+    <FileName>d0b71539-c5d2-4e90-b6a5-8ff6da9e31e4.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>1135653591</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1255</DatabaseID>
+    <FileName>9d028e25-de29-476e-bd74-781c15b96ef9.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Japan</Region>
+    <CRC32>3169319719</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1255</DatabaseID>
+    <FileName>237701bb-472e-4b6c-81ae-f02805791430.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>North America</Region>
+    <CRC32>1544243110</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1255</DatabaseID>
+    <FileName>r2_0347840a-03f2-4c22-b1fb-8d7f432fac2e.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>2273721953</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1255</DatabaseID>
+    <FileName>r2_5729041a-2e6e-4e90-824a-538b91765c46.jpeg</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>4124426628</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1255</DatabaseID>
+    <FileName>r2_def5259d-4d6b-484c-ad16-fb80387b943f.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>4069669415</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1255</DatabaseID>
+    <FileName>fa199079-517e-4f10-b8c9-bbbde24b33b3.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>3006662158</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1255</DatabaseID>
+    <FileName>3db632ec-e979-4829-a12b-e180a02603c5.png</FileName>
+    <Type>Square</Type>
+    <CRC32>1466495157</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1255</DatabaseID>
+    <FileName>bcffcabf-3038-4831-8986-899d981cd93e.png</FileName>
+    <Type>Square</Type>
+    <CRC32>1930452309</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1318</DatabaseID>
+    <FileName>r2_eeb3615a-10cf-495d-a60b-13d462e2c24b.jpg</FileName>
+    <Type>Banner</Type>
+    <Region>World</Region>
+    <CRC32>1710789532</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1318</DatabaseID>
+    <FileName>r2_ef7ca8c0-ff94-4665-a8fb-140c941612b8.png</FileName>
+    <Type>Banner</Type>
+    <Region>Japan</Region>
+    <CRC32>3451559172</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1318</DatabaseID>
+    <FileName>5abfc7aa-e11f-421d-8d7b-3c1ccb6c2437.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Brazil</Region>
+    <CRC32>1329639620</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1318</DatabaseID>
+    <FileName>r2_689c3eda-bd3b-452d-997c-c25b5335656e.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>4201536991</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1318</DatabaseID>
+    <FileName>bc0f11f2-f97b-4073-aa0b-72c56511ea5c.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Spain</Region>
+    <CRC32>886896070</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1318</DatabaseID>
+    <FileName>1d1c5081-6f2e-427a-ae3f-a05d9d21afeb.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>3658495626</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1318</DatabaseID>
+    <FileName>e4e4de1b-b11a-41f4-b56d-b53c4595a958.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Italy</Region>
+    <CRC32>3519289581</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1318</DatabaseID>
+    <FileName>r2_a42c2627-21d8-4085-8be7-55342757af03.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>United Kingdom</Region>
+    <CRC32>357082202</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1318</DatabaseID>
+    <FileName>2c10c9d3-d229-4b3f-b82c-44f7fee08b46.jpg</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>Europe</Region>
+    <CRC32>1140356259</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1318</DatabaseID>
+    <FileName>6eb335bd-f760-47b2-a29f-d91eccfcb9a6.jpg</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>Canada</Region>
+    <CRC32>3029291759</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1318</DatabaseID>
+    <FileName>r2_b4284db1-c07d-47f7-89f1-07f76b19f6a0.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>World</Region>
+    <CRC32>4072937283</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1318</DatabaseID>
+    <FileName>09b4a9a2-0a6a-4379-9abe-f0d0be045dce.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Japan</Region>
+    <CRC32>2578646949</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1318</DatabaseID>
+    <FileName>r2_92b15856-9be2-4298-9776-f4b0590b51da.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>3948897842</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1318</DatabaseID>
+    <FileName>6fb75785-def5-4bee-b023-6ee194c57473.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>1518850622</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1318</DatabaseID>
+    <FileName>r2_88bc8548-fb2a-4fff-b1ba-416eab4a5bb9.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>Japan</Region>
+    <CRC32>3336569934</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>1318</DatabaseID>
+    <FileName>r2_52720767-0a12-40bd-a4e6-c37ea13e7131.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>1635660630</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2532</DatabaseID>
+    <FileName>17ceb938-923b-43c3-a9bd-fac7efec4cd0.png</FileName>
+    <Type>Banner</Type>
+    <Region>United States</Region>
+    <CRC32>418772312</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2532</DatabaseID>
+    <FileName>309cdee2-5a61-4003-a193-68999706efa9.png</FileName>
+    <Type>Clear Logo</Type>
+    <CRC32>3599764002</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2532</DatabaseID>
+    <FileName>r2_f2e4d016-aa4c-4cc8-b852-faddea684c40.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Japan</Region>
+    <CRC32>3713673547</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2532</DatabaseID>
+    <FileName>20105877-b3f2-4703-b1c1-ce343cd09029.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>3137922216</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2532</DatabaseID>
+    <FileName>24c8ddc3-f7cb-495a-b412-cdce6d667923.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>4244698470</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2532</DatabaseID>
+    <FileName>r2_4d617d18-8f9a-4714-b2c8-d6c425086358.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>1046398640</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2532</DatabaseID>
+    <FileName>46d8a26f-4dcc-46ef-9be7-73b5b5a39c1a.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>United States</Region>
+    <CRC32>127352525</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2538</DatabaseID>
+    <FileName>df64657e-8018-4e3c-bdb5-a19e45cbf194.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>99480389</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2538</DatabaseID>
+    <FileName>4838ac6d-dfc0-4903-8402-205ed74988d1.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>921627976</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2538</DatabaseID>
+    <FileName>3df50edc-1feb-4150-aea9-a9b329c52558.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>Europe</Region>
+    <CRC32>3391362966</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2538</DatabaseID>
+    <FileName>078d734c-83ba-49f8-918d-e23fdfb2ad6c.jpg</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>North America</Region>
+    <CRC32>52386634</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2538</DatabaseID>
+    <FileName>d2b94cfb-aeea-472c-8d11-ab77bac06969.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>North America</Region>
+    <CRC32>3866556965</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2538</DatabaseID>
+    <FileName>f98a72c8-8adc-4559-a413-83b2bbca5289.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Japan</Region>
+    <CRC32>2122254159</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2538</DatabaseID>
+    <FileName>675788d2-e6e5-4add-809b-1bae4d3bfabb.png</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>1989813168</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2538</DatabaseID>
+    <FileName>1c4b5cbd-b4b6-485b-a309-c23adef2add5.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>2383835191</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2538</DatabaseID>
+    <FileName>a6bc01a7-3122-49c7-a140-c17794f2f926.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>2352112926</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2638</DatabaseID>
+    <FileName>f5f11f4d-c890-4f71-a4c7-6261fd4d68ed.jpg</FileName>
+    <Type>Banner</Type>
+    <Region>North America</Region>
+    <CRC32>176897371</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2638</DatabaseID>
+    <FileName>93d77bc7-d3f1-437e-a92c-61fe060831d9.jpg</FileName>
+    <Type>Banner</Type>
+    <Region>Europe</Region>
+    <CRC32>2960253997</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2638</DatabaseID>
+    <FileName>d454e60d-2588-4f15-82f3-67d41f662825.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Australia</Region>
+    <CRC32>982734934</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2638</DatabaseID>
+    <FileName>75c37bfe-5ca2-4645-8dab-9d7e5f8cf935.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>2864636991</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2638</DatabaseID>
+    <FileName>0f4e70dc-3a84-4ac5-86a9-f47f5399c04e.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>3204093197</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2638</DatabaseID>
+    <FileName>5454ef86-d7e1-415c-b5bd-1464c6c2d78f.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Europe</Region>
+    <CRC32>3827267358</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2638</DatabaseID>
+    <FileName>r2_f01a258e-f902-457a-9644-3cb57e3e229b.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>World</Region>
+    <CRC32>3694029797</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2638</DatabaseID>
+    <FileName>6df72747-c041-4209-9966-bb8d51cfe192.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>3210373058</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2638</DatabaseID>
+    <FileName>02abaf49-fc34-4a39-ac34-3afe05a779b3.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>1228523623</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2638</DatabaseID>
+    <FileName>48b1a930-e593-49a2-a926-e554bc7d5651.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>848493481</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>2638</DatabaseID>
+    <FileName>r2_c687388d-ff20-46ab-ba20-167f2bcb23bd.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>4221476572</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3122</DatabaseID>
+    <FileName>c5fd5dc7-587b-4d52-b288-39a1bdb87d01.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>2031148468</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3122</DatabaseID>
+    <FileName>82b8fe74-89a6-4af7-a53c-820cfd67e558.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>Europe</Region>
+    <CRC32>2303432182</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3122</DatabaseID>
+    <FileName>78dc0ce0-132e-432e-bee9-8fda6b7deb93.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>434809640</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3122</DatabaseID>
+    <FileName>89bf9fa1-0137-4f0b-acd4-cb5971907d8d.jpg</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>North America</Region>
+    <CRC32>492114337</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3122</DatabaseID>
+    <FileName>8094b39d-c235-4e7d-bf13-cf79daded0b0.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>North America</Region>
+    <CRC32>3596610503</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3122</DatabaseID>
+    <FileName>17463b37-ecf8-4629-9794-94a3d472e025.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Japan</Region>
+    <CRC32>2782368722</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3122</DatabaseID>
+    <FileName>26148ac8-0f5b-4967-9e50-a035b19a6f5b.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>951589659</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3122</DatabaseID>
+    <FileName>56897b4f-6d63-4229-8e36-ede73dac11d7.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>3359694852</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3122</DatabaseID>
+    <FileName>66f4103b-15f9-47dc-91d1-473ebb1bd9f5.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>North America</Region>
+    <CRC32>2232445022</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3490</DatabaseID>
+    <FileName>df92c9fc-87fa-42d6-8750-f3ec35273f6a.jpg</FileName>
+    <Type>Banner</Type>
+    <CRC32>4097559067</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3490</DatabaseID>
+    <FileName>3fd5cb91-4455-4909-9865-ec4799b4da3d.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Germany</Region>
+    <CRC32>1021782098</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3490</DatabaseID>
+    <FileName>2198e0db-77df-4104-a30d-627e5683dd3e.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>4234711413</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3490</DatabaseID>
+    <FileName>fa121280-ee48-40a3-9cec-4976b9a5c4c4.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Australia</Region>
+    <CRC32>2291423614</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3490</DatabaseID>
+    <FileName>d8fbe59a-03cd-4aa7-a437-e70e869468fc.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Italy</Region>
+    <CRC32>1650396372</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3490</DatabaseID>
+    <FileName>5bdcd75d-d0ec-497c-af35-4f342834866a.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Spain</Region>
+    <CRC32>2257713052</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3490</DatabaseID>
+    <FileName>6ab16c0c-62c0-4b0b-9e07-02514de9f436.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Europe</Region>
+    <CRC32>465557062</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3490</DatabaseID>
+    <FileName>r2_d81f4168-6a03-4508-a4f6-eb65a3cf3e08.jpg</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>North America</Region>
+    <CRC32>3071819557</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3490</DatabaseID>
+    <FileName>01ccca56-d1dd-4459-a365-5343a2e6a807.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Spain</Region>
+    <CRC32>1657854572</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3490</DatabaseID>
+    <FileName>f30df42e-d0b2-4b44-8b9e-052d7ded0a12.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Germany</Region>
+    <CRC32>1864030637</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3490</DatabaseID>
+    <FileName>r2_67a6cd41-2b6c-4a02-8276-7042e73d27fd.png</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>3522803734</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3490</DatabaseID>
+    <FileName>c015eb64-53a0-4f1a-9bcd-dba78a1e114e.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>3505407060</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3490</DatabaseID>
+    <FileName>a1de569e-a92b-4ca4-9c0a-b967ab53c588.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>1219801789</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3490</DatabaseID>
+    <FileName>ff0a6c03-5115-4249-9f5e-6cf924954f13.jpg</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>2796656279</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>3490</DatabaseID>
+    <FileName>r2_2d9449d6-6534-4fc2-8a68-9f288f78e374.jpg</FileName>
+    <Type>Square</Type>
+    <Region>World</Region>
+    <CRC32>351416977</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5496</DatabaseID>
+    <FileName>fd2e9f4a-16f0-4711-8028-21592a97c0e6.jpg</FileName>
+    <Type>Banner</Type>
+    <CRC32>1257963648</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5496</DatabaseID>
+    <FileName>r2_c1f284b4-77d1-42de-9d23-3b9238a56990.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>3805015766</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5496</DatabaseID>
+    <FileName>r2_f2eeb5bd-6fb1-4ee4-a603-3fdf065fcbc6.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Europe</Region>
+    <CRC32>4144078383</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5496</DatabaseID>
+    <FileName>r2_00c31724-6e3f-482e-919b-000330496506.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>3836430327</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5496</DatabaseID>
+    <FileName>r2_18b22e3c-1505-405f-9f79-64fc95245788.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Italy</Region>
+    <CRC32>2361987371</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5496</DatabaseID>
+    <FileName>99c36f9d-9e42-4772-bdc1-3b5b023a1e63.jpg</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <CRC32>1200027562</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5496</DatabaseID>
+    <FileName>r2_60816f38-ee12-4946-9a8c-a907cca69b25.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>World</Region>
+    <CRC32>41421291</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5496</DatabaseID>
+    <FileName>fee50ae5-c770-47aa-ac06-b7d6a9b11953.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Japan</Region>
+    <CRC32>2167352874</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5496</DatabaseID>
+    <FileName>e2e6b606-554b-4f98-b945-618f79b100bf.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>414816359</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5496</DatabaseID>
+    <FileName>r2_e7fe59f8-de5b-4c8a-9257-d6f284c9dfe7.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>545729379</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5630</DatabaseID>
+    <FileName>cb26cab0-3ad2-46e0-910f-e6c3005bc90c.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>3470162326</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5630</DatabaseID>
+    <FileName>c88bb564-9c1c-41f7-a199-9daed9413a8b.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Europe</Region>
+    <CRC32>1328564309</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5630</DatabaseID>
+    <FileName>8abc893d-0533-4f24-9242-ea74fef88d7b.png</FileName>
+    <Type>Clear Logo</Type>
+    <CRC32>930392570</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5630</DatabaseID>
+    <FileName>34759ac9-f737-4be7-a7b7-b8878d58f891.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Japan</Region>
+    <CRC32>1773543724</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5630</DatabaseID>
+    <FileName>6d383c08-1d9a-46e5-adc0-9947a32b83f3.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>4064331079</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5630</DatabaseID>
+    <FileName>f9662b05-86a6-4dcd-bd74-7c768e9a102f.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>677860938</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5630</DatabaseID>
+    <FileName>4d4b7eb7-f240-44a7-8d50-614ff2a82b40.jpg</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>1817872418</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>5630</DatabaseID>
+    <FileName>88e1bda0-1a34-4a57-a273-27db7e84fe3b.jpg</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>215323028</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>7394</DatabaseID>
+    <FileName>18deca60-9870-481e-a7cb-d8f4d4f8d34f.jpg</FileName>
+    <Type>Banner</Type>
+    <CRC32>3368244849</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>7394</DatabaseID>
+    <FileName>f5acc1ac-ce27-468e-8c02-5a11a66fc7f8.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Europe</Region>
+    <CRC32>88682757</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>7394</DatabaseID>
+    <FileName>705f3c78-9586-4add-b091-a4d62178ae0f.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Australia</Region>
+    <CRC32>825385513</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>7394</DatabaseID>
+    <FileName>79ecb0b7-563f-4536-bb44-d009db141e75.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Brazil</Region>
+    <CRC32>1719670009</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>7394</DatabaseID>
+    <FileName>957f675e-3948-486d-a799-269e388fe8c8.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>1604946699</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>7394</DatabaseID>
+    <FileName>8340cf08-aadd-4c1f-ad53-dd43f5ce6840.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>1813244932</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>7394</DatabaseID>
+    <FileName>9ef210e0-9d28-40aa-84dd-66d5c23641e5.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>830746830</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>7394</DatabaseID>
+    <FileName>d96c044d-37d8-4303-bea9-a73f406d9443.png</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>Europe</Region>
+    <CRC32>2422057562</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>7394</DatabaseID>
+    <FileName>db193206-3505-4923-b063-44ec9ede90b0.jpg</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>North America</Region>
+    <CRC32>3262587591</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>7394</DatabaseID>
+    <FileName>1bd68d87-2c8d-46c3-a68e-771fbc592fbb.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Europe</Region>
+    <CRC32>3612278882</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>7394</DatabaseID>
+    <FileName>r2_6db73566-d7c6-43be-91e2-63b8e4ee0340.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Japan</Region>
+    <CRC32>1018981360</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>7394</DatabaseID>
+    <FileName>2adf5131-ab3f-4357-8596-eb5ecb0b8042.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>4051378894</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>7394</DatabaseID>
+    <FileName>r2_dae93c2c-0a9a-46bc-8a55-b97ac26db05f.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>1622581369</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>7394</DatabaseID>
+    <FileName>fc02444a-ecf9-44f4-b91d-80509e81f57f.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>921037587</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>7394</DatabaseID>
+    <FileName>0367831e-9fc4-42db-be00-2d09838ab4d0.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>1866754879</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>7394</DatabaseID>
+    <FileName>r2_138e07c6-028c-4957-a6f2-6e1fbfede6fe.png</FileName>
+    <Type>Square</Type>
+    <Region>World</Region>
+    <CRC32>307848864</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>10848</DatabaseID>
+    <FileName>2c730a54-e50e-4c61-a3f3-299465b95b8e.jpg</FileName>
+    <Type>Banner</Type>
+    <Region>Japan</Region>
+    <CRC32>3539758366</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>10848</DatabaseID>
+    <FileName>3993be90-65ee-4d09-9f2f-00e73bcea47d.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>151316610</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>10848</DatabaseID>
+    <FileName>9b6f66a3-aa30-40fc-a896-3238a27f2a48.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Japan</Region>
+    <CRC32>2173642564</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>10848</DatabaseID>
+    <FileName>5339eae9-05cd-4845-89cc-f0d4ea9f908b.png</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>Japan</Region>
+    <CRC32>2030842338</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>10848</DatabaseID>
+    <FileName>451eff7b-8832-4f84-bf02-82ed991321ff.png</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>Japan</Region>
+    <CRC32>1098690733</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>10848</DatabaseID>
+    <FileName>r2_d47d1d55-fbdf-4538-b811-634a70afbd45.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>Japan</Region>
+    <CRC32>846628918</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>10848</DatabaseID>
+    <FileName>r2_38f6d020-c9f8-4685-8bce-5cad25d2b41f.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>Japan</Region>
+    <CRC32>1578239895</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108333</DatabaseID>
+    <FileName>513363b9-c192-4533-bdab-26b99e88b11e.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>3464776661</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108333</DatabaseID>
+    <FileName>6504fd85-ab13-47f1-b600-1954a91c7696.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>2377501760</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108333</DatabaseID>
+    <FileName>4b05c6f5-8da9-449f-bb7f-f09e3f48abc4.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Japan</Region>
+    <CRC32>1773543724</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108333</DatabaseID>
+    <FileName>r2_9189acd2-d60e-4045-84c8-5fcf7062f5d4.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>North America</Region>
+    <CRC32>1541490327</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108333</DatabaseID>
+    <FileName>3672a84a-c300-46d8-ae57-1571ac08ff64.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>4025651935</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108333</DatabaseID>
+    <FileName>3df43a76-9079-4350-b772-e88decbc45d8.png</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>3785753897</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108333</DatabaseID>
+    <FileName>c4616a82-5156-4d5b-b60c-91be3f707a04.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>North America</Region>
+    <CRC32>2707409626</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108333</DatabaseID>
+    <FileName>e98249d8-cd03-49c1-ad4d-895a5eeba8d2.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>North America</Region>
+    <CRC32>2634115420</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108429</DatabaseID>
+    <FileName>1a9a2b97-ce22-48c8-bf4d-adb7e8a40e16.jpg</FileName>
+    <Type>Banner</Type>
+    <Region>World</Region>
+    <CRC32>1768815171</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108429</DatabaseID>
+    <FileName>3d7745d5-3c90-4678-b0af-8d4e98959bbc.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>Europe</Region>
+    <CRC32>2840988998</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108429</DatabaseID>
+    <FileName>54506801-806f-4e4a-976d-876c4ea02420.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>460236784</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108429</DatabaseID>
+    <FileName>05aee427-a5c5-4a07-8a5d-96d5d6ec9827.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>Europe</Region>
+    <CRC32>2238508589</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108429</DatabaseID>
+    <FileName>5acc35af-2431-434c-a196-ab12db5774d1.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>3090868994</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108429</DatabaseID>
+    <FileName>0e3f6713-5b20-4a08-965f-758f3807ef1c.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>2144269484</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108429</DatabaseID>
+    <FileName>0c2bed3a-b69c-42da-aa14-ee8ac1da3746.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>Japan</Region>
+    <CRC32>4085363898</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108429</DatabaseID>
+    <FileName>719ee47e-2743-4d4d-a0f5-f1e988aa8fba.png</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>Europe</Region>
+    <CRC32>4191724255</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108429</DatabaseID>
+    <FileName>2373c48e-1d52-49e2-b1a0-58854889a470.png</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>North America</Region>
+    <CRC32>462149268</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108429</DatabaseID>
+    <FileName>0beae97d-f16c-4924-8624-5c8e193c0642.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>Japan</Region>
+    <CRC32>4090171961</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108429</DatabaseID>
+    <FileName>a63c08dd-67fe-468b-8a4d-4e9bd3ffa3a3.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>World</Region>
+    <CRC32>522676427</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108429</DatabaseID>
+    <FileName>8580599c-5456-48a9-ae36-6a42d6c87a60.png</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>3345236489</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108429</DatabaseID>
+    <FileName>r2_3b77efe6-0669-4c2e-b249-f6742fabc572.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <Region>World</Region>
+    <CRC32>2206738010</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108429</DatabaseID>
+    <FileName>7674b631-2b74-40a5-b1ae-26df3b5c8587.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>1201268948</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>108429</DatabaseID>
+    <FileName>09200980-8e6e-4abb-adc2-f355e9d20406.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>225606533</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>123770</DatabaseID>
+    <FileName>46241db3-beac-4f8c-996c-03702bc49ce2.jpg</FileName>
+    <Type>Banner</Type>
+    <Region>World</Region>
+    <CRC32>449628878</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>123770</DatabaseID>
+    <FileName>e8ee1d4e-8784-4844-8ed5-278a2527cbce.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>World</Region>
+    <CRC32>4176669591</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>123770</DatabaseID>
+    <FileName>145a5aef-9025-409b-ad53-a881b2435150.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>World</Region>
+    <CRC32>1758289798</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>123770</DatabaseID>
+    <FileName>a3c8f8f4-4147-4f84-a5af-620557c1ea98.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>World</Region>
+    <CRC32>455423012</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>123770</DatabaseID>
+    <FileName>9efa2666-ba5a-42f0-93a6-15deb55fef37.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>World</Region>
+    <CRC32>2560155180</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>123770</DatabaseID>
+    <FileName>r2_d025abed-c52e-4a93-adb7-ed399769fc5c.jpg</FileName>
+    <Type>Box - Front - Reconstructed</Type>
+    <Region>World</Region>
+    <CRC32>4055968221</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>123770</DatabaseID>
+    <FileName>r2_1671fe20-31c5-4011-a07e-f89b5f0d9560.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>World</Region>
+    <CRC32>138298963</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>123770</DatabaseID>
+    <FileName>r2_17c783d2-5e97-4a6a-90aa-15866c877cc9.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>World</Region>
+    <CRC32>2817973630</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>123770</DatabaseID>
+    <FileName>a9d98858-7950-4cd8-890d-93feba04b187.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>2870540670</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>123770</DatabaseID>
+    <FileName>b49a947b-d9cb-41ba-b9fa-07abd4ebd751.jpg</FileName>
+    <Type>Fanart - Background</Type>
+    <CRC32>4269066041</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>123770</DatabaseID>
+    <FileName>c94c4d0d-45df-4a59-bccf-ff720bc5d98f.jpg</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <CRC32>73277245</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>123770</DatabaseID>
+    <FileName>43bacad7-ad0e-4f14-9d97-58b5bfb91e4a.jpg</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>1650483840</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>123770</DatabaseID>
+    <FileName>r2_a5eedece-9059-4a7e-a859-4cbca2111c31.jpg</FileName>
+    <Type>Square</Type>
+    <Region>World</Region>
+    <CRC32>2594516811</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>123770</DatabaseID>
+    <FileName>r2_65052b5e-9b7f-4582-8066-4ff529aa7475.jpg</FileName>
+    <Type>Square</Type>
+    <Region>World</Region>
+    <CRC32>924164625</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>219063</DatabaseID>
+    <FileName>c6bbe77d-1e48-4a53-9dd0-f0f7a02051d4.jpg</FileName>
+    <Type>Box - Front</Type>
+    <Region>World</Region>
+    <CRC32>2043056665</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>219063</DatabaseID>
+    <FileName>cbe2ce89-5448-4f8e-a019-8c00ee2a9971.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>World</Region>
+    <CRC32>3076757189</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>219063</DatabaseID>
+    <FileName>r2_15c3c083-c4b5-4e34-956e-f4f97af935b5.jpg</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>250800736</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>219063</DatabaseID>
+    <FileName>r2_0991ea60-036a-4c0d-84d0-5ef739404677.jpg</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>World</Region>
+    <CRC32>1864288596</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>418887</DatabaseID>
+    <FileName>2d23041e-22b5-4da5-acf7-c82a9d14bf89.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>World</Region>
+    <CRC32>693934688</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>418887</DatabaseID>
+    <FileName>ca60e923-f380-4afe-ac99-31002da6d6bd.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>World</Region>
+    <CRC32>4144209142</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>451348</DatabaseID>
+    <FileName>1c73caf7-2be9-499c-9bfc-29349c215703.png</FileName>
+    <Type>Box - Front</Type>
+    <Region>North America</Region>
+    <CRC32>1668743491</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>451348</DatabaseID>
+    <FileName>c995f99b-4841-42b3-a4d1-6d9ff14a5a59.png</FileName>
+    <Type>Clear Logo</Type>
+    <Region>North America</Region>
+    <CRC32>1611102528</CRC32>
+  </GameImage>
+  <GameImage>
+    <DatabaseID>451348</DatabaseID>
+    <FileName>91d62283-9431-48e3-8aee-55f1ff9a8bf9.png</FileName>
+    <Type>Screenshot - Gameplay</Type>
+    <Region>North America</Region>
+    <CRC32>852680757</CRC32>
+  </GameImage>
+</LaunchBox>

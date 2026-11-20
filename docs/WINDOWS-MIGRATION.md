@@ -32,6 +32,7 @@ What works on Windows, what is left, and what Windows does not need.
 ## ⬜ To do
 
 - Replay buffer (separate from the overlay; hidden on Windows)
+- Mods (`docs/MODS.md`, hidden on Windows): open mod archives without 7-Zip or bsdtar on the PATH, retry putting the game's folder back while a file is locked, and make the cross-drive copy of a backed-up file safe to interrupt
 - RetroAchievements sign-in for the remaining emulators (DuckStation, PCSX2, PPSSPP, Dolphin and Flycast): their Windows config locations and, where needed, token encryption still need support
 - Ludusavi registry entries: in a backup made on Windows, Ludusavi restores them itself, but they are missing from the restore preview and from the undo copy
 - Screenshots of games in legacy exclusive fullscreen: Desktop Duplication loses the display while such a game holds it. HDR capture also still needs a check on a real HDR monitor

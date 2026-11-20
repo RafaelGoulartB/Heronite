@@ -204,6 +204,18 @@ pub struct CollectionGameMetadata {
     pub cover_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hero_url: Option<String>,
+    /// The square cover (`crate::cover_family::CoverFamily::Square`); its
+    /// source is `fieldSources.coverSquare`. `coverUrl` stays the tall cover.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover_square_url: Option<String>,
+    /// The wide cover (16:9, Steam's header); its source is
+    /// `fieldSources.coverWide`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover_wide_url: Option<String>,
+    /// The game's logo, transparent around its title (console mode shows it
+    /// instead of the title); its source is `fieldSources.logo`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo_url: Option<String>,
     #[serde(default)]
     pub field_sources: IndexMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -225,6 +237,11 @@ pub struct ArtFile {
     pub extra: Extra,
 }
 
+/// A game's pictures set by hand. JSON (every key optional): `coverUrl`
+/// (the tall cover), `heroUrl`, the other cover families beside them,
+/// `coverSquareUrl` and `coverWideUrl` (`crate::cover_family`), and
+/// `logoUrl`, each a `localart://art/...` URL. A `logoUrl` written by hand
+/// may also be a web address or a path ([`crate::console_art`]).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionGameArt {
@@ -232,6 +249,12 @@ pub struct CollectionGameArt {
     pub cover_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hero_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover_square_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover_wide_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo_url: Option<String>,
     #[serde(flatten)]
     pub extra: Extra,
 }

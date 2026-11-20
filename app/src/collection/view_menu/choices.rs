@@ -26,7 +26,7 @@ pub(in crate::collection) enum Pick {
     Facet(FacetKind, String),
     /// Sets "Ages up to" to this; picking the filter already on clears it.
     Age(AgeFilter),
-    /// A smart group's id.
+    /// A smart category's id.
     Group(String),
 }
 
@@ -45,8 +45,8 @@ impl Kind {
     pub const ALL: [Kind; 14] = [
         Kind::Only,
         Kind::Status,
-        Kind::Group,
         Kind::Category,
+        Kind::Group,
         Kind::Facet(FacetKind::Store),
         Kind::Facet(FacetKind::Genre),
         Kind::Facet(FacetKind::Developer),
@@ -63,7 +63,7 @@ impl Kind {
         match self {
             Kind::Only => tr!("Only"),
             Kind::Status => tr!("Status"),
-            Kind::Group => tr!("Smart group"),
+            Kind::Group => tr!("Smart category"),
             Kind::Category => tr!("Category"),
             Kind::Facet(k) => facet_label(k),
         }
@@ -74,7 +74,7 @@ impl Kind {
         match self {
             Kind::Only => "only",
             Kind::Status => "status",
-            Kind::Group => "group",
+            Kind::Group => "smart",
             Kind::Category => "category",
             Kind::Facet(k) => k.as_str(),
         }

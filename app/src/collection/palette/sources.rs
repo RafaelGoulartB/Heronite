@@ -11,6 +11,7 @@ use heronite_data::{FacetKind, GroupBy, InstallFilter, SortMode};
 use heronite_i18n::{tr, trn};
 
 use super::matching::{fold, Haystack};
+use super::random::RandomScope;
 use crate::collection::game_actions::{GameAction, GameActionItem};
 use crate::collection::view_filters::{category_label, Only};
 use crate::icons::Icon;
@@ -27,7 +28,7 @@ pub enum Kind {
 
 /// What choosing an entry does (the Collection runs it, see `palette/mod.rs`).
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub(super) enum Act {
+pub(crate) enum Act {
     Go(Page),
     /// Settings, opened on this section.
     Section(Section),
@@ -51,6 +52,12 @@ pub(super) enum Act {
     ManageStatuses,
     /// The library fields manager (genres, companies...).
     ManageFields,
+    /// "Update metadata" (the selection's games, else the games on screen).
+    UpdateMetadata,
+    /// "Review matches" on every game waiting for review.
+    ReviewMatches,
+    /// "Get more sources": the gallery of extensions.
+    GetMoreSources,
     Quit,
     /// Sort, filters and grouping of the Collection list.
     View(ViewCmd),
@@ -61,15 +68,27 @@ pub(super) enum Act {
         navigate: bool,
     },
     SelectGame(String),
+    /// Picks a game at random among these and lists it (`random.rs`).
+    Random(RandomScope),
     /// An action of the game under the key (`game_actions.rs`).
     Game(String, GameAction),
     /// Lists every action of the game (the palette's second level).
     GameActions(String),
 }
 
+impl Act {
+    /// The game it is about (a game or one of its actions).
+    pub(crate) fn game(&self) -> Option<&str> {
+        match self {
+            Act::SelectGame(k) | Act::Game(k, _) | Act::GameActions(k) => Some(k),
+            _ => None,
+        }
+    }
+}
+
 /// The Collection's View menu, as commands.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub(super) enum ViewCmd {
+pub(crate) enum ViewCmd {
     Sort(SortMode),
     Show(InstallFilter),
     Group(GroupBy),
@@ -86,12 +105,29 @@ pub(super) enum ViewCmd {
     Only(Only, bool),
     /// Selects or clears a category of the filter.
     Category(String),
+    /// Selects or clears a smart category (its id) of the filter.
+    SmartCategory(String),
     ManageCategories,
+    NewSmartCategory,
+}
+
+/// What the preview pane shows of a game, besides [`GameBits`].
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct GameCard {
+    pub title: SharedString,
+    /// The store or source ("Steam", "GOG").
+    pub source: SharedString,
+    /// "84h", or "Not Played".
+    pub playtime: SharedString,
+    /// "3 days ago"; `None` = never played.
+    pub last_played: Option<SharedString>,
+    /// The status shown (its name) and its slug (its colour).
+    pub status: Option<(SharedString, String)>,
 }
 
 /// What a game entry can do besides being selected.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(super) struct GameBits {
+pub(crate) struct GameBits {
     pub key: String,
     pub installed: bool,
     pub has_folder: bool,
@@ -101,10 +137,12 @@ pub(super) struct GameBits {
     pub hidden: bool,
     /// ISO timestamp (sorts as text); `None` = never played.
     pub last_played: Option<String>,
+    /// The preview pane's facts (`None` in tests).
+    pub card: Option<std::rc::Rc<GameCard>>,
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct Entry {
+pub(crate) struct Entry {
     pub kind: Kind,
     pub act: Act,
     /// Stable id, kept in the palette's history.
@@ -135,7 +173,7 @@ impl Entry {
         Haystack { title: &self.f_title, alt: &self.f_alt, keywords: &self.f_keywords }
     }
 
-    fn new(kind: Kind, act: Act, id: impl Into<SharedString>, title: &str, subtitle: &str, icon: Icon, keywords: &str) -> Entry {
+    pub(super) fn new(kind: Kind, act: Act, id: impl Into<SharedString>, title: &str, subtitle: &str, icon: Icon, keywords: &str) -> Entry {
         Entry {
             kind,
             act,
@@ -165,11 +203,8 @@ impl Entry {
     }
 
     /// The game this entry is about (a game or one of its actions).
-    pub(super) fn game_key(&self) -> Option<&str> {
-        match &self.act {
-            Act::SelectGame(k) | Act::Game(k, _) | Act::GameActions(k) => Some(k),
-            _ => None,
-        }
+    pub(crate) fn game_key(&self) -> Option<&str> {
+        self.act.game()
     }
 }
 
@@ -178,6 +213,7 @@ fn section_help(s: Section) -> &'static str {
     match s {
         Section::General => tr!("Folders, tray, Wine and Proton lookup"),
         Section::Appearance => tr!("Page background, blur, covers"),
+        Section::QuickLauncher => tr!("Shortcut that opens the launcher from anywhere"),
         Section::ConsoleMode => tr!("Themes, tabs, covers and controls of the TV mode"),
         Section::Advanced => tr!("Folders, cache, copy settings"),
         Section::GameDefaults => tr!("Values new games start with"),
@@ -191,9 +227,10 @@ fn section_help(s: Section) -> &'static str {
         }
         Section::Storage => tr!("Disk space of games, prefixes, Proton, caches"),
         Section::Mods => tr!("Nexus Mods account, mod links, applying mods"),
+        Section::Controls => tr!("What every controller button does, and changing them"),
         Section::Overlay => crate::overlay::labels::palette_help(),
         Section::Replay => tr!("Last seconds of a game, saved with Guide + X"),
-        Section::Metadata => tr!("IGDB keys, covers, field sources"),
+        Section::Metadata => tr!("Sources of details and pictures, their order and keys"),
         Section::Achievements => tr!("RetroAchievements account, Steam key, notifications"),
         Section::Screenshots => tr!("Folder, capture shortcut, preview cache"),
         Section::Saves => tr!("Ludusavi save backups and restoring them"),
@@ -392,6 +429,30 @@ pub(super) fn static_entries() -> Vec<Entry> {
         "fields names duplicates merge rename genres companies developers publishers series themes features platforms clean campos nomes duplicados mesclar renomear generos empresas plataformas limpar",
     ));
     v.push(action(
+        Act::UpdateMetadata,
+        "update-metadata",
+        tr!("Update metadata\u{2026}"),
+        tr!("Fill or refresh the details and pictures of many games"),
+        Icon::CloudDownload,
+        "metadata details covers pictures bulk download fill refresh igdb steamgriddb metadados detalhes capas baixar atualizar",
+    ));
+    v.push(action(
+        Act::ReviewMatches,
+        "review-matches",
+        tr!("Review matches"),
+        tr!("Say which game it is where the sources were not sure"),
+        Icon::TravelExplore,
+        "review matches match fix queue unsure attention metadata revisar correspondencias jogo fila metadados",
+    ));
+    v.push(action(
+        Act::GetMoreSources,
+        "get-more-sources",
+        tr!("Get more sources"),
+        tr!("Install metadata sources made by the community"),
+        Icon::Add,
+        "extensions sources metadata gallery install community plugins add extensoes fontes metadados galeria instalar comunidade",
+    ));
+    v.push(action(
         Act::Console,
         "console",
         tr!("Console mode"),
@@ -435,8 +496,9 @@ fn facet_keywords(k: FacetKind) -> &'static str {
 }
 
 /// The Collection's View menu (sort, show, grouping, hidden games, facet
-/// filters) as commands, for the state in `ui`.
-pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Categories) -> Vec<Entry> {
+/// filters, categories of both kinds) as commands, for the state in `ui`.
+/// `smart`: the smart categories, `(id, name)`.
+pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Categories, smart: &[(String, String)]) -> Vec<Entry> {
     let mut v = Vec::new();
     let cmd = |c: ViewCmd, id: String, title: &str, sub: &str, icon: Icon, kw: &str| {
         Entry::new(Kind::Action, Act::View(c), id, title, sub, icon, kw)
@@ -525,6 +587,21 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Cat
             ));
         }
     }
+    for (id, name) in smart {
+        let title = if ui.smart_groups.contains(id) {
+            tr!("Remove filter Category: {value}", value = name.as_str())
+        } else {
+            tr!("Filter Category: {value}", value = name.as_str())
+        };
+        v.push(cmd(
+            ViewCmd::SmartCategory(id.clone()),
+            format!("view:smart:{id}"),
+            &title,
+            tr!("Smart category"),
+            Icon::AutoAwesome,
+            "category categories smart rules filter categoria categorias inteligente regras filtro",
+        ));
+    }
     v.push(cmd(
         ViewCmd::ManageCategories,
         "view:categories".into(),
@@ -532,6 +609,14 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Cat
         tr!("Add, rename or remove categories"),
         Icon::Label,
         "category categories tags groups new categoria categorias grupos nova",
+    ));
+    v.push(cmd(
+        ViewCmd::NewSmartCategory,
+        "view:smart-new".into(),
+        tr!("New smart category…"),
+        tr!("Games join and leave it as they match its rules"),
+        Icon::AutoAwesome,
+        "category smart rules group new categoria inteligente regras grupo nova",
     ));
     for (f, id, title) in [
         (InstallFilter::All, "all", tr!("Show all games")),
@@ -618,7 +703,7 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Cat
         Icon::Close,
         "reset filters facets limpar filtros redefinir",
     );
-    if !ui.facet_filters.is_active() && ui.categories.is_empty() && ui.statuses.is_empty() {
+    if !ui.facet_filters.is_active() && ui.categories.is_empty() && ui.statuses.is_empty() && ui.smart_groups.is_empty() {
         clear.disable(tr!("No filter is active"));
     }
     v.push(clear);
@@ -697,6 +782,7 @@ pub(super) fn game_entry(g: &GameRow) -> Entry {
         favourite: g.favourite,
         hidden: g.hidden,
         last_played: g.last_played.map(str::to_string),
+        card: None,
     });
     e
 }
@@ -753,6 +839,20 @@ pub(super) fn game_verbs(title: &str, bits: &GameBits) -> Vec<Entry> {
     all.game = Some(bits.clone());
     v.push(all);
     v
+}
+
+/// "Show X in Heronite": the game selected in the Collection (the quick
+/// launcher's Shift Enter). Without the game's bits, so it is never played.
+pub(super) fn show_in_app_entry(title: &str, bits: &GameBits) -> Entry {
+    Entry::new(
+        Kind::Game,
+        Act::SelectGame(bits.key.clone()),
+        format!("game:{}:show", bits.key),
+        &tr!("Show {title} in Heronite", title),
+        tr!("Select it in the Collection"),
+        Icon::OpenInNew,
+        "",
+    )
 }
 
 /// The verbs listed under the best game match (the rest are reached by
@@ -863,6 +963,9 @@ mod tests {
             Act::YearReview,
             Act::ManageStatuses,
             Act::ManageFields,
+            Act::UpdateMetadata,
+            Act::ReviewMatches,
+            Act::GetMoreSources,
             Act::Console,
             Act::Quit,
         ] {
@@ -954,7 +1057,7 @@ mod tests {
     #[test]
     fn view_entries_follow_the_ui_state() {
         let ui = UiState { sort: SortMode::Playtime, group_by: GroupBy::Status, ..Default::default() };
-        let v = view_entries(&ui, &FacetOptions::default(), &Categories::default());
+        let v = view_entries(&ui, &FacetOptions::default(), &Categories::default(), &[]);
         let get = |id: &str| v.iter().find(|e| e.id.as_ref() == id).unwrap();
         assert!(get("view:sort:playtime").disabled.is_some());
         assert!(get("view:sort:title").disabled.is_none());
@@ -968,6 +1071,15 @@ mod tests {
         assert_eq!(get("view:sort:direction").title.as_ref(), "Sort descending");
         assert_eq!(get("view:only:Favourites").act, Act::View(ViewCmd::Only(Only::Favourites, true)));
         assert!(!v.iter().any(|e| e.id.starts_with("view:category:")), "no categories, no category filters");
+        assert!(get("view:smart-new").disabled.is_none(), "a smart category can always be made");
+
+        let ui = UiState { smart_groups: ["g1".to_owned()].into(), ..Default::default() };
+        let smart = [("g1".to_owned(), "Unplayed".to_owned()), ("g2".to_owned(), "Short".to_owned())];
+        let v = view_entries(&ui, &FacetOptions::default(), &Categories::default(), &smart);
+        let get = |id: &str| v.iter().find(|e| e.id.as_ref() == id).unwrap();
+        assert_eq!(get("view:smart:g1").title.as_ref(), "Remove filter Category: Unplayed");
+        assert_eq!(get("view:smart:g2").act, Act::View(ViewCmd::SmartCategory("g2".into())));
+        assert!(get("view:clear").disabled.is_none(), "a smart category filters");
     }
 
     #[test]

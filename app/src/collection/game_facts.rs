@@ -15,8 +15,8 @@ use heronite_data::anticheat::{self, AntiCheatInfo};
 use heronite_data::models::LocalGameSession;
 use heronite_data::timeline::{build_timeline, TimelineDay};
 use heronite_data::{ratings, settings, CollectionGame};
-use heronite_emulation::ludusavi::last_backup;
-use heronite_metadata::{protondb, Endpoints, Http};
+use heronite_emulation::ludusavi::{last_backup, LudusaviGame};
+use heronite_metadata::{protondb, sources, Endpoints, Http};
 
 use super::open_links::{game_folders, FolderKind};
 use super::CollectionView;
@@ -176,6 +176,8 @@ impl CollectionView {
         let paths = self.data_paths.clone();
         let cache = self.app_paths.cache.join("protondb");
         let emulated = game.launch_kind.as_deref() == Some("emulator");
+        let emulator_id = LudusaviGame::emulator_of(game.meta.as_deref());
+        let rom_path = LudusaviGame::rom_path_of(game.meta.as_deref());
         // The game's own Steam id, else the one the metadata found.
         let known_steam = [game.steam_app_id.as_deref(), game.metadata.as_ref().and_then(|m| m.steam_app_id.as_deref())]
             .into_iter()
@@ -191,6 +193,8 @@ impl CollectionView {
                 || game.game.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("linux")));
         // Other stores: ProtonDB only knows Steam ids, so look it up by title.
         let by_title = known_steam.is_none() && !native && !emulated;
+        // Off in Settings → Metadata: neither asked nor shown from the cache.
+        let protondb_on = self.lib.as_ref().is_none_or(|lib| sources::is_on(&lib.settings.metadata, sources::ids::PROTONDB));
         let measured = game.clone();
         cx.spawn(async move |this, cx| {
             let (local, net) = cx
@@ -200,15 +204,15 @@ impl CollectionView {
                     let backup = if !enabled {
                         Backup::Off
                     } else {
-                        match last_backup(&paths, &game.title, known_steam.as_deref()) {
+                        match last_backup(&paths, &game.title, known_steam.as_deref(), emulator_id.as_deref(), rom_path.as_deref()) {
                             Some(b) => Backup::At(b.at),
                             None => Backup::Never,
                         }
                     };
                     let folders = game_folders(&paths, &game);
-                    let looked_up = by_title.then(|| protondb::cached_steam_id_for_title(&cache, &game.title)).flatten();
+                    let looked_up = (protondb_on && by_title).then(|| protondb::cached_steam_id_for_title(&cache, &game.title)).flatten();
                     let steam = known_steam.or_else(|| looked_up.clone().flatten());
-                    let cached = steam.as_deref().and_then(|id| protondb::cached_tier(&cache, id));
+                    let cached = steam.as_deref().filter(|_| protondb_on).and_then(|id| protondb::cached_tier(&cache, id));
                     // How the game runs on Linux (ProtonDB, anti-cheat): only
                     // said on Linux.
                     let linux = (!emulated && cfg!(target_os = "linux")).then(|| Linux {
@@ -218,7 +222,7 @@ impl CollectionView {
                         anticheat: anticheat::lookup(&paths, steam.as_deref(), &game.title),
                     });
                     // Next, on the network: the title search, then a missing or stale tier.
-                    let wanted = linux.is_some();
+                    let wanted = linux.is_some() && protondb_on;
                     let search = (wanted && by_title && looked_up.is_none()).then(|| game.title.clone());
                     let fetch = steam.filter(|_| wanted && !cached.as_ref().is_some_and(|(_, fresh)| *fresh));
                     ((backup, folders, linux), (cache, search, fetch))

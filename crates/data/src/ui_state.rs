@@ -6,14 +6,14 @@
 //! `collection_focused_game`. Loading is as lenient as the `readX` helpers of
 //! `index.tsx`: anything missing or invalid falls back to its default.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::Result;
 use serde_json::{json, Map, Value};
 
 use crate::age_rating::AgeFilter;
 use crate::collection::{FacetFilters, FacetKind, InstallFilter, SortMode, FACET_KINDS};
-use crate::console_theme::{AutoConsole, OpenIn};
+use crate::console_theme::{AutoConsole, ConfirmButton, ConsoleButton, ControllerPrefs, Glyphs, OpenIn};
 use crate::json_store;
 use crate::organize::GroupBy;
 use crate::paths::AppPaths;
@@ -39,6 +39,9 @@ pub struct UiState {
     /// Ids of the selected smart groups (`heronite_data::smart_groups`),
     /// the games of any of them. Empty: all games.
     pub smart_groups: BTreeSet<String>,
+    /// Colour and pin of each manual category, by name (`categoryLooks`).
+    /// Smart categories keep theirs in `groups.json`; these stay on this PC.
+    pub category_looks: BTreeMap<String, CategoryLook>,
     /// The View menu's views, in menu order.
     pub saved_views: Vec<SavedView>,
     /// The built-in views were added to [`saved_views`](Self::saved_views)
@@ -97,10 +100,18 @@ pub struct UiState {
     /// `autoConsole` of `console.json`, mirrored like
     /// [`console_open_in`](Self::console_open_in) ([`set_console_auto`]).
     pub console_auto: AutoConsole,
+    /// `consoleButton` of `console.json`, mirrored like
+    /// [`console_open_in`](Self::console_open_in) ([`set_console_button`]).
+    pub console_button: ConsoleButton,
     /// `fullscreen` of `console.json`, mirrored like
     /// [`console_open_in`](Self::console_open_in) ([`set_console_fullscreen`]):
     /// a window that opens in console mode opens fullscreen.
     pub console_fullscreen: bool,
+    /// `controller` of `console.json`, mirrored like
+    /// [`console_open_in`](Self::console_open_in) ([`set_controller`]): the
+    /// overlay draws the buttons and swaps confirm and back without reading
+    /// that file.
+    pub controller: ControllerPrefs,
 }
 
 /// Range and default of [`UiState::grid_cover_w`].
@@ -185,6 +196,7 @@ impl Default for UiState {
             categories: BTreeSet::new(),
             statuses: BTreeSet::new(),
             smart_groups: BTreeSet::new(),
+            category_looks: BTreeMap::new(),
             saved_views: Vec::new(),
             views_seeded: false,
             sidebar_hidden: false,
@@ -207,7 +219,9 @@ impl Default for UiState {
             grid_drawer_w: None,
             console_open_in: OpenIn::default(),
             console_auto: AutoConsole::default(),
+            console_button: ConsoleButton::default(),
             console_fullscreen: true,
+            controller: ControllerPrefs::default(),
         }
     }
 }
@@ -224,6 +238,13 @@ impl UiState {
                     let name = v.get("name").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty())?;
                     Some(SavedView { name: name.to_owned(), filters: ViewFilters::from_value(v), extra: SavedView::extra_of(v) })
                 })
+                .collect();
+        }
+        if let Some(looks) = value.get(CATEGORY_LOOKS).and_then(Value::as_object) {
+            state.category_looks = looks
+                .iter()
+                .filter(|(name, _)| !name.trim().is_empty())
+                .filter_map(|(name, v)| Some((name.clone(), CategoryLook::from_value(v).filter(|l| !l.is_plain())?)))
                 .collect();
         }
         let flag = |key: &str| value.get(key).and_then(Value::as_bool).unwrap_or(false);
@@ -262,7 +283,13 @@ impl UiState {
         state.grid_drawer_w = width("gridDrawerWidth");
         state.console_open_in = value.get(CONSOLE_OPEN_IN).and_then(Value::as_str).and_then(OpenIn::parse).unwrap_or_default();
         state.console_auto = value.get(CONSOLE_AUTO).and_then(Value::as_str).and_then(AutoConsole::parse).unwrap_or_default();
+        state.console_button = value.get(CONSOLE_BUTTON).and_then(Value::as_str).and_then(ConsoleButton::parse).unwrap_or_default();
         state.console_fullscreen = value.get(CONSOLE_FULLSCREEN).and_then(Value::as_bool).unwrap_or(true);
+        let controller = value.get(CONTROLLER);
+        state.controller = ControllerPrefs {
+            glyphs: controller.and_then(|c| c.get("glyphs")).and_then(Value::as_str).and_then(Glyphs::parse).unwrap_or_default(),
+            confirm: controller.and_then(|c| c.get("confirm")).and_then(Value::as_str).and_then(ConfirmButton::parse).unwrap_or_default(),
+        };
         state
     }
 
@@ -291,6 +318,11 @@ impl UiState {
         if let (Value::Object(doc), Value::Object(view)) = (&mut doc, self.view_filters().to_value()) {
             doc.extend(view);
         }
+        let looks: Map<String, Value> =
+            self.category_looks.iter().filter(|(_, l)| !l.is_plain()).map(|(name, l)| (name.clone(), l.to_value())).collect();
+        if !looks.is_empty() {
+            doc[CATEGORY_LOOKS] = Value::Object(looks);
+        }
         doc
     }
 
@@ -315,6 +347,10 @@ impl UiState {
             // the groups picked before would come back on the next start.
             if !known.contains_key("smartGroups") {
                 obj.remove("smartGroups");
+            }
+            // Likewise: the last look taken off leaves no key behind.
+            if !known.contains_key(CATEGORY_LOOKS) {
+                obj.remove(CATEGORY_LOOKS);
             }
             for (k, v) in known {
                 obj.insert(k, v);
@@ -365,7 +401,9 @@ impl UiState {
         changed
     }
 
-    /// [`prune_statuses`](Self::prune_statuses) for categories.
+    /// [`prune_statuses`](Self::prune_statuses) for categories. Their looks
+    /// stay (a category that is back, from a sync or an unreadable file,
+    /// keeps its colour); [`forget_category`](Self::forget_category) drops one.
     pub fn prune_categories(&mut self, keep: impl Fn(&str) -> bool) -> bool {
         let before = self.categories.len();
         self.categories.retain(|name| keep(name));
@@ -392,7 +430,45 @@ impl UiState {
         for view in &mut self.saved_views {
             changed |= rename(&mut view.filters.categories);
         }
+        // A merge keeps the colour of the category merged into (the merged
+        // one's when it has none), and its pin when either was pinned.
+        if let Some(look) = self.category_looks.remove(old) {
+            match self.category_looks.get_mut(new) {
+                Some(into) => {
+                    into.pinned |= look.pinned;
+                    if into.colour.is_none() {
+                        into.colour = look.colour;
+                    }
+                }
+                None => {
+                    self.category_looks.insert(new.to_owned(), look);
+                }
+            }
+            changed = true;
+        }
         changed
+    }
+
+    /// The user removed the category `name`: its look goes too.
+    pub fn forget_category(&mut self, name: &str) -> bool {
+        self.category_looks.remove(name).is_some()
+    }
+
+    /// The look of the manual category `name` (plain when it has none).
+    pub fn category_look(&self, name: &str) -> CategoryLook {
+        self.category_looks.get(name).cloned().unwrap_or_default()
+    }
+
+    /// Changes the look of `name`; a plain look is dropped (its unknown
+    /// keys are kept).
+    pub fn set_category_look(&mut self, name: &str, f: impl FnOnce(&mut CategoryLook)) {
+        let mut look = self.category_look(name);
+        f(&mut look);
+        if look.is_plain() {
+            self.category_looks.remove(name);
+        } else {
+            self.category_looks.insert(name.to_owned(), look);
+        }
     }
 
     /// `handleClearFacets`.
@@ -617,6 +693,46 @@ impl ViewFilters {
     }
 }
 
+/// Key of [`UiState::category_looks`] in the file.
+const CATEGORY_LOOKS: &str = "categoryLooks";
+
+/// How a manual category shows: its colour (`None`: the one its place in
+/// the list picks) and whether it is pinned to the Collection header.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CategoryLook {
+    /// `#rrggbb`.
+    pub colour: Option<String>,
+    pub pinned: bool,
+    /// Keys a newer version wrote, kept as read.
+    pub extra: Map<String, Value>,
+}
+
+impl CategoryLook {
+    fn from_value(v: &Value) -> Option<Self> {
+        let obj = v.as_object()?;
+        let colour = obj.get("colour").and_then(Value::as_str).filter(|c| crate::smart_groups::is_hex_colour(c)).map(str::to_owned);
+        let pinned = obj.get("pinned").and_then(Value::as_bool).unwrap_or(false);
+        let extra = obj.iter().filter(|(k, _)| !matches!(k.as_str(), "colour" | "pinned")).map(|(k, v)| (k.clone(), v.clone())).collect();
+        Some(Self { colour, pinned, extra })
+    }
+
+    fn to_value(&self) -> Value {
+        let mut obj = self.extra.clone();
+        if let Some(c) = &self.colour {
+            obj.insert("colour".into(), json!(c));
+        }
+        if self.pinned {
+            obj.insert("pinned".into(), json!(true));
+        }
+        Value::Object(obj)
+    }
+
+    /// Nothing to keep: no colour, not pinned, no unknown keys.
+    pub fn is_plain(&self) -> bool {
+        self.colour.is_none() && !self.pinned && self.extra.is_empty()
+    }
+}
+
 /// A view the user saved from the View menu.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SavedView {
@@ -688,6 +804,8 @@ impl OnlyFilters {
 const CONSOLE_OPEN_IN: &str = "consoleOpenIn";
 const CONSOLE_AUTO: &str = "consoleAuto";
 const CONSOLE_FULLSCREEN: &str = "consoleFullscreen";
+const CONSOLE_BUTTON: &str = "consoleButton";
+const CONTROLLER: &str = "controller";
 
 /// Stores `value` under `key`, or removes the key for the default (`None`).
 fn set_mirror(paths: &AppPaths, key: &str, value: Option<Value>) -> Result<()> {
@@ -713,6 +831,21 @@ pub fn set_console_open_in(paths: &AppPaths, value: OpenIn) -> Result<()> {
 /// Mirrors console.json's `autoConsole` into the UI state.
 pub fn set_console_auto(paths: &AppPaths, value: AutoConsole) -> Result<()> {
     set_mirror(paths, CONSOLE_AUTO, (value != AutoConsole::default()).then(|| value.as_str().into()))
+}
+
+/// Mirrors console.json's `consoleButton` into the UI state.
+pub fn set_console_button(paths: &AppPaths, value: ConsoleButton) -> Result<()> {
+    set_mirror(paths, CONSOLE_BUTTON, (value != ConsoleButton::default()).then(|| value.as_str().into()))
+}
+
+/// Mirrors console.json's `controller` into the UI state (stored only when
+/// not automatic).
+pub fn set_controller(paths: &AppPaths, value: ControllerPrefs) -> Result<()> {
+    set_mirror(
+        paths,
+        CONTROLLER,
+        (value != ControllerPrefs::default()).then(|| json!({ "glyphs": value.glyphs.as_str(), "confirm": value.confirm.as_str() })),
+    )
 }
 
 /// Mirrors console.json's `fullscreen` into the UI state (stored only when off).
@@ -956,19 +1089,29 @@ mod tests {
         set_console_open_in(&paths, OpenIn::Console).unwrap();
         set_console_auto(&paths, AutoConsole::Ask).unwrap();
         set_console_fullscreen(&paths, false).unwrap();
+        assert_eq!(UiState::load(&paths).console_button, ConsoleButton::Off);
+        set_console_button(&paths, ConsoleButton::Bumpers).unwrap();
+        assert_eq!(UiState::load(&paths).controller, ControllerPrefs::default());
+        let east = ControllerPrefs { glyphs: Glyphs::PlayStation, confirm: ConfirmButton::East };
+        set_controller(&paths, east).unwrap();
         let stale = UiState::default();
         let loaded = UiState::load(&paths);
         assert_eq!((loaded.console_open_in, loaded.console_auto), (OpenIn::Console, AutoConsole::Ask));
         assert!(!loaded.console_fullscreen);
+        assert_eq!(loaded.console_button, ConsoleButton::Bumpers);
+        assert_eq!(loaded.controller, east);
         // A copy loaded before the change saves without undoing it.
         stale.save(&paths).unwrap();
         assert_eq!(UiState::load(&paths).console_open_in, OpenIn::Console);
         set_console_open_in(&paths, OpenIn::Last).unwrap();
         set_console_auto(&paths, AutoConsole::Off).unwrap();
         set_console_fullscreen(&paths, true).unwrap();
+        set_console_button(&paths, ConsoleButton::Off).unwrap();
+        set_controller(&paths, ControllerPrefs::default()).unwrap();
         let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
         assert!(on_disk.get(CONSOLE_OPEN_IN).is_none() && on_disk.get(CONSOLE_AUTO).is_none());
-        assert!(on_disk.get(CONSOLE_FULLSCREEN).is_none());
+        assert!(on_disk.get(CONSOLE_FULLSCREEN).is_none() && on_disk.get(CONSOLE_BUTTON).is_none());
+        assert!(on_disk.get(CONTROLLER).is_none());
     }
 
     #[test]
@@ -1260,5 +1403,75 @@ mod tests {
         assert_eq!(window_placement(&paths), None);
         std::fs::write(paths.ui_state(), r#"{"window":{"x":0,"width":800,"height":600}}"#).unwrap();
         assert_eq!(window_placement(&paths), None);
+    }
+
+    /// Colours and pins of manual categories: written under `categoryLooks`,
+    /// unknown keys (in a look and beside it) kept, plain looks left out.
+    #[test]
+    fn category_looks_round_trip_and_keep_unknown_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = app_paths(dir.path());
+        std::fs::create_dir_all(&paths.config).unwrap();
+        let newer = json!({
+            "futureKey": { "a": 1 },
+            "categoryLooks": {
+                "RPG": { "colour": "#d55181", "pinned": true, "icon": "sword" },
+                "Co-op": { "colour": "not a colour" },
+                "": { "pinned": true },
+            },
+        });
+        std::fs::write(paths.ui_state(), serde_json::to_string(&newer).unwrap()).unwrap();
+
+        let mut state = UiState::load(&paths);
+        let rpg = state.category_look("RPG");
+        assert_eq!(rpg.colour.as_deref(), Some("#d55181"));
+        assert!(rpg.pinned);
+        assert_eq!(rpg.extra["icon"], "sword");
+        assert!(state.category_look("Co-op").is_plain(), "a bad colour reads as none");
+        assert!(!state.category_looks.contains_key(""), "nameless dropped");
+
+        state.set_category_look("Kids", |l| l.colour = Some("#199e70".into()));
+        state.set_category_look("RPG", |l| l.pinned = false);
+        state.save(&paths).unwrap();
+        let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
+        assert_eq!(on_disk["futureKey"], json!({ "a": 1 }));
+        assert_eq!(on_disk["categoryLooks"], json!({ "RPG": { "colour": "#d55181", "icon": "sword" }, "Kids": { "colour": "#199e70" } }));
+        assert_eq!(UiState::load(&paths).category_looks, state.category_looks);
+
+        // A rename carries the look; a removed category loses it.
+        assert!(state.rename_category("Kids", "Family"));
+        assert_eq!(state.category_look("Family").colour.as_deref(), Some("#199e70"));
+        assert!(!state.prune_categories(|n| n != "Family"), "pruning the filter keeps the looks");
+        // A merge keeps the colour merged into, and a pin of either.
+        state.set_category_look("Family", |l| l.pinned = true);
+        assert!(state.rename_category("Family", "RPG"));
+        let merged = state.category_look("RPG");
+        assert_eq!(merged.colour.as_deref(), Some("#d55181"));
+        assert!(merged.pinned, "the merged category's pin stays");
+        assert!(!state.category_looks.contains_key("Family"));
+        state.set_category_look("RPG", |l| l.pinned = false);
+        state.set_category_look("Family", |l| l.colour = Some("#199e70".into()));
+        assert!(state.forget_category("Family"));
+        state.set_category_look("RPG", |l| {
+            l.colour = None;
+            l.extra.clear();
+        });
+        state.save(&paths).unwrap();
+        assert!(json_store::read_value(&paths.ui_state()).unwrap().get("categoryLooks").is_none(), "no looks, no key");
+    }
+
+    /// A file from before category looks reads with none, and saving it adds
+    /// no key.
+    #[test]
+    fn old_files_have_no_category_looks() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = app_paths(dir.path());
+        std::fs::create_dir_all(&paths.config).unwrap();
+        std::fs::write(paths.ui_state(), r#"{"categories":["RPG"],"sort":"title"}"#).unwrap();
+        let state = UiState::load(&paths);
+        assert!(state.category_looks.is_empty());
+        assert!(state.category_look("RPG").is_plain());
+        state.save(&paths).unwrap();
+        assert!(json_store::read_value(&paths.ui_state()).unwrap().get("categoryLooks").is_none());
     }
 }

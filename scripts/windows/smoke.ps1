@@ -26,7 +26,7 @@
 #>
 param(
     [string]$Dist,
-    [ValidateSet('english', 'brazilianportuguese', 'spanish', 'german')]
+    [ValidateSet('english', 'brazilianportuguese', 'spanish', 'german', 'french')]
     [string]$Language = 'brazilianportuguese'
 )
 

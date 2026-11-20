@@ -1,7 +1,8 @@
 //! The search above the Settings sections: it finds sections (label, group
 //! caption, palette keywords, blurb) and the settings inside them (the labels
 //! of their rows, fields and captions, listed in [`INDEX`] and
-//! [`DEFAULTS_INDEX`]). Picking a setting opens its section and flashes it
+//! [`DEFAULTS_INDEX`], plus the metadata sources and their options from the
+//! source registry). Picking a setting opens its section and flashes it
 //! (`ui::find`).
 //!
 //! The labels are the English texts the sections draw (`tr!` keys): a renamed
@@ -11,6 +12,7 @@
 
 use heronite_data::fuzzy;
 use heronite_i18n::tr;
+use heronite_metadata::sources::builtin_descriptors;
 
 use super::Section;
 use crate::dialogs::settings_panel::logic::Section as Tab;
@@ -63,8 +65,10 @@ const INDEX: &[(Section, &[&str])] = &[
             "Behind the Collection",
             "Use the game artwork as page background",
             "Picture",
+            "Animated backgrounds",
             "Covers",
             "Cover aspect",
+            "Cover fit",
             "Show uninstalled games in grey",
             "Corners",
             "Under the cover",
@@ -87,11 +91,21 @@ const INDEX: &[(Section, &[&str])] = &[
             "Switch with the window's width",
             "Panel widths",
             "Game sections",
+            "Store media",
+            "Autoplay trailers",
+            "Video cache",
         ],
     ),
     (
         Section::ConsoleMode,
-        &["The theme in use", "Startup", "Open the app", "Open console mode in fullscreen", "When a controller connects"],
+        &[
+            "The theme in use",
+            "Startup",
+            "Open the app",
+            "Open console mode in fullscreen",
+            "When a controller connects",
+            "Button to enter console mode",
+        ],
     ),
     (
         Section::Downloads,
@@ -119,22 +133,32 @@ const INDEX: &[(Section, &[&str])] = &[
     (
         Section::Metadata,
         &[
-            "Twitch / IGDB API",
-            "Twitch / IGDB Client ID",
-            "Twitch / IGDB Client Secret",
-            "Images & fields",
-            "Fill missing metadata in the background",
-            "Copy covers to disk",
-            "Age ratings",
-            "Show age ratings",
-            "Rating board shown first",
-            "Steam tags",
-            "Show Steam tags",
-            "Steam tags per game",
-            "HowLongToBeat",
-            "Look up HowLongToBeat times",
+            "Game details",
+            "IGDB",
+            "Client ID",
+            "Client secret",
+            "Steam",
+            "Store",
+            "Lutris",
+            "Pictures",
             "SteamGridDB",
             "SteamGridDB API key",
+            "From the web",
+            "Extras",
+            "HowLongToBeat",
+            "Steam tags",
+            "Steam tags per game",
+            "ProtonDB",
+            "Get more sources",
+            "Cover shapes",
+            "Download a shape as soon as a view starts using it",
+            "When details arrive",
+            "Fill missing metadata in the background",
+            "Copy covers to disk",
+            "Allow adult covers",
+            "Show age ratings",
+            "Rating board shown first",
+            "Order for one field (advanced)",
         ],
     ),
     (
@@ -164,6 +188,23 @@ const INDEX: &[(Section, &[&str])] = &[
             "Show achievements in the Timeline",
             "Hide secret achievements",
             "Update every game now",
+        ],
+    ),
+    (
+        Section::Controls,
+        &[
+            "Buttons drawn as",
+            "Confirm button",
+            "Open the overlay",
+            "Take a screenshot",
+            "Save the replay",
+            "Mark a moment",
+            "Volume up / down",
+            "Enter console mode",
+            "Overlay open",
+            "Open the game page",
+            "Search and filters",
+            "Jump by letter",
         ],
     ),
     (
@@ -205,6 +246,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Clear preview cache",
         ],
     ),
+    (Section::QuickLauncher, &["How it works", "Opening it", "Keyboard shortcut", "Open from a key of the desktop", "Try it"]),
     (
         Section::Replay,
         &[
@@ -434,13 +476,24 @@ fn settings_of(section: Section) -> Vec<Setting> {
     if section == Section::GameDefaults {
         return DEFAULTS_INDEX.iter().flat_map(|(tab, labels)| labels.iter().map(|&label| Setting { label, tab: Some(*tab) })).collect();
     }
-    INDEX
+    let mut settings: Vec<Setting> = INDEX
         .iter()
         .filter(|(s, _)| *s == section)
         .flat_map(|(_, labels)| labels.iter().copied())
-        .filter(|label| *label != "Guide + X: save the replay" || Section::Replay.available())
+        .filter(|label| *label != "Guide + X: save the replay" && *label != "Save the replay" || Section::Replay.available())
         .map(|label| Setting { label, tab: None })
-        .collect()
+        .collect();
+    if section == Section::Metadata {
+        // The sources and their options come from the registry, so a new
+        // source is found without a line here.
+        let sources = builtin_descriptors().iter().filter(|d| !d.hidden);
+        for label in sources.flat_map(|d| std::iter::once(d.name.as_str()).chain(d.options.iter().map(|o| o.label.as_str()))) {
+            if !settings.iter().any(|s| s.label == label) {
+                settings.push(Setting { label, tab: None });
+            }
+        }
+    }
+    settings
 }
 
 /// How well `section` itself matches.

@@ -2,11 +2,12 @@
 //! Category / Search filters on top (↑ from the first row; Y opens them all
 //! in the Filters panel, `super::super::filters`). Its filters are
 //! console-only state: they never change the desktop Collection's filters.
+//! Show, Sort and Favourites outlast console mode (`Filters::keep_in`).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::categories::{Categories, UNCATEGORIZED};
-use heronite_data::console_theme::{GridPanel, TabSpec};
+use heronite_data::console_theme::{GridPanel, KeptFilters, TabSpec};
 use heronite_data::{CollectionGame, Library};
 use heronite_i18n::{n_, tr};
 
@@ -58,8 +59,43 @@ pub(crate) struct Filters {
     pub status: usize,
     /// Index in [`category_options`].
     pub category: usize,
-    /// 0 = any, else the smart group `group - 1` (`CollectionView::smart_groups`).
+    /// 0 = any, else the smart category `group - 1` (`CollectionView::smart_groups`).
+    /// At most one of `category` and `group` is set: the Category chip and
+    /// row go through the manual choices, then the smart ones.
     pub group: usize,
+}
+
+impl Filters {
+    /// Where the Category choice is among the `category_n` manual choices
+    /// ("any" included) followed by the smart categories.
+    pub(crate) fn category_pick(&self, category_n: usize) -> usize {
+        if self.group > 0 {
+            category_n + self.group - 1
+        } else {
+            self.category
+        }
+    }
+
+    /// Sets the Category choice to `pick` (see [`category_pick`](Self::category_pick)).
+    pub(crate) fn set_category_pick(&mut self, pick: usize, category_n: usize) {
+        if pick < category_n {
+            (self.category, self.group) = (pick, 0);
+        } else {
+            (self.category, self.group) = (0, pick - category_n + 1);
+        }
+    }
+
+    /// Puts the part kept for the next time console mode starts in `k`.
+    pub(crate) fn keep_in(&self, k: &mut KeptFilters) {
+        (k.show, k.sort, k.favourites) = (self.show, self.sort, self.favourites);
+    }
+
+    /// The filters a grid starts with: the kept ones (a value out of range,
+    /// from an edited file, reads as the first), any status and category.
+    pub(crate) fn from_kept(k: KeptFilters) -> Self {
+        let pick = |v: usize, n: usize| if v < n { v } else { 0 };
+        Self { show: pick(k.show, SHOW.len()), sort: pick(k.sort, SORT.len()), favourites: k.favourites, ..Self::default() }
+    }
 }
 
 pub(crate) const SHOW: [&str; 3] = [n_!("All games"), n_!("Installed"), n_!("Not installed")];
@@ -139,22 +175,19 @@ impl Nav {
         keys(games)
     }
 
-    /// `group`: the Filters panel's smart group, shown before what Show shows.
+    /// `group`: the name of the smart category picked, shown in the Category chip.
     fn chips(&self, lib: &Library, cats: &Categories, search: &str, group: Option<&str>) -> [(SharedString, SharedString); CHIPS] {
         let f = &self.filters;
         let status = status_options(lib);
-        let category = match category_options(cats).get(f.category).cloned().flatten() {
-            None => tr!("Any category").to_string(),
-            Some(name) => category_label(&name),
+        let category = match (group, category_options(cats).get(f.category).cloned().flatten()) {
+            (Some(name), _) => name.to_string(),
+            (None, None) => tr!("Any category").to_string(),
+            (None, Some(name)) => category_label(&name),
         };
         let show = match (f.show, f.favourites) {
             (0, true) => tr!("Favourites").to_string(),
             (s, true) => format!("{} \u{b7} {}", heronite_i18n::tr(SHOW[s]), tr!("Favourites")),
             (s, false) => heronite_i18n::tr(SHOW[s]).to_string(),
-        };
-        let show = match group {
-            Some(name) => format!("{name} \u{b7} {show}"),
-            None => show,
         };
         [
             (tr!("Show").into(), show.into()),
@@ -490,10 +523,12 @@ impl CollectionView {
         let keys = self.grid_keys(tab, spec);
         let status_n = lib.statuses.len() + 1;
         let category_n = category_options(&self.categories).len();
+        let pick_n = category_n + self.smart_groups.groups.len();
         let wrap = look::theme().nav.wrap;
         let by_letter = self.grid_letters(tab);
         let nav = &mut self.tab_nav(tab).grid;
         let cols = nav.cols.max(1);
+        let before = (nav.filters.show, nav.filters.favourites);
         if let Some(chip) = nav.toolbar {
             match pad {
                 Pad::Left => nav.toolbar = Some(chip.saturating_sub(1)),
@@ -508,7 +543,7 @@ impl CollectionView {
                         }
                         1 => f.sort = (f.sort + 1) % SORT.len(),
                         2 => f.status = (f.status + 1) % status_n,
-                        3 => f.category = (f.category + 1) % category_n,
+                        3 => f.set_category_pick((f.category_pick(category_n) + 1) % pick_n, category_n),
                         _ => {
                             self.console_search(window, cx);
                             return true;
@@ -521,7 +556,7 @@ impl CollectionView {
                         0 => (f.show, f.favourites) = (0, false),
                         1 => f.sort = 0,
                         2 => f.status = 0,
-                        3 => f.category = 0,
+                        3 => (f.category, f.group) = (0, 0),
                         _ => self.console.search.clear(),
                     }
                 }
@@ -535,6 +570,7 @@ impl CollectionView {
                 let nav = &mut self.tab_nav(tab).grid;
                 nav.index = 0;
                 nav.restart = true;
+                self.keep_grid_filters(tab, before);
             }
             return true;
         }
@@ -612,6 +648,21 @@ mod tests {
     // `gpui_kit::*` above brings gpui's own `test` macro.
     use core::prelude::v1::test;
 
+    /// Show, Sort and Favourites outlast console mode; Status and Category
+    /// start from "any"; a value out of range reads as the first.
+    #[test]
+    fn kept_filters_round_trip() {
+        let f = Filters { show: 1, sort: 2, favourites: true, status: 3, category: 2, group: 0 };
+        // The carousel's part stays as it was.
+        let mut k = KeptFilters { carousel: 2, ..KeptFilters::default() };
+        f.keep_in(&mut k);
+        assert_eq!(k, KeptFilters { show: 1, sort: 2, favourites: true, carousel: 2 });
+        assert_eq!(Filters::from_kept(k), Filters { status: 0, category: 0, ..f.clone() });
+        assert_eq!(Filters::from_kept(KeptFilters::default()), Filters::default());
+        let odd = Filters::from_kept(KeptFilters { show: 9, sort: 7, ..KeptFilters::default() });
+        assert_eq!((odd.show, odd.sort), (0, 0));
+    }
+
     #[test]
     fn letters_ignore_accents_and_group_symbols() {
         assert_eq!(letter_of("Álvaro"), 'A');
@@ -633,5 +684,20 @@ mod tests {
         assert_eq!(jump_letter(&l, 1, false), 0);
         assert_eq!(jump_letter(&l, 0, false), 0);
         assert_eq!(jump_letter(&[], 0, true), 0);
+    }
+
+    /// The Category choice goes through "any", the manual categories and
+    /// "Uncategorized" (4 here), then the smart ones; only one kind is set.
+    #[test]
+    fn the_category_choice_runs_through_manual_then_smart() {
+        let mut f = Filters { category: 2, ..Default::default() };
+        assert_eq!(f.category_pick(4), 2);
+        f.set_category_pick(4, 4);
+        assert_eq!((f.category, f.group), (0, 1), "the first smart category");
+        assert_eq!(f.category_pick(4), 4);
+        f.set_category_pick(5, 4);
+        assert_eq!((f.category, f.group), (0, 2));
+        f.set_category_pick(3, 4);
+        assert_eq!((f.category, f.group), (3, 0), "back to a manual one");
     }
 }

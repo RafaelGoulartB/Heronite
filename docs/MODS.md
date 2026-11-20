@@ -213,6 +213,11 @@ still on its folder (`deploy::unmount_ours`).
 
 ## Windows
 
+Hidden for now (`Feature::Mods` is off on Windows; a debug build turns it on
+with `HERONITE_FEATURES=+mods`): mod archives still need 7-Zip, `unzip` or
+`bsdtar` on the PATH, which a stock Windows lacks, and putting the game's
+folder back has no retry when a file is still locked.
+
 Windows has no overlay file system, and Heronite does not hook a game's file
 calls (MO2's usvfs). So while the game runs, the enabled mods' files are **in
 its folder**, and they come out again when it ends (`journal_deploy`):

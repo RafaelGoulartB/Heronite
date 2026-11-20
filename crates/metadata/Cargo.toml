@@ -3,11 +3,15 @@ name = "heronite-metadata"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Collection metadata and artwork backend (IGDB, Steam, Lutris, merge, art, web image search, HowLongToBeat) compatible with Heronite's data files"
+description = "Collection metadata and artwork backend (IGDB, Steam, Lutris, LaunchBox, merge, art, web image search, HowLongToBeat) compatible with Heronite's data files"
 
 [dependencies]
 heronite-data = { path = "../data" }
+heronite-platform = { path = "../platform" }
 heronite-i18n = { path = "../i18n" }
+# `public`: the resolver that keeps what an extension asks for on the
+# public internet, shared with the pictures it names.
+heronite-images = { path = "../images" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 anyhow = "1"
@@ -18,6 +22,15 @@ regex = "1"
 ureq = "3"
 url = "2"
 parking_lot = "0.12"
+# The LaunchBox Games Database: its archive read in place (the workspace's
+# zip, as heronite-launch, -sync and -update use it), its XML parsed as a
+# stream (quick-xml, already in the lockfile), the index it becomes in
+# SQLite (the bundled build achievements, import and amazon link) with the
+# long texts deflated (flate2, zip's own backend).
+zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+quick-xml = "0.41"
+rusqlite = { version = "0.40", features = ["bundled"] }
+flate2 = "1"
 
 [dev-dependencies]
 tempfile = "3"

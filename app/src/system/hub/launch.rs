@@ -71,8 +71,12 @@ fn fail(cx: &mut App, message: String) {
             let _ = view.update(cx, |v, cx| v.system_toast(message, true, cx));
         }
         // Nobody sees a toast; a one-shot launch exits right after, so wait
-        // for the notification to be handed over.
-        None => crate::system::notify::send_and_wait("Heronite", message, std::time::Duration::from_secs(2)),
+        // for the notification to be handed over. An instance that stays (in
+        // the tray, the quick launcher's) does not block for it.
+        None if hub.0.borrow().exit_when_idle => {
+            crate::system::notify::send_and_wait("Heronite", message, std::time::Duration::from_secs(2))
+        }
+        None => crate::system::notify::send("Heronite", message),
     }
     maybe_exit_idle(cx);
 }
@@ -83,7 +87,6 @@ fn on_headless_game(cx: &mut App, req: LaunchRequest, found: Result<Option<Arc<C
         Ok(None) => return fail(cx, tr!("Could not find the game {name} in the library", name = req.app_name)),
         Ok(Some(g)) => g,
     };
-    let hub = hub(cx);
     if !game.installed {
         // Heroic asks to install it (and shows the window for that).
         log::info!("{} is not installed: showing the window", game.title);
@@ -92,6 +95,14 @@ fn on_headless_game(cx: &mut App, req: LaunchRequest, found: Result<Option<Arc<C
         }
         return;
     }
+    play_game(cx, game);
+}
+
+/// Plays the installed `game` without showing the window: launch requests,
+/// the tray's recent games and the quick launcher. Problems become a toast
+/// in the window when there is one, else a notification.
+pub fn play_game(cx: &mut App, game: Arc<CollectionGame>) {
+    let hub = hub(cx);
     let (runtime, fake, running) = {
         let s = hub.0.borrow();
         (s.runtime.clone(), s.fake_launch, s.running.contains_key(&game.app_name))

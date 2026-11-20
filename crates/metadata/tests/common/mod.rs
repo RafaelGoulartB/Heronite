@@ -36,23 +36,32 @@ pub struct Resp {
     pub status: u16,
     pub content_type: &'static str,
     pub body: Vec<u8>,
+    /// Headers beyond the content type and length.
+    pub headers: Vec<(&'static str, String)>,
 }
 
 impl Resp {
+    fn new(status: u16, content_type: &'static str, body: Vec<u8>) -> Self {
+        Self { status, content_type, body, headers: Vec::new() }
+    }
     pub fn json(v: impl serde::Serialize) -> Self {
-        Self { status: 200, content_type: "application/json", body: serde_json::to_vec(&v).unwrap() }
+        Self::new(200, "application/json", serde_json::to_vec(&v).unwrap())
     }
     pub fn raw_json(s: String) -> Self {
-        Self { status: 200, content_type: "application/json", body: s.into_bytes() }
+        Self::new(200, "application/json", s.into_bytes())
     }
     pub fn html(s: &str) -> Self {
-        Self { status: 200, content_type: "text/html", body: s.as_bytes().to_vec() }
+        Self::new(200, "text/html", s.as_bytes().to_vec())
     }
     pub fn image(bytes: Vec<u8>) -> Self {
-        Self { status: 200, content_type: "image/png", body: bytes }
+        Self::new(200, "image/png", bytes)
     }
     pub fn status(code: u16) -> Self {
-        Self { status: code, content_type: "text/plain", body: b"nope".to_vec() }
+        Self::new(code, "text/plain", b"nope".to_vec())
+    }
+    pub fn with_header(mut self, name: &'static str, value: &str) -> Self {
+        self.headers.push((name, value.to_owned()));
+        self
     }
 }
 
@@ -101,14 +110,19 @@ impl Server {
             steam_api: format!("{b}/steamapi"),
             steam_community: format!("{b}/community"),
             lutris: format!("{b}/lutris"),
+            launchbox: format!("{b}/launchbox"),
+            launchbox_images: format!("{b}/lbimages"),
+            libretro_thumbnails: format!("{b}/libretro"),
             steamgriddb: format!("{b}/sgdb/api/v2"),
             bottles_steamgrid: format!("{b}/bottles"),
+            gog_api: format!("{b}/gog"),
             hltb: format!("{b}/hltb"),
             protondb: format!("{b}/protondb"),
             duckduckgo: format!("{b}/ddg"),
             bing: format!("{b}/bing"),
             google: format!("{b}/google"),
             steam_hero_urls: Some(vec![format!("{b}/cdn/missing_hero.jpg"), format!("{b}/cdn/hero.jpg")]),
+            origins: Vec::new(),
         }
     }
 }
@@ -151,8 +165,9 @@ fn serve(mut stream: TcpStream, handler: &dyn Fn(&Req) -> Resp, log: &Mutex<Vec<
     let req = Req { method, target, headers, body };
     log.lock().push(req.clone());
     let resp = handler(&req);
+    let extra: String = resp.headers.iter().map(|(k, v)| format!("{k}: {v}\r\n")).collect();
     let head = format!(
-        "HTTP/1.1 {} X\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {} X\r\nContent-Type: {}\r\nContent-Length: {}\r\n{extra}Connection: close\r\n\r\n",
         resp.status,
         resp.content_type,
         resp.body.len()
@@ -166,8 +181,62 @@ pub fn fixture(name: &str) -> String {
     std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)).unwrap()
 }
 
+/// The first bytes of a PNG of `w` x `h` (signature and `IHDR`: all a
+/// source reads to learn a picture's shape), padded to `len` bytes.
+pub fn png_of(w: u32, h: u32, len: usize) -> Vec<u8> {
+    let mut v = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, b'I', b'H', b'D', b'R'];
+    v.extend(w.to_be_bytes());
+    v.extend(h.to_be_bytes());
+    v.extend([8, 6, 0, 0, 0]);
+    v.resize(len.max(v.len()), 7);
+    v
+}
+
 pub fn png() -> Vec<u8> {
     let mut v = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
     v.extend(std::iter::repeat_n(7u8, 9000));
     v
+}
+
+/// A details source asked as a fallback for visual novels, declared the
+/// way an extension declares one, that knows no game: added to a service
+/// (`MetadataService::add_source`) where a test needs a fallback source.
+/// It counts the lookups and searches it gets.
+pub struct Fallback {
+    descriptor: heronite_metadata::SourceDescriptor,
+    pub lookups: std::sync::atomic::AtomicUsize,
+    pub searches: std::sync::atomic::AtomicUsize,
+}
+
+pub const FALLBACK: &str = "novels";
+
+pub fn fallback() -> Arc<Fallback> {
+    let descriptor = serde_json::from_value(serde_json::json!({
+        "id": FALLBACK, "name": "Novels", "kind": "details", "network": true, "searchable": true,
+        "provides": ["description", "releaseDate", "developers", "genres", "themes", "criticScore", "cover", "hero"],
+        "asked": "asFallback", "gameKind": {"name": "Visual novels", "signals": ["Visual Novel"]},
+        "extension": {"version": "1.0.0", "author": "tests"}
+    }))
+    .expect("a test descriptor");
+    Arc::new(Fallback { descriptor, lookups: Default::default(), searches: Default::default() })
+}
+
+impl heronite_metadata::MetadataSource for Fallback {
+    fn descriptor(&self) -> &heronite_metadata::SourceDescriptor {
+        &self.descriptor
+    }
+
+    fn lookup(
+        &self,
+        _: &heronite_metadata::SourceContext<'_>,
+        _: &heronite_metadata::SourceGame,
+    ) -> heronite_metadata::Lookup<heronite_metadata::MetadataCandidate> {
+        self.lookups.fetch_add(1, Ordering::SeqCst);
+        heronite_metadata::Lookup::NotFound
+    }
+
+    fn search(&self, _: &heronite_metadata::SourceContext<'_>, _: &str) -> heronite_metadata::Lookup<Vec<heronite_metadata::SourceHit>> {
+        self.searches.fetch_add(1, Ordering::SeqCst);
+        heronite_metadata::Lookup::Found(Vec::new())
+    }
 }

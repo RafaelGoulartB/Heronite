@@ -13,6 +13,7 @@ mod images;
 mod language;
 mod overlay;
 mod pages;
+mod quick_launch;
 mod runtime;
 mod services;
 mod system;
@@ -206,6 +207,9 @@ fn single_instance(cli: &system::cli::Cli) -> SingleInstance {
         open_client: cli.open_client,
         stop: cli.stop.clone(),
         screenshot: cli.screenshot,
+        quick_launch: cli.quick_launch,
+        // Read before GPUI starts, which takes it out of the environment.
+        activation_token: cli.quick_launch.then(|| env::value("XDG_ACTIVATION_TOKEN")).flatten(),
         no_gui: cli.no_gui,
         console: cli.console,
         fullscreen: cli.fullscreen,

@@ -1,7 +1,7 @@
 //! The selection dock: a glass bar floating at the bottom of the Collection
-//! while games are selected (`selection.rs`), with the batch changes. Status
-//! and Categories open a popover above it; their rows are shared with the
-//! context menu's flyouts for a selection.
+//! while games are selected (`selection.rs`), with the batch changes. Status,
+//! Categories and Metadata open a popover above it; their rows are shared
+//! with the context menu's flyouts for a selection.
 
 use std::sync::Arc;
 
@@ -136,7 +136,27 @@ impl CollectionView {
             .collect()
     }
 
-    /// The categories list with its help line and "Manage categories…".
+    /// The smart categories some of `games` are in: "Unplayed (3 of 7)", or
+    /// the name alone when all are.
+    fn batch_smart_names(&self, games: &[Arc<CollectionGame>]) -> Vec<String> {
+        let total = games.len();
+        self.smart_groups
+            .groups
+            .iter()
+            .filter_map(|s| {
+                let keys = self.group_members(s);
+                let n = games.iter().filter(|g| keys.contains(&g.key)).count();
+                match n {
+                    0 => None,
+                    n if n == total => Some(s.name.clone()),
+                    n => Some(format!("{} ({})", s.name, tr!("{n} of {total}", n, total))),
+                }
+            })
+            .collect()
+    }
+
+    /// The manual categories list with its help line, the smart ones some of
+    /// the games are in (read only) and "Manage categories…".
     pub(super) fn batch_categories_body(&self, games: &[Arc<CollectionGame>], prefix: &str, cx: &mut Context<Self>) -> Div {
         let mut list =
             div().id(SharedString::from(format!("{prefix}-cat-list"))).flex().flex_col().gap(px(2.)).overflow_y_scroll().max_h(px(300.));
@@ -164,6 +184,10 @@ impl CollectionView {
                         .child(tr!("A dash means only some of them have it. Each click: add to all, remove from all, back as it was.")),
                 )
             })
+            .children({
+                let names = self.batch_smart_names(games);
+                (!names.is_empty()).then(|| super::context_menu::smart_in_line(SharedString::from(format!("{prefix}-smart-in")), &names))
+            })
             .child(
                 item(SharedString::from(format!("{prefix}-cat-manage")))
                     .py(px(8.))
@@ -190,6 +214,7 @@ impl CollectionView {
                     .children(self.batch_status_rows(games, "dock", cx)),
             ),
             DockPop::Categories => paper.w(px(320.)).child(self.batch_categories_body(games, "dock", cx)),
+            DockPop::Metadata => paper.child(self.dock_metadata_menu(games.len(), cx)),
         };
         div().absolute().bottom(px(BTN_H + 12.)).left(px(-6.)).child(body)
     }
@@ -223,6 +248,9 @@ impl CollectionView {
             .child(label)
             .child(icon(Icon::ExpandMore, px(18.), theme::text_dim()))
             .on_click(cx.listener(move |this, _, _, cx| {
+                if pop == DockPop::Metadata {
+                    return this.toggle_dock_metadata(cx);
+                }
                 this.sel.pop = if this.sel.pop == Some(pop) { None } else { Some(pop) };
                 cx.notify();
             }));
@@ -296,7 +324,7 @@ impl CollectionView {
             .child(count)
             .child(div().w(px(1.)).h(px(24.)).mx(px(4.)).flex_none().bg(theme::glass_border()))
             .child(self.dock_pop_button(DockPop::Status, "dock-status", Icon::Flag, status_label, &games, cx))
-            .child(self.dock_pop_button(DockPop::Categories, "dock-cats", Icon::Label, tr!("Categories").into_any_element(), &games, cx))
+            .child(self.dock_pop_button(DockPop::Categories, "dock-cats", Icon::Label, tr!("Add to").into_any_element(), &games, cx))
             .child(
                 dock_button(
                     "dock-fav",
@@ -315,10 +343,14 @@ impl CollectionView {
                 )
                 .on_click(cx.listener(|this, _, _, cx| this.batch_hide(cx))),
             )
-            .child(
-                dock_button("dock-meta", Icon::CloudDownload, label(tr!("Metadata")), false)
-                    .on_click(cx.listener(|this, _, _, cx| this.batch_metadata(cx))),
-            )
+            .child(self.dock_pop_button(
+                DockPop::Metadata,
+                "dock-meta",
+                Icon::CloudDownload,
+                label(tr!("Metadata")).map_or_else(|| div().into_any_element(), |l| l.into_any_element()),
+                &games,
+                cx,
+            ))
             .child(
                 dock_button("dock-edit", Icon::Edit, label(tr!("Edit")), false)
                     .child(kbd("F3"))
