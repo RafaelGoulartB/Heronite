@@ -288,6 +288,20 @@ fn pulse_with_its_first_tabs_takes_its_new_home() {
     assert_eq!(p.theme.interface.tab_bar, TabBar::Top);
     assert_eq!(p.theme.interface.accent, "pink", "the user's own changes stay");
 
+    assert_eq!(p.theme.tabs[0].source, "installed", "Installed comes first");
+    assert_eq!(p.kept_filters.sort, SORT_LAST_PLAYED, "played last first");
+
+    // The four filters it had for a while take the same home.
+    let mut filters = presets::pulse();
+    filters.tabs = vec![
+        TabSpec::new("All games", Layout::Spotlight, "all"),
+        TabSpec::new("Installed", Layout::Spotlight, "installed"),
+        TabSpec::new("Favourites", Layout::Spotlight, "favourites"),
+        TabSpec::new("Not played yet", Layout::Spotlight, "status:not-played"),
+    ];
+    ConsolePrefs { theme: filters, ..ConsolePrefs::default() }.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).theme.tabs, presets::pulse().tabs);
+
     // Tabs the user changed are theirs.
     let mut mine = presets::pulse();
     mine.tabs = vec![TabSpec::new("Games", Layout::Spotlight, "all")];

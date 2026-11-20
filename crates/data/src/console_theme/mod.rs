@@ -838,13 +838,23 @@ impl Default for ConsolePrefs {
 /// (Title / Last played / Playtime) and Favourites only; Status and Category
 /// are left out, as they point into statuses and categories that change.
 /// `carousel`: the Carousel's pill (All / Installed / Favourites / Playing).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct KeptFilters {
     pub show: usize,
+    /// Title, Last played (the default: what was played last first) or Playtime.
     pub sort: usize,
     pub favourites: bool,
     pub carousel: usize,
+}
+
+/// [`KeptFilters::sort`]: by when it was last played.
+pub const SORT_LAST_PLAYED: usize = 1;
+
+impl Default for KeptFilters {
+    fn default() -> Self {
+        Self { show: 0, sort: SORT_LAST_PLAYED, favourites: false, carousel: 0 }
+    }
 }
 
 impl ConsolePrefs {
@@ -857,7 +867,8 @@ impl ConsolePrefs {
         let old = value.get("controller").is_none().then(|| ControllerPrefs::from_old_theme(&value));
         match lenient::<ConsolePrefs>(value) {
             Some(mut p) => {
-                p.theme = upgrade_pulse(p.theme.normalized());
+                p.theme = p.theme.normalized();
+                upgrade_pulse(&mut p);
                 if let Some(old) = old {
                     p.controller = old;
                 }
@@ -875,14 +886,22 @@ impl ConsolePrefs {
     }
 }
 
-/// Pulse in use with the tabs it shipped with (Games and Library) takes the
-/// home it has now: Spotlight tabs of filters along the top, the game's page
-/// below the buttons instead of the cards, Options opening a sheet. Its other
-/// options (colours, covers...) stay as the user left them.
-fn upgrade_pulse(mut theme: ConsoleTheme) -> ConsoleTheme {
+/// Pulse in use with tabs it shipped with before (Games and Library, or the
+/// four Spotlight filters) takes the home it has now: Installed first, All
+/// games, Favourites and the whole library in a grid, played last first; the
+/// game's page below the buttons instead of the cards, Options opening a
+/// sheet. Its other options (colours, covers...) stay as the user left them.
+fn upgrade_pulse(p: &mut ConsolePrefs) {
     let first = [TabSpec::new("Games", Layout::Spotlight, "all"), TabSpec::new("Library", Layout::Grid, "all")];
-    if theme.id != "pulse" || theme.tabs != first {
-        return theme;
+    let filters = [
+        TabSpec::new("All games", Layout::Spotlight, "all"),
+        TabSpec::new("Installed", Layout::Spotlight, "installed"),
+        TabSpec::new("Favourites", Layout::Spotlight, "favourites"),
+        TabSpec::new("Not played yet", Layout::Spotlight, "status:not-played"),
+    ];
+    let theme = &mut p.theme;
+    if theme.id != "pulse" || (theme.tabs != first && theme.tabs != filters) {
+        return;
     }
     let now = presets::pulse();
     theme.tabs = now.tabs;
@@ -892,7 +911,8 @@ fn upgrade_pulse(mut theme: ConsoleTheme) -> ConsoleTheme {
     if theme.description == "A console home: icons on top, the game's art and logo, a wide Play button and cards." {
         theme.description = now.description;
     }
-    theme
+    p.kept_filters.sort = SORT_LAST_PLAYED;
+    p.last_tab = 0;
 }
 
 /// `T` from `value`, leaving out what does not read: a value of the wrong

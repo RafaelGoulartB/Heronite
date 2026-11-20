@@ -113,10 +113,10 @@ pub fn pulse() -> ConsoleTheme {
         n_!("A console home: icons on top, the game's art and logo, a wide Play button and its page below."),
         |t| {
             t.tabs = vec![
-                TabSpec::new(n_!("All games"), Layout::Spotlight, "all"),
                 TabSpec::new(n_!("Installed"), Layout::Spotlight, "installed"),
+                TabSpec::new(n_!("All games"), Layout::Spotlight, "all"),
                 TabSpec::new(n_!("Favourites"), Layout::Spotlight, "favourites"),
-                TabSpec::new(n_!("Not played yet"), Layout::Spotlight, "status:not-played"),
+                TabSpec::new(n_!("Library"), Layout::Grid, "all"),
             ];
             t.hero.title = HeroTitle::Logo;
             t.hero.facts = false;
