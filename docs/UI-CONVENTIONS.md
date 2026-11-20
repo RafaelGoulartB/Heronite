@@ -1181,6 +1181,12 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   Heroic panel's through `SettingsPanel::console_rows_of`). A on a result opens its section on that row. Appearance is
   the desktop's and is not listed (its Animated backgrounds switch shows under Console mode). Debug:
   `HERONITE_DEBUG_PAGE=settings:<section>`, `HERONITE_DEBUG_SETTINGS_SEARCH=<text>`.
+- Full-screen console config screens use the Settings card system: their rows are `RowStyle::Card` in a
+  `kit::settings_column` (one call: `ListNav::render_cards`, or `set_style(RowStyle::Card)` / the settings panel's
+  `set_console_style` where the screen lays out its own column), with accent headings, groups and the same hints; a
+  long read-only value reads as the card's description. That covers Game settings (and its Saves tab), the Wine
+  settings of a client, the Epic / store install dialogs, Add game, the Stores and clients' pages, Emulators and Wine
+  Manager. Modals, sheets, keyboards, pickers and the ☰ Customize side panel keep their bare rows.
 - Groups in a console list (`console::list`): a row made `Row::child_of(parent_id)` (right after its parent or its
   other sub-settings; `Row::group` for a parent that only gathers) is a sub-setting, drawn inside the parent's card
   beside a guide line, smaller (bare rows: indented by a guide line too). A group of two sub-settings or more folds:
