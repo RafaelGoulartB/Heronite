@@ -13,7 +13,7 @@ use super::details::TAG_FIELDS;
 use super::{GameSettingsDialog, Tab};
 use crate::console::browser::{Browser, BrowserEvent, PickKind};
 use crate::console::kit::{self, u};
-use crate::console::list::{Outcome, Row, Value};
+use crate::console::list::{Outcome, Row, RowStyle, Value};
 use crate::console::osk::{Osk, OskEvent};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::dialogs::covers::CoversDialog;
@@ -349,13 +349,18 @@ impl GameSettingsDialog {
                     ),
             );
 
+        // The rows are settings cards, as in Settings.
         let body: AnyElement = match (self.tab.section(), &self.panel) {
-            (Some(_), Some((panel, _))) => div().flex().flex_col().size_full().child(panel.clone()).into_any_element(),
+            (Some(_), Some((panel, _))) => {
+                panel.update(cx, |p, _| p.set_console_style(RowStyle::Card));
+                div().flex().flex_col().size_full().child(panel.clone()).into_any_element()
+            }
             _ if self.tab == Tab::Saves && self.backups.is_some() => {
                 div().flex().flex_col().size_full().children(self.backups.clone()).into_any_element()
             }
             _ => {
                 let rows = self.console_rows(cx);
+                self.console_list.set_style(RowStyle::Card);
                 self.console_list.render("console-gs", &rows, !self.layer.is_open()).size_full().into_any_element()
             }
         };
@@ -368,17 +373,7 @@ impl GameSettingsDialog {
             .flex_col()
             .child(header)
             .child(div().flex_none().px(u(46.)).py(u(12.)).child(kit::tabs(&labels, active)))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h_0()
-                    .px(u(46.))
-                    .pb(u(70.))
-                    .child(div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(body))
-                    .children(error),
-            )
+            .child(div().flex().flex_col().flex_1().min_h_0().px(u(46.)).pb(u(70.)).child(kit::settings_column(body)).children(error))
             .children(self.layer.view())
             .into_any_element()
     }
