@@ -189,7 +189,7 @@ impl CollectionView {
             // current one when they would come near the status icons.
             None if self.console_shown_tab().1.layout == Layout::Cinema => {
                 let (first, last) = cinema_tab_window(names, active, kit::vw());
-                spotlight::spotlight_tabs_in(&names[first..last], active - first, 0., kit::ink(0.72))
+                spotlight::spotlight_tabs_in(&names[first..last], active - first, 0., kit::ink(0.72), (first, names.len() - last))
             }
             None => kit::tabs(names, active),
         }

@@ -13,16 +13,28 @@ use crate::theme;
 
 /// The tabs, centred in the top bar (it is `relative`).
 pub(in crate::collection::console) fn spotlight_tabs(names: &[SharedString], active: usize, lift: f32) -> Div {
-    spotlight_tabs_in(names, active, lift, theme::text_muted().into())
+    spotlight_tabs_in(names, active, lift, theme::text_muted().into(), (0, 0))
 }
 
-/// [`spotlight_tabs`] with the tabs that are not current in `idle`.
-pub(in crate::collection::console) fn spotlight_tabs_in(names: &[SharedString], active: usize, lift: f32, idle: Hsla) -> Div {
+/// [`spotlight_tabs`] with the tabs that are not current in `idle`;
+/// `hidden`: how many tabs did not fit before and after them (a muted "+N"
+/// says so at that end).
+pub(in crate::collection::console) fn spotlight_tabs_in(
+    names: &[SharedString],
+    active: usize,
+    lift: f32,
+    idle: Hsla,
+    hidden: (usize, usize),
+) -> Div {
+    let more = |n: usize| {
+        (n > 0).then(|| div().px(u(8.)).text_size(u(13.)).font_weight(theme::W_BOLD).text_color(idle.opacity(0.75)).child(format!("+{n}")))
+    };
     let tabs = div()
         .flex()
         .items_center()
         .gap(u(4.))
         .child(kit::glyph(Btn::LB).mr(u(10.)).on_pads([Pad::LB]))
+        .children(more(hidden.0))
         .children(names.iter().enumerate().map(|(i, name)| {
             let on = i == active;
             let label = name.clone();
@@ -44,6 +56,7 @@ pub(in crate::collection::console) fn spotlight_tabs_in(names: &[SharedString], 
                 )
             })
         }))
+        .children(more(hidden.1))
         .child(kit::glyph(Btn::RB).ml(u(10.)).on_pads([Pad::RB]));
     let shown = 1. - lift.clamp(0., 1.);
     div()

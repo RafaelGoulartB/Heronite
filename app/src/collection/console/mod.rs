@@ -861,7 +861,9 @@ impl CollectionView {
     /// clock.
     /// `downloads`: how many games download and how far the first one is
     /// (Cinema's status icons show them).
-    fn console_top_bar(&self, downloads: (usize, Option<f32>)) -> Div {
+    /// `right`: the bar's right edge, design px from the window's (Cinema's
+    /// lines up with its row), else the usual.
+    fn console_top_bar(&self, downloads: (usize, Option<f32>), right: Option<f32>) -> Div {
         let theme = look::theme();
         let names: Vec<SharedString> = theme.tabs.iter().map(tab_label).collect();
         let label = theme.interface.label.trim().to_string();
@@ -875,6 +877,7 @@ impl CollectionView {
             .gap(u(36.))
             .h(u(76.))
             .px(u(46.))
+            .when_some(right, |d, r| d.pr(u(r)))
             .when(!label.is_empty(), |d| d.child(kit::wordmark(&label)))
             .when(names.len() > 1 && tab_bar == TabBar::Top, |d| d.child(self.layout_tabs(&names, tab)))
             .when(names.len() > 1 && tab_bar == TabBar::Names, |d| d.child(kit::tab_names(&names, tab)))
@@ -960,7 +963,8 @@ impl CollectionView {
             let snap = d.read(cx).snapshot();
             (snap.queue.len(), snap.current.as_ref().and_then(|(_, p)| p.as_ref()).map(|p| (p.percent / 100.) as f32))
         });
-        let top_bar = keeps_tabs.then(|| blocked(self.console_top_bar(downloads)));
+        let bar_right = self.layout_hint_side(window);
+        let top_bar = keeps_tabs.then(|| blocked(self.console_top_bar(downloads, bar_right)));
         let bottom_tabs = if keeps_tabs { self.console_bottom_tabs().map(|d| blocked(d.relative())) } else { None };
         let scrim = if on_page {
             Scrim::Page
