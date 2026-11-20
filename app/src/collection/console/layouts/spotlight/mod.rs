@@ -38,7 +38,7 @@ use heronite_data::CollectionGame;
 use heronite_i18n::{tr, trn};
 
 pub(in crate::collection::console) use bar::{spotlight_clock, spotlight_tabs};
-use page::{HltbCard, Link, Mid, MidMove, Shape, Zone, SIDE};
+use page::{HltbCard, Link, Mid, Move, Shape, Zone, SIDE};
 
 use super::super::super::focus::{hltb_hours, hltb_marker, hltb_note_text, HLTB_COLOURS};
 use super::super::super::vm::{DetailField, DetailValue};
@@ -92,6 +92,7 @@ fn actions() -> &'static [SpotAct] {
 enum Spot {
     Action(usize),
     Media(usize),
+    About,
     Mid(Mid, usize),
     Card(usize),
     Shot(usize),
@@ -175,15 +176,6 @@ impl Nav {
         self.zone == Zone::Row && self.viewer.is_none() && self.sheet.is_none()
     }
 
-    /// Moves the focus into `zone`, coming from above (`down`) or below.
-    fn enter(&mut self, zone: Zone, down: bool) {
-        if zone == Zone::Mid {
-            self.mid = self.shape.mid_entry(down);
-            self.link = self.link.min(self.shape.links.len().saturating_sub(1));
-        }
-        self.zone = zone;
-    }
-
     /// The focus along `zone` (← →).
     fn along(&mut self, zone: Zone) -> Option<&mut usize> {
         match zone {
@@ -207,8 +199,8 @@ impl Nav {
                 *at = (*at).min(n.saturating_sub(1));
             }
         }
-        if self.zone == Zone::Mid && !self.shape.mid_has(self.mid) {
-            self.mid = self.shape.mid_entry(true);
+        if self.zone == Zone::Side && !self.shape.mid_has(self.mid) {
+            self.mid = [Mid::Ach, Mid::Link, Mid::Hltb].into_iter().find(|m| self.shape.mid_has(*m)).unwrap_or_default();
         }
         self.link = self.link.min(self.shape.links.len().saturating_sub(1));
         if self.viewer.is_some_and(|i| i >= self.shape.store.len()) {
@@ -351,7 +343,7 @@ impl CollectionView {
         let width = page::page_width(view);
         if let Some(t) = &text {
             s.about = true;
-            s.fit_about(t.chars().count(), width);
+            s.fit_about(t.chars().count(), page::left_width(width));
         }
         let (_, on) = row::icon_sizes(self.cover_aspect);
         s.layout(row::row_height(on), page::logo_h(theme.hero.size), width, page::COVER_W * self.cover_aspect);
@@ -461,7 +453,8 @@ impl CollectionView {
         match spot {
             Spot::Action(i) => (nav.zone, nav.action) = (Zone::Actions, i),
             Spot::Media(i) => (nav.zone, nav.media) = (Zone::Media, i),
-            Spot::Mid(m, i) => (nav.zone, nav.mid, nav.link) = (Zone::Mid, m, if m == Mid::Link { i } else { nav.link }),
+            Spot::About => nav.zone = Zone::About,
+            Spot::Mid(m, i) => (nav.zone, nav.mid, nav.link) = (Zone::Side, m, if m == Mid::Link { i } else { nav.link }),
             Spot::Card(i) => (nav.zone, nav.card) = (Zone::Cards, i),
             Spot::Shot(i) => (nav.zone, nav.shot) = (Zone::Shots, i),
             Spot::Related(i) => (nav.zone, nav.related) = (Zone::Related, i),
@@ -506,13 +499,7 @@ impl CollectionView {
             return;
         }
         if let Some(m) = mid {
-            let has = match m {
-                Mid::About => nav.shape.about_more,
-                Mid::Ach => nav.shape.ach,
-                Mid::Link => !nav.shape.links.is_empty(),
-                Mid::Hltb => nav.shape.mid_has(Mid::Hltb),
-            };
-            if !has {
+            if !nav.shape.mid_has(m) {
                 return;
             }
             nav.mid = m;
@@ -557,9 +544,9 @@ impl CollectionView {
         let zone = nav.zone;
 
         // The springs, a frame towards the focus.
-        let first = shape.rise(Zone::Actions, view_h, TOP_BAR).max(1.);
-        let rise_to = if game.is_some() { shape.rise(zone, view_h, TOP_BAR) } else { 0. };
-        let width = shape.geo.width;
+        let first = shape.rise(Zone::Actions, nav.mid, view_h, TOP_BAR).max(1.);
+        let rise_to = if game.is_some() { shape.rise(zone, nav.mid, view_h, TOP_BAR) } else { 0. };
+        let width = shape.geo.left;
         let strip_to = [
             page::strip_offset(nav.media, shape.media, page::TILE_W, page::TILE_W + page::STRIP_GAP, width),
             0.,
@@ -761,7 +748,7 @@ impl CollectionView {
         let (w, h) = (page::TILE_W, page::TILE_H);
         let step = w + page::STRIP_GAP;
         let first = (strip_x / step).floor().max(0.) as usize;
-        let last = ((strip_x + geo.width) / step).ceil() as usize + 2;
+        let last = ((strip_x + geo.left) / step).ceil() as usize + 2;
         let mut tiles = Vec::new();
         for i in first..shape.media.min(last) {
             let on = f.zone == Zone::Media && f.media == i;
@@ -783,9 +770,7 @@ impl CollectionView {
                     .on_mouse_down(MouseButton::Left, self.spot_click(Spot::Media(i))),
             );
         }
-        // It runs to the window's right edge.
-        let clip = f32::from(crate::ui::content_size(window).width) / k - SIDE;
-        strip(geo.media, clip, h, strip_x, tiles).into_any_element()
+        strip(geo.media, geo.left, h, strip_x, tiles).into_any_element()
     }
 
     /// The sections under the head, while the page has risen.
@@ -800,9 +785,7 @@ impl CollectionView {
     ) -> Vec<AnyElement> {
         let geo = shape.geo;
         let mut out = Vec::new();
-        if geo.mid_h > 0. {
-            out.push(self.spotlight_mid(g, shape, f, cx));
-        }
+        out.extend(self.spotlight_mid(g, shape, f, cx));
         if shape.cards > 0 {
             let cards = self.spotlight_cards(g);
             let row =
@@ -853,7 +836,7 @@ impl CollectionView {
                         .on_mouse_down(MouseButton::Left, self.spot_click(Spot::Related(i)))
                 })
                 .collect();
-            out.push(titled(geo.related, geo.width, tr!("More like this"), strip(0., geo.width, h, strips[2], tiles)));
+            out.push(titled(geo.related, geo.left, tr!("More like this"), strip(0., geo.left, h, strips[2], tiles)));
         }
         out
     }
@@ -911,10 +894,10 @@ impl CollectionView {
     }
 
     /// About this game on the left; Achievements and Details on the right.
-    fn spotlight_mid(&mut self, g: &CollectionGame, shape: &Shape, f: &Focus, cx: &mut Context<Self>) -> AnyElement {
+    fn spotlight_mid(&mut self, g: &CollectionGame, shape: &Shape, f: &Focus, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let geo = shape.geo;
-        let about_w = page::about_width(geo.width);
-        let on = |m: Mid| f.zone == Zone::Mid && f.mid == m;
+        let about_w = geo.left;
+        let on = |m: Mid| f.zone == Zone::Side && f.mid == m;
         let mut left = div().w(u(about_w)).flex().flex_col();
         if shape.about {
             let text = self
@@ -932,7 +915,7 @@ impl CollectionView {
                     .child(text),
             );
             if shape.about_more {
-                let focused = on(Mid::About);
+                let focused = f.zone == Zone::About;
                 let more = motion::spring("spot-more", div().relative().flex_none().h(u(page::MORE_H)), motion::SOFT, focused, |d, k| {
                     let t = k.clamp(0., 1.);
                     let fill: Hsla = motion::mix(parts::glass(0.4), theme::console_focus(), t).into();
@@ -949,12 +932,8 @@ impl CollectionView {
                             .child(tr!("Read more")),
                     )
                 });
-                left = left.child(
-                    div()
-                        .mt(u(12.))
-                        .flex()
-                        .child(div().on_mouse_down(MouseButton::Left, self.spot_click(Spot::Mid(Mid::About, 0))).child(more)),
-                );
+                left = left
+                    .child(div().mt(u(12.)).flex().child(div().on_mouse_down(MouseButton::Left, self.spot_click(Spot::About)).child(more)));
             }
         }
         let mut column = div().w(u(page::COLUMN_W)).flex().flex_col().gap(u(26.));
@@ -1001,7 +980,7 @@ impl CollectionView {
                     Link::Folder => tr!("Open folder").into(),
                     Link::Store => tr!("Store page").into(),
                 };
-                let focused = f.zone == Zone::Mid && f.mid == Mid::Link && f.link == i;
+                let focused = f.zone == Zone::Side && f.mid == Mid::Link && f.link == i;
                 let base = div().relative().flex_none().h(u(page::LINK_H)).min_w(u(120.));
                 let el = motion::spring(("spot-link", i), base, motion::SOFT, focused, move |d, k| {
                     let t = k.clamp(0., 1.);
@@ -1033,21 +1012,18 @@ impl CollectionView {
             );
         }
         if shape.hltb != HltbCard::None {
-            let focused = f.zone == Zone::Mid && f.mid == Mid::Hltb;
+            let focused = f.zone == Zone::Side && f.mid == Mid::Hltb;
             column = column.child(
                 div().flex().flex_col().child(section_title(tr!("How Long To Beat"))).child(self.spotlight_hltb_card(shape, focused)),
             );
         }
-        div()
-            .absolute()
-            .top(u(geo.mid))
-            .left(u(SIDE))
-            .w(u(geo.width))
-            .flex()
-            .gap(u(page::COLUMN_GAP))
-            .child(left)
-            .child(column)
-            .into_any_element()
+        let mut out = Vec::new();
+        if shape.about {
+            out.push(div().absolute().top(u(geo.about)).left(u(SIDE)).child(left).into_any_element());
+        }
+        // The sidebar, beside the left column from its first section down.
+        out.push(div().absolute().top(u(geo.side)).left(u(SIDE + geo.left + page::COLUMN_GAP)).child(column).into_any_element());
+        out
     }
 
     /// The How Long To Beat card, as the desktop's section draws it: the bar of
@@ -1277,9 +1253,6 @@ impl CollectionView {
             nav.zone = Zone::Actions;
         }
         let zones = if drawn { nav.shape.zones() } else { vec![Zone::Row, Zone::Actions] };
-        let at = zones.iter().position(|z| *z == nav.zone).unwrap_or(0);
-        let next = zones.get(at + 1).copied();
-        let prev = at.checked_sub(1).map(|i| zones[i]);
         match (nav.zone, pad) {
             (Zone::Row, Pad::Left | Pad::Right) => {
                 let to = super::step(index, n + 1, pad.dir(), wrap);
@@ -1302,27 +1275,23 @@ impl CollectionView {
                 let (Some(key), at) = (game, nav.action) else { return true };
                 self.spotlight_act(&key, actions()[at.min(actions().len() - 1)], window, cx);
             }
-            (_, Pad::B) => nav.zone = Zone::Actions,
-            (Zone::Mid, Pad::Up | Pad::Down | Pad::Left | Pad::Right) => match nav.shape.mid_move(nav.mid, nav.link, pad) {
-                MidMove::To(m, link) => (nav.mid, nav.link) = (m, link),
-                MidMove::Out(d) if d < 0 => nav.enter(prev.unwrap_or(Zone::Actions), false),
-                MidMove::Out(_) => {
-                    if let Some(z) = next {
-                        nav.enter(z, true);
-                    }
-                }
-                MidMove::Stay => {}
-            },
-            (z, Pad::Down) => {
-                if let Some(next) = next.filter(|_| z != Zone::Row) {
-                    nav.enter(next, true);
+            // ↓ from the buttons: the left column's first section, else the sidebar.
+            (Zone::Actions, Pad::Down) => {
+                if let Some(z) = zones.get(2).copied() {
+                    nav.zone = z;
                 }
             }
-            (_, Pad::Up) => nav.enter(prev.unwrap_or(Zone::Actions), false),
-            (z, Pad::Left | Pad::Right) => {
-                let count = nav.shape.count(z);
-                if let Some(at) = nav.along(z) {
-                    *at = super::step(*at, count, pad.dir(), false);
+            (_, Pad::B) => nav.zone = Zone::Actions,
+            (z, Pad::Up | Pad::Down | Pad::Left | Pad::Right) => {
+                let along = nav.along(z).map_or(0, |a| *a);
+                match nav.shape.step(z, nav.mid, nav.link, along, pad) {
+                    Move::To(to, mid, link) => (nav.zone, nav.mid, nav.link) = (to, mid, link),
+                    Move::Along(i) => {
+                        if let Some(at) = nav.along(z) {
+                            *at = i;
+                        }
+                    }
+                    Move::Stay => {}
                 }
             }
             (z, Pad::A) => {
@@ -1355,8 +1324,8 @@ impl CollectionView {
                 let i = nav.shot;
                 self.shot_open(i, window, cx);
             }
-            Zone::Mid => match nav.mid {
-                Mid::About => nav.sheet = Some(Glide::new(Axis::Y)),
+            Zone::About => nav.sheet = Some(Glide::new(Axis::Y)),
+            Zone::Side => match nav.mid {
                 Mid::Ach => self.open_console_achievements(key.clone(), cx),
                 Mid::Link => {
                     let Some(link) = nav.shape.links.get(nav.link).cloned() else { return };
@@ -1431,8 +1400,8 @@ impl CollectionView {
             Zone::Row => tr!("Open"),
             Zone::Actions => tr!("Select"),
             Zone::Media | Zone::Shots => tr!("View"),
-            Zone::Mid if nav.mid == Mid::About => tr!("Read more"),
-            Zone::Mid | Zone::Cards | Zone::Related => tr!("Open"),
+            Zone::About => tr!("Read more"),
+            Zone::Side | Zone::Cards | Zone::Related => tr!("Open"),
         };
         let mut h = vec![hint(Btn::A, a)];
         if game.is_some() {
