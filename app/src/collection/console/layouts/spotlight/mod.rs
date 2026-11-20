@@ -835,7 +835,7 @@ impl CollectionView {
                 .iter()
                 .enumerate()
                 .map(|(i, key)| {
-                    let src = self.cover(key, w * k, h * k, dpr, 60 - i as i32);
+                    let src = self.cover(key, w * k, h * k, dpr, 110 - i as i32);
                     let title = self.lib.as_ref().and_then(|l| l.get(key)).map_or(String::new(), |g| g.title.clone());
                     let face = div()
                         .size_full()

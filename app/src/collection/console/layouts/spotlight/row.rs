@@ -136,7 +136,9 @@ impl CollectionView {
             let near = (1. - d.abs()).clamp(0., 1.);
             let face = match found.get(i) {
                 Some(key) => {
-                    let priority = if i == index { 200 } else { 90 - 10 * (d.abs() as i32).min(8) };
+                    // Above the covers of other screens still queued (a grid's
+                    // are 50): the row on screen loads first, the focus nearest.
+                    let priority = if i == index { 200 } else { 150 - 10 * (d.abs() as i32).min(8) };
                     // Requested once at the focused size; smaller, it is scaled.
                     let src = self.console_shaped_art(key, theme.tiles.shape, on.0, on.1, priority, window).0;
                     let g = self.lib.as_ref().and_then(|l| l.get(key));
