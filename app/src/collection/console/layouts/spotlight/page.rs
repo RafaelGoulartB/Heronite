@@ -225,7 +225,8 @@ impl Shape {
     /// Lays the page out: `row` the row's height, `logo_h` the logo's box,
     /// `width` the page's, `cover_h` a cover's of More like this.
     pub fn layout(&mut self, row: f32, logo_h: f32, width: f32, cover_h: f32) {
-        let left = left_width(width);
+        // Without a sidebar the left column takes the whole page.
+        let left = if self.has_side() { left_width(width) } else { width };
         let mut g = Geo { logo: row + 2., logo_h, width, left, ..Geo::default() };
         g.buttons = g.logo + logo_h + 16.;
         g.facts = g.buttons + BUTTON_H + 18.;
@@ -290,6 +291,11 @@ impl Shape {
         }
         g.end = left_end.max(sy) + 30.;
         self.geo = g;
+    }
+
+    /// Whether the sidebar has anything to show (Achievements, Details, How Long To Beat).
+    pub fn has_side(&self) -> bool {
+        self.ach || self.details > 0 || !self.links.is_empty() || self.hltb != HltbCard::None
     }
 
     /// Whether the sidebar has `m` to focus.
@@ -505,6 +511,25 @@ mod tests {
             // Nothing on the left reaches into the sidebar.
             assert!(g.left + COLUMN_GAP + COLUMN_W <= g.width + 0.5);
         }
+    }
+
+    #[test]
+    fn without_a_sidebar_the_left_column_takes_the_page() {
+        // Achievements, else Details, else How Long To Beat start the sidebar beside the strip.
+        let s = shape();
+        assert!(s.has_side() && s.geo.left < s.geo.width && s.geo.ach == s.geo.media);
+        let mut d = Shape { ach: false, ..shape() };
+        d.layout(172., 150., 1500., 192.);
+        assert!(d.has_side() && d.geo.details == d.geo.media);
+        let mut h = Shape { ach: false, details: 0, links: Vec::new(), hltb: HltbCard::Missing, ..shape() };
+        h.layout(172., 150., 1500., 192.);
+        assert!(h.has_side() && h.geo.hltb == h.geo.media);
+        // Nothing for it: the strip and the rest span the whole page.
+        let mut n = Shape { ach: false, details: 0, links: Vec::new(), ..shape() };
+        n.layout(172., 150., 1500., 192.);
+        assert!(!n.has_side() && n.geo.left == n.geo.width);
+        assert!(!n.zones().contains(&Zone::Side));
+        assert_eq!(n.shots_shown, 0);
     }
 
     #[test]

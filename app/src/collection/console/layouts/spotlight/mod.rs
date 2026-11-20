@@ -615,6 +615,10 @@ impl CollectionView {
                 page = page.children(self.spotlight_head(g, &shape, &focus, strips[0], window));
                 if lift > 0.01 {
                     page = page.children(self.spotlight_below(g, &shape, &focus, strips, window, cx));
+                } else {
+                    // On the row the sidebar peeks in beside the strip, as
+                    // the page going on below (no focus until it is reached).
+                    page = page.children(self.spotlight_mid(g, &shape, &focus, true, cx));
                 }
             }
             None => page = page.child(self.spotlight_all_games(from)),
@@ -638,7 +642,7 @@ impl CollectionView {
         // On the row the strip and the art under it dissolve into the dark
         // towards the bottom edge, where the hints float: one gradient down
         // the strip, a darker one under it, meeting at the same shade.
-        let veil = (shape.media > 0 && lift < 0.99).then(|| {
+        let veil = ((shape.media > 0 || shape.has_side()) && lift < 0.99).then(|| {
             let top = shape.geo.media + page::TILE_H * 0.1 - rise;
             let foot = (view_h - TOP_BAR - 96.).max(top + 40.);
             let mid = 0.7;
@@ -787,7 +791,7 @@ impl CollectionView {
     ) -> Vec<AnyElement> {
         let geo = shape.geo;
         let mut out = Vec::new();
-        out.extend(self.spotlight_mid(g, shape, f, cx));
+        out.extend(self.spotlight_mid(g, shape, f, false, cx));
         if shape.cards > 0 {
             let cards = self.spotlight_cards(g);
             let row =
@@ -896,7 +900,8 @@ impl CollectionView {
     }
 
     /// About this game on the left; Achievements and Details on the right.
-    fn spotlight_mid(&mut self, g: &CollectionGame, shape: &Shape, f: &Focus, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    /// `side_only`: the sidebar alone (what peeks in on the row).
+    fn spotlight_mid(&mut self, g: &CollectionGame, shape: &Shape, f: &Focus, side_only: bool, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let geo = shape.geo;
         let about_w = geo.left;
         let on = |m: Mid| f.zone == Zone::Side && f.mid == m;
@@ -1020,11 +1025,13 @@ impl CollectionView {
             );
         }
         let mut out = Vec::new();
-        if shape.about {
+        if shape.about && !side_only {
             out.push(div().absolute().top(u(geo.about)).left(u(SIDE)).child(left).into_any_element());
         }
         // The sidebar, beside the left column from its first section down.
-        out.push(div().absolute().top(u(geo.side)).left(u(SIDE + geo.left + page::COLUMN_GAP)).child(column).into_any_element());
+        if shape.has_side() {
+            out.push(div().absolute().top(u(geo.side)).left(u(SIDE + geo.left + page::COLUMN_GAP)).child(column).into_any_element());
+        }
         out
     }
 
