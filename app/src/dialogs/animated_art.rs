@@ -1,7 +1,7 @@
 //! Animated backgrounds in the image pickers (Covers' Background slot, Game
 //! settings → Search images for a background): the mark on a picture that
-//! moves, and the line that says backgrounds can move, with "Turn on" while
-//! Settings → Appearance → "Animated backgrounds" is off.
+//! moves, and, once one is picked while Settings → Appearance → "Animated
+//! backgrounds" is off, the line that says it will show still, with "Turn on".
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -56,32 +56,39 @@ pub fn marked(picture: impl IntoElement, animated: bool) -> Div {
     div().relative().child(picture).when(animated, |d| d.child(badge()))
 }
 
-/// The line over a background picker's pictures: what an animated one does
-/// and, while they are off, "Turn on". `any` says some of the pictures
-/// listed move.
-pub fn hint<V: 'static>(id: &str, any: bool, cx: &mut Context<V>, turn_on: impl Fn(&mut V, &mut Context<V>) + 'static) -> Div {
-    let on = on();
-    let text = match (on, any) {
-        (true, _) => tr!("Pictures marked Animated move behind the Collection. A video file of your own can too."),
-        (false, true) => tr!(
-            "Backgrounds can move: those marked Animated, or a video file of your own. Animated backgrounds are off, so they show still."
-        ),
-        (false, false) => {
-            tr!("Backgrounds can move: pick a video file of your own, or an animated one when there is one. Animated backgrounds are off.")
-        }
-    };
-    div()
-        .flex()
-        .items_center()
-        .gap(px(8.))
-        .px(px(10.))
-        .py(px(6.))
-        .rounded(px(theme::R_INPUT))
-        .bg(theme::ink_a(0.04))
-        .child(icon(Icon::Animation, px(16.), theme::accent()))
-        .child(div().flex_1().min_w_0().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_muted()).child(text))
-        .when(!on, |d| {
-            d.child(
+/// The line under a background picker's pictures while the picture picked
+/// moves (`picked_animated`) and Animated backgrounds is off: it will show
+/// still, with "Turn on". `None` otherwise: the marks on the pictures say
+/// enough.
+pub fn hint<V: 'static>(
+    id: &str,
+    picked_animated: bool,
+    cx: &mut Context<V>,
+    turn_on: impl Fn(&mut V, &mut Context<V>) + 'static,
+) -> Option<Div> {
+    if !picked_animated || on() {
+        return None;
+    }
+    Some(
+        div()
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .px(px(10.))
+            .py(px(6.))
+            .rounded(px(theme::R_INPUT))
+            .bg(theme::ink_a(0.04))
+            .child(icon(Icon::Animation, px(16.), theme::accent()))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_size(px(12.))
+                    .line_height(px(16.))
+                    .text_color(theme::text_muted())
+                    .child(tr!("This background moves, but Animated backgrounds is off: it will show still.")),
+            )
+            .child(
                 div()
                     .id(SharedString::from(format!("{id}-turn-on")))
                     .flex_none()
@@ -100,6 +107,6 @@ pub fn hint<V: 'static>(id: &str, any: bool, cx: &mut Context<V>, turn_on: impl 
                         turn_on(this, cx);
                         cx.notify();
                     })),
-            )
-        })
+            ),
+    )
 }

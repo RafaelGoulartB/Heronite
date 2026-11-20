@@ -590,10 +590,8 @@
   "Animated": "Animé",
   "Animated backgrounds": "Arrière-plans animés",
   "Animations are not on Full (Text and motion), so backgrounds stay still.": "Les animations ne sont pas sur Complet (Texte et mouvement) : les arrière-plans restent fixes.",
-  "Backgrounds can move: pick a video file of your own, or an animated one when there is one. Animated backgrounds are off.": "Les arrière-plans peuvent bouger : choisissez une vidéo à vous, ou un animé quand il y en a. Les arrière-plans animés sont désactivés.",
-  "Backgrounds can move: those marked Animated, or a video file of your own. Animated backgrounds are off, so they show still.": "Les arrière-plans peuvent bouger : ceux marqués Animé, ou une vidéo à vous. Les arrière-plans animés sont désactivés : ils restent fixes.",
-  "Pictures marked Animated move behind the Collection. A video file of your own can too.": "Les images marquées Animé bougent derrière la Collection. Une vidéo à vous aussi.",
   "Plays a background that is a video or an animated picture: your own picture, a game's background, or one marked Animated in Covers → Background. Off, it shows its first frame. Pauses while a game runs or Heronite is in the background.": "Lit un arrière-plan qui est une vidéo ou une image animée : votre propre image, l'arrière-plan d'un jeu, ou un marqué Animé dans Jaquettes → Arrière-plan. Désactivé, il montre sa première image. Se met en pause pendant qu'un jeu tourne ou quand Heronite est en arrière-plan.",
   "Turn on": "Activer",
-  "ffmpeg, which plays them, was not found, so backgrounds stay still.": "ffmpeg, qui les lit, est introuvable : les arrière-plans restent fixes."
+  "ffmpeg, which plays them, was not found, so backgrounds stay still.": "ffmpeg, qui les lit, est introuvable : les arrière-plans restent fixes.",
+  "This background moves, but Animated backgrounds is off: it will show still.": "Cet arrière-plan bouge, mais les arrière-plans animés sont désactivés : il restera fixe."
 }

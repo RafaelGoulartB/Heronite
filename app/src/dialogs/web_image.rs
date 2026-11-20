@@ -169,6 +169,10 @@ impl WebImageDialog {
                             this.error = tr!("No images found. Try another search.").into();
                         }
                         this.results = list;
+                        // `HERONITE_DEBUG_PICK_ANIMATED=1`: the first animated one picked (captures).
+                        if crate::env::flag("HERONITE_DEBUG_PICK_ANIMATED") {
+                            this.selected = this.results.steamgrid.iter().position(|i| i.animated).map(|i| (Source::SteamGrid, i));
+                        }
                     }
                     Err(err) => this.error = format!("{err:#}"),
                 }
@@ -375,6 +379,8 @@ impl Render for WebImageDialog {
             }
         }
 
+        let picked_animated =
+            self.kind == ArtKind::Hero && self.selected.and_then(|(from, i)| self.images(from).get(i).map(|im| im.animated)) == Some(true);
         let mut body = div()
             .flex()
             .flex_col()
@@ -384,13 +390,11 @@ impl Render for WebImageDialog {
                 kind_label
             )))
             .child(toolbar)
-            .when(self.kind == ArtKind::Hero, |d| {
-                let any = self.results.steamgrid.iter().any(|i| i.animated);
-                d.child(super::animated_art::hint("wi-animated", any, cx, |this: &mut Self, cx| {
-                    super::animated_art::turn_on(&this.app, cx)
-                }))
-            })
-            .child(grid);
+            .child(grid)
+            // An animated background picked while they are off: it will show still.
+            .children(super::animated_art::hint("wi-animated", picked_animated, cx, |this: &mut Self, cx| {
+                super::animated_art::turn_on(&this.app, cx)
+            }));
         if !self.error.is_empty() {
             body = body.child(
                 div()

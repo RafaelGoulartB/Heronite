@@ -590,10 +590,8 @@
   "Animated": "Animado",
   "Animated backgrounds": "Fundos animados",
   "Animations are not on Full (Text and motion), so backgrounds stay still.": "As animações não estão em Completas (Texto e movimento), então os fundos ficam parados.",
-  "Backgrounds can move: pick a video file of your own, or an animated one when there is one. Animated backgrounds are off.": "Fundos podem se mover: escolha um vídeo seu, ou um animado quando houver. Os fundos animados estão desligados.",
-  "Backgrounds can move: those marked Animated, or a video file of your own. Animated backgrounds are off, so they show still.": "Fundos podem se mover: os marcados como Animado, ou um vídeo seu. Os fundos animados estão desligados, então eles aparecem parados.",
-  "Pictures marked Animated move behind the Collection. A video file of your own can too.": "Imagens marcadas como Animado se movem atrás da Coleção. Um vídeo seu também pode.",
   "Plays a background that is a video or an animated picture: your own picture, a game's background, or one marked Animated in Covers → Background. Off, it shows its first frame. Pauses while a game runs or Heronite is in the background.": "Reproduz um fundo que seja um vídeo ou uma imagem animada: uma imagem sua, o fundo de um jogo ou um marcado como Animado em Capas → Fundo. Desligado, mostra o primeiro quadro. Pausa enquanto um jogo roda ou o Heronite fica em segundo plano.",
   "Turn on": "Ligar",
-  "ffmpeg, which plays them, was not found, so backgrounds stay still.": "O ffmpeg, que os reproduz, não foi encontrado, então os fundos ficam parados."
+  "ffmpeg, which plays them, was not found, so backgrounds stay still.": "O ffmpeg, que os reproduz, não foi encontrado, então os fundos ficam parados.",
+  "This background moves, but Animated backgrounds is off: it will show still.": "Este fundo se move, mas os fundos animados estão desligados: ele vai aparecer parado."
 }

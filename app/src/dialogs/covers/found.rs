@@ -382,11 +382,12 @@ impl CoversDialog {
         });
         let pills = self.source_pills(cx);
         let style_pills = self.style_pills(cx);
-        // Backgrounds can move: said where one is picked.
-        let animated = (self.slot == Slot::Background && !self.loading).then(|| {
-            let any = self.results.steamgrid.iter().any(|i| i.animated);
-            animated_art::hint("cv-animated", any, cx, |this: &mut Self, cx| animated_art::turn_on(&this.ctx.app, cx))
-        });
-        col.child(head).children(animated).children(pills).children(style_pills).child(grid).children(error)
+        // An animated background picked while they are off: it will show still.
+        let picked_animated =
+            self.slot == Slot::Background && self.selected.and_then(|i| self.found().get(i).map(|f| f.image.animated)) == Some(true);
+        let animated =
+            animated_art::hint("cv-animated", picked_animated, cx, |this: &mut Self, cx| animated_art::turn_on(&this.ctx.app, cx));
+        // Under the pictures: it never moves the one being clicked.
+        col.child(head).children(pills).children(style_pills).child(grid).children(animated).children(error)
     }
 }

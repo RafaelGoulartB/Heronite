@@ -590,10 +590,8 @@
   "Animated": "Animado",
   "Animated backgrounds": "Fondos animados",
   "Animations are not on Full (Text and motion), so backgrounds stay still.": "Las animaciones no están en Completas (Texto y movimiento), así que los fondos quedan quietos.",
-  "Backgrounds can move: pick a video file of your own, or an animated one when there is one. Animated backgrounds are off.": "Los fondos pueden moverse: elige un vídeo tuyo, o uno animado cuando lo haya. Los fondos animados están desactivados.",
-  "Backgrounds can move: those marked Animated, or a video file of your own. Animated backgrounds are off, so they show still.": "Los fondos pueden moverse: los marcados como Animado, o un vídeo tuyo. Los fondos animados están desactivados, así que se ven quietos.",
-  "Pictures marked Animated move behind the Collection. A video file of your own can too.": "Las imágenes marcadas como Animado se mueven detrás de la Colección. Un vídeo tuyo también puede.",
   "Plays a background that is a video or an animated picture: your own picture, a game's background, or one marked Animated in Covers → Background. Off, it shows its first frame. Pauses while a game runs or Heronite is in the background.": "Reproduce un fondo que sea un vídeo o una imagen animada: una imagen tuya, el fondo de un juego o uno marcado como Animado en Portadas → Fondo. Desactivado, muestra su primer fotograma. Se pausa mientras un juego está abierto o Heronite queda en segundo plano.",
   "Turn on": "Activar",
-  "ffmpeg, which plays them, was not found, so backgrounds stay still.": "No se encontró ffmpeg, que los reproduce, así que los fondos quedan quietos."
+  "ffmpeg, which plays them, was not found, so backgrounds stay still.": "No se encontró ffmpeg, que los reproduce, así que los fondos quedan quietos.",
+  "This background moves, but Animated backgrounds is off: it will show still.": "Este fondo se mueve, pero los fondos animados están desactivados: se verá quieto."
 }
