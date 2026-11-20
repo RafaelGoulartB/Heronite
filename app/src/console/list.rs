@@ -8,10 +8,11 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 
 use super::kit::{self, u};
 use super::motion::{Axis, Glide, Goal};
-use super::Pad;
+use super::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
@@ -55,6 +56,9 @@ pub struct Row {
     pub compact: bool,
     /// A picture drawn in place of the value (a capture's preview).
     pub image: Option<std::path::PathBuf>,
+    /// What A does on an action row, written at its end in card lists
+    /// ("Open", "Refresh"); without it a card shows a chevron.
+    pub verb: Option<SharedString>,
 }
 
 impl Row {
@@ -70,6 +74,7 @@ impl Row {
             changed: false,
             compact: false,
             image: None,
+            verb: None,
         }
     }
     pub fn action(id: impl Into<SharedString>, label: impl Into<SharedString>) -> Self {
@@ -128,6 +133,11 @@ impl Row {
         self.image = path;
         self
     }
+    /// The word a card list writes at the end of an action row.
+    pub fn verb(mut self, v: impl Into<SharedString>) -> Self {
+        self.verb = Some(v.into());
+        self
+    }
     fn focusable(&self) -> bool {
         self.value != Value::Header
     }
@@ -147,21 +157,57 @@ pub enum Outcome {
     Edge(Pad),
 }
 
+/// How a list draws its rows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RowStyle {
+    /// Bare rows; the focused one on the light focus pill.
+    #[default]
+    Pill,
+    /// Each row a rounded card with its description always shown, a switch
+    /// for toggles and `‹ chip ›` for choices; the focused one ringed.
+    Card,
+}
+
 pub struct ListNav {
     pub focus: usize,
     glide: Glide,
     reveal: bool,
     /// Drawn once (the first reveal jumps instead of gliding).
     shown: bool,
+    style: RowStyle,
 }
 
 impl Default for ListNav {
     fn default() -> Self {
-        Self { focus: 0, glide: Glide::new(Axis::Y), reveal: true, shown: false }
+        Self { focus: 0, glide: Glide::new(Axis::Y), reveal: true, shown: false, style: RowStyle::Pill }
     }
 }
 
 impl ListNav {
+    /// Draws the rows as `style` asks (from the next render).
+    pub fn set_style(&mut self, style: RowStyle) {
+        self.style = style;
+    }
+
+    /// Brings the focused row into view on the next render (the list got
+    /// the focus back).
+    pub fn reveal_focus(&mut self) {
+        self.reveal = true;
+    }
+
+    /// Makes `id` the focused row when the list has it (a search result
+    /// picked); the next render brings it into view.
+    pub fn focus_id(&mut self, rows: &[Row], id: &str) -> bool {
+        match rows.iter().position(|r| r.id.as_ref() == id && r.focusable()) {
+            Some(i) => {
+                self.focus = i;
+                self.reveal = true;
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Keeps the focus on a focusable row inside `rows`.
     pub fn clamp(&mut self, rows: &[Row]) {
         if rows.is_empty() {
@@ -302,10 +348,14 @@ impl ListNav {
         self.clamp(rows);
         let lead: Option<Vec<Pad>> = if active { Some(Vec::new()) } else { entry.map(<[Pad]>::to_vec) };
         let focus = self.focus;
+        let style = self.style;
         self.render_clicks(id, rows, active, lead.clone(), |i, r, focused| {
             // The ‹ › of the row the focus is on (or comes back to).
             let arrows = lead.as_deref().filter(|_| i == focus);
-            render_row_at(r, focused, arrows).into_any_element()
+            match style {
+                RowStyle::Pill => render_row_at(r, focused, arrows).into_any_element(),
+                RowStyle::Card => render_card_at(r, focused, arrows).into_any_element(),
+            }
         })
     }
 
@@ -345,7 +395,8 @@ impl ListNav {
         }
         self.shown = true;
         let clicks = lead.map(|lead| Clicks::new(rows, self.focus, lead));
-        let mut list = div().id(id).flex().flex_col().gap(u(4.)).overflow_y_scroll().track_scroll(self.glide.handle());
+        let gap = if self.style == RowStyle::Card { 8. } else { 4. };
+        let mut list = div().id(id).flex().flex_col().gap(u(gap)).overflow_y_scroll().track_scroll(self.glide.handle());
         for (i, r) in rows.iter().enumerate() {
             let mut row = div().child(draw(i, r, active && i == self.focus));
             if let Some(click) = clicks.as_ref().and_then(|c| c.at(rows, i)) {
@@ -513,6 +564,103 @@ pub fn render_row_at(r: &Row, focused: bool, route: Option<&[Pad]>) -> Div {
                 })),
         )
         .child(value)
+}
+
+/// One row as a card ([`RowStyle::Card`]): its title and description on the
+/// left, its control on the right (a switch, `‹ chip ›`, an accent text
+/// action, a muted value); a header is an accent heading. `route` as in
+/// [`render_row_at`].
+pub fn render_card_at(r: &Row, focused: bool, route: Option<&[Pad]>) -> Div {
+    let arrow = |pad: Pad| -> Vec<Pad> {
+        match route {
+            Some(route) if r.enabled => route.iter().copied().chain([pad]).collect(),
+            _ => Vec::new(),
+        }
+    };
+    if r.value == Value::Header {
+        return kit::card_heading(r.label.clone());
+    }
+    let label_color: Hsla = if r.danger { theme::danger_text().into() } else { theme::text_primary().into() };
+    let muted = |t: &SharedString| {
+        div().min_w_0().max_w(u(380.)).truncate().text_size(u(14.)).text_color(theme::text_muted()).child(if t.is_empty() {
+            SharedString::from("\u{2014}")
+        } else {
+            t.clone()
+        })
+    };
+    let value: AnyElement = match &r.value {
+        Value::Action => match &r.verb {
+            Some(v) => kit::text_action(v.clone()).into_any_element(),
+            None => icon(Icon::ChevronRight, u(20.), theme::text_muted()).into_any_element(),
+        },
+        Value::Toggle(on) => kit::switch(SharedString::from(format!("switch-{}", r.id)), *on),
+        Value::Choice { options, index } => {
+            let text = options.get(*index).cloned().unwrap_or_default();
+            kit::choice_chip(text, *index > 0, index + 1 < options.len(), arrow(Pad::Left), arrow(Pad::Right)).into_any_element()
+        }
+        Value::Number { value, min, max, suffix, .. } => {
+            kit::choice_chip(format!("{value}{suffix}"), value > min, value < max, arrow(Pad::Left), arrow(Pad::Right)).into_any_element()
+        }
+        Value::Text(t) => div()
+            .flex()
+            .min_w_0()
+            .items_center()
+            .gap(u(14.))
+            .child(muted(t))
+            .when(r.enabled, |d| d.child(kit::text_action(r.verb.clone().unwrap_or_else(|| tr!("Change").into()))))
+            .into_any_element(),
+        Value::Info(t) => muted(t).into_any_element(),
+        Value::Header => div().into_any_element(),
+    };
+    let value = match &r.image {
+        Some(path) => div()
+            .flex_none()
+            .w(u(72.))
+            .h(u(40.))
+            .rounded(u(8.))
+            .overflow_hidden()
+            .bg(kit::ink(0.06))
+            .child(img(path.clone()).size_full().object_fit(ObjectFit::Cover))
+            .into_any_element(),
+        None => value,
+    };
+    kit::card_base(focused)
+        .when(!r.enabled, |d| d.opacity(0.45))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_w_0()
+                .gap(u(2.))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(u(8.))
+                        .child(div().text_size(u(17.)).text_color(label_color).truncate().child(r.label.clone()))
+                        .when(r.changed, |d| d.child(div().flex_none().size(u(7.)).rounded_full().bg(kit::accent_ink()))),
+                )
+                .children(r.desc.clone().map(|d| {
+                    div().text_size(u(13.)).line_height(u(18.)).line_clamp(2).text_ellipsis().text_color(theme::text_muted()).child(d)
+                })),
+        )
+        .child(div().flex().flex_none().max_w(relative(0.55)).justify_end().child(value))
+}
+
+/// What A (or ◀ ▶) does on row `r`, as a hint (none for a row that does
+/// nothing).
+pub fn hint_for(r: &Row) -> Option<Hint> {
+    if !r.enabled {
+        return None;
+    }
+    Some(match &r.value {
+        Value::Toggle(on) => hint(Btn::A, if *on { tr!("Turn off") } else { tr!("Turn on") }),
+        Value::Choice { .. } | Value::Number { .. } => hint(Btn::LeftRight, tr!("Change")),
+        Value::Text(_) => hint(Btn::A, r.verb.clone().unwrap_or_else(|| tr!("Change").into())),
+        Value::Action => hint(Btn::A, r.verb.clone().unwrap_or_else(|| tr!("Select").into())),
+        Value::Info(_) | Value::Header => return None,
+    })
 }
 
 /// A small console dialog: title, message lines, an optional error and the

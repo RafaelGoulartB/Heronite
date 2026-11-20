@@ -602,6 +602,137 @@ pub fn choice_clickable(
         .child(arrow(Icon::ChevronRight, can_right, right))
 }
 
+/// Headings inside a list of cards and the text of their actions ("Change",
+/// "Open"): the theme's focus colour when it has a hue, else the app's
+/// accent; darkened on a light console so it stays readable.
+pub fn accent_ink() -> Rgba {
+    let focus = theme::console_focus();
+    let hsla: Hsla = focus.into();
+    let base = if hsla.s > 0.3 && hsla.l > 0.25 && hsla.l < 0.85 { focus } else { theme::accent() };
+    tint(base)
+}
+
+/// The fill of a card row (a settings row, a result): the theme's panel,
+/// a little see-through so the background shows.
+pub fn card_fill() -> Hsla {
+    let mut c = theme::console_sidebar();
+    c.a = if light() { 0.82 } else { 0.72 };
+    c.into()
+}
+
+/// A thin bright ring around the focused card. It pops in (from a little
+/// inset, fading up) when the focus arrives and on every press.
+pub fn focus_ring(radius: f32) -> AnyElement {
+    let n = PILLS.with(|c| {
+        let n = c.get();
+        c.set(n + 1);
+        n
+    });
+    let edge = -1.;
+    let mut glow: Hsla = theme::console_focus().into();
+    glow.a = 0.16;
+    let ring = div()
+        .absolute()
+        .top(px(edge))
+        .bottom(px(edge))
+        .left(px(edge))
+        .right(px(edge))
+        .rounded(u(radius))
+        .border_2()
+        .border_color(theme::console_focus())
+        .shadow(vec![BoxShadow { color: glow, offset: point(px(0.), px(0.)), blur_radius: u(14.), spread_radius: px(0.), inset: false }]);
+    if !motion::on() {
+        return ring.into_any_element();
+    }
+    let id = SharedString::from(format!("ring-{n}-{}", motion::press_epoch()));
+    ring.with_animation(id, Animation::new(std::time::Duration::from_millis(180)).with_easing(ease_out_quint()), move |d, t| {
+        let inset = px(edge) + u(3.) * (1. - t);
+        d.opacity(0.4 + 0.6 * t).top(inset).bottom(inset).left(inset).right(inset)
+    })
+    .into_any_element()
+}
+
+/// Base of a card row: a rounded panel, the thin [`focus_ring`] around it
+/// when focused (the text keeps its colour).
+pub fn card_base(focused: bool) -> Div {
+    let d = div()
+        .relative()
+        .flex()
+        .items_center()
+        .gap(u(16.))
+        .min_h(u(56.))
+        .pl(u(20.))
+        .pr(u(18.))
+        .py(u(9.))
+        .rounded(u(14.))
+        .bg(card_fill())
+        .text_color(theme::text_primary());
+    if focused {
+        d.child(focus_ring(14.))
+    } else {
+        d
+    }
+}
+
+/// A sliding switch: the focus colour with its knob on the right when on,
+/// a faint track with the knob on the left when off. `id` keeps its slide
+/// apart from the other switches.
+pub fn switch(id: impl Into<ElementId>, on: bool) -> AnyElement {
+    let (w, h, knob, inset) = (44., 24., 18., 3.);
+    let travel = w - knob - 2. * inset;
+    let track = div().relative().flex_none().w(u(w)).h(u(h)).rounded_full();
+    motion::spring(id, track, motion::SOFT, on, move |d, k| {
+        let k = k.clamp(0., 1.);
+        let off_fill: Rgba = ink(0.16).into();
+        let fill = motion::mix(off_fill, theme::console_focus(), k);
+        let knob_c = motion::mix(theme::text_primary(), theme::console_on_focus(), k);
+        d.bg(fill).child(div().absolute().top(u(inset)).left(u(inset + travel * k)).size(u(knob)).rounded_full().bg(knob_c))
+    })
+}
+
+/// A value in a soft rounded chip (a choice's current value, a number).
+pub fn value_chip(text: impl Into<SharedString>) -> Div {
+    div()
+        .flex_none()
+        .max_w(u(340.))
+        .truncate()
+        .px(u(12.))
+        .py(u(3.))
+        .rounded(u(12.))
+        .bg(ink(0.12))
+        .text_size(u(14.))
+        .font_weight(theme::W_BOLD)
+        .text_color(theme::text_primary())
+        .child(text.into())
+}
+
+/// `‹ chip ›`: a choice of a card row. The arrows dim at the ends and send
+/// `left` / `right` when clicked (nothing when empty).
+pub fn choice_chip(value: impl Into<SharedString>, can_left: bool, can_right: bool, left: Vec<Pad>, right: Vec<Pad>) -> Div {
+    let color: Hsla = theme::text_muted().into();
+    let arrow = |ic: Icon, on: bool, pads: Vec<Pad>| {
+        div().p(u(4.)).m(u(-4.)).child(icon(ic, u(18.), if on { color } else { Hsla { a: color.a * 0.3, ..color } })).on_pads(pads)
+    };
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(u(8.))
+        .child(arrow(Icon::ChevronLeft, can_left, left))
+        .child(value_chip(value))
+        .child(arrow(Icon::ChevronRight, can_right, right))
+}
+
+/// A text action at the end of a card row ("Change", "Open"), in [`accent_ink`].
+pub fn text_action(text: impl Into<SharedString>) -> Div {
+    div().flex_none().text_size(u(14.)).font_weight(theme::W_BOLD).text_color(accent_ink()).child(text.into())
+}
+
+/// A heading between card rows, in [`accent_ink`].
+pub fn card_heading(text: impl Into<SharedString>) -> Div {
+    div().pt(u(16.)).pb(u(2.)).px(u(4.)).text_size(u(15.)).font_weight(theme::W_BOLD).text_color(accent_ink()).child(text.into())
+}
+
 /// The name of a tab, `color` and bold or regular.
 fn tab_label(text: impl Into<SharedString>, size: f32, color: impl Into<Hsla>, bold: bool) -> Div {
     div()
