@@ -12,6 +12,7 @@
 
 mod achievements;
 mod actions;
+mod activity;
 mod art;
 mod backdrop;
 mod controls;
@@ -127,6 +128,8 @@ pub(super) struct ConsoleUi {
     launch: launch_screen::LaunchUi,
     /// "Session ended" after a game.
     session: session_card::SessionUi,
+    /// What runs in the background (`activity.rs`).
+    activity: activity::ActivityUi,
 }
 
 /// The hint bar over the bottom of the screen, on a fade of the background
@@ -882,6 +885,7 @@ impl CollectionView {
                     d.child(crate::ui::icon(crate::icons::Icon::SportsEsports, u(20.), theme::text_muted()))
                 })
             })
+            .children(self.activity_in_bar())
             .child(self.layout_clock())
     }
 
@@ -1024,7 +1028,7 @@ impl CollectionView {
             })
             .when(float, |d| d.child(floating_hints(&hints, hints_on)))
             .children(idle)
-            .children(self.render_launch_layers(window, cx))
+            .children(self.render_launch_layers(keeps_tabs, window, cx))
             .into_any_element()
     }
 }

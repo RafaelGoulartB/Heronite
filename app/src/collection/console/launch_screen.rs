@@ -466,11 +466,13 @@ impl CollectionView {
         self.images.get_or_request(&id, || chain, size.0, size.1, variant, 1000)
     }
 
-    /// The "Session ended" card and the launch screen, over everything else.
-    pub(super) fn render_launch_layers(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    /// The top right corner (the "Session ended" card, the activity) and the
+    /// launch screen, over everything else. `top_bar`: the screen shows it.
+    pub(super) fn render_launch_layers(&mut self, top_bar: bool, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let card = self.render_session_card(window, cx);
+        let corner = self.render_activity_corner(top_bar, card, window, cx);
         let screen = self.render_launch_screen(window, cx);
-        card.into_iter().chain(screen).collect()
+        corner.into_iter().chain(screen).collect()
     }
 
     /// The launch screen, over everything (`None` when it is not up).

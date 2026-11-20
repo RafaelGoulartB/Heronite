@@ -221,7 +221,7 @@ impl CollectionView {
         self.images.get_or_request(&id, || chain, size.0, size.1, Variant::Stage { blur_px: 0., saturation: 1. }, 600)
     }
 
-    /// The card in the top right corner (`None` when none shows).
+    /// The card, for the top right corner (`None` when none shows).
     pub(super) fn render_session_card(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         self.debug_session_card();
         self.ensure_session_ticker(window, cx);
@@ -312,7 +312,7 @@ impl CollectionView {
             motion::spring(SharedString::from(format!("session-card-out-{id}")), div().child(shown), motion::SOFT, !leaving, |d, k| {
                 d.opacity(k.clamp(0., 1.))
             });
-        Some(div().absolute().top(u(92.)).right(u(28.)).child(out).into_any_element())
+        Some(out)
     }
 }
 
