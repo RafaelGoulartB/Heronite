@@ -35,7 +35,6 @@ use crate::console::motion::{Axis, Glide, Goal};
 use crate::console::pointer;
 use crate::console::{look, Hint, Pad};
 use crate::icons::Icon;
-use crate::theme;
 
 /// Focus of one tab in every layout.
 #[derive(Default)]
@@ -187,7 +186,8 @@ impl CollectionView {
             Some(lift) => spotlight::spotlight_tabs(names, active, lift),
             // Cinema: the same centred pill (in its gold), the tabs around the
             // current one when they would come near the status icons.
-            None if self.console_shown_tab().1.layout == Layout::Cinema => {
+            // Its Library (a Grid tab) keeps the same bar.
+            None if look::theme().tabs.iter().any(|t| t.layout == Layout::Cinema) => {
                 let (first, last) = cinema_tab_window(names, active, kit::vw());
                 spotlight::spotlight_tabs_in(&names[first..last], active - first, 0., kit::ink(0.72), (first, names.len() - last))
             }
@@ -201,86 +201,15 @@ impl CollectionView {
         (self.console_shown_tab().1.layout == Layout::Cinema).then(|| cinema::side(body_width(window)))
     }
 
-    /// Whether the activity pill fits beside Cinema's status icons (a narrow
-    /// window shows a download on the download icon instead).
-    pub(super) fn layout_activity_fits(&self) -> bool {
-        self.console_shown_tab().1.layout != Layout::Cinema || kit::vw() >= CINEMA_PILL_FROM
-    }
-
-    /// The right of the top bar in Cinema: search, the downloads with how
-    /// many there are, the controller while one is connected, and the clock,
-    /// as monochrome icons (`None` for the other layouts).
-    pub(super) fn layout_status(&self, downloads: usize, progress: Option<f32>) -> Option<Div> {
-        if self.console_shown_tab().1.layout != Layout::Cinema {
-            return None;
-        }
-        let ink = theme::text_primary();
-        let item =
-            || div().flex().items_center().justify_center().size(u(32.)).rounded_full().cursor_pointer().hover(|s| s.bg(kit::ink(0.1)));
-        let search = item()
-            .child(crate::ui::icon(Icon::FaSearch, u(17.), ink))
-            .on_mouse_down(MouseButton::Left, self.console_click(|this, window, cx| this.open_console_filters(window, cx)));
-        let downloads_icon = item()
-            .relative()
-            .child(crate::ui::icon(Icon::Download, u(20.), ink))
-            .when(downloads > 0, |d| {
-                d.child(
-                    div()
-                        .absolute()
-                        .top(u(1.))
-                        .right(u(0.))
-                        .min_w(u(15.))
-                        .h(u(15.))
-                        .px(u(3.))
-                        .rounded_full()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .bg(theme::console_focus())
-                        .text_size(u(9.5))
-                        .font_weight(theme::W_BOLD)
-                        .text_color(theme::console_on_focus())
-                        .child(downloads.to_string()),
-                )
-            })
-            // Without the activity pill, the download's progress as a thin bar under the icon.
-            .when_some(progress.filter(|_| !self.layout_activity_fits()), |d, p| {
-                d.child(
-                    div()
-                        .absolute()
-                        .bottom(u(2.))
-                        .left(u(7.))
-                        .right(u(7.))
-                        .h(u(2.5))
-                        .rounded_full()
-                        .bg(kit::ink(0.2))
-                        .child(div().h_full().rounded_full().bg(theme::console_focus()).w(relative(p.clamp(0.04, 1.)))),
-                )
-            })
-            .on_mouse_down(
-                MouseButton::Left,
-                self.console_click(|this, window, cx| this.navigate(crate::pages::Page::Downloads, window, cx)),
-            );
-        let controller =
-            self.console.controller.is_some().then(|| item().cursor_default().child(crate::ui::icon(Icon::SportsEsports, u(21.), ink)));
-        Some(
-            div()
-                .flex()
-                .items_center()
-                .gap(u(10.))
-                .child(search)
-                .child(downloads_icon)
-                .children(controller)
-                .child(div().ml(u(10.)).child(spotlight::spotlight_clock(0.))),
-        )
-    }
-
     /// The clock of the top bar: Spotlight's larger one (a Carousel with its
     /// filters in the bar too), else [`kit::clock`].
     pub(super) fn layout_clock(&self) -> Div {
         match self.spotlight_lift() {
             Some(lift) => spotlight::spotlight_clock(lift),
-            None if self.layout_top_filters().is_some() => spotlight::spotlight_clock(0.),
+            // A Carousel with its filters in the bar, and Cinema: the larger one too.
+            None if self.layout_top_filters().is_some() || look::theme().tabs.iter().any(|t| t.layout == Layout::Cinema) => {
+                spotlight::spotlight_clock(0.)
+            }
             None => kit::clock(),
         }
     }
@@ -351,11 +280,9 @@ fn loads(seen: &RangeInclusive<usize>, i: usize, focus: usize) -> bool {
     seen.contains(&i) || i.abs_diff(focus) <= 2
 }
 
-/// Below this width (design px) Cinema's top bar leaves the activity pill out.
-const CINEMA_PILL_FROM: f32 = 1500.;
-/// Room Cinema's status icons take on the right of the top bar (with the
-/// bar's padding), and the least space between them and the tabs, design px.
-const CINEMA_STATUS_W: f32 = 46. + 170.;
+/// Room the clock (and an activity pill beside it) takes on the right of
+/// Cinema's top bar, and the least space between it and the tabs, design px.
+const CINEMA_STATUS_W: f32 = 46. + 200.;
 const CINEMA_TABS_CLEAR: f32 = 48.;
 
 /// The tabs `first..last` of Cinema's top bar that fit centred in a window

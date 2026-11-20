@@ -859,11 +859,9 @@ impl CollectionView {
     /// the current one's name, centred (`Title`) or nothing (`Bottom`: the
     /// tabs go along the bottom, see `console_bottom_tabs`); status icons,
     /// clock.
-    /// `downloads`: how many games download and how far the first one is
-    /// (Cinema's status icons show them).
     /// `right`: the bar's right edge, design px from the window's (Cinema's
     /// lines up with its row), else the usual.
-    fn console_top_bar(&self, downloads: (usize, Option<f32>), right: Option<f32>) -> Div {
+    fn console_top_bar(&self, right: Option<f32>) -> Div {
         let theme = look::theme();
         let names: Vec<SharedString> = theme.tabs.iter().map(tab_label).collect();
         let label = theme.interface.label.trim().to_string();
@@ -887,18 +885,13 @@ impl CollectionView {
                 d.child(div().absolute().top_0().bottom_0().left_0().right_0().flex().items_center().justify_center().child(title))
             })
             .child(div().flex_1())
-            .children(self.activity_in_bar().filter(|_| self.layout_activity_fits()))
-            .map(|d| match self.layout_status(downloads.0, downloads.1) {
-                // Cinema's cluster of status icons, the clock among them.
-                Some(status) => d.child(status),
-                None => d
-                    .when(theme.interface.status_icons, |d| {
-                        d.when(self.console.controller.is_some(), |d| {
-                            d.child(crate::ui::icon(crate::icons::Icon::SportsEsports, u(20.), theme::text_muted()))
-                        })
-                    })
-                    .child(self.layout_clock()),
+            .children(self.activity_in_bar())
+            .when(theme.interface.status_icons, |d| {
+                d.when(self.console.controller.is_some(), |d| {
+                    d.child(crate::ui::icon(crate::icons::Icon::SportsEsports, u(20.), theme::text_muted()))
+                })
             })
+            .child(self.layout_clock())
     }
 
     /// The tabs along the bottom (`tab_bar: bottom`), when there are several.
@@ -959,12 +952,8 @@ impl CollectionView {
         // The tabs take clicks only while LB / RB switch them.
         let tabs_input = self.tabs_in_focus() && !self.console.results;
         let blocked = |d: Div| if tabs_input { d } else { d.child(div().absolute().inset_0().occlude()) };
-        let downloads = crate::services::try_downloads(cx).map_or((0, None), |d| {
-            let snap = d.read(cx).snapshot();
-            (snap.queue.len(), snap.current.as_ref().and_then(|(_, p)| p.as_ref()).map(|p| (p.percent / 100.) as f32))
-        });
         let bar_right = self.layout_hint_side(window);
-        let top_bar = keeps_tabs.then(|| blocked(self.console_top_bar(downloads, bar_right)));
+        let top_bar = keeps_tabs.then(|| blocked(self.console_top_bar(bar_right)));
         let bottom_tabs = if keeps_tabs { self.console_bottom_tabs().map(|d| blocked(d.relative())) } else { None };
         let scrim = if on_page {
             Scrim::Page
