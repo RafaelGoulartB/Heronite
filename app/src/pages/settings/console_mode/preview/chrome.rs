@@ -1,9 +1,11 @@
 //! The bars of a picture: the tabs, the clock and the status icons at the
-//! top, the tab bar along the bottom, and the hint bar.
+//! top (Spotlight's tabs as pills centred over the screen, its clock
+//! larger), the tab bar along the bottom, and the button hints (monochrome
+//! glyphs, the menu and the tabs on the left, the actions on the right).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{Clock, Glyphs, Hints, TabBar};
+use heronite_data::console_theme::{Clock, Glyphs, Hints, Layout, TabBar};
 use heronite_i18n::tr;
 
 use super::Pic;
@@ -33,6 +35,66 @@ impl Pic<'_, '_> {
             .child(text)
     }
 
+    /// A keycap (LB, RB) as the console draws it: outlined in the text colour.
+    pub fn key(&self, text: &'static str) -> Div {
+        div()
+            .flex_none()
+            .h(self.u(9.))
+            .min_w(self.u(12.))
+            .px(self.u(2.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(self.u(3.))
+            .border(self.u(0.7))
+            .border_color(Rgba { a: 0.75, ..self.text })
+            .text_size(self.u(4.5))
+            .font_weight(theme::W_BOLD)
+            .text_color(self.text)
+            .child(text)
+    }
+
+    /// A face button as the hints draw it: a disc in the text colour with
+    /// its mark cut out (a keycap for the keyboard).
+    fn mono_glyph(&self, text: &'static str) -> Div {
+        if text.chars().count() > 1 {
+            return self.key(text);
+        }
+        div()
+            .flex_none()
+            .size(self.u(9.5))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded_full()
+            .bg(self.text)
+            .text_size(self.u(5.5))
+            .font_weight(theme::W_BOLD)
+            .text_color(self.bg)
+            .child(text)
+    }
+
+    /// Whether the tab shown is a Spotlight one (its own top bar).
+    fn spotlight_tab(&self) -> bool {
+        self.t.tabs.get(self.tab).is_some_and(|t| t.layout == Layout::Spotlight)
+    }
+
+    /// Spotlight's tabs: the names between LB and RB, the current one in a
+    /// pill of the focus colour, centred.
+    fn spotlight_tabs(&self) -> Div {
+        let mut tabs = div().flex().items_center().gap(self.u(2.)).child(self.key("LB").mr(self.u(4.)));
+        for (n, name) in self.tab_names().into_iter().enumerate() {
+            let on = n == self.tab;
+            tabs = tabs.child(div().px(self.u(6.5)).py(self.u(2.5)).rounded_full().when(on, |d| d.bg(self.accent)).child(self.label(
+                name,
+                7.,
+                if on { self.on_fill(self.accent) } else { self.muted },
+            )));
+        }
+        let tabs = tabs.child(self.key("RB").ml(self.u(4.)));
+        div().absolute().left_0().right_0().top(self.u(10.)).flex().justify_center().child(tabs)
+    }
+
     pub fn top_bar(&self) -> Div {
         let i = &self.t.interface;
         let names = self.tab_names();
@@ -42,6 +104,7 @@ impl Pic<'_, '_> {
         }
         let grey = Rgba { a: 0.5, ..self.text };
         match i.tab_bar {
+            TabBar::Top if self.spotlight_tab() => {}
             TabBar::Top => {
                 let mut tabs = div().flex().items_center().gap(self.u(4.)).child(self.glyph("LB", grey));
                 for (n, name) in names.iter().enumerate() {
@@ -76,9 +139,12 @@ impl Pic<'_, '_> {
         if i.date && i.clock != Clock::Off {
             right = right.child(self.line(18., 4., 0.7));
         }
+        let spot = self.spotlight_tab() && i.tab_bar == TabBar::Top;
+        // Spotlight's clock is larger.
+        let clock = if spot { 12. } else { 10. };
         match i.clock {
-            Clock::H24 => right = right.child(self.label("21:30", 10., self.text)),
-            Clock::H12 => right = right.child(self.label("9:30", 10., self.text)),
+            Clock::H24 => right = right.child(self.label("21:30", clock, self.text)),
+            Clock::H12 => right = right.child(self.label("9:30", clock, self.text)),
             Clock::Off => {}
         }
         let title = (i.tab_bar == TabBar::Title).then(|| {
@@ -98,6 +164,7 @@ impl Pic<'_, '_> {
             .right_0()
             .child(div().flex().items_center().justify_between().px(self.u(22.)).pt(self.u(14.)).child(left).child(right))
             .children(title)
+            .when(spot && names.len() > 1, |d| d.child(self.spotlight_tabs()))
     }
 
     pub fn bottom_bar(&self) -> Option<Div> {
@@ -140,31 +207,57 @@ impl Pic<'_, '_> {
             return None;
         }
         // The controller's buttons (not the theme's): south and east, the
-        // one that confirms first.
-        let (south, east): ((&'static str, Rgba), (&'static str, Rgba)) = match crate::console::look::glyphs() {
-            Glyphs::Xbox | Glyphs::Auto => (("A", rgb(0x4f9f45)), ("B", rgb(0xc8453c))),
-            Glyphs::PlayStation => (("\u{2715}", rgb(0x5a7bd6)), ("\u{25cb}", rgb(0xd0545f))),
-            Glyphs::Nintendo => (("B", rgb(0x4b4f58)), ("A", rgb(0x4b4f58))),
-            Glyphs::Deck => (("A", rgb(0x3a3f48)), ("B", rgb(0x3a3f48))),
-            Glyphs::Keyboard => (("Enter", rgb(0x3a3f48)), ("Esc", rgb(0x3a3f48))),
+        // one that confirms first, and X.
+        let (south, east, west): (&'static str, &'static str, &'static str) = match crate::console::look::glyphs() {
+            Glyphs::Xbox | Glyphs::Auto | Glyphs::Deck => ("A", "B", "X"),
+            Glyphs::PlayStation => ("\u{2715}", "\u{25cb}", "\u{25a1}"),
+            Glyphs::Nintendo => ("B", "A", "Y"),
+            Glyphs::Keyboard => ("Enter", "Esc", "X"),
         };
         let keys = crate::console::look::glyphs() == Glyphs::Keyboard;
         let (a, b) = if crate::console::look::confirm_east() && !keys { (east, south) } else { (south, east) };
-        let floating = c.hints == Hints::Auto;
-        let bottom = if self.t.interface.tab_bar == TabBar::Bottom { 38. } else { 9. };
-        let hint = |g: (&'static str, Rgba), text: &'static str| {
-            div().flex().items_center().gap(self.u(4.)).child(self.glyph(g.0, g.1)).child(self.label(text, 8., self.muted))
+        let bottom = if self.t.interface.tab_bar == TabBar::Bottom { 38. } else { 8. };
+        let hint =
+            |g: Div, text: &str| div().flex().items_center().gap(self.u(3.5)).child(g).child(self.label(text.to_string(), 6.5, self.text));
+        let menu =
+            div().flex_none().size(self.u(9.5)).flex().items_center().justify_center().rounded_full().bg(self.text).child(crate::ui::icon(
+                crate::icons::Icon::Menu,
+                self.u(6.5),
+                self.bg,
+            ));
+        let tabs =
+            (self.t.tabs.len() > 1).then(|| hint(div().flex().gap(self.u(2.)).child(self.key("LB")).child(self.key("RB")), tr!("Tabs")));
+        let left = div().flex().items_center().gap(self.u(12.)).child(hint(menu, tr!("Menu"))).children(tabs);
+        // Spotlight's row: A opens the actions, X plays; elsewhere A and B.
+        let right = if self.spotlight_tab() {
+            div()
+                .flex()
+                .items_center()
+                .gap(self.u(12.))
+                .child(hint(self.mono_glyph(a), tr!("Actions")))
+                .child(hint(self.mono_glyph(west), tr!("Play")))
+        } else {
+            div()
+                .flex()
+                .items_center()
+                .gap(self.u(12.))
+                .child(hint(self.mono_glyph(a), tr!("Select")))
+                .child(hint(self.mono_glyph(b), tr!("Back")))
         };
+        // Hints that fade by themselves show faint.
+        let faint = c.hints == Hints::Auto;
         Some(
-            div().absolute().right(self.u(18.)).bottom(self.u(bottom)).child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(self.u(10.))
-                    .when(floating, |d| d.px(self.u(8.)).py(self.u(4.)).rounded(self.u(10.)).bg(self.panel).opacity(0.45))
-                    .child(hint(a, tr!("Select")))
-                    .child(hint(b, tr!("Back"))),
-            ),
+            div()
+                .absolute()
+                .left(self.u(18. + self.inset.0))
+                .right(self.u(18. + self.inset.1))
+                .bottom(self.u(bottom))
+                .flex()
+                .items_center()
+                .justify_between()
+                .when(faint, |d| d.opacity(0.6))
+                .child(left)
+                .child(right),
         )
     }
 }
