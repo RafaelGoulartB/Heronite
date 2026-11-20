@@ -21,10 +21,9 @@ use super::super::hero::{logo_element, played_time};
 use super::super::sources::{by_last_played, by_title, keys};
 use crate::collection::data::played_ago;
 use crate::console::kit::{self, u};
-use crate::console::list::{ListNav, Outcome};
 use crate::console::motion::{self, Axis, Glide, Goal};
 use crate::console::pointer::{self, Clickable};
-use crate::console::{hint, look, Btn, Hint, Pad};
+use crate::console::{look, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
 
@@ -60,13 +59,11 @@ pub(crate) struct Nav {
     returns: u64,
     hidden: bool,
     wake: Option<Task<()>>,
-    /// The game's actions (Y), open in a sheet.
-    options: Option<ListNav>,
 }
 
 impl Default for Nav {
     fn default() -> Self {
-        Self { index: 0, row: Glide::new(Axis::X), moving_until: None, returns: 0, hidden: false, wake: None, options: None }
+        Self { index: 0, row: Glide::new(Axis::X), moving_until: None, returns: 0, hidden: false, wake: None }
     }
 }
 
@@ -123,14 +120,13 @@ const LETTER_W: f32 = 0.56;
 const WORD_GAP: f32 = 0.28;
 
 /// The game's name as written (no logo), in large title type: each word kept
-/// whole, the words wrapping between them, centred, two lines at most.
+/// whole, the words wrapping between them, two lines at most.
 fn title_name(title: &str, width: f32) -> Div {
     let words: Vec<&str> = title.split_whitespace().collect();
     let size = name_size(&words, width);
     div()
         .flex()
         .flex_wrap()
-        .justify_center()
         .gap_x(u(size * WORD_GAP))
         .font_family(kit::heading_font())
         .font_weight(theme::W_BOLD)
@@ -315,7 +311,7 @@ impl CollectionView {
     }
 
     /// The game's block: the logo (or the name), the facts and the genres,
-    /// centred on each other; it comes in as `id` says.
+    /// each from the block's left edge; it comes in as `id` says.
     pub(super) fn cinema_block(&mut self, g: &CollectionGame, id: &str, slide: f32, width: f32, logo_h: f32, window: &Window) -> Div {
         let key = SharedString::from(g.key.clone());
         let logo_w = LOGO.0.min(width);
@@ -327,7 +323,6 @@ impl CollectionView {
             .h(u(GENRES_H))
             .flex()
             .items_center()
-            .justify_center()
             .gap(u(18.))
             .text_size(u(14.))
             .text_color(kit::ink(0.72))
@@ -336,18 +331,18 @@ impl CollectionView {
             .relative()
             .flex()
             .flex_col()
-            .items_center()
+            .items_start()
             .gap(u(14.))
             .child(div().h(u(FACTS_H)).flex().items_center().child(self.cinema_facts(g)))
             .child(genres);
         div()
             .flex()
             .flex_col()
-            .items_center()
+            .items_start()
             .gap(u(LOGO_GAP))
             .child(motion::reveal(
                 SharedString::from(format!("{id}-logo")),
-                div().relative().flex().justify_center().child(name),
+                div().relative().flex().child(name),
                 motion::NAME_HOLD,
                 motion::NAME_FADE,
                 slide,
@@ -370,7 +365,7 @@ impl CollectionView {
             nav.hidden = false;
             nav.returns += 1;
         }
-        let (index, glide, returns, options) = (nav.index, nav.row.clone(), nav.returns, nav.options.is_some());
+        let (index, glide, returns) = (nav.index, nav.row.clone(), nav.returns);
         let focused = all[index].clone();
         self.console_focus_game(Some(focused.clone()), cx);
         let game = self.lib.as_ref().and_then(|l| l.get(&focused)).cloned();
@@ -431,30 +426,7 @@ impl CollectionView {
             }
         }
 
-        // Y: the game's actions in a sheet over the screen.
-        let sheet = options.then(|| self.cinema_options_sheet(&focused, cx)).flatten();
-        div()
-            .relative()
-            .size_full()
-            .child(over)
-            .child(row)
-            .children(sheet.map(|s| div().absolute().inset_0().occlude().child(s)))
-            .into_any_element()
-    }
-
-    /// The sheet of the game's actions (Y).
-    fn cinema_options_sheet(&mut self, key: &SharedString, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let g = self.lib.as_ref().and_then(|l| l.get(key)).cloned()?;
-        let rows = self.game_rows(&g, cx);
-        let (tab, _) = self.console_shown_tab();
-        let list = self.tab_nav(tab).cinema.options.as_mut()?.render("console-cinema-options", &rows, true);
-        let body = div()
-            .flex()
-            .flex_col()
-            .size_full()
-            .child(div().px(u(34.)).pt(u(30.)).pb(u(10.)).child(kit::title(tr!("Game options"), 26.)))
-            .child(div().flex_1().min_h_0().px(u(12.)).pb(u(10.)).child(list));
-        Some(super::super::game::side_sheet("console-cinema-options-panel", body))
+        div().relative().size_full().child(over).child(row).into_any_element()
     }
 
     pub(super) fn cinema_pad(&mut self, tab: usize, spec: &TabSpec, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
@@ -465,18 +437,6 @@ impl CollectionView {
         }
         let i = self.tab_nav(tab).cinema.index.min(n - 1);
         let key = all[i].clone();
-        // The actions' sheet takes the presses while it is open.
-        if self.tab_nav(tab).cinema.options.is_some() {
-            let Some(g) = self.lib.as_ref().and_then(|l| l.get(&key)).cloned() else { return true };
-            let rows = self.game_rows(&g, cx);
-            let Some(list) = self.tab_nav(tab).cinema.options.as_mut() else { return true };
-            match list.on_pad(pad, &rows) {
-                Outcome::Activate(id) | Outcome::Changed(id, _) => self.game_press_row(&key, &id, pad, window, cx),
-                Outcome::Ignored if matches!(pad, Pad::B | Pad::Y) => self.tab_nav(tab).cinema.options = None,
-                _ => {}
-            }
-            return true;
-        }
         let wrap = look::theme().nav.wrap;
         let to = match pad {
             Pad::Left | Pad::Right => super::step(i, n, pad.dir(), wrap),
@@ -492,10 +452,6 @@ impl CollectionView {
                 return true;
             }
             Pad::Y => {
-                self.tab_nav(tab).cinema.options = Some(ListNav::default());
-                return true;
-            }
-            Pad::Select => {
                 self.open_console_filters(window, cx);
                 return true;
             }
@@ -528,24 +484,23 @@ impl CollectionView {
         true
     }
 
-    /// Menu (with what it leads to) and the tabs on the left; the game's
-    /// buttons on the right: A plays (or the page, as the theme's
-    /// `nav.aButton` says), X the other, Y its actions, View the filters.
-    pub(super) fn cinema_hints(&self, tab: usize, _spec: &TabSpec) -> Vec<Hint> {
-        if self.console.tab_navs.get(tab).is_some_and(|n| n.cinema.options.is_some()) {
-            return vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change")), hint(Btn::B, tr!("Close"))];
-        }
+    /// The covers' hints every layout shows (A and X as `nav.aButton` says,
+    /// Y the search and filters, the tabs, the menu), the menu and the tabs
+    /// with a small second line: what the menu leads to, the next tab.
+    pub(super) fn cinema_hints(&self, _tab: usize, _spec: &TabSpec) -> Vec<Hint> {
         let theme = look::theme();
-        let mut h = vec![hint(Btn::Start, tr!("Menu")).sub(tr!("Settings, downloads, power"))];
-        if theme.tabs.len() > 1 {
-            let next = &theme.tabs[(self.console.tab + 1) % theme.tabs.len()];
-            h.push(hint(Btn::Bumpers, tr!("Tabs")).sub(tr!("Next: {tab}", tab = heronite_i18n::tr(&next.name))));
-        }
-        let cover = self.console_cover_hints();
-        h.extend(cover.into_iter().filter(|c| matches!(c.btn, Btn::A | Btn::X)));
-        h.push(hint(Btn::Y, tr!("Game options")));
-        h.push(hint(Btn::Select, tr!("Filter")));
-        h
+        let next = theme.tabs.get((self.console.tab + 1) % theme.tabs.len().max(1)).map(|t| heronite_i18n::tr(&t.name).to_string());
+        self.console_cover_hints()
+            .into_iter()
+            .map(|h| match h.btn {
+                Btn::Start => h.sub(tr!("Settings, downloads, power")),
+                Btn::Bumpers => match &next {
+                    Some(next) => h.sub(tr!("Next: {tab}", tab = next)),
+                    None => h,
+                },
+                _ => h,
+            })
+            .collect()
     }
 }
 

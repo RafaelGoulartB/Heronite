@@ -8,8 +8,6 @@
 
 mod hero;
 mod sheet;
-
-pub(in crate::collection::console) use sheet::side_sheet;
 mod showcase;
 mod tabs;
 

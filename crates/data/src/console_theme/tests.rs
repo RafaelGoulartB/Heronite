@@ -72,17 +72,16 @@ fn classic_is_the_unlisted_base_and_cinema_is_listed() {
     assert_eq!(ids, ["minimal", "pulse", "cinema", "arcade", "hub", "living-room"]);
     assert!(presets::by_id("classic").is_none());
     let cinema = presets::cinema();
-    assert_eq!(
-        cinema.tabs.iter().map(|t| t.source.as_str()).collect::<Vec<_>>(),
-        ["installed", "all", "recent", "favourites", "status:not-played"]
-    );
-    assert!(cinema.tabs.iter().all(|t| t.layout == Layout::Cinema));
+    assert_eq!(cinema.tabs.iter().map(|t| t.source.as_str()).collect::<Vec<_>>(), ["installed", "all", "recent", "favourites", "all"]);
+    assert!(cinema.tabs[..4].iter().all(|t| t.layout == Layout::Cinema));
+    assert_eq!(cinema.tabs[4].layout, Layout::Grid);
+    assert_eq!(cinema.nav.a_button, AButton::default(), "A and X are the user's choice");
     assert!(!cinema.layouts.showcase_glass && presets::pulse().layouts.showcase_glass);
 }
 
 #[test]
 fn the_built_in_classic_and_first_cinema_become_cinema_unless_changed() {
-    for old in [presets::classic(), presets::first_cinema(), presets::second_cinema()] {
+    for old in [presets::classic(), presets::first_cinema(), presets::second_cinema(), presets::five_tab_cinema()] {
         // Saved and read back, as a console.json is.
         let dir = tempfile::tempdir().unwrap();
         let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
@@ -365,4 +364,21 @@ fn a_saved_minimal_opens_the_showcase_unless_its_game_page_was_changed() {
     assert_eq!(as_shipped(GamePage::Sheet), GamePage::Showcase);
     assert_eq!(as_shipped(GamePage::Hero), GamePage::Hero);
     assert_eq!(presets::minimal().game_page, GamePage::Showcase);
+}
+
+#[test]
+fn a_saved_five_tab_cinema_that_set_a_to_play_moves_on_with_the_default_buttons() {
+    // As a console.json read: id "cinema", the five tabs with "Not played
+    // yet", `nav.aButton: play` written by an earlier copy of the preset.
+    let mut old = presets::five_tab_cinema();
+    old.nav.a_button = AButton::Play;
+    let dir = tempfile::tempdir().unwrap();
+    let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+    ConsolePrefs { theme: old, based_on: "cinema".into(), ..ConsolePrefs::default() }.save(&paths).unwrap();
+    let text = std::fs::read_to_string(paths.console_prefs()).unwrap();
+    assert!(text.contains("\"aButton\": \"play\"") && text.contains("status:not-played"));
+    let p = ConsolePrefs::load(&paths);
+    assert_eq!(p.theme, presets::cinema());
+    assert_eq!(p.theme.nav.a_button, AButton::Details);
+    assert!(!p.theme.tabs.iter().any(|t| t.source == "status:not-played"));
 }

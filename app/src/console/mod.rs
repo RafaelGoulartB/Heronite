@@ -99,9 +99,6 @@ pub enum Btn {
     Left,
     /// "▶" alone.
     Right,
-    /// The View / Select button (left of the face buttons' row: View on
-    /// Xbox, Create on PlayStation, − on Nintendo).
-    Select,
 }
 
 #[derive(Clone, Debug, PartialEq)]

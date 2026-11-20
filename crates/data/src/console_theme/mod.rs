@@ -926,17 +926,21 @@ fn upgrade_pulse(p: &mut ConsolePrefs) {
     p.last_tab = 0;
 }
 
-/// The built-in Classic (no longer listed) or an earlier Cinema, unchanged,
-/// takes Cinema as it is now: the two became one, then took its own look. A theme the user changed
+/// The built-in Classic (no longer listed) or an earlier Cinema, unchanged
+/// (but for `nav.aButton`, the user's own), takes Cinema as it is now: the
+/// two became one, then took its own look. A theme the user changed
 /// keeps its values (its layouts still load).
 fn upgrade_cinema(p: &mut ConsolePrefs) {
-    let built_in = match p.theme.id.as_str() {
-        "classic" => presets::classic(),
-        "cinema" if p.theme == presets::second_cinema().normalized() => presets::second_cinema(),
-        "cinema" => presets::first_cinema(),
+    let earlier: Vec<ConsoleTheme> = match p.theme.id.as_str() {
+        "classic" => vec![presets::classic()],
+        "cinema" => vec![presets::first_cinema(), presets::second_cinema(), presets::five_tab_cinema()],
         _ => return,
     };
-    if p.theme == built_in.normalized() {
+    // The five-tab Cinema once set A to play: that is the user's to choose
+    // (`nav.aButton`), so it is compared without it and goes back to the default.
+    let mut seen = p.theme.clone();
+    seen.nav.a_button = AButton::default();
+    if earlier.into_iter().any(|t| seen == t.normalized()) {
         p.theme = presets::cinema();
         p.based_on = p.theme.id.clone();
     }

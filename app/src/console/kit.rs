@@ -302,11 +302,6 @@ pub(crate) fn mark(style: Glyphs, btn: Btn, swap_ab: bool) -> Mark {
             Glyphs::Nintendo => Mark::Cap("+"),
             _ => Mark::Menu,
         },
-        Btn::Select => match style {
-            Glyphs::PlayStation => Mark::Cap("Create"),
-            Glyphs::Nintendo => Mark::Cap("\u{2212}"),
-            _ => Mark::Cap("View"),
-        },
         Btn::LeftRight => Mark::Arrows,
         Btn::Left => Mark::Arrow(false),
         Btn::Right => Mark::Arrow(true),
@@ -432,7 +427,6 @@ pub fn key_glyph(btn: Btn) -> Div {
         Btn::RB => key_cap("E"),
         Btn::Bumpers => draw(Mark::Pair("Q", "E")),
         Btn::Start => key_cap("M"),
-        Btn::Select => key_cap("Tab"),
         // No key for these: the pad's own look.
         Btn::LT | Btn::LeftRight | Btn::Left | Btn::Right => draw(mark(Glyphs::Xbox, btn, false)),
     }
@@ -469,7 +463,6 @@ pub fn btn_pad(btn: Btn) -> Pad {
         Btn::RB | Btn::Bumpers => Pad::RB,
         Btn::LT => Pad::LT,
         Btn::Start => Pad::Start,
-        Btn::Select => Pad::Select,
         Btn::LeftRight | Btn::Right => Pad::Right,
         Btn::Left => Pad::Left,
     }
@@ -530,7 +523,7 @@ fn system_hint(btn: Btn) -> bool {
 /// The order of the actions on the right: ◀ ▶, Y, X, B, then A at the end.
 fn action_rank(btn: Btn) -> u8 {
     match btn {
-        Btn::LeftRight | Btn::Left | Btn::Right | Btn::Select => 0,
+        Btn::LeftRight | Btn::Left | Btn::Right => 0,
         Btn::Y => 1,
         Btn::X => 2,
         Btn::B => 3,
