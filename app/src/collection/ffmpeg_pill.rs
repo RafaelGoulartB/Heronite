@@ -144,7 +144,7 @@ impl CollectionView {
                         log::warn!("ffmpeg download: {e}");
                         this.live.ffmpeg_error = Some(tr!("Could not install it: {error}", error = e));
                         // Said where it was asked for, without another hover.
-                        this.open_menu = Some(Menu::Ffmpeg);
+                        this.reopen_ffmpeg_pill();
                     }
                 }
                 cx.notify();
@@ -168,13 +168,27 @@ impl CollectionView {
                 this.live.ffmpeg_error = (!found).then(|| tr!("ffmpeg is still not found.").to_string());
                 // The answer, where it was asked for.
                 if !found {
-                    this.open_menu = Some(Menu::Ffmpeg);
+                    this.reopen_ffmpeg_pill();
                 }
                 cx.notify();
             })
             .ok();
         })
         .detach();
+    }
+
+    /// Opens the pill's popover again with its answer, while the pill shows
+    /// (else the answer waits for the next hover: a menu with nothing on
+    /// screen would hold the list's keys).
+    fn reopen_ffmpeg_pill(&mut self) {
+        let shown = self.live.wants_ffmpeg
+            && self.page == crate::pages::Page::Collection
+            && !crate::console::active()
+            && self.dialog.is_none()
+            && self.open_menu.is_none();
+        if shown {
+            self.open_menu = Some(Menu::Ffmpeg);
+        }
     }
 
     /// Turns "Animated backgrounds" off: nothing needs ffmpeg any more.

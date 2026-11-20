@@ -655,6 +655,7 @@ impl CollectionView {
                 // An animated background waiting for it plays too (its pill goes).
                 if got.is_ok() {
                     this.live.ffmpeg = Some(true);
+                    cx.notify();
                 }
                 let Some(p) = this.media.player.as_mut().filter(|p| p.state == PlayState::Downloading) else { return };
                 match got {
