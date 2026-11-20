@@ -27,8 +27,8 @@ use gpui_kit::*;
 use heronite_i18n::{n_, tr};
 
 use super::{
-    about, advanced, appearance, backup, console_mode, launchers, library, logs, metadata, mods, overlay, replay, saves, screenshots,
-    storage, Section, SettingsPage,
+    about, advanced, backup, console_mode, launchers, library, logs, metadata, mods, overlay, replay, saves, screenshots, storage, Section,
+    SettingsPage,
 };
 use crate::console::kit::{self, u};
 use crate::console::list::{self, Outcome, Row, RowStyle};
@@ -55,7 +55,7 @@ pub(super) enum CSec {
 /// The sidebar's groups: a heading and its sections (as the desktop page
 /// groups them).
 const GROUPS: [(&str, &[CSec]); 7] = [
-    (n_!("App"), &[CSec::Panel(Section::General), CSec::Rows(Section::Appearance), CSec::Rows(Section::ConsoleMode)]),
+    (n_!("App"), &[CSec::Panel(Section::General), CSec::Rows(Section::ConsoleMode)]),
     (n_!("Games"), &[CSec::Panel(Section::Downloads), CSec::Rows(Section::Launchers), CSec::Rows(Section::Mods)]),
     (
         n_!("Game defaults"),
@@ -248,7 +248,6 @@ impl SettingsPage {
             CSec::Rows(Section::Replay) => replay::console_rows(self, cx),
             CSec::Rows(Section::About) => about::console_rows(self, cx),
             CSec::Rows(Section::Logs) => logs::console_rows(self),
-            CSec::Rows(Section::Appearance) => appearance::console_rows(self),
             CSec::Rows(Section::ConsoleMode) => console_mode::console_rows(self),
             CSec::Rows(Section::Metadata) => metadata::console_rows(self, cx),
             CSec::Rows(Section::Screenshots) => screenshots::console_rows(self, cx),
@@ -269,7 +268,6 @@ impl SettingsPage {
             CSec::Rows(Section::Replay) => replay::console_apply(self, outcome, cx),
             CSec::Rows(Section::About) => about::console_apply(self, outcome, cx),
             CSec::Rows(Section::Logs) => logs::console_apply(self, outcome, cx),
-            CSec::Rows(Section::Appearance) => appearance::console_apply(self, outcome, window, cx),
             CSec::Rows(Section::ConsoleMode) => console_mode::send(self, outcome, window, cx),
             CSec::Rows(Section::Metadata) => metadata::console_apply(self, outcome, window, cx),
             CSec::Rows(Section::Screenshots) => screenshots::console_apply(self, outcome, window, cx),

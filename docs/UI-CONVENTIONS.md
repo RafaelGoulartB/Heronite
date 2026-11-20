@@ -298,7 +298,7 @@ background that is a video (WebM, MP4, MKV, MOV; a game's background may be one,
 or an animated GIF or PNG (`heronite_images::animation`; an animated WebP stays on its first frame: ffmpeg loops it
 badly, and older ones cannot decode it) plays behind the Collection and behind console mode (`collection/live_stage.rs`;
 console mode: the theme's Art or its own picture, `console::backdrop::console_live`, sharp, its still kept for the
-cross-fade between games; console's Settings → Appearance has the switch too):
+cross-fade between games; console's Settings shows the switch under Console mode, after the theme's background; Appearance, the desktop's alone, is not in console mode):
 ffmpeg (`heronite_media::stream`, `fill` + `looped`) at 24 fps into the still stage's small raster
 (`heronite_images::stage_frame_size`, at most 640 wide, also in console mode: 960 looked the same there and cost ffmpeg
 twice as much), with the still stage's blur and colour done by ffmpeg (`gblur`,

@@ -299,20 +299,6 @@ fn set_desktop_panels(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     apply_interface(d, true, cx);
 }
 
-/// Console rows of the Solid colours (both themes: console mode is dark).
-pub(super) fn console_tint_rows(d: &SettingsPage) -> [crate::console::list::Row; 2] {
-    use crate::console::list::Row;
-    let ui = d.appearance.ui;
-    let row = |id: &'static str, label: &'static str, tints: [SolidTint; 6], active: SolidTint| {
-        let names = tints.iter().map(|t| SharedString::from(t.label())).collect();
-        Row::choice(id, label, names, tints.iter().position(|t| *t == active).unwrap_or(0))
-    };
-    [
-        row("ui-tint", tr!("Colour when dark"), SolidTint::DARK, ui.solid_tint),
-        row("ui-tint-light", tr!("Colour when light"), SolidTint::LIGHT, ui.solid_tint_light),
-    ]
-}
-
 /// The theme's entries of the command palette: switch to each theme, and
 /// solid panels in each tint of the theme in use.
 pub(super) fn palette_commands(ui: heronite_data::appearance::Appearance) -> Vec<crate::pages::commands::PageCommand> {

@@ -292,6 +292,11 @@ impl Host for SettingsPage {
 /// shows an error the way the other sections do. The editor's picture turns
 /// to the screen the option changes.
 pub(super) fn send(d: &mut SettingsPage, outcome: Outcome, window: &mut Window, cx: &mut Context<SettingsPage>) {
+    if matches!(&outcome, Outcome::Changed(id, _) if id.as_ref() == "bg-animated") {
+        super::appearance::console_apply(d, outcome, window, cx);
+        cx.notify();
+        return;
+    }
     if let (Outcome::Changed(id, _) | Outcome::Activate(id), Some(s)) = (&outcome, d.console_mode.as_mut()) {
         follow(s, id);
     }
@@ -416,7 +421,14 @@ pub(super) fn card_rows(d: &SettingsPage, card: Card) -> Vec<Row> {
 
 pub(super) fn console_rows(d: &SettingsPage) -> Vec<Row> {
     match d.console_mode.as_ref() {
-        Some(s) => theme_rows::all_rows(&s.theme.ctx()),
+        Some(s) => {
+            let mut rows = theme_rows::all_rows(&s.theme.ctx());
+            // Appearance is the desktop's; its one switch that plays here too
+            // goes with the theme's background.
+            let at = rows.iter().position(|r| r.id.as_ref() == "background.motion").map_or(rows.len(), |i| i + 1);
+            rows.insert(at, super::appearance::console_animated_row(d));
+            rows
+        }
         None => Vec::new(),
     }
 }
