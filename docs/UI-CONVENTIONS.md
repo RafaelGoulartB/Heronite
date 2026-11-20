@@ -1224,7 +1224,7 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   (`render_console_game_layer`, drawn by the shell above the top bar).
   Pulse's Spotlight (`layouts/spotlight/`), a console's home whose game page goes on below it. Its top bar
   (`layouts::{layout_tabs, layout_clock}`) centres the tabs between LB and RB, the current one in a pill, with a large
-  clock; Pulse's tabs are filters (All games, Installed, Favourites, Not played yet). The row: the tab's games, the
+  clock; Pulse's tabs are Installed (first), All games and Favourites as Spotlight filters, then the whole library as a Grid; rows and grids put the game played last first (`KeptFilters` sorts by Last played unless changed). The row: the tab's games, the
   last played first, as square icons, the focused one larger with a ring a little way out and its name under it, up
   to two before it in sight; every place and size come from the row's position gliding on a spring (`motion::Follow`
   stepped with a `FrameClock`). Below, the logo (or the name) in a fixed box, Play / Options / ♥ as pills, the facts
