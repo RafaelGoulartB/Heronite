@@ -102,24 +102,37 @@ pub fn cinema() -> ConsoleTheme {
     })
 }
 
-/// A console's home screen: a row of square icons on top (the focused one
-/// grows, its name beside it), the game's art and logo, a wide Play button
-/// and cards; the tabs as plain names.
+/// A console's home screen: tabs of filters in pills, a row of square icons
+/// on top (the focused one grows, its name under it), the game's art and
+/// logo, a wide Play button, its facts and screenshots, and its page below
+/// (about, achievements, details, more like this); Options opens a sheet.
 pub fn pulse() -> ConsoleTheme {
-    from_classic("pulse", n_!("Pulse"), n_!("A console home: icons on top, the game's art and logo, a wide Play button and cards."), |t| {
-        t.tabs = vec![TabSpec::new(n_!("Games"), Layout::Spotlight, "all"), TabSpec::new(n_!("Library"), Layout::Grid, "all")];
-        t.hero.title = HeroTitle::Logo;
-        t.hero.facts = false;
-        t.hero.overview = false;
-        t.hero.size = Size3::Large;
-        t.tiles.shape = TileShape::Square;
-        t.tiles.corners = Corners::Soft;
-        t.interface.tab_bar = TabBar::Names;
-        t.interface.font = ConsoleFont::System;
-        t.controls.hints = Hints::Auto;
-        t.layouts.spotlight_actions = SpotActions::Play;
-        t.layouts.grid_panel = GridPanel::Right;
-    })
+    from_classic(
+        "pulse",
+        n_!("Pulse"),
+        n_!("A console home: icons on top, the game's art and logo, a wide Play button and its page below."),
+        |t| {
+            t.tabs = vec![
+                TabSpec::new(n_!("All games"), Layout::Spotlight, "all"),
+                TabSpec::new(n_!("Installed"), Layout::Spotlight, "installed"),
+                TabSpec::new(n_!("Favourites"), Layout::Spotlight, "favourites"),
+                TabSpec::new(n_!("Not played yet"), Layout::Spotlight, "status:not-played"),
+            ];
+            t.hero.title = HeroTitle::Logo;
+            t.hero.facts = false;
+            t.hero.overview = false;
+            t.hero.size = Size3::Large;
+            t.tiles.shape = TileShape::Square;
+            t.tiles.corners = Corners::Soft;
+            t.interface.tab_bar = TabBar::Top;
+            t.interface.font = ConsoleFont::System;
+            t.controls.hints = Hints::Auto;
+            t.layouts.spotlight_actions = SpotActions::Play;
+            t.layouts.spotlight_cards = false;
+            t.layouts.grid_panel = GridPanel::Right;
+            t.game_page = GamePage::Sheet;
+        },
+    )
 }
 
 /// Only covers: a carousel over the blurred cover, no hints or badges.
