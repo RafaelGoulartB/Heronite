@@ -1222,7 +1222,7 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   covers come from `tile.rs` (shape, size, corners, focus style, badges and "New", store strip, name below or in a
   bar), the background from `backdrop.rs`, names / logos / facts (a line or chips and genre tags) and the stats panel
   from `hero.rs` (logos: `art.rs`), shelves and tab games from `sources.rs`; game pages (`game/`: classic, hero, tabs,
-  sheet) and the ☰ menu (`sidebar.rs`: sidebar, grid, dock, rail — the rail stays on screen and insets the content)
+  sheet, showcase) and the ☰ menu (`sidebar.rs`: sidebar, grid, dock, rail — the rail stays on screen and insets the content)
   follow the theme too. A light `colors.background` (`ColourOptions::is_light`, `look::light()`) makes the console
   light: dark text and focus, white panels, the art washed out; surfaces use the scheme's ink, never a bare white.
   The built-in themes (`presets.rs`), in the order they are listed: Minimal (what a new install uses,
@@ -1251,9 +1251,13 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   so a choice saved before Installed came first still shows the same games. An empty filter says what it has none
   of, with LB / RB for another. LT / RT jump by letter (the letter flashes over the covers), LB / RB
   change the filter when the theme has one tab (the focused game stays when it passes it), the covers fan out from the
-  middle on first show and on a new filter; A opens the Sheet game page over the carousel: a window floating
-  along the left edge (inset, round corners) over a dim of the whole window, sliding in from the left
-  (`render_console_game_layer`, drawn by the shell above the top bar).
+  middle on first show and on a new filter; A opens the Showcase game page (`game/showcase.rs`): the game full screen
+  over the theme's background (Minimal: its blurred cover, `Scrim::Carousel`), rising in a little as it fades in, its
+  logo (or name), Play / Options / ♥, facts and genres, then Spotlight's sections (`spotlight::Host::Game`: the same
+  page, focus, viewers and `spotlightSections`, no row, the art dimmed lightly) on panels of frosted glass
+  (`glass_panel`); Options lists the game's actions in a side sheet, X plays, B goes back to the carousel as it was.
+  A saved Minimal still on the Sheet (the floating window it had) opens Showcase (`upgrade_minimal`); any theme can
+  choose it.
   Pulse's Spotlight (`layouts/spotlight/`), a console's home whose game page goes on below it. Its top bar
   (`layouts::{layout_tabs, layout_clock}`) centres the tabs between LB and RB, the current one in a pill, with a large
   clock; Pulse's tabs are Installed (first), All games and Favourites as Spotlight filters, then the whole library as a Grid; rows and grids put the game played last first (`KeptFilters` sorts by Last played unless changed). The row: the tab's games, the
