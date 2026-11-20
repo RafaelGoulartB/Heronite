@@ -297,6 +297,12 @@ impl CollectionView {
         }
     }
 
+    /// Whether the store media of `key` are still being asked for (not yet
+    /// known to be there or missing).
+    pub(in crate::collection) fn store_media_pending(&self, key: &str) -> bool {
+        self.media.game.as_deref() != Some(key) || matches!(self.media.list, List::None | List::Loading)
+    }
+
     /// How the focused game's store page is found: the Steam app id of any
     /// of its copies, else its title (and year) when it may be looked up by
     /// name, as the Steam metadata source does: a PC game, not emulated, the

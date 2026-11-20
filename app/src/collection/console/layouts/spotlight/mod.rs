@@ -135,6 +135,8 @@ pub(crate) struct Nav {
     lift: f32,
     /// About's text of a game, flattened once.
     about: Option<(SharedString, SharedString)>,
+    /// When the page's game last changed (for the debug log of what arrives when).
+    since: Option<std::time::Instant>,
 }
 
 impl Default for Nav {
@@ -161,6 +163,7 @@ impl Default for Nav {
             sheet: None,
             lift: 0.,
             about: None,
+            since: None,
         }
     }
 }
@@ -281,12 +284,21 @@ impl CollectionView {
         let sections = theme.layouts.spotlight_sections.clone();
         let key = SharedString::from(g.key.clone());
         let mut s = Shape { key: key.clone(), ..Shape::default() };
+        // While this game's store media are asked for, the last page's strip
+        // keeps its place (empty), so nothing jumps when they come.
+        let prev = &self.tab_nav(tab).spotlight.shape;
+        // (The same game's page keeps holding them until they are known.)
+        let same = prev.key == key;
+        let prev_media = if !same || (prev.store.is_empty() && !prev.media_shots) { prev.media } else { 0 };
         let own_shots = self.game_shot_count_of(&key);
         if sections.media {
             if let Some(m) = self.store_media_of(&key) {
                 s.store = m.screenshots.iter().take(STORE_SHOTS).map(|x| x.full.clone()).collect();
             }
             s.media = s.store.len();
+            if s.media == 0 && self.store_media_pending(&key) {
+                s.media = prev_media;
+            }
             // Without store media the strip shows the user's screenshots,
             // unless their own card shows them already.
             if s.media == 0 && own_shots > 0 && !sections.screenshots {
@@ -315,6 +327,10 @@ impl CollectionView {
             None
         };
         s.ach = sections.achievements && self.spotlight_ach_counts(g, cx).is_some();
+        // A game with a source of achievements still being read holds the card's place.
+        if sections.achievements && !s.ach && self.spotlight_ach_pending(g, cx) {
+            (s.ach, s.ach_wait) = (true, true);
+        }
         if sections.details {
             s.details = self.spotlight_details(g).len();
             s.links = self.spotlight_links(g);
@@ -405,6 +421,24 @@ impl CollectionView {
         let service = service.read(cx);
         let set = service.entry(&crate::services::achievements::key_of(&g.runner, &g.app_name))?.primary()?;
         (set.total() > 0).then(|| (set.unlocked(), set.total(), set.is_complete()))
+    }
+
+    /// Whether the game's achievements are still being read for the first time.
+    fn spotlight_ach_pending(&self, g: &CollectionGame, cx: &mut Context<Self>) -> bool {
+        if !crate::services::achievements::enabled() {
+            return false;
+        }
+        let service = crate::services::achievements::get(cx);
+        let service = service.read(cx);
+        // A game with no source of achievements has none to wait for.
+        if heronite_achievements::targets_with(g, &service.prefs()).is_empty() {
+            return false;
+        }
+        match service.entry(&crate::services::achievements::key_of(&g.runner, &g.app_name)) {
+            None => true,
+            // Not one of its sources answered yet.
+            Some(e) => e.primary().is_none() && e.problems.is_empty() && e.order.iter().all(|s| e.game.checked_at(*s).is_none()),
+        }
     }
 
     /// The icons of the latest unlocks (at most three), `size` design px.
@@ -536,6 +570,26 @@ impl CollectionView {
         };
         let (off, on) = row::icon_sizes(self.cover_aspect);
         let nav = &mut self.tab_nav(tab).spotlight;
+        if nav.shape.key != shape.key {
+            nav.since = Some(std::time::Instant::now());
+        }
+        let parts = |s: &Shape| (s.ach, s.ach_wait, s.store.len(), s.details, s.links.len(), s.hltb.clone(), s.media, s.shots, s.about);
+        if parts(&nav.shape) != parts(&shape) || nav.shape.key != shape.key {
+            log::debug!(
+                "spotlight {} +{}ms: ach {} (waiting {}) store {} details {} links {} hltb {:?} media {} shots {} about {}",
+                shape.key,
+                nav.since.map_or(0, |t| t.elapsed().as_millis()),
+                shape.ach,
+                shape.ach_wait,
+                shape.store.len(),
+                shape.details,
+                shape.links.len(),
+                shape.hltb,
+                shape.media,
+                shape.shots,
+                shape.about
+            );
+        }
         nav.shape = shape.clone();
         if game.is_none() {
             nav.zone = Zone::Row;
@@ -595,6 +649,10 @@ impl CollectionView {
             card: nav.card,
             shot: nav.shot,
             related: nav.related,
+            // What comes in after the logo waits only what is left of its
+            // pause: a part that arrives later (store media, achievements)
+            // just fades in.
+            rest_hold: REST_HOLD.saturating_sub(nav.since.map_or(u128::MAX, |t| t.elapsed().as_millis()).min(u128::from(REST_HOLD)) as u64),
         };
         let viewer = nav.viewer;
         let sheet = nav.sheet.clone();
@@ -618,7 +676,9 @@ impl CollectionView {
                 } else {
                     // On the row the sidebar peeks in beside the strip, as
                     // the page going on below (no focus until it is reached).
-                    page = page.children(self.spotlight_mid(g, &shape, &focus, true, cx));
+                    let side = div().absolute().inset_0().children(self.spotlight_mid(g, &shape, &focus, true, cx));
+                    page =
+                        page.child(reveal(SharedString::from(format!("spot-side-{}", shape.key)), side, focus.rest_hold, REST_FADE, None));
                 }
             }
             None => page = page.child(self.spotlight_all_games(from)),
@@ -732,7 +792,7 @@ impl CollectionView {
             .child(self.spotlight_actions(g, actions))
             .child(div().mt(u(18.)).child(self.spotlight_facts(g)))
             .child(div().mt(u(10.)).child(parts::genre_chips(g)));
-        let rest = placed(geo.buttons, reveal(SharedString::from(format!("spot-rest-{key}")), rest, REST_HOLD, REST_FADE, None));
+        let rest = placed(geo.buttons, reveal(SharedString::from(format!("spot-rest-{key}")), rest, f.rest_hold, REST_FADE, None));
         let mut out = vec![logo.into_any_element(), rest];
         if shape.media > 0 {
             out.push(self.spotlight_media(shape, f, strip_x, window));
@@ -773,7 +833,7 @@ impl CollectionView {
         reveal(
             SharedString::from(format!("spot-strip-{}", shape.key)),
             strip(geo.media, geo.left, h, strip_x, tiles),
-            REST_HOLD,
+            f.rest_hold,
             REST_FADE,
             None,
         )
@@ -1137,7 +1197,9 @@ impl CollectionView {
 
     /// The Achievements card: a trophy, unlocked of total, a bar, the latest unlocks.
     fn spotlight_ach_card(&mut self, g: &CollectionGame, focused: bool, cx: &mut Context<Self>) -> AnyElement {
-        let (unlocked, total, complete) = self.spotlight_ach_counts(g, cx).unwrap_or((0, 0, false));
+        let counts = self.spotlight_ach_counts(g, cx);
+        let known = counts.is_some();
+        let (unlocked, total, complete) = counts.unwrap_or((0, 0, false));
         let icons = self.spotlight_ach_icons(g, 40., cx);
         let gold: Rgba = theme::achievement_gold();
         let pct = (unlocked * 100).checked_div(total).unwrap_or(0);
@@ -1168,31 +1230,40 @@ impl CollectionView {
                 .gap(u(14.))
                 .px(u(16.))
                 .child(trophy)
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .flex()
-                        .flex_col()
-                        .gap(u(3.))
-                        .child(
-                            div()
-                                .text_size(u(17.))
-                                .font_weight(theme::W_BOLD)
-                                .text_color(kit::strong())
-                                .child(format!("{unlocked}/{total}")),
-                        )
-                        .child(div().text_size(u(12.)).text_color(theme::text_muted()).child(if t > 0.5 {
-                            tr!("View all").to_string()
-                        } else {
-                            note.clone()
-                        }))
-                        .when(!complete, |d| {
-                            d.child(div().mt(u(3.)).h(u(4.)).w(u(140.)).rounded_full().bg(kit::ink(0.15)).child(
-                                div().h_full().w(relative((pct as f32 / 100.).clamp(0.02, 1.))).rounded_full().bg(theme::console_focus()),
-                            ))
-                        }),
-                )
+                // Still being read: the card holds its place, empty.
+                .when(known, |d| {
+                    d.child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .gap(u(3.))
+                            .child(
+                                div()
+                                    .text_size(u(17.))
+                                    .font_weight(theme::W_BOLD)
+                                    .text_color(kit::strong())
+                                    .child(format!("{unlocked}/{total}")),
+                            )
+                            .child(div().text_size(u(12.)).text_color(theme::text_muted()).child(if t > 0.5 {
+                                tr!("View all").to_string()
+                            } else {
+                                note.clone()
+                            }))
+                            .when(!complete, |d| {
+                                d.child(
+                                    div().mt(u(3.)).h(u(4.)).w(u(140.)).rounded_full().bg(kit::ink(0.15)).child(
+                                        div()
+                                            .h_full()
+                                            .w(relative((pct as f32 / 100.).clamp(0.02, 1.)))
+                                            .rounded_full()
+                                            .bg(theme::console_focus()),
+                                    ),
+                                )
+                            }),
+                    )
+                })
                 .child(recent)
         };
         let base = div().relative().w_full().h(u(page::ACH_H));
@@ -1436,6 +1507,8 @@ struct Focus {
     card: usize,
     shot: usize,
     related: usize,
+    /// The pause left before the parts under the logo fade in, ms.
+    rest_hold: u64,
 }
 
 /// A tile of a strip at `x` (`w`×`h`, corners `radius`): focused, it grows a
@@ -1465,8 +1538,8 @@ const LOGO_HOLD: u64 = 300;
 const LOGO_FADE: u64 = 450;
 const LOGO_SLIDE: f32 = -30.;
 const LOGO_SLIDE_MS: u64 = 550;
-const REST_HOLD: u64 = 420;
-const REST_FADE: u64 = 400;
+const REST_HOLD: u64 = 150;
+const REST_FADE: u64 = 300;
 
 /// `el` coming in for a new game (`id` names it: a new id replays it):
 /// hidden, then after `hold` ms it fades in over `fade` ms (ease-out) and,

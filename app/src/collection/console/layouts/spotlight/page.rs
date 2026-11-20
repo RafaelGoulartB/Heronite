@@ -154,6 +154,9 @@ pub(super) struct Shape {
     /// About's lines shown.
     pub about_lines: usize,
     pub ach: bool,
+    /// The achievements are still being read: the card holds their place
+    /// (as the last game had it), empty.
+    pub ach_wait: bool,
     pub details: usize,
     pub links: Vec<Link>,
     pub hltb: HltbCard,
