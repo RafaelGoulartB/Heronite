@@ -281,13 +281,18 @@ impl CollectionView {
             .shadow(kit::shadow(0.45, 8., 28.))
             // Faint on the right, gone under the words on the left.
             .children(art.map(|i| {
-                div().absolute().inset_0().child(img(ImageSource::Render(i)).size_full().object_fit(ObjectFit::Cover).opacity(0.42)).child(
-                    div().absolute().inset_0().bg(linear_gradient(
-                        90.,
-                        linear_color_stop(Rgba { a: 0.94, ..panel }, 0.15),
-                        linear_color_stop(clear, 0.85),
-                    )),
-                )
+                div()
+                    .absolute()
+                    .inset_0()
+                    .child(img(ImageSource::Render(i)).size_full().rounded(u(CARD_R)).object_fit(ObjectFit::Cover).opacity(0.42))
+                    .child(
+                        // Clipping is square: the layers round their own corners.
+                        div().absolute().inset_0().rounded(u(CARD_R)).bg(linear_gradient(
+                            90.,
+                            linear_color_stop(Rgba { a: 0.94, ..panel }, 0.15),
+                            linear_color_stop(clear, 0.85),
+                        )),
+                    )
             }))
             .child(
                 div()
