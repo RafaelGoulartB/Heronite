@@ -1167,10 +1167,10 @@ impl CollectionView {
         if shape.about && !side_only {
             out.push(div().absolute().top(u(geo.about)).left(u(SIDE)).child(glass_panel(left, f.glass)).into_any_element());
         }
-        // The sidebar, beside the left column from its first section down.
+        // The sidebar, beside the left column from its first section down (under it when stacked).
         if shape.has_side() {
             // Beside the left column, or in its place when it has nothing.
-            let x = if shape.first_left().is_some() { SIDE + geo.left + page::COLUMN_GAP } else { SIDE };
+            let x = if shape.first_left().is_some() && !geo.stacked { SIDE + geo.left + page::COLUMN_GAP } else { SIDE };
             out.push(div().absolute().top(u(geo.side)).left(u(x)).child(glass_panel(column, f.glass)).into_any_element());
         }
         out

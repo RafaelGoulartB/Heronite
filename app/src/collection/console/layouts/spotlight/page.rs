@@ -9,6 +9,8 @@
 //! this, one under the other; on the right a sidebar with Achievements,
 //! Details (and its links) and How Long To Beat, from the top of the first
 //! left section down. Nothing spans both, so the sidebar is never pushed down.
+//! On a page narrower than [`STACK_BELOW`] (a 4:3 or small window) the
+//! sidebar goes under the left column instead, and ↓ / ↑ cross between them.
 
 use gpui_kit::SharedString;
 
@@ -107,6 +109,8 @@ pub(super) const SHOT_H: f32 = 135.;
 pub(super) const COVER_W: f32 = 128.;
 pub(super) const COLUMN_W: f32 = 430.;
 pub(super) const COLUMN_GAP: f32 = 64.;
+/// A page narrower than this (design px) puts the sidebar under the left column.
+pub(super) const STACK_BELOW: f32 = 1000.;
 pub(super) const ACH_H: f32 = 78.;
 pub(super) const DETAIL_H: f32 = 29.;
 pub(super) const LINK_H: f32 = 32.;
@@ -196,6 +200,8 @@ pub(super) struct Geo {
     /// The page's width, and its left column's.
     pub width: f32,
     pub left: f32,
+    /// The sidebar is under the left column (a narrow page).
+    pub stacked: bool,
 }
 
 /// The page's width in a view `view` design px wide.
@@ -203,9 +209,19 @@ pub(super) fn page_width(view: f32) -> f32 {
     (view - 2. * SIDE).clamp(600., MAX_W)
 }
 
-/// The left column's width on a page `width` wide.
+/// Whether a page `width` wide puts the sidebar under the left column.
+pub(super) fn stacks(width: f32) -> bool {
+    width < STACK_BELOW
+}
+
+/// The left column's width on a page `width` wide (the whole page when the
+/// sidebar goes under it).
 pub(super) fn left_width(width: f32) -> f32 {
-    width - COLUMN_W - COLUMN_GAP
+    if stacks(width) {
+        width
+    } else {
+        width - COLUMN_W - COLUMN_GAP
+    }
 }
 
 /// How many screenshots the card has room for in a column `width` wide.
@@ -230,8 +246,9 @@ impl Shape {
     pub fn layout(&mut self, row: f32, logo_h: f32, width: f32, cover_h: f32) {
         // Without a sidebar the left column takes the whole page (and the
         // sidebar has the left's place when that has nothing).
+        let stacked = stacks(width) && self.has_side() && self.first_left().is_some();
         let left = if self.has_side() && self.first_left().is_some() { left_width(width) } else { width };
-        let mut g = Geo { logo: row + 2., logo_h, width, left, ..Geo::default() };
+        let mut g = Geo { logo: row + 2., logo_h, width, left, stacked, ..Geo::default() };
         g.buttons = g.logo + logo_h + 16.;
         g.facts = g.buttons + BUTTON_H + 18.;
         g.chips = g.facts + FACTS_H + 10.;
@@ -268,8 +285,11 @@ impl Shape {
             g.related = place(TITLE_H + cover_h);
         }
         let left_end = if first { top } else { y };
-        // The sidebar, from the same top.
-        let mut sy = top;
+        // The sidebar, from the same top (under the left column when stacked).
+        let mut sy = if stacked { left_end + SECTION_GAP } else { top };
+        if stacked {
+            g.side = sy;
+        }
         let mut blocks = 0;
         let mut block = |h: f32| {
             if blocks > 0 {
@@ -433,9 +453,15 @@ impl Shape {
             let at = left.iter().position(|z| *z == zone).unwrap_or(0);
             return match pad {
                 Pad::Up => Move::To(left.get(at.wrapping_sub(1)).copied().unwrap_or(Zone::Actions), side, link),
-                Pad::Down => left.get(at + 1).map_or(Move::Stay, |z| Move::To(*z, side, link)),
+                Pad::Down => match left.get(at + 1) {
+                    Some(z) => Move::To(*z, side, link),
+                    // Stacked: on down into the sidebar.
+                    None if self.geo.stacked => items.first().map_or(Move::Stay, |m| Move::To(Zone::Side, *m, 0)),
+                    None => Move::Stay,
+                },
                 Pad::Left if along > 0 => Move::Along(along - 1),
                 Pad::Right if along + 1 < n => Move::Along(along + 1),
+                Pad::Right if self.geo.stacked => Move::Stay,
                 Pad::Right => self
                     .side_near(self.top(zone, side))
                     .map_or(Move::Stay, |m| Move::To(Zone::Side, m, if m == Mid::Link { 0 } else { link })),
@@ -446,10 +472,16 @@ impl Shape {
             let at = items.iter().position(|m| *m == side).unwrap_or(0);
             let to = |m: Mid| Move::To(Zone::Side, m, link.min(links.saturating_sub(1)));
             return match pad {
-                Pad::Up => items.get(at.wrapping_sub(1)).map_or(Move::To(Zone::Actions, side, link), |m| to(*m)),
+                Pad::Up => match items.get(at.wrapping_sub(1)) {
+                    Some(m) => to(*m),
+                    // Stacked: back up to the left column's last section.
+                    None if self.geo.stacked => left.last().map_or(Move::To(Zone::Actions, side, link), |z| Move::To(*z, side, link)),
+                    None => Move::To(Zone::Actions, side, link),
+                },
                 Pad::Down => items.get(at + 1).map_or(Move::Stay, |m| to(*m)),
                 Pad::Right if side == Mid::Link && link + 1 < links => Move::To(Zone::Side, side, link + 1),
                 Pad::Left if side == Mid::Link && link > 0 => Move::To(Zone::Side, side, link - 1),
+                Pad::Left if self.geo.stacked => Move::Stay,
                 Pad::Left => self.left_near(self.top(Zone::Side, side)).map_or(Move::Stay, |z| Move::To(z, side, link)),
                 _ => Move::Stay,
             };
@@ -628,6 +660,24 @@ mod tests {
         // Without times it shows but takes no focus.
         h.hltb = HltbCard::Missing;
         assert_eq!(h.step(Zone::Side, Mid::Link, 1, 0, Pad::Down), Move::Stay);
+    }
+
+    #[test]
+    fn a_narrow_page_puts_the_sidebar_under_the_left_column() {
+        let mut s = shape();
+        s.fit_about(4000, left_width(900.));
+        s.layout(172., 150., 900., 192.);
+        let g = s.geo;
+        assert!(g.stacked && g.left == 900.);
+        // Under the last left section, and the page ends after it.
+        assert!(g.side > g.related && g.ach == g.side && g.end > g.details);
+        // ↓ from the last left section into the sidebar, ↑ back; no crossing sideways.
+        assert_eq!(s.step(Zone::Related, Mid::Ach, 0, 0, Pad::Down), Move::To(Zone::Side, Mid::Ach, 0));
+        assert_eq!(s.step(Zone::Side, Mid::Ach, 0, 0, Pad::Up), Move::To(Zone::Related, Mid::Ach, 0));
+        assert_eq!(s.step(Zone::Media, Mid::Ach, 0, 5, Pad::Right), Move::Stay);
+        assert_eq!(s.step(Zone::Side, Mid::Ach, 0, 0, Pad::Left), Move::Stay);
+        // A wide page keeps the two columns.
+        assert!(!shape().geo.stacked);
     }
 
     #[test]
