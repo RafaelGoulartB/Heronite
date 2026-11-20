@@ -212,7 +212,7 @@ impl CollectionView {
                 let (moving, ffmpeg) = cx
                     .background_spawn(async move {
                         let ffmpeg = ask_ffmpeg.then(heronite_media::stream::available);
-                        (moving_file(&chain), ffmpeg)
+                        (heronite_images::animation::moving_file(&chain), ffmpeg)
                     })
                     .await;
                 this.update(cx, |this, cx| {
@@ -327,34 +327,9 @@ fn look_filter(look: &Look) -> String {
     }
 }
 
-/// The file of `chain` that moves: its first file that is there, when that
-/// one is a video or an animated picture (the image loader draws the first
-/// one there is). Blocking (reads the file's first bytes).
-fn moving_file(chain: &[ImageRef]) -> Option<PathBuf> {
-    for c in chain {
-        let path = match c {
-            ImageRef::File(p) => p.clone(),
-            ImageRef::Find { .. } => match c.local_path() {
-                Some(p) => p,
-                // Not there: the loader goes on to the next one too.
-                None => continue,
-            },
-            // A picture from the web comes before any file after it.
-            ImageRef::Url(_) => return None,
-        };
-        if path.is_file() {
-            // An animated WebP stays still: ffmpeg loops it badly (one pass,
-            // then it spins) and older ones cannot decode it at all.
-            let motion = heronite_images::animation::file_motion(&path);
-            return motion.filter(|m| *m != heronite_images::animation::Motion::WebP).map(|_| path);
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{look_filter, moving_file, Look};
+    use super::{look_filter, Look};
 
     #[test]
     fn ffmpeg_gives_the_frames_the_stage_s_blur_and_colour() {
@@ -363,25 +338,5 @@ mod tests {
         assert_eq!(look_filter(&look(0.)), "eq=saturation=0.940", "no blur to see");
         assert_eq!(look_filter(&Look { saturation: 9., ..look(0.) }), "eq=saturation=3.000", "within eq's range");
         assert_eq!(look_filter(&Look { saturation: 1., ..look(0.) }), "null", "console mode's sharp art: nothing to do");
-    }
-    use heronite_images::ImageRef;
-
-    #[test]
-    fn the_first_file_there_is_the_one_that_plays() {
-        let dir = tempfile::tempdir().unwrap();
-        let video = dir.path().join("hero.webm");
-        std::fs::write(&video, [0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0]).unwrap();
-        let still = dir.path().join("hero.jpg");
-        std::fs::write(&still, [0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0]).unwrap();
-        let missing = dir.path().join("gone.webm");
-        let file = |p: &std::path::Path| ImageRef::File(p.to_path_buf());
-        assert_eq!(moving_file(&[file(&missing), file(&video)]), Some(video.clone()));
-        assert_eq!(moving_file(&[file(&still), file(&video)]), None, "a still picture first");
-        assert_eq!(moving_file(&[ImageRef::Url("https://x/a.jpg".into()), file(&video)]), None);
-        assert_eq!(moving_file(&[]), None);
-        // An animated WebP (VP8X, animation flag) stays still.
-        let webp = dir.path().join("hero.webp");
-        std::fs::write(&webp, [b"RIFF\0\0\0\0WEBPVP8X".as_slice(), &[10, 0, 0, 0, 0x02, 0, 0, 0]].concat()).unwrap();
-        assert_eq!(moving_file(&[file(&webp)]), None);
     }
 }

@@ -62,6 +62,31 @@ pub fn file_motion(path: &Path) -> Option<Motion> {
     motion(&head)
 }
 
+/// The file of `chain` that plays as a moving background: its first file
+/// that is there (the image loader draws the first one there is), when that
+/// one is a video or an animated GIF or PNG. An animated WebP stays still:
+/// ffmpeg loops it badly (one pass, then it spins) and older ones cannot
+/// decode it at all. Blocking (reads the file's first bytes).
+pub fn moving_file(chain: &[crate::ImageRef]) -> Option<std::path::PathBuf> {
+    use crate::ImageRef;
+    for c in chain {
+        let path = match c {
+            ImageRef::File(p) => p.clone(),
+            ImageRef::Find { .. } => match c.local_path() {
+                Some(p) => p,
+                // Not there: the loader goes on to the next one too.
+                None => continue,
+            },
+            // A picture from the web comes before any file after it.
+            ImageRef::Url(_) => return None,
+        };
+        if path.is_file() {
+            return file_motion(&path).filter(|m| *m != Motion::WebP).map(|_| path);
+        }
+    }
+    None
+}
+
 fn find(hay: &[u8], needle: &[u8]) -> bool {
     hay.windows(needle.len()).any(|w| w == needle)
 }
@@ -146,6 +171,26 @@ mod tests {
         let mut v = b"RIFF\0\0\0\0WEBPVP8X".to_vec();
         v.extend_from_slice(&[10, 0, 0, 0, flags, 0, 0, 0]);
         v
+    }
+
+    #[test]
+    fn the_first_file_there_is_the_one_that_plays() {
+        use crate::ImageRef;
+        let dir = tempfile::tempdir().unwrap();
+        let video = dir.path().join("hero.webm");
+        std::fs::write(&video, [0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0]).unwrap();
+        let still = dir.path().join("hero.jpg");
+        std::fs::write(&still, [0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0]).unwrap();
+        let missing = dir.path().join("gone.webm");
+        let file = |p: &std::path::Path| ImageRef::File(p.to_path_buf());
+        assert_eq!(moving_file(&[file(&missing), file(&video)]), Some(video.clone()));
+        assert_eq!(moving_file(&[file(&still), file(&video)]), None, "a still picture first");
+        assert_eq!(moving_file(&[ImageRef::Url("https://x/a.jpg".into()), file(&video)]), None);
+        assert_eq!(moving_file(&[]), None);
+        // An animated WebP (VP8X, animation flag) stays still.
+        let webp = dir.path().join("hero.webp");
+        std::fs::write(&webp, [b"RIFF\0\0\0\0WEBPVP8X".as_slice(), &[10, 0, 0, 0, 0x02, 0, 0, 0]].concat()).unwrap();
+        assert_eq!(moving_file(&[file(&webp)]), None);
     }
 
     #[test]

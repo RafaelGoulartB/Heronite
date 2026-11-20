@@ -82,6 +82,9 @@ pub struct CoversDialog {
     /// The SteamGridDB style whose pictures alone are listed (of its
     /// pictures); `None`: every style.
     style: Option<String>,
+    /// Whether the background picked before moves (it then says it shows
+    /// still while Animated backgrounds is off).
+    bg_moves: crate::dialogs::animated_art::Moves,
     loading: bool,
     busy: Option<Busy>,
     error: String,
@@ -167,6 +170,7 @@ impl CoversDialog {
             source: None,
             // `HERONITE_DEBUG_SGDB_STYLE=<style>`: opens on that SteamGridDB style (captures).
             style: crate::env::value("HERONITE_DEBUG_SGDB_STYLE"),
+            bg_moves: Default::default(),
             loading: false,
             busy: None,
             error: String::new(),

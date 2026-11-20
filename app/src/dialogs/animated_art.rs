@@ -7,6 +7,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::AppPaths;
 use heronite_i18n::tr;
+use heronite_images::ImageRef;
 
 use crate::icons::Icon;
 use crate::theme;
@@ -15,6 +16,44 @@ use crate::ui::icon;
 /// Whether backgrounds that move play (else they show their first frame).
 pub fn on() -> bool {
     theme::appearance().animated_backgrounds
+}
+
+/// Whether a background picture moves (a video, an animated GIF or PNG),
+/// looked at off the UI thread once per picture: the background picked
+/// before, shown in a picker, says it will show still too.
+#[derive(Default)]
+pub struct Moves {
+    known: Option<(String, bool)>,
+    asking: Option<String>,
+}
+
+impl Moves {
+    /// Whether the picture of `chain` moves; `false` until known (the view
+    /// is drawn again then). `field` is where the view keeps this.
+    pub fn of<V: 'static>(&mut self, chain: &[ImageRef], cx: &mut Context<V>, field: fn(&mut V) -> &mut Moves) -> bool {
+        let id = format!("{:?}", chain.first());
+        if let Some((known, moves)) = &self.known {
+            if *known == id {
+                return *moves;
+            }
+        }
+        if self.asking.as_deref() != Some(id.as_str()) {
+            self.asking = Some(id.clone());
+            let chain = chain.to_vec();
+            cx.spawn(async move |this, cx| {
+                let moves = cx.background_spawn(async move { heronite_images::animation::moving_file(&chain).is_some() }).await;
+                this.update(cx, |this, cx| {
+                    let m = field(this);
+                    m.asking = None;
+                    m.known = Some((id, moves));
+                    cx.notify();
+                })
+                .ok();
+            })
+            .detach();
+        }
+        false
+    }
 }
 
 /// Turns "Animated backgrounds" on, as its switch in Settings does.
