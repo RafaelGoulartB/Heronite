@@ -181,6 +181,8 @@ impl CollectionView {
     }
 
     pub(super) fn on_launch_event(&mut self, ev: LaunchEvent, cx: &mut Context<Self>) {
+        // Console mode's launch screen and "Session ended" card.
+        self.console_launch_event(&ev, cx);
         match ev {
             LaunchEvent::Launching { app_name } => {
                 self.preparing.insert(app_name.clone(), super::launch_progress::LaunchStep::starting());

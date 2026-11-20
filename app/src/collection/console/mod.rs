@@ -19,8 +19,10 @@ mod customize;
 mod filters;
 mod game;
 mod hero;
+pub(super) mod launch_screen;
 mod layouts;
 mod power;
+pub(super) mod session_card;
 mod sidebar;
 mod sources;
 mod tile;
@@ -121,6 +123,10 @@ pub(super) struct ConsoleUi {
     achievements: Option<achievements::AchNav>,
     /// This view, for the clicks of what it draws (`console_click`).
     me: Option<WeakEntity<CollectionView>>,
+    /// The screen over everything while a game starts.
+    launch: launch_screen::LaunchUi,
+    /// "Session ended" after a game.
+    session: session_card::SessionUi,
 }
 
 /// The hint bar over the bottom of the screen, on a fade of the background
@@ -536,6 +542,10 @@ impl CollectionView {
     /// Routes one press.
     pub(super) fn console_pad(&mut self, pad: Pad, window: &mut Window, cx: &mut Context<Self>) {
         cx.notify();
+        // The launch screen takes every press (B puts it away).
+        if self.launch_screen_pad(pad, cx) {
+            return;
+        }
         // A press that only woke the idle screen goes no further.
         if self.console_controls_press(pad, cx) {
             return;
@@ -1014,6 +1024,7 @@ impl CollectionView {
             })
             .when(float, |d| d.child(floating_hints(&hints, hints_on)))
             .children(idle)
+            .children(self.render_launch_layers(window, cx))
             .into_any_element()
     }
 }

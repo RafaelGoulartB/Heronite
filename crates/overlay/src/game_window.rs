@@ -30,6 +30,16 @@ pub fn away(game_pid: u32) -> bool {
     !windows.iter().any(|w| Some(w) == active.as_ref())
 }
 
+/// Whether the game has put a window on the desktop (console mode's launch
+/// screen waits for it); `None` when the desktop cannot say. Blocking.
+pub fn shown(game_pid: u32) -> Option<bool> {
+    if !on_hyprland() {
+        return None;
+    }
+    let clients = hyprctl(&["clients", "-j"]).ok()?;
+    Some(!game_windows(&clients, |pid| belongs_to(pid, game_pid)).is_empty())
+}
+
 /// Gives the focus to the game's window (the one that had it last, when it
 /// has several). Blocking.
 pub fn focus(game_pid: u32) -> Result<(), String> {

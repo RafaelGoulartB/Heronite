@@ -56,6 +56,8 @@ pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
     // Before the post-game work, which takes the session (and its title) away.
     if !has_window(cx) {
         notify_without_window(cx, &ev);
+        // Console mode's "Session ended" card waits for the window.
+        crate::collection::remember_session_end(&ev);
     }
     // Window-independent consumers: post-game work and the Epic service.
     if let Some(session) = crate::services::session::get(cx) {
@@ -78,13 +80,41 @@ pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
         crate::quick_launch::running_changed(cx);
     }
     // Heroic's `minimizeOnLaunch`, once the game runs: the window shows the
-    // launch's progress until then. Needs the tray to come back from.
-    if started && settings.minimize_on_launch && close_window_keep_alive(cx) {
-        hub.0.borrow_mut().hidden_for_game = true;
+    // launch's progress until then. Needs the tray to come back from. Console
+    // mode's launch screen keeps it until the game's window is up, so the
+    // desktop never shows in between ([`hide_after_cover`]).
+    if started && settings.minimize_on_launch {
+        if crate::collection::launch_screen_covers(cx) {
+            hub.0.borrow_mut().hide_after_cover = true;
+        } else if close_window_keep_alive(cx) {
+            hub.0.borrow_mut().hidden_for_game = true;
+        }
     }
     if ended {
+        // Nothing left for the launch screen to hide the window for.
+        {
+            let mut s = hub.0.borrow_mut();
+            if s.running.is_empty() {
+                s.hide_after_cover = false;
+            }
+        }
         restore_after_game(cx, settings.restore_after_game);
         maybe_exit_idle(cx);
+    }
+}
+
+/// Console mode's launch screen left with the game running: the window
+/// closes now when minimize on launch waited for it (see [`on_event`]).
+pub fn hide_after_cover(cx: &mut App) {
+    let hub = hub(cx);
+    {
+        let mut s = hub.0.borrow_mut();
+        if !std::mem::take(&mut s.hide_after_cover) || s.running.is_empty() {
+            return;
+        }
+    }
+    if close_window_keep_alive(cx) {
+        hub.0.borrow_mut().hidden_for_game = true;
     }
 }
 

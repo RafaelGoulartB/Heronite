@@ -94,6 +94,7 @@ pub fn init(
         clients_followed: 0,
         hiding: false,
         hidden_for_game: false,
+        hide_after_cover: false,
         quitting: false,
         fake_launch: crate::env::flag("HERONITE_DEBUG_FAKE_LAUNCH"),
         // The first window opens fullscreen right away.
