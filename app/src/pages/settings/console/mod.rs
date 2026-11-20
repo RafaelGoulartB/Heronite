@@ -384,13 +384,7 @@ impl SettingsPage {
             )
             .child(
                 // The rows fade out at the bottom instead of stopping on a cut line.
-                div().relative().flex().flex_col().flex_1().min_h_0().child(body).child(
-                    div().absolute().left_0().right_0().bottom_0().h(u(28.)).bg(linear_gradient(
-                        0.,
-                        linear_color_stop(theme::console_bg(), 0.),
-                        linear_color_stop(Rgba { a: 0., ..theme::console_bg() }, 1.),
-                    )),
-                ),
+                div().relative().flex().flex_col().flex_1().min_h_0().child(body).child(kit::fade_bottom()),
             )
             .children(error);
         div()

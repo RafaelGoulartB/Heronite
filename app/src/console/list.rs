@@ -631,6 +631,13 @@ impl ListNav {
         self.render_entered(id, rows, active, None)
     }
 
+    /// The rows as settings cards in a [`kit::settings_column`]: how a
+    /// full-screen console config screen draws its list (one call).
+    pub fn render_cards(&mut self, id: impl Into<ElementId>, rows: &[Row], active: bool) -> Div {
+        self.style = RowStyle::Card;
+        kit::settings_column(self.render(id, rows, active).flex_1().min_h_0())
+    }
+
     /// [`render`](Self::render) for a list that `entry` gives the focus to
     /// while it does not have it (a column beside the owner's own): a click
     /// on one of its rows sends `entry` first.
@@ -977,6 +984,8 @@ fn card_value(r: &Row, route: Option<&[Pad]>, usable: bool) -> AnyElement {
             .child(muted(t))
             .when(usable, |d| d.child(kit::text_action(r.verb.clone().unwrap_or_else(|| tr!("Change").into()))))
             .into_any_element(),
+        // A line with no value (a note) shows nothing at its end.
+        Value::Info(t) if t.is_empty() => div().into_any_element(),
         Value::Info(t) => muted(t).into_any_element(),
         Value::Header => div().into_any_element(),
     };
@@ -1033,11 +1042,21 @@ pub fn render_card_in(
     }
     let usable = r.enabled && !place.off;
     let label_color: Hsla = if r.danger { theme::danger_text().into() } else { theme::text_primary().into() };
+    // A long read-only value (a status line) reads as the description,
+    // under the label, instead of a cut line at the right.
+    let long = match &r.value {
+        Value::Info(t) if t.chars().count() > 32 => Some(t.clone()),
+        _ => None,
+    };
     // A row that only gathers its group shows the group's chevron alone.
-    let value = if place.group.is_some() && r.value == Value::Action && r.verb.is_none() {
+    let value = if (place.group.is_some() && r.value == Value::Action && r.verb.is_none()) || long.is_some() {
         div().into_any_element()
     } else {
         card_value(r, route, usable)
+    };
+    let r = &Row {
+        desc: long.map(|l| SharedString::from(r.desc.as_ref().map_or(l.to_string(), |d| format!("{l} {d}")))).or_else(|| r.desc.clone()),
+        ..r.clone()
     };
     if place.child {
         return render_sub_card(r, focused, place, label_color, value);

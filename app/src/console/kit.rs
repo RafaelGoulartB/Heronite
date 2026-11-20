@@ -753,6 +753,27 @@ pub fn text_action(text: impl Into<SharedString>) -> Div {
     div().flex_none().text_size(u(14.)).font_weight(theme::W_BOLD).text_color(accent_ink()).child(text.into())
 }
 
+/// Width of a column of settings cards (Settings' content, the console
+/// config screens).
+pub const SETTINGS_W: f32 = 1180.;
+
+/// A column of settings cards: comfortably wide, filling the height it is
+/// given, its rows fading out at the bottom instead of stopping on a cut.
+/// Every full-screen console config screen draws its rows in one.
+pub fn settings_column(body: impl IntoElement) -> Div {
+    div().relative().w(u(SETTINGS_W)).max_w_full().flex().flex_col().flex_1().min_h_0().child(body).child(fade_bottom())
+}
+
+/// The fade at the bottom of a scrolling column, in the console's background.
+pub fn fade_bottom() -> Div {
+    let bg = theme::console_bg();
+    div().absolute().left_0().right_0().bottom_0().h(u(28.)).bg(linear_gradient(
+        0.,
+        linear_color_stop(bg, 0.),
+        linear_color_stop(Rgba { a: 0., ..bg }, 1.),
+    ))
+}
+
 /// A heading between card rows, in [`accent_ink`].
 pub fn card_heading(text: impl Into<SharedString>) -> Div {
     div().pt(u(22.)).pb(u(4.)).px(u(4.)).text_size(u(16.)).font_weight(theme::W_BOLD).text_color(accent_ink()).child(text.into())
