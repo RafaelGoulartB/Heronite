@@ -65,8 +65,8 @@ const ART_TO: f32 = 1.12;
 const ART_DRIFT: Duration = Duration::from_secs(20);
 /// The logo's box, design px (the logo is fitted in it, enlarged when
 /// smaller).
-const LOGO_W: f32 = 660.;
-const LOGO_H: f32 = 260.;
+const LOGO_W: f32 = 900.;
+const LOGO_H: f32 = 340.;
 
 /// What the desktop says about the game's window.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
