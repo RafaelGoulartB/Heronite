@@ -161,7 +161,8 @@ fn logo_at(ms: f32, rise: bool) -> (f32, f32) {
 /// The way out `ms` after it began: the black over the screen, then the
 /// screen's own opacity.
 fn leave_at(ms: f32) -> (f32, f32) {
-    let black = ease_in_out(ms / BLACKOUT_MS as f32);
+    let t = (ms / BLACKOUT_MS as f32).clamp(0., 1.);
+    let black = t * t * (3. - 2. * t);
     let out = sine_out((ms - BLACKOUT_MS as f32) / OUT_MS as f32);
     (black, 1. - out)
 }
