@@ -22,6 +22,8 @@ use heronite_data::console_theme::{Glyphs, Headings, Layout};
 use heronite_i18n::tr;
 
 static SCALE: AtomicU32 = AtomicU32::new(0x3f80_0000); // 1.0
+/// The window's width in design px (see [`vw`]).
+static VW: AtomicU32 = AtomicU32::new(0x44a0_0000); // 1280.0
 
 thread_local! {
     /// Focus pills drawn this frame (keeps their animation ids apart).
@@ -31,9 +33,52 @@ thread_local! {
 /// Scales the design to the window: `height / 800`, between 1 and 2. Runs
 /// once at the start of every console frame.
 pub fn set_scale(window: &Window) {
-    let h = f32::from(crate::ui::content_size(window).height);
-    SCALE.store(((h / 800.).clamp(1., 2.) * look::scale()).to_bits(), Ordering::Relaxed);
+    let size = crate::ui::content_size(window);
+    let scale = (f32::from(size.height) / 800.).clamp(1., 2.) * look::scale();
+    SCALE.store(scale.to_bits(), Ordering::Relaxed);
+    VW.store((f32::from(size.width) / scale).to_bits(), Ordering::Relaxed);
     PILLS.with(|c| c.set(0));
+}
+
+/// The window's width in design px this frame. [`u`] follows the window's
+/// height, so a narrow or 4:3 window has fewer design px across than the
+/// 1280 of the design (1730×1280: about 1080): what sits side by side must
+/// check it, not assume the design's width.
+pub fn vw() -> f32 {
+    f32::from_bits(VW.load(Ordering::Relaxed))
+}
+
+/// About how wide a line of `chars` characters of text `size` is, design px
+/// (an average glyph; for fitting rows before they are laid out).
+pub fn text_w(chars: usize, size: f32) -> f32 {
+    chars as f32 * size * 0.56
+}
+
+/// The items `first..last` of a row of items `widths` wide (with `gap`
+/// between them) that fit in `room`, always holding `active`: from the start
+/// while it shows, else ending a little after `active`.
+pub fn fit_row(widths: &[f32], gap: f32, active: usize, room: f32) -> (usize, usize) {
+    let n = widths.len();
+    if n == 0 {
+        return (0, 0);
+    }
+    let active = active.min(n - 1);
+    let span = |a: usize, b: usize| widths[a..b].iter().sum::<f32>() + gap * (b - a).saturating_sub(1) as f32;
+    // From the start as far as it goes.
+    let mut last = 0;
+    while last < n && span(0, last + 1) <= room {
+        last += 1;
+    }
+    if active < last {
+        return (0, last.max(1));
+    }
+    // Else the active one and the next (when it fits), as many before as fit.
+    let end = if active + 2 <= n && span(active, active + 2) <= room { active + 2 } else { active + 1 };
+    let mut first = active;
+    while first > 0 && span(first - 1, end) <= room {
+        first -= 1;
+    }
+    (first, end)
 }
 
 /// Sets the scale directly, for windows whose height is not the display's
@@ -796,13 +841,22 @@ fn tab_label_at(text: impl Into<SharedString>, size: f32, k: f32, on: bool) -> D
 
 /// Tabs switched with LB / RB; the active one is white and underlined
 /// (the underline grows in from the centre while the old one shrinks).
+/// When they do not fit across the window (with room for a title and the
+/// clock beside them), only those around the active one show.
 pub fn tabs(items: &[SharedString], active: usize) -> Div {
+    tabs_within(items, active, vw() - 420.)
+}
+
+/// [`tabs`] in `room` design px.
+pub fn tabs_within(items: &[SharedString], active: usize, room: f32) -> Div {
+    let widths: Vec<f32> = items.iter().map(|t| text_w(t.chars().count(), 17.)).collect();
+    let (first, last) = fit_row(&widths, 26., active, room - 80.);
     div()
         .flex()
         .items_center()
         .gap(u(26.))
         .child(glyph(Btn::LB).on_pads([Pad::LB]))
-        .children(items.iter().enumerate().map(|(i, t)| {
+        .children(items.iter().enumerate().skip(first).take(last - first).map(|(i, t)| {
             let on = i == active;
             let label = t.clone();
             let id = SharedString::from(format!("tab-{label}"));
@@ -1020,9 +1074,25 @@ pub fn window_layer(window: &Window, child: impl IntoElement) -> AnyElement {
 #[cfg(test)]
 mod tests {
     // Explicit imports: `use super::*` would bring in gpui's `test` macro and shadow `#[test]`.
-    use super::{mark, Face, Mark};
+    use super::{fit_row, mark, Face, Mark};
     use crate::console::Btn;
     use heronite_data::console_theme::Glyphs;
+
+    #[test]
+    fn a_row_that_fits_shows_whole_and_a_long_one_keeps_the_active_item() {
+        let w = [100.; 8];
+        // 8 × 100 + 7 × 10 = 870: all of it in 900.
+        assert_eq!(fit_row(&w, 10., 7, 900.), (0, 8));
+        // In 330: three from the start while the active one is among them.
+        assert_eq!(fit_row(&w, 10., 1, 330.), (0, 3));
+        // Further on: the active one, the next, and one before.
+        assert_eq!(fit_row(&w, 10., 5, 330.), (4, 7));
+        // The last one: as many before it as fit.
+        assert_eq!(fit_row(&w, 10., 7, 330.), (5, 8));
+        // Too narrow for even one: the active one alone.
+        assert_eq!(fit_row(&w, 10., 4, 50.), (4, 5));
+        assert_eq!(fit_row(&[], 10., 0, 50.), (0, 0));
+    }
 
     #[test]
     fn xbox_and_deck_name_the_buttons_by_letter() {

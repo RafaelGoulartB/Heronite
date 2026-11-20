@@ -101,6 +101,9 @@ impl Host for CollectionView {
     }
 }
 
+/// Width of the panel, design px.
+const PANEL_W: f32 = 470.;
+
 impl CollectionView {
     /// Opens the panel: reads the saved themes (a few small files) and takes
     /// the names the pickers offer from the loaded library.
@@ -119,7 +122,10 @@ impl CollectionView {
         let rows = theme_rows::group_rows(nav.group, &nav.state.ctx());
         let groups: Vec<SharedString> = PANEL.iter().map(|(g, _)| SharedString::from(tr(g))).collect();
         let mut strip = div().flex().items_center().gap(u(14.)).child(kit::glyph(Btn::LB).on_pads([Pad::LB]));
-        for (i, g) in groups.iter().enumerate() {
+        // The groups that fit across the panel (beside LB and RB), around the current one.
+        let widths: Vec<f32> = groups.iter().map(|g| kit::text_w(g.chars().count(), 14.)).collect();
+        let (first, last) = kit::fit_row(&widths, 14., nav.group, PANEL_W - 2. * 18. - 2. * (30. + 14.));
+        for (i, g) in groups.iter().enumerate().skip(first).take(last - first) {
             let on = i == nav.group;
             strip = strip.child(
                 div()
@@ -151,7 +157,7 @@ impl CollectionView {
             .top_0()
             .bottom_0()
             .right_0()
-            .w(u(470.))
+            .w(u(PANEL_W))
             .flex()
             .flex_col()
             .gap(u(10.))
