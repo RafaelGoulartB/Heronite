@@ -1173,6 +1173,14 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   `Outcome` tells the owner what happened; `simple_dialog` for confirmations), `console::sheet::Sheet`,
   `console::osk::Osk` (on-screen keyboard; never use text inputs in console layouts), `console::browser::Browser`
   (folder / file picker; the portal file chooser cannot be driven by a controller).
+- Settings (`pages/settings/console/`): a sidebar (the app's icon, name and version; Search; Changed; every section under
+  its group heading in one scrolling list, the one shown on the solid focus pill; LB / RB jump between groups) and the
+  section's settings as card rows (`ListNav::set_style(RowStyle::Card)`: title and description on the left, a switch,
+  `‹ chip ›` or an accent text action on the right, the focused card ringed), under a "Group · Section" breadcrumb.
+  Search types on the keyboard and matches section names and the labels and descriptions of every section's rows (the
+  Heroic panel's through `SettingsPanel::console_rows_of`); Changed lists only settings with known defaults (the Heroic
+  panel's against the factory defaults, `console_changed_of`; Console mode's against its base theme). A on a result
+  opens its section on that row. Debug: `HERONITE_DEBUG_PAGE=settings:<section>`, `HERONITE_DEBUG_SETTINGS_SEARCH=<text>|changed`.
 - Motion (`console::motion`): scroll areas that follow the focus use a `Glide` (`go(Goal::Reveal{..})` / `Start` /
   `by(px)`, its `driver()` as the last child of the area) instead of `scroll_to_item`, so they glide on a spring;
   `row_base` focus pills pop in on every press; covers lift with `motion::spring`; one value that drives many
