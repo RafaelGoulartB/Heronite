@@ -30,7 +30,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{Layout, SpotActions, TabSpec};
+use heronite_data::console_theme::{HeroTitle, Layout, SpotActions, TabSpec};
 use heronite_data::details_url::details_url;
 use heronite_data::CollectionGame;
 use heronite_i18n::{tr, trn};
@@ -40,7 +40,7 @@ use page::{Link, Mid, MidMove, Shape, Zone, SIDE};
 
 use super::super::super::vm::{DetailField, DetailValue};
 use super::super::super::CollectionView;
-use super::super::hero::HeroSize;
+use super::super::hero::{fitted_title, logo_element, HeroSize};
 use super::top_recent;
 use crate::collection::focus_left::STAR;
 use crate::console::kit::{self, u};
@@ -610,7 +610,7 @@ impl CollectionView {
         }
         match &game {
             Some(g) => {
-                page = page.children(self.spotlight_head(g, &shape, &focus, from, lift, strips[0], window));
+                page = page.children(self.spotlight_head(g, &shape, &focus, from, strips[0], window));
                 if lift > 0.01 {
                     page = page.children(self.spotlight_below(g, &shape, &focus, strips, window, cx));
                 }
@@ -633,7 +633,16 @@ impl CollectionView {
                 linear_color_stop(kit::dim(0.), 1.),
             ))
         });
-        let mut root = div().relative().size_full().children(dim).child(page).children(top_fade);
+        // On the row the strip dissolves downwards into the dark: there is more below.
+        let veil = (shape.media > 0 && lift < 0.99).then(|| {
+            let top = shape.geo.media + page::TILE_H * 0.15 - rise;
+            div().absolute().top(u(top)).left_0().right_0().bottom_0().opacity(1. - lift).bg(linear_gradient(
+                180.,
+                linear_color_stop(kit::dim(0.), 0.),
+                linear_color_stop(kit::dim(0.82), 1.),
+            ))
+        });
+        let mut root = div().relative().size_full().children(dim).child(page).children(veil).children(top_fade);
         if let (Some(i), false) = (viewer, shape.media_shots) {
             root = root.child(self.spotlight_viewer(&shape.store, i, window));
         } else if let Some(scroll) = &sheet {
@@ -675,20 +684,25 @@ impl CollectionView {
     }
 
     /// The logo (or name), the buttons, the facts and genres, and the media strip.
-    #[allow(clippy::too_many_arguments)]
     fn spotlight_head(
         &mut self,
         g: &CollectionGame,
         shape: &Shape,
         f: &Focus,
         from: f32,
-        lift: f32,
         strip_x: f32,
         window: &Window,
     ) -> Vec<AnyElement> {
         let geo = shape.geo;
         let size = HeroSize { title: 54., logo: (600., geo.logo_h), max_w: 760., overview: 0 };
-        let name = self.console_name(g, size, window);
+        // The logo, else the name in type, smaller when long, on two lines at most.
+        let logo = (look::theme().hero.title == HeroTitle::Logo)
+            .then(|| self.console_logo(&SharedString::from(g.key.clone()), size.logo.0, size.logo.1, false, window))
+            .flatten();
+        let name = match logo {
+            Some(src) => logo_element(src, size.logo.0, size.logo.1, window),
+            None => kit::title(g.title.clone(), fitted_title(size.title, g.title.chars().count())).line_clamp(2).into_any_element(),
+        };
         let key = &g.key;
         let logo = div().absolute().top(u(geo.logo)).left(u(SIDE)).w(u(760.)).h(u(geo.logo_h)).flex().items_end().child(
             motion::enter_from(SharedString::from(format!("spot-logo-{key}")), div().relative().child(name), 360, 22. * from, 0., 0.2),
@@ -706,13 +720,13 @@ impl CollectionView {
         let rest = motion::enter_from(SharedString::from(format!("spot-rest-{key}")), rest, 420, 0., 8., 0.);
         let mut out = vec![logo.into_any_element(), rest];
         if shape.media > 0 {
-            out.push(self.spotlight_media(shape, f, lift, strip_x, window));
+            out.push(self.spotlight_media(shape, f, strip_x, window));
         }
         out
     }
 
     /// The media strip: the store's screenshots, else the user's.
-    fn spotlight_media(&mut self, shape: &Shape, f: &Focus, lift: f32, strip_x: f32, window: &Window) -> AnyElement {
+    fn spotlight_media(&mut self, shape: &Shape, f: &Focus, strip_x: f32, window: &Window) -> AnyElement {
         let geo = shape.geo;
         let dpr = window.scale_factor();
         let k = kit::scale();
@@ -741,18 +755,9 @@ impl CollectionView {
                     .on_mouse_down(MouseButton::Left, self.spot_click(Spot::Media(i))),
             );
         }
-        // On the row the strip dissolves downwards: there is more below.
-        let fade = (1. - lift).clamp(0., 1.);
-        let veil = (fade > 0.01).then(|| {
-            div().absolute().left_0().right_0().top(u(STRIP_ROOM + h * 0.2)).h(u(h * 0.8)).bg(linear_gradient(
-                180.,
-                linear_color_stop(kit::dim(0.), 0.),
-                linear_color_stop(kit::dim(0.85 * fade), 1.),
-            ))
-        });
         // It runs to the window's right edge.
         let clip = f32::from(crate::ui::content_size(window).width) / k - SIDE;
-        strip(geo.media, clip, h, strip_x, tiles).children(veil).into_any_element()
+        strip(geo.media, clip, h, strip_x, tiles).into_any_element()
     }
 
     /// The sections under the head, while the page has risen.
@@ -1288,7 +1293,7 @@ fn page_tile(id: (&'static str, usize), x: f32, w: f32, h: f32, radius: f32, foc
 }
 
 /// Room around a strip's tiles for the focus ring, design px.
-const STRIP_ROOM: f32 = 10.;
+const STRIP_ROOM: f32 = 26.;
 
 /// A strip at `top` (`width` wide, tiles `h` tall) slid by `x`; it keeps
 /// room around the tiles for the focus ring.
