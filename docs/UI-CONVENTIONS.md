@@ -1309,24 +1309,39 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   `ConsoleTheme` (with a default and `#[serde(default)]`, so old and new theme files keep loading), its rows in
   `theme_rows`, and its use. Nothing console-only may run, read files or allocate while console mode is off;
   no "HERONITE" wordmark in console screens (the theme's `interface.label` may add a text of its own).
-- Launch screen and session card (the theme's `launch`; `collection/console/launch_screen.rs`, `session_card.rs`,
-  drawn by the shell over everything): any launch while console mode is in front (Play, X, the quick launcher, the
-  tray) covers the window so the desktop never shows: black, then (`art-logo`) the game's art drifting from 1.04 to
-  1.12 over 20 s (`motion`, not with Reduced) under the `shade` (none / 35 % / 60 % black), and the logo (the name when
-  there is none) fading in while it rises 26 px after the screen's 360 ms fade; `logo` is the logo on black, `off`
-  nothing. Near the bottom a thin line with a light sweeping along it and the launch's step (`preparing`, else
-  "Starting..."). It leaves (300 ms to black, 300 ms out) once the game runs and is in front: our window lost the
-  focus, or Hyprland lists a window of the game's pid (`heronite_overlay::game_window::shown`; the game is then
-  focused), or 8 s after it runs where nothing can tell (60 s at most where Hyprland can); also when the game ends, on
-  B or a click, and after 120 s. A failed launch shows why with B until read (10 s). It takes every press. Launch
-  events in the first 1.5 s of console mode are the runtime's replay for a new window, not launches. Minimize on
-  launch waits for it (`system::hide_after_cover`). When a game ends (not a failed start, at least 5 s) "Session
-  ended" shows top right 1.5 s after the console is in front again, for 8 s: the name, "<session> this session ·
-  <total> total" (`<1m` under a minute), the logo at the right over the art at 42 % fading out under the words, the
-  confirm sound when sounds are on; it takes no input and a newer session replaces it. One that ends with the window
-  in the tray waits for the window (`session_card::remember`). `HERONITE_DEBUG_LAUNCH_SCREEN=<app name or
-  key>[:error|:<step>]` shows the screen for that game, frozen (nothing launched); `HERONITE_DEBUG_SESSION_CARD=<app
-  name or key>` the card, staying.
+- Launch screen, Now Playing and session card (the theme's `launch`; `collection/console/launch_screen.rs`,
+  `now_playing.rs`, `session_card.rs`, drawn by the shell over everything): any launch while console mode is in front
+  (Play, X, the quick launcher, the tray) covers the window so the desktop never shows: black, then (`art-logo`) the
+  game's art, 8 % larger than the screen, panning slowly sideways over 20 s at the display's rate (`motion`, not with
+  Reduced; a pan, not a zoom: its size never changes, so pixel snapping moves it a pixel at a time instead of making
+  its edges shake) under the `shade` (none / 35 % / 60 % black), and the logo (the name, large, in a box of its own
+  width so it wraps only between words, when no logo came within 2.5 s; a later logo still replaces it) fading in
+  while it rises 26 px after the screen's 360 ms fade; `logo` is the logo on black, `off` nothing. Near the bottom a
+  thin line with a light sweeping along it and the launch's step (`preparing`, else "Starting..."). A failed launch
+  shows why with B until read (10 s); B or a click puts the screen away; it gives up after 120 s. Once the game runs
+  and is in front (our window lost the focus, or Hyprland lists a window of the game's pid,
+  `heronite_overlay::game_window::shown`, the game then focused; or 8 s after it runs where nothing can tell, 60 s
+  at most where Hyprland can) the screen becomes Now Playing and minimize on launch closes the window
+  (`system::hide_after_cover`). Now Playing: the art, still, and over it, left of centre, a frosted card (the art
+  blurred, aligned with the window and clipped to the card, under a dark wash): the box cover, the logo or name,
+  developer · year · genres, "Playing now" with the session's clock and the total, and Back to game (only where the
+  game's window can be focused: Hyprland and a real pid), Stop game (asks first, a `simple_dialog`, then
+  `system::stop_running`) and Back to console (B), ← → and A or a click; hints A and B. Back to console hides it with
+  the game running; it comes back when the window returns from the game or Play is pressed on the game (its tile or
+  page: Play on a running game opens Now Playing in console mode instead of stopping it). It takes every press while
+  up. The session's start is kept per game by the hub (`now_playing::note`), so a window reopened from the tray shows
+  Now Playing again with the right time (the runtime's replayed `Running` in the first 1.5 s of console mode, which
+  are not new launches). When the game ends the screen fades out (300 ms to black, 300 ms out) and "Session ended"
+  shows top right 1.5 s after the console is in front again (not a failed start, at least 5 s), for 8 s: the name,
+  "<session> this session · <total> total" (`<1m` under a minute), the logo at the right over the art at 42 % fading
+  out under the words, the confirm sound when sounds are on; it takes no input and a newer session replaces it. One
+  that ends with the window in the tray waits for the window (`session_card::remember`).
+  `HERONITE_DEBUG_LAUNCH_SCREEN=<app name or key>[:error|:<step>]` shows the screen for that game, frozen (nothing
+  launched); `HERONITE_DEBUG_NOW_PLAYING=<app name or key>[:stop]` Now Playing 47 minutes in (`:stop`: with the
+  question open); `HERONITE_DEBUG_SESSION_CARD=<app name or key>` the card, staying. `HERONITE_DEBUG_FAKE_SESSION=<app
+  name>:<secs>@<delay ms>[+<prep secs>]` (the app name, e.g. `Calluna`, not the Collection key) plays the whole flow
+  without a game; it counts as in front. Springs do not advance on a hidden workspace: the card and toasts only show in
+  captures with animations off.
 - Activity (`collection/console/activity.rs`): what runs in the background, read every 400 ms from the places the
   desktop header's pills read (the metadata hub's job, cover downloads included, and a source's database; the
   downloads service's install or update; the updater's download; ffmpeg's install). A pill beside the clock (top right
