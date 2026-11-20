@@ -5,7 +5,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_i18n::tr;
+use heronite_i18n::{tr, trn};
 
 use super::super::super::CollectionView;
 use super::super::hero::HeroSize;
@@ -37,12 +37,16 @@ const WIDTH: f32 = 440.;
 const MARGIN: f32 = 18.;
 const RADIUS: f32 = 26.;
 
-/// The rows the sheet shows: the main ones of the game's actions, then "Full page".
-fn sheet_rows(all: Vec<Row>) -> Vec<Row> {
+/// The rows the sheet shows: the main ones of the game's actions, the
+/// player's screenshots when there are some (`shots`), then "Full page".
+fn sheet_rows(all: Vec<Row>, shots: usize) -> Vec<Row> {
     let mut rows: Vec<Row> = ["primary", "status", "favourite", "settings", "achievements"]
         .into_iter()
         .filter_map(|id| all.iter().find(|r| r.id.as_ref() == id).cloned())
         .collect();
+    if shots > 0 {
+        rows.push(Row::action("shots", tr!("Screenshots")).icon(Icon::PhotoCamera).desc(trn!(shots, "{n} screenshot", "{n} screenshots")));
+    }
     rows.push(Row::action("full", tr!("Full page")).icon(Icon::OpenInNew));
     rows
 }
@@ -132,7 +136,7 @@ impl CollectionView {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let g = self.lib.as_ref().and_then(|l| l.get(key)).cloned().filter(|_| !self.console.game.sheet.full)?;
-        let rows = sheet_rows(self.game_rows(&g, cx));
+        let rows = sheet_rows(self.game_rows(&g, cx), self.game_shot_count(key));
         let list = self.console.game.sheet.list.render("console-game-sheet", &rows, true);
 
         let s = kit::scale();
@@ -169,21 +173,28 @@ impl CollectionView {
                     .children(self.console_status_badge(&g).map(|b| div().flex().child(b))),
             );
         let body = div().flex().flex_col().size_full().child(head).child(div().flex_1().min_h_0().px(u(12.)).py(u(6.)).child(list));
-        Some(floating_sheet("console-game-sheet-panel", body))
+        let sheet = floating_sheet("console-game-sheet-panel", body);
+        // A screenshot opened from the sheet, over it.
+        let viewer = self.shot_viewer().map(|v| div().absolute().inset_0().occlude().child(v));
+        Some(div().absolute().inset_0().child(sheet).children(viewer).into_any_element())
     }
 
     pub(super) fn game_pad_sheet(&mut self, key: &SharedString, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
         if self.console.game.sheet.full {
             return self.game_pad_classic(key, pad, window, cx);
         }
+        if self.shot_viewer_pad(pad) {
+            return true;
+        }
         let Some(g) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return false };
         if pad == Pad::X {
             self.primary_action(key, cx);
             return true;
         }
-        let rows = sheet_rows(self.game_rows(&g, cx));
+        let rows = sheet_rows(self.game_rows(&g, cx), self.game_shot_count(key));
         match self.console.game.sheet.list.on_pad(pad, &rows) {
             Outcome::Activate(id) if id.as_ref() == "full" => self.console.game.sheet.full = true,
+            Outcome::Activate(id) if id.as_ref() == "shots" => self.shot_open(0, window, cx),
             Outcome::Activate(id) | Outcome::Changed(id, _) => self.game_press_row(key, &id, pad, window, cx),
             Outcome::Moved | Outcome::Edge(_) => {}
             Outcome::Ignored => return false,
@@ -194,6 +205,9 @@ impl CollectionView {
     pub(super) fn game_hints_sheet(&self, key: &SharedString) -> Vec<Hint> {
         if self.console.game.sheet.full {
             return self.game_hints_classic(key);
+        }
+        if let Some(h) = self.shot_viewer_hints() {
+            return h;
         }
         let primary = self.lib.as_ref().and_then(|l| l.get(key)).map(|g| self.primary_label(g)).unwrap_or(tr!("Play"));
         vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change")), hint(Btn::X, primary), hint(Btn::B, tr!("Close"))]
@@ -216,7 +230,10 @@ mod tests {
             Row::header("Manage"),
             Row::action("x:ludusavi", "Back up"),
         ];
-        let ids: Vec<_> = sheet_rows(all).iter().map(|r| r.id.to_string()).collect();
+        let ids: Vec<_> = sheet_rows(all.clone(), 0).iter().map(|r| r.id.to_string()).collect();
         assert_eq!(ids, ["primary", "favourite", "achievements", "full"]);
+        // The player's screenshots, when there are some, before "Full page".
+        let ids: Vec<_> = sheet_rows(all, 3).iter().map(|r| r.id.to_string()).collect();
+        assert_eq!(ids, ["primary", "favourite", "achievements", "shots", "full"]);
     }
 }
