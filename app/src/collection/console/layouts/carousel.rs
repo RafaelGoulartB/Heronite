@@ -116,16 +116,9 @@ const FAN_MS: u64 = 640;
 const LETTER_MS: u64 = 950;
 /// Width of the line that shows the place in the list, design px.
 const TRACK: f32 = 180.;
-/// A new game under the covers: its name hidden, held, then fading in while
-/// it slides from the side the focus came from; its facts and place after
-/// it (ms, design px). Its place never starts blank, so a held direction
-/// still reads.
-const NAME_HOLD: u64 = 300;
-const NAME_FADE: u64 = 450;
+/// A new game slides in from the side the focus came from (design px); its
+/// place never starts blank, so a held direction still reads.
 const SLIDE: f32 = 26.;
-const SLIDE_MS: u64 = 550;
-const REST_HOLD: u64 = NAME_HOLD + 150;
-const REST_FADE: u64 = 300;
 const PLACE_FROM: f32 = 0.35;
 
 #[derive(Default)]
@@ -285,29 +278,6 @@ fn bar_pills(filter: usize, focused: bool) -> Div {
         }))
         .child(kit::glyph(Btn::RB).ml(u(10.)).on_pads([Pad::RB]));
     div().absolute().inset_0().flex().items_center().justify_center().child(row)
-}
-
-/// A new game's line under the covers (`id` names it: the same game never
-/// plays it again): hidden, then after `hold` ms it fades in over `fade` ms
-/// from `from` opacity, sliding `dx` design px over [`SLIDE_MS`] with a
-/// cubic ease-out. Reduced motion keeps the fade; no motion shows it at once.
-fn reveal(id: SharedString, el: Div, hold: u64, fade: u64, dx: f32, from: f32) -> AnyElement {
-    if !motion::on() {
-        return el.into_any_element();
-    }
-    let dx = if motion::reduced() { 0. } else { dx };
-    let total = hold + fade.max(if dx != 0. { SLIDE_MS } else { 0 });
-    el.with_animation(id, Animation::new(Duration::from_millis(total)), move |el, t| {
-        let ms = t * total as f32 - hold as f32;
-        let f = (ms / fade as f32).clamp(0., 1.);
-        let el = el.opacity(from + (1. - from) * (1. - (1. - f) * (1. - f)));
-        if dx == 0. {
-            return el;
-        }
-        let k = (ms / SLIDE_MS as f32).clamp(0., 1.);
-        el.left(u(dx * (1. - k).powi(3)))
-    })
-    .into_any_element()
 }
 
 /// One fact under the name: a small label over its value.
@@ -699,11 +669,25 @@ impl CollectionView {
             // covers above never move when the focus does.
             let row = |h: f32| div().flex_none().h(u(h)).flex().items_center().justify_center();
             let id = |part: &str| SharedString::from(format!("cr-{part}-{tab}-{key}"));
-            let name = reveal(id("name"), div().relative().child(name), NAME_HOLD, NAME_FADE, SLIDE * from, 0.);
+            let name = motion::reveal(id("name"), div().relative().child(name), motion::NAME_HOLD, motion::NAME_FADE, SLIDE * from, 0.);
             let facts = theme.hero.facts.then(|| {
-                row(FACTS_H).child(reveal(id("facts"), div().relative().child(self.carousel_facts(&g)), REST_HOLD, REST_FADE, 0., 0.))
+                row(FACTS_H).child(motion::reveal(
+                    id("facts"),
+                    div().relative().child(self.carousel_facts(&g)),
+                    motion::REST_HOLD,
+                    motion::REST_FADE,
+                    0.,
+                    0.,
+                ))
             });
-            let place = reveal(id("place"), div().relative().child(place(tab, letter, index, n)), REST_HOLD, REST_FADE, 0., PLACE_FROM);
+            let place = motion::reveal(
+                id("place"),
+                div().relative().child(place(tab, letter, index, n)),
+                motion::REST_HOLD,
+                motion::REST_FADE,
+                0.,
+                PLACE_FROM,
+            );
             div()
                 .relative()
                 .flex()
