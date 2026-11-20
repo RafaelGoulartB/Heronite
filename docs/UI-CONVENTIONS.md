@@ -1222,18 +1222,26 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   middle on first show and on a new filter; A opens the Sheet game page over the carousel: a window floating
   along the left edge (inset, round corners) over a dim of the whole window, sliding in from the left
   (`render_console_game_layer`, drawn by the shell above the top bar).
-  Pulse's Spotlight (`layouts/spotlight/`), a console's home: a row of square icons along the top, the focused one at
-  the left edge, larger, with a thin ring a little way out and its name beside it; the next icons after the name, the
-  ones before it sliding off to the left. Every icon's place and size and the names come from one number, the row's
-  position gliding on a spring (`motion::Follow`, stepped each frame with a `FrameClock`), so a held direction glides
-  and the room for a longer name opens smoothly (an arriving name is revealed as its room opens, the leaving one fades
-  with its icon). Below, the logo (or the name) with a wide Play and More, then when it was last played; the cards
-  (playtime, How Long To Beat with a bar of how far along the main story, journal) peek in at the bottom, and going
-  down to them slides the whole screen up, the row fading and the art darkening from the bottom. Buttons and cards
-  ease into the focus colour. The art is shaded for the row, the logo and the cards (`Scrim::Home`) and settles in
-  like Classic's. With `Hints::Auto` the hint bar floats over the bottom and fades in and out
-  (`layouts::hints_float`) instead of taking room, so nothing moves when it comes and goes; the cards that peek step
-  back while it shows.
+  Pulse's Spotlight (`layouts/spotlight/`), a console's home whose game page goes on below it. Its top bar
+  (`layouts::{layout_tabs, layout_clock}`) centres the tabs between LB and RB, the current one in a pill, with a large
+  clock; Pulse's tabs are filters (All games, Installed, Favourites, Not played yet). The row: the tab's games, the
+  last played first, as square icons, the focused one larger with a ring a little way out and its name under it, up
+  to two before it in sight; every place and size come from the row's position gliding on a spring (`motion::Follow`
+  stepped with a `FrameClock`). Below, the logo (or the name) in a fixed box, Play / Options / ♥ as pills, the facts
+  (small labels over Playtime, Last played, Platform with the store's logo, Released) and the genres as chips, then a
+  strip of the store's screenshots (`store_media_of`, read in console mode only for Spotlight, never played; else the
+  user's captures) dissolving at the bottom. Leaving the row lifts the whole screen (the row and the top bar fade, the
+  art darkens, the wheel turns to ↑ ↓) into the page (`page.rs`): the strip, About this game (clamped, "Read more"
+  opens the whole text in a sheet) beside Achievements (A: `open_console_achievements`) and Details with link buttons
+  (folder, store page, HowLongToBeat), the cards, the user's screenshots and More like this (A jumps the row to the
+  game, else opens its page), each when `spotlightSections` keeps it and the game has data. Every section's place
+  comes from counts and fixed heights, never a measure, so nothing jumps; the page rises on a slow spring until the
+  focused section's title nears the top, never past the page's end. ↑ ↓ between sections, ← → inside one (the strips
+  slide), B back to the buttons then the row, X plays anywhere; clicks focus then use (`cover_click`). A screenshot
+  opens full screen (store ones in `viewer.rs`, the user's in the game page's viewer). Options opens the theme's game
+  page (Pulse: the Sheet over Spotlight). With `Hints::Auto` the hint bar floats (`layouts::hints_float`).
+  `HERONITE_DEBUG_SPOTLIGHT=<zone>[:<n>]` (`actions`, `media`, `viewer`, `about`, `sheet`, `achievements`, `links`,
+  `cards`, `shots`, `related`) opens a section, on the row's `n`th game.
   Y on any tab opens the Filters panel along the right edge (`collection/console/filters.rs`): the search field first
   and focused (A opens the keyboard, a physical keyboard types into it), Show with counts, Sort, Favourites only,
   Status, Category and Smart group (every group, by name; the grid's Show chip then reads "<group> · <show>"); X resets them. They edit the filters of the tab's grid, else the theme's first Grid tab (the
