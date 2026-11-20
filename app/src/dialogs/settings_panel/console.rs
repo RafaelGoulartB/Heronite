@@ -205,37 +205,7 @@ impl SettingsPanel {
         self.console_items_at(section, view, cx).into_iter().map(|i| i.row).collect()
     }
 
-    /// The rows of tab `section` (the global panel: of its `view`) whose
-    /// setting differs from what a new install has (Settings' Changed): the
-    /// factory defaults, or a switch's own default when they don't have it.
-    /// Only the settings whose default is known for sure are compared.
-    pub fn console_changed_of(&self, section: Section, view: GlobalView, cx: &App) -> Vec<Row> {
-        let factory = heronite_data::game_config::factory_defaults(&self.home);
-        let path = |s: &str| heronite_data::game_config::expand_tilde(s.trim(), &self.home).trim_end_matches(['/', '\\']).to_string();
-        let flag_of = |key: &str, default: bool| factory.get(key).and_then(Value::as_bool).unwrap_or(default);
-        self.console_items_at(section, view, cx)
-            .into_iter()
-            .filter(|i| match &i.act {
-                Act::Toggle(key, default) => self.flag(key, *default) != flag_of(key, *default),
-                Act::Path(key, ..) | Act::Text(key, _) => match factory.get(*key) {
-                    Some(Value::String(base)) => path(&self.text(key)) != path(base),
-                    _ => false,
-                },
-                Act::Choice(_) => match i.row.id.as_ref() {
-                    "c:workers" => self.number("maxWorkers").unwrap_or(0) != factory.get("maxWorkers").and_then(Value::as_i64).unwrap_or(0),
-                    "c:sync" => {
-                        self.flag("enableEsync", true) != flag_of("enableEsync", true)
-                            || self.flag("enableFsync", true) != flag_of("enableFsync", true)
-                    }
-                    _ => false,
-                },
-                _ => false,
-            })
-            .map(|i| i.row)
-            .collect()
-    }
-
-    /// Focuses the row `id` of the tab shown (a Search or Changed result).
+    /// Focuses the row `id` of the tab shown (a Search result).
     pub fn console_focus_row(&mut self, id: &str, cx: &App) {
         let rows: Vec<Row> = self.console_items(cx).into_iter().map(|i| i.row).collect();
         self.console_list.focus_id(&rows, id);

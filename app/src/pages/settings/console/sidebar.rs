@@ -1,5 +1,5 @@
 //! The sidebar of console Settings: the app's icon, name and version, then
-//! Search, Changed and every section under its group heading, in one list
+//! Search and every section under its group heading, in one list
 //! that scrolls to keep the stop shown in sight. That stop is a solid focus
 //! pill while the sidebar has the focus, a faint one while its rows do.
 
@@ -32,7 +32,6 @@ pub(super) const WIDTH: f32 = 290.;
 fn look(e: Entry) -> (Icon, SharedString) {
     match e {
         Entry::Search => (Icon::FaSearch, tr!("Search").into()),
-        Entry::Changed => (Icon::History, tr!("Changed").into()),
         Entry::Sec(s) => (s.icon(), s.label().into()),
     }
 }

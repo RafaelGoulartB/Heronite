@@ -1,5 +1,5 @@
 //! Settings in console mode. On the left, a sidebar: the app's icon, name
-//! and version, then Search and Changed, then every section under its group
+//! and version, then Search, then every section under its group
 //! heading in one scrolling list (`sidebar.rs`). On the right, the section
 //! shown: a small "Group · Section" breadcrumb, a line about it and its
 //! settings, each a card row (title and description on the left, its
@@ -7,8 +7,7 @@
 //!
 //! ↑ ↓ pick a section (it shows at once), A or → enter its rows, B or ←
 //! come back; LB / RB jump to the previous / next group. Search types on the
-//! on-screen keyboard and lists the matching sections and settings; Changed
-//! lists the settings that differ from their defaults where those are known
+//! on-screen keyboard and lists the matching sections and settings
 //! (`find.rs`). A on a result opens its section with that row focused.
 //!
 //! General, Downloads, Advanced and the Game defaults are the Heroic
@@ -16,8 +15,7 @@
 //! their own files (`console_rows` / `console_apply`).
 //!
 //! Debug: `HERONITE_DEBUG_PAGE=settings[:<section>]` opens on that section;
-//! `HERONITE_DEBUG_SETTINGS_SEARCH=<text>` opens Search with those results
-//! (`changed`: opens Changed).
+//! `HERONITE_DEBUG_SETTINGS_SEARCH=<text>` opens Search with those results.
 
 mod find;
 mod sidebar;
@@ -127,13 +125,12 @@ impl CSec {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum Entry {
     Search,
-    Changed,
     Sec(CSec),
 }
 
 /// The sidebar's stops in order, with the group of each section.
 fn entries() -> Vec<(Entry, Option<usize>)> {
-    let mut v = vec![(Entry::Search, None), (Entry::Changed, None)];
+    let mut v = vec![(Entry::Search, None)];
     for (g, (_, secs)) in GROUPS.iter().enumerate() {
         v.extend(secs.iter().filter(|s| s.available()).map(|s| (Entry::Sec(*s), Some(g))));
     }
@@ -180,7 +177,7 @@ impl SettingsPage {
     }
 
     /// The first render: the section `HERONITE_DEBUG_PAGE` (or the desktop
-    /// page) was on, or Search / Changed for `HERONITE_DEBUG_SETTINGS_SEARCH`.
+    /// page) was on, or Search for `HERONITE_DEBUG_SETTINGS_SEARCH`.
     fn console_start(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if std::mem::replace(&mut self.console.started, true) {
             return;
@@ -193,10 +190,7 @@ impl SettingsPage {
         });
         self.console.nav = want.unwrap_or(all.iter().position(|(e, _)| matches!(e, Entry::Sec(_))).unwrap_or(0));
         if let Some(query) = crate::env::value("HERONITE_DEBUG_SETTINGS_SEARCH").map(|q| q.trim_end_matches('!').trim().to_string()) {
-            if query == "changed" {
-                self.console.nav = 1;
-                self.console_shown(window, cx);
-            } else if !query.is_empty() {
+            if !query.is_empty() {
                 self.console.nav = 0;
                 self.console_shown(window, cx);
                 self.console_search(query, window, cx);
@@ -294,7 +288,6 @@ impl SettingsPage {
                     self.on_section_shown(window, cx);
                 }
             }
-            Entry::Changed => self.console_changed(window, cx),
             Entry::Search => {}
         }
     }
@@ -307,7 +300,7 @@ impl SettingsPage {
         }
     }
 
-    /// The rows of the section shown (Search and Changed: their results).
+    /// The rows of the section shown (Search: its results).
     fn console_shown_rows(&mut self, sec: CSec, window: &mut Window, cx: &mut Context<Self>) -> Vec<Row> {
         if sec == CSec::Rows(Section::Metadata) {
             metadata::ensure_rows(self, window, cx);
@@ -319,7 +312,6 @@ impl SettingsPage {
     fn console_heading(&self, entry: Entry) -> (String, String) {
         match entry {
             Entry::Search => (tr!("Search").into(), tr!("Sections and settings, by their names and descriptions.").into()),
-            Entry::Changed => (tr!("Changed").into(), find::changed_blurb().into()),
             Entry::Sec(sec) => (format!("{} \u{b7} {}", sec.group(), sec.label()), sec.blurb().to_string()),
         }
     }
@@ -333,8 +325,8 @@ impl SettingsPage {
         // A click on the content's rows from the sidebar enters it first.
         let enter = (!layer_open).then_some(&[Pad::Right][..]);
         let body: AnyElement = match entry {
-            Entry::Search | Entry::Changed => {
-                let rows = self.console_find_rows(entry);
+            Entry::Search => {
+                let rows = self.console_find_rows();
                 self.console.list.render_entered("console-settings-find", &rows, content_focus, enter).size_full().into_any_element()
             }
             Entry::Sec(CSec::Rows(Section::Logs)) => {
@@ -391,12 +383,12 @@ impl SettingsPage {
             .into_any_element()
     }
 
-    /// LB / RB: the first stop of the previous / next group (Search and
-    /// Changed count as one, before the first).
+    /// LB / RB: the first stop of the previous / next group (Search counts
+    /// as one, before the first).
     fn console_jump_group(&mut self, next: bool, window: &mut Window, cx: &mut Context<Self>) {
         let all = entries();
         let here = all[self.console.nav.min(all.len() - 1)].1;
-        // Search and Changed (`None`), then each group with a section here.
+        // Search (`None`), then each group with a section here.
         let mut heads: Vec<Option<usize>> = vec![None];
         for (_, g) in &all {
             if g.is_some() && heads.last() != Some(g) {
@@ -459,7 +451,7 @@ impl PadTarget for SettingsPage {
             return true;
         }
         let used = match entry {
-            Entry::Search | Entry::Changed => self.console_find_pad(entry, pad, window, cx),
+            Entry::Search => self.console_find_pad(pad, window, cx),
             Entry::Sec(CSec::Rows(Section::Logs)) => {
                 let viewer = self.logs_viewer(cx);
                 viewer.update(cx, |v, cx| v.on_pad(pad, window, cx))
@@ -490,8 +482,8 @@ impl PadTarget for SettingsPage {
             return h;
         }
         match entry {
-            Entry::Search | Entry::Changed => {
-                let rows = self.console_find_rows(entry);
+            Entry::Search => {
+                let rows = self.console_find_rows();
                 if let Some(r) = self.console.list.focused(&rows) {
                     h.push(hint(Btn::A, if r.id.as_ref() == "find:query" { tr!("Search") } else { tr!("Open") }));
                 }
@@ -583,10 +575,10 @@ mod tests {
     }
 
     #[test]
-    fn search_and_changed_come_first_then_the_groups_in_order() {
+    fn search_comes_first_then_the_groups_in_order() {
         let e = entries();
         assert_eq!(e[0].0, Entry::Search);
-        assert_eq!(e[1].0, Entry::Changed);
+        assert!(e[1..].iter().all(|(e, _)| matches!(e, Entry::Sec(_))));
         let groups: Vec<usize> = e.iter().filter_map(|(_, g)| *g).collect();
         assert!(groups.windows(2).all(|w| w[0] <= w[1]));
     }
