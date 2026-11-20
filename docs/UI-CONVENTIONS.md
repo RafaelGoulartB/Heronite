@@ -1316,6 +1316,17 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   in the tray waits for the window (`session_card::remember`). `HERONITE_DEBUG_LAUNCH_SCREEN=<app name or
   key>[:error|:<step>]` shows the screen for that game, frozen (nothing launched); `HERONITE_DEBUG_SESSION_CARD=<app
   name or key>` the card, staying.
+- Activity (`collection/console/activity.rs`): what runs in the background, read every 400 ms from the places the
+  desktop header's pills read (the metadata hub's job, cover downloads included, and a source's database; the
+  downloads service's install or update; the updater's download; ffmpeg's install). A pill beside the clock (top right
+  under the page's clock where the top bar is hidden: pages, game pages, Achievements): the task's icon pulsing, "Downloading square
+  covers · 12 / 195", "Installing Elden Ring · 43%", or "3 tasks" with the first named, and a thin bar (a sweep when
+  not counted); a click opens Downloads while a game downloads, else it takes no input. Toasts in the top right,
+  in one column with the session card: a start ("Downloading square covers…", 3.5 s), an end ("Square covers
+  downloaded", "182 updated · 13 not found"; "Elden Ring installed", 5 s), a failure (8 s), and "Nothing to download"
+  when a cover download finds every game with that cover (the hub's `nothing_to_download`). A job that brought nothing
+  says "No new square covers" (never "0 updated"). `HERONITE_DEBUG_CONSOLE_ACTIVITY=metadata|download|many|done|error|nothing`
+  shows made-up states (nothing runs); `=start:square|wide` starts the real download the Settings row starts.
 - Navigation sounds (`controls.sounds`, off by default; `console/sound.rs`): four short tones (move, confirm, back,
   tab) written as WAV files in `cache/console-sounds` and played by `pw-play`, `paplay` or `aplay` from a worker thread
   (Linux only). `controls.soundStyle` is `soft` (the default: ~320-590 Hz with a round start, quiet) or `classic` (the
