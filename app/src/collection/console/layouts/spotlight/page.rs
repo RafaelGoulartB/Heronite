@@ -22,7 +22,7 @@ pub(crate) enum Zone {
     Mid,
     /// Playtime, How Long To Beat, journal.
     Cards,
-    /// The user's screenshots.
+    /// The user's screenshots (a card under the strip).
     Shots,
     /// More like this.
     Related,
@@ -88,6 +88,8 @@ pub(super) const TILE_W: f32 = 300.;
 pub(super) const TILE_H: f32 = 169.;
 pub(super) const STRIP_GAP: f32 = 16.;
 pub(super) const SHOT_W: f32 = 240.;
+/// The padding of the screenshots' card, design px.
+pub(super) const SHOTS_PAD: f32 = 12.;
 pub(super) const SHOT_H: f32 = 135.;
 pub(super) const COVER_W: f32 = 128.;
 pub(super) const COLUMN_W: f32 = 430.;
@@ -141,7 +143,10 @@ pub(super) struct Shape {
     pub links: Vec<Link>,
     pub hltb: HltbCard,
     pub cards: usize,
+    /// The user's screenshots, and how many thumbnails the card has room
+    /// for (the last of them says "+N" for the rest).
     pub shots: usize,
+    pub shots_shown: usize,
     pub related: Vec<SharedString>,
     pub geo: Geo,
 }
@@ -175,6 +180,11 @@ pub(super) fn page_width(view: f32) -> f32 {
 /// About's text width on a page `width` wide.
 pub(super) fn about_width(width: f32) -> f32 {
     width - COLUMN_W - COLUMN_GAP
+}
+
+/// How many screenshots the card has room for on a page `width` wide.
+pub(super) fn shots_room(width: f32) -> usize {
+    (((width - 2. * SHOTS_PAD + STRIP_GAP) / (SHOT_W + STRIP_GAP)).floor() as usize).max(1)
 }
 
 /// The right column's height: Achievements, then Details with its links,
@@ -220,6 +230,12 @@ impl Shape {
         g.chips = g.facts + FACTS_H + 10.;
         g.media = g.chips + CHIPS_H + 24.;
         let mut y = if self.media > 0 { g.media + TILE_H } else { g.chips + CHIPS_H };
+        self.shots_shown = self.shots.min(shots_room(width));
+        if self.shots > 0 {
+            y += SECTION_GAP;
+            g.shots = y;
+            y += TITLE_H + SHOT_H + 2. * SHOTS_PAD;
+        }
         let about_h =
             if self.about { TITLE_H + self.about_lines as f32 * LINE_H + if self.about_more { 12. + MORE_H } else { 0. } } else { 0. };
         g.mid_h = about_h.max(column_h(self));
@@ -232,11 +248,6 @@ impl Shape {
             y += SECTION_GAP;
             g.cards = y;
             y += CARD_H;
-        }
-        if self.shots > 0 {
-            y += SECTION_GAP;
-            g.shots = y;
-            y += TITLE_H + SHOT_H;
         }
         if !self.related.is_empty() {
             y += SECTION_GAP;
@@ -264,14 +275,14 @@ impl Shape {
         if self.media > 0 {
             z.push(Zone::Media);
         }
+        if self.shots > 0 {
+            z.push(Zone::Shots);
+        }
         if [Mid::About, Mid::Ach, Mid::Link, Mid::Hltb].into_iter().any(|m| self.mid_has(m)) {
             z.push(Zone::Mid);
         }
         if self.cards > 0 {
             z.push(Zone::Cards);
-        }
-        if self.shots > 0 {
-            z.push(Zone::Shots);
         }
         if !self.related.is_empty() {
             z.push(Zone::Related);
@@ -284,7 +295,7 @@ impl Shape {
         match zone {
             Zone::Media => self.media,
             Zone::Cards => self.cards,
-            Zone::Shots => self.shots,
+            Zone::Shots => self.shots_shown,
             Zone::Related => self.related.len(),
             _ => 1,
         }
@@ -408,6 +419,13 @@ mod tests {
         assert!(g.logo < g.buttons && g.buttons < g.facts && g.facts < g.chips && g.chips < g.media);
         assert!(g.media + TILE_H < g.mid && g.mid + g.mid_h < g.related && g.related < g.end);
         assert_eq!(s.zones(), [Zone::Row, Zone::Actions, Zone::Media, Zone::Mid, Zone::Related]);
+        // The user's screenshots come right under the strip, as many as fit.
+        let mut t = Shape { shots: 20, ..s.clone() };
+        t.layout(186., 150., 1500., 192.);
+        assert_eq!(t.zones()[3], Zone::Shots);
+        assert!(t.geo.media + TILE_H < t.geo.shots && t.geo.shots < t.geo.mid);
+        assert_eq!(t.shots_shown, shots_room(1500.));
+        assert_eq!(t.count(Zone::Shots), t.shots_shown);
         assert!(s.about_more);
     }
 

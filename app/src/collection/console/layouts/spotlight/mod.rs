@@ -1,16 +1,17 @@
 //! Spotlight: a console's home whose game page goes on below it. Along the
 //! top, the tab's games as a row of square icons ([`row`]), the focused one
-//! larger with its name under it; below, the game's logo, Play / Options / ♥,
+//! larger with its name beside it; below, the game's logo, Play / Options / ♥,
 //! its facts (playtime, last played, platform, release) and genres, and a
-//! strip of its store screenshots (else the user's) peeking at the bottom.
+//! strip of its store screenshots peeking at the bottom.
 //!
 //! Going down from the row, the whole screen rises (the row and the tabs
-//! fade, the art darkens) into the page ([`page`]): the screenshots, About
-//! this game beside Achievements and Details (with link buttons), the cards
-//! (playtime, How Long To Beat, journal), the user's screenshots and More
-//! like this, each when the theme's `spotlightSections` keeps it and the game
-//! has something for it. ↑ ↓ move between sections, ← → inside one; B goes
-//! back up to the buttons, then to the row; X plays from anywhere.
+//! fade, the art darkens) into the page ([`page`]): the store's screenshots,
+//! the player's own in a card, About this game beside Achievements, Details
+//! (with link buttons) and How Long To Beat, the cards (playtime, How Long To
+//! Beat, journal) and More like this, each when the theme's
+//! `spotlightSections` keeps it and the game has something for it. ↑ ↓ move
+//! between sections, ← → inside one; B goes back up to the buttons, then to
+//! the row; X plays from anywhere.
 //!
 //! The row's position, its focus ring, the page's rise and the strips'
 //! slides each follow a spring stepped every frame ([`motion::Follow`]), so
@@ -294,7 +295,9 @@ impl CollectionView {
                 s.store = m.screenshots.iter().take(STORE_SHOTS).map(|x| x.full.clone()).collect();
             }
             s.media = s.store.len();
-            if s.media == 0 && own_shots > 0 {
+            // Without store media the strip shows the user's screenshots,
+            // unless their own card shows them already.
+            if s.media == 0 && own_shots > 0 && !sections.screenshots {
                 s.media = own_shots;
                 s.media_shots = true;
             }
@@ -559,7 +562,7 @@ impl CollectionView {
         let width = shape.geo.width;
         let strip_to = [
             page::strip_offset(nav.media, shape.media, page::TILE_W, page::TILE_W + page::STRIP_GAP, width),
-            page::strip_offset(nav.shot, shape.shots, page::SHOT_W, page::SHOT_W + page::STRIP_GAP, width),
+            0.,
             page::strip_offset(nav.related, shape.related.len(), page::COVER_W, page::COVER_W + page::STRIP_GAP, width),
         ];
         let targets = [(nav.index as f32, 0usize), (if zone == Zone::Row { 1. } else { 0. }, 1), (rise_to, 2)];
@@ -813,16 +816,7 @@ impl CollectionView {
             out.push(row.into_any_element());
         }
         if shape.shots > 0 {
-            let (w, h) = (page::SHOT_W, page::SHOT_H);
-            let step = w + page::STRIP_GAP;
-            let tiles: Vec<Div> = (0..shape.shots)
-                .map(|i| {
-                    let face = self.shot_thumb(i, w, h, false).into_any_element();
-                    page_tile(("spot-shot", i), i as f32 * step, w, h, 12., f.zone == Zone::Shots && f.shot == i, face)
-                        .on_mouse_down(MouseButton::Left, self.spot_click(Spot::Shot(i)))
-                })
-                .collect();
-            out.push(titled(geo.shots, geo.width, tr!("Your screenshots"), strip(0., geo.width, h, strips[1], tiles)));
+            out.push(self.spotlight_shots(shape, f));
         }
         if !shape.related.is_empty() {
             let w = page::COVER_W;
@@ -862,6 +856,58 @@ impl CollectionView {
             out.push(titled(geo.related, geo.width, tr!("More like this"), strip(0., geo.width, h, strips[2], tiles)));
         }
         out
+    }
+
+    /// The user's screenshots: a titled glass card with as many thumbnails
+    /// as fit, the last one saying "+N" over it for the rest (A on it opens
+    /// the viewer there, ← → go on through all of them).
+    fn spotlight_shots(&mut self, shape: &Shape, f: &Focus) -> AnyElement {
+        let (w, h, pad, gap) = (page::SHOT_W, page::SHOT_H, page::SHOTS_PAD, page::STRIP_GAP);
+        let shown = shape.shots_shown;
+        let rest = shape.shots.saturating_sub(shown.saturating_sub(1));
+        let tiles: Vec<AnyElement> = (0..shown)
+            .map(|i| {
+                let thumb = self.shot_thumb(i, w, h, false);
+                let more = (i + 1 == shown && shape.shots > shown).then(|| {
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .rounded(u(12.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(kit::dim(0.55))
+                        .text_size(u(20.))
+                        .font_weight(theme::W_BOLD)
+                        .text_color(white())
+                        .child(format!("+{rest}"))
+                });
+                let face = div().relative().size_full().child(thumb).children(more).into_any_element();
+                page_tile(("spot-shot", i), pad + i as f32 * (w + gap), w, h, 12., f.zone == Zone::Shots && f.shot == i, face)
+                    .top(u(pad))
+                    .on_mouse_down(MouseButton::Left, self.spot_click(Spot::Shot(i)))
+                    .into_any_element()
+            })
+            .collect();
+        let card_w = shown as f32 * (w + gap) - gap + 2. * pad;
+        let card = div()
+            .relative()
+            .w(u(card_w))
+            .h(u(h + 2. * pad))
+            .rounded(u(18.))
+            .bg(parts::glass(0.38))
+            .border_1()
+            .border_color(kit::ink(0.1))
+            .children(tiles);
+        div()
+            .absolute()
+            .top(u(shape.geo.shots))
+            .left(u(SIDE))
+            .flex()
+            .flex_col()
+            .child(section_title(tr!("Screenshots")))
+            .child(card)
+            .into_any_element()
     }
 
     /// About this game on the left; Achievements and Details on the right.
