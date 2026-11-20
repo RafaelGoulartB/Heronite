@@ -8,6 +8,8 @@
 
 mod hero;
 mod sheet;
+
+pub(in crate::collection::console) use sheet::side_sheet;
 mod showcase;
 mod tabs;
 
@@ -76,7 +78,7 @@ fn classic_facts(f: &super::super::vm::FocusVm) -> Vec<(SharedString, String)> {
 }
 
 impl CollectionView {
-    fn game_rows(&mut self, g: &CollectionGame, cx: &mut Context<Self>) -> Vec<Row> {
+    pub(in crate::collection::console) fn game_rows(&mut self, g: &CollectionGame, cx: &mut Context<Self>) -> Vec<Row> {
         let playing = self.playing.contains_key(&g.app_name);
         let step = self.preparing.get(&g.app_name).cloned();
         let (label, ic) = self.primary_state(g);

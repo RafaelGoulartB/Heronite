@@ -858,7 +858,8 @@ impl CollectionView {
     /// the current one's name, centred (`Title`) or nothing (`Bottom`: the
     /// tabs go along the bottom, see `console_bottom_tabs`); status icons,
     /// clock.
-    fn console_top_bar(&self) -> Div {
+    /// `downloads`: how many games download (Cinema's status icons count them).
+    fn console_top_bar(&self, downloads: usize) -> Div {
         let theme = look::theme();
         let names: Vec<SharedString> = theme.tabs.iter().map(tab_label).collect();
         let label = theme.interface.label.trim().to_string();
@@ -881,13 +882,18 @@ impl CollectionView {
                 d.child(div().absolute().top_0().bottom_0().left_0().right_0().flex().items_center().justify_center().child(title))
             })
             .child(div().flex_1())
-            .when(theme.interface.status_icons, |d| {
-                d.when(self.console.controller.is_some(), |d| {
-                    d.child(crate::ui::icon(crate::icons::Icon::SportsEsports, u(20.), theme::text_muted()))
-                })
-            })
             .children(self.activity_in_bar())
-            .child(self.layout_clock())
+            .map(|d| match self.layout_status(downloads) {
+                // Cinema's cluster of status icons, the clock among them.
+                Some(status) => d.child(status),
+                None => d
+                    .when(theme.interface.status_icons, |d| {
+                        d.when(self.console.controller.is_some(), |d| {
+                            d.child(crate::ui::icon(crate::icons::Icon::SportsEsports, u(20.), theme::text_muted()))
+                        })
+                    })
+                    .child(self.layout_clock()),
+            })
     }
 
     /// The tabs along the bottom (`tab_bar: bottom`), when there are several.
@@ -948,7 +954,8 @@ impl CollectionView {
         // The tabs take clicks only while LB / RB switch them.
         let tabs_input = self.tabs_in_focus() && !self.console.results;
         let blocked = |d: Div| if tabs_input { d } else { d.child(div().absolute().inset_0().occlude()) };
-        let top_bar = keeps_tabs.then(|| blocked(self.console_top_bar()));
+        let downloads = crate::services::try_downloads(cx).map_or(0, |d| d.read(cx).snapshot().queue.len());
+        let top_bar = keeps_tabs.then(|| blocked(self.console_top_bar(downloads)));
         let bottom_tabs = if keeps_tabs { self.console_bottom_tabs().map(|d| blocked(d.relative())) } else { None };
         let scrim = if on_page {
             Scrim::Page

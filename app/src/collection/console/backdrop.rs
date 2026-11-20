@@ -138,7 +138,7 @@ pub(crate) enum Scrim {
     /// right, darker along the top (the tabs and the row of icons), the left
     /// (the logo and Play) and the bottom (the cards).
     Home,
-    /// Dark at the bottom only (Cinema).
+    /// Dark at the bottom and along the left, a little at the top (Cinema).
     Cinema,
     /// A vignette: the art glows behind the covers in the middle, darker
     /// at the edges and most under the name at the bottom (Carousel).
@@ -186,7 +186,9 @@ fn scrim_layers(scrim: Scrim) -> Vec<Div> {
         Scrim::Library => vec![layer(90., 0.95, 0.58, 1.), layer(0., 0.97, 0.3, 0.85), layer(180., 0.55, 0., 0.3)],
         Scrim::Spot => vec![layer(90., 0.88, 0.1, 0.7), layer(0., 0.92, 0., 0.5), layer(180., 0.6, 0., 0.25)],
         Scrim::Home => vec![layer(180., 0.78, 0., 0.36), layer(90., 0.82, 0., 0.58), layer(0., 0.9, 0., 0.42)],
-        Scrim::Cinema => vec![layer(0., 0.97, 0., 0.62), layer(90., 0.55, 0., 0.5), layer(180., 0.45, 0., 0.16)],
+        // The game's block on the left and the covers at the bottom: a soft
+        // vignette there, and a little at the top for the tabs.
+        Scrim::Cinema => vec![layer(0., 0.95, 0., 0.6), layer(90., 0.8, 0., 0.6), layer(180., 0.66, 0., 0.24)],
         Scrim::Carousel => vec![layer(0., 0.94, 0., 0.5), layer(180., 0.72, 0., 0.34), layer(90., 0.6, 0., 0.3), layer(270., 0.6, 0., 0.3)],
         Scrim::Full => vec![layer(0., 0.86, 0.7, 1.)],
         Scrim::Glass => vec![layer(0., 0.3, 0.3, 1.), layer(180., 0.5, 0., 0.3), layer(90., 0.5, 0., 0.45)],

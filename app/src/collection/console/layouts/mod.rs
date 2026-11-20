@@ -35,13 +35,14 @@ use crate::console::motion::{Axis, Glide, Goal};
 use crate::console::pointer;
 use crate::console::{look, Hint, Pad};
 use crate::icons::Icon;
+use crate::theme;
 
 /// Focus of one tab in every layout.
 #[derive(Default)]
 pub(crate) struct TabNav {
     pub shelves: ShelfNav,
     pub spotlight: spotlight::Nav,
-    pub cinema: ShelfNav,
+    pub cinema: cinema::Nav,
     pub dashboard: dashboard::Nav,
     pub grid: grid::Nav,
     pub wheel: wheel::Nav,
@@ -68,7 +69,9 @@ pub(super) fn scrim(layout: Layout) -> Scrim {
 /// (`Hints::Auto`) instead of taking its room: the screen never moves when it
 /// comes and goes. Spotlight keeps that room clear itself.
 pub(super) fn hints_float(layout: Layout) -> bool {
-    matches!(layout, Layout::Spotlight | Layout::Cinema) && look::theme().controls.hints == Hints::Auto
+    let hints = look::theme().controls.hints;
+    // Cinema's bar floats over the art whether it fades or stays.
+    (layout == Layout::Spotlight && hints == Hints::Auto) || (layout == Layout::Cinema && hints != Hints::Off)
 }
 
 /// `i` moved by `delta` in `0..n`, going round when `wrap`.
@@ -167,7 +170,7 @@ impl CollectionView {
         match spec.layout {
             Layout::Shelves => self.shelf_pad(tab, spec, pad, window, cx, |n| &mut n.shelves),
             Layout::Spotlight => self.spotlight_pad(tab, spec, pad, window, cx),
-            Layout::Cinema => self.shelf_pad(tab, spec, pad, window, cx, |n| &mut n.cinema),
+            Layout::Cinema => self.cinema_pad(tab, spec, pad, window, cx),
             Layout::Dashboard => self.dashboard_pad(tab, spec, pad, window, cx),
             Layout::Grid => self.grid_pad(tab, spec, pad, window, cx),
             Layout::Wheel => self.wheel_pad(tab, spec, pad, window, cx),
@@ -182,8 +185,64 @@ impl CollectionView {
     pub(super) fn layout_tabs(&self, names: &[SharedString], active: usize) -> Div {
         match self.spotlight_lift() {
             Some(lift) => spotlight::spotlight_tabs(names, active, lift),
+            // Cinema: the same centred pill (in its gold).
+            None if self.console_shown_tab().1.layout == Layout::Cinema => spotlight::spotlight_tabs(names, active, 0.),
             None => kit::tabs(names, active),
         }
+    }
+
+    /// The right of the top bar in Cinema: search, the downloads with how
+    /// many there are, the controller while one is connected, and the clock,
+    /// as monochrome icons (`None` for the other layouts).
+    pub(super) fn layout_status(&self, downloads: usize) -> Option<Div> {
+        if self.console_shown_tab().1.layout != Layout::Cinema {
+            return None;
+        }
+        let ink = theme::text_primary();
+        let item =
+            || div().flex().items_center().justify_center().size(u(32.)).rounded_full().cursor_pointer().hover(|s| s.bg(kit::ink(0.1)));
+        let search = item()
+            .child(crate::ui::icon(Icon::FaSearch, u(17.), ink))
+            .on_mouse_down(MouseButton::Left, self.console_click(|this, window, cx| this.open_console_filters(window, cx)));
+        let downloads_icon = item()
+            .relative()
+            .child(crate::ui::icon(Icon::Download, u(20.), ink))
+            .when(downloads > 0, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .top(u(1.))
+                        .right(u(0.))
+                        .min_w(u(15.))
+                        .h(u(15.))
+                        .px(u(3.))
+                        .rounded_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(theme::console_focus())
+                        .text_size(u(9.5))
+                        .font_weight(theme::W_BOLD)
+                        .text_color(theme::console_on_focus())
+                        .child(downloads.to_string()),
+                )
+            })
+            .on_mouse_down(
+                MouseButton::Left,
+                self.console_click(|this, window, cx| this.navigate(crate::pages::Page::Downloads, window, cx)),
+            );
+        let controller =
+            self.console.controller.is_some().then(|| item().cursor_default().child(crate::ui::icon(Icon::SportsEsports, u(21.), ink)));
+        Some(
+            div()
+                .flex()
+                .items_center()
+                .gap(u(10.))
+                .child(search)
+                .child(downloads_icon)
+                .children(controller)
+                .child(div().ml(u(10.)).child(spotlight::spotlight_clock(0.))),
+        )
     }
 
     /// The clock of the top bar: Spotlight's larger one (a Carousel with its
@@ -223,7 +282,7 @@ impl CollectionView {
     pub(super) fn layout_hints(&self, tab: usize, spec: &TabSpec) -> Vec<Hint> {
         match spec.layout {
             Layout::Shelves => self.shelves_hints(tab, spec),
-            Layout::Cinema => self.shelves_hints(tab, spec),
+            Layout::Cinema => self.cinema_hints(tab, spec),
             Layout::Spotlight => self.spotlight_hints(tab, spec),
             Layout::Dashboard => self.dashboard_hints(tab, spec),
             Layout::Grid => self.grid_hints(tab, spec),
@@ -341,13 +400,11 @@ pub(crate) struct ShelfNav {
     from: (f32, f32),
     /// Counts the moves (part of the slide's id: every move replays it).
     moves: u64,
-    /// Where Cinema last sent its view (design px), so it is sent once.
-    goal: Option<f32>,
 }
 
 impl Default for ShelfNav {
     fn default() -> Self {
-        Self { shelf: 0, lines: ShelfLines::default(), shelves: Glide::new(Axis::Y), from: (1., 0.), moves: 0, goal: None }
+        Self { shelf: 0, lines: ShelfLines::default(), shelves: Glide::new(Axis::Y), from: (1., 0.), moves: 0 }
     }
 }
 
@@ -384,8 +441,8 @@ impl CollectionView {
         }
         let (tw, _) = self.console_tile_size();
         let wrap = look::theme().nav.wrap;
-        // Shelves and Cinema end a cut shelf with a "View all" tile.
-        let more = matches!(spec.layout, Layout::Shelves | Layout::Cinema);
+        // Shelves end a cut shelf with a "View all" tile.
+        let more = spec.layout == Layout::Shelves;
         let nav = nav(self.tab_nav(tab));
         nav.lines.fit(shelves.len());
         let si = nav.shelf.min(shelves.len() - 1);
@@ -426,10 +483,7 @@ impl CollectionView {
                 _ => ((ci as f32 - before as f32).signum(), 0.),
             };
         }
-        // Cinema glides its whole view itself (its game takes the top).
-        if spec.layout != Layout::Cinema {
-            nav.shelves.go(Goal::Start(si));
-        }
+        nav.shelves.go(Goal::Start(si));
         nav.lines.glides[si].go(Goal::Reveal { ix: ci, margin: tw * 0.6 });
         true
     }

@@ -52,7 +52,7 @@ fn sheet_rows(all: Vec<Row>, shots: usize) -> Vec<Row> {
 }
 
 /// A panel on the right over a light dim, sliding in. `id` restarts the slide.
-pub(super) fn side_sheet(id: &'static str, body: impl IntoElement) -> AnyElement {
+pub(in crate::collection::console) fn side_sheet(id: &'static str, body: impl IntoElement) -> AnyElement {
     let panel = div()
         .absolute()
         .top_0()
@@ -110,7 +110,14 @@ fn floating_sheet(id: &'static str, body: impl IntoElement) -> AnyElement {
 impl CollectionView {
     /// Presses `pad` on the row `id` of the game's actions as the Classic page
     /// does, so every page runs an action the same way.
-    pub(super) fn game_press_row(&mut self, key: &SharedString, id: &str, pad: Pad, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::collection::console) fn game_press_row(
+        &mut self,
+        key: &SharedString,
+        id: &str,
+        pad: Pad,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(g) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
         let rows = self.game_rows(&g, cx);
         let Some(ix) = rows.iter().position(|r| r.id.as_ref() == id) else { return };
