@@ -57,6 +57,7 @@ mod nav;
 mod onboarding;
 mod open_links;
 pub(crate) mod organize;
+mod page_settings;
 pub(crate) mod palette;
 mod pumps;
 mod render_focus;
@@ -69,6 +70,7 @@ mod script_install;
 mod scroll;
 mod section_menus;
 mod selection;
+mod setup_card;
 mod sideload_uninstall;
 mod smart_groups;
 mod steam_copy;
@@ -250,6 +252,8 @@ pub struct CollectionView {
     /// don't show at once).
     stuck_group: Option<usize>,
     selected: Option<SharedString>,
+    /// The selected game's settings in the Focus page's body (`page_settings.rs`).
+    page_settings: Option<page_settings::PageSettings>,
     /// Several games picked at once (`selection.rs`, the dock in `dock.rs`).
     sel: selection::Selection,
     /// The counts of the selection's Metadata menu (`metadata_menu.rs`).
@@ -452,6 +456,7 @@ impl CollectionView {
             row_heights: Default::default(),
             stuck_group: None,
             selected: None,
+            page_settings: None,
             sel: Default::default(),
             meta_menu: Default::default(),
             metadata_idle_opened: false,
@@ -647,6 +652,8 @@ impl CollectionView {
                 // The palette answers Esc itself.
             } else if self.page != crate::pages::Page::Collection {
                 self.page_escape(window, cx);
+            } else if self.page_settings_escape(window, cx) {
+                // The settings in the page answered it.
             } else {
                 // Heronite clears the selected game on Esc.
                 self.focus = None;
@@ -702,6 +709,7 @@ impl CollectionView {
         self.drive_palette(window, cx);
         crate::ui::glass::set_backdrop(self.glass_image(window));
         self.sync_nav_meta(cx);
+        self.sync_page_settings(window, cx);
         if crate::console::active() {
             return self.render_console(window, cx);
         }

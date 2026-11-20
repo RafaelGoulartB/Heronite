@@ -69,6 +69,21 @@ impl SettingsPanel {
         !self.is_steam() && self.facts().is_some_and(|f| f.game.is_some())
     }
 
+    /// "How the game starts" in a column of its own (the game page), shown
+    /// at once; [`Self::preview_aside`] draws it.
+    pub fn set_preview_aside(&mut self, cx: &mut Context<Self>) {
+        self.preview_aside = true;
+        if self.has_preview() {
+            self.open_preview(cx);
+        }
+    }
+
+    /// The column of [`Self::set_preview_aside`], when the game has a launch
+    /// to show.
+    pub fn preview_aside(&mut self, cx: &mut Context<Self>) -> Option<Div> {
+        (self.preview_aside && self.has_preview()).then(|| self.preview_section(cx))
+    }
+
     pub(super) fn open_preview(&mut self, cx: &mut Context<Self>) {
         self.preview.open = true;
         self.build_preview(cx);
@@ -226,7 +241,7 @@ fn mono(text: &str, color: impl Into<Hsla>) -> Div {
 pub(super) fn source_label(s: &Source) -> String {
     match s {
         Source::Setting(section, label) => format!("{} \u{203a} {label}", section.label()),
-        Source::Yours => format!("{} \u{203a} {}", Section::Launch.label(), tr!("Environment variables")),
+        Source::Yours => format!("{} \u{203a} {}", Section::Start.label(), tr!("Environment variables")),
         Source::Always => tr!("Every launch").to_string(),
     }
 }
@@ -283,7 +298,7 @@ fn describe(plan: &LaunchPlan, s: &GameSettings) -> Preview {
 
 /// The setting a variable comes from (`Always` when none does).
 fn source_of(name: &str, value: &str, s: &GameSettings) -> Source {
-    use Section::{Compatibility as C, Gpu as G, Launch as L, Performance as P};
+    use Section::{Compatibility as C, Graphics as G, Performance as P, Start as L};
     // The game's own variables win over everything (`DXVK_CONFIG` is merged).
     if s.env_options.iter().any(|(k, v)| k == name && v == value) {
         return Source::Yours;
@@ -293,7 +308,7 @@ fn source_of(name: &str, value: &str, s: &GameSettings) -> Source {
         return Source::Setting(G, "DXVK");
     }
     if let Some(key) = gpu::var_setting(name) {
-        return Source::Setting(G, gpu_label(key));
+        return Source::Setting(gpu_section(key), gpu_label(key));
     }
     if name.starts_with("LSFG") {
         return Source::Setting(P, tr!("Lossless Scaling frame generation"));
@@ -303,9 +318,9 @@ fn source_of(name: &str, value: &str, s: &GameSettings) -> Source {
         "PROTONPATH" => (C, tr!("Wine / Proton")),
         "WINEESYNC" | "WINEFSYNC" | "PROTON_NO_ESYNC" | "PROTON_NO_FSYNC" => (C, tr!("Sync")),
         "PROTON_ENABLE_WAYLAND" | "DISPLAY" => (C, tr!("Wayland driver")),
-        "PROTON_ENABLE_HDR" | "DXVK_HDR" => (C, "HDR"),
+        "PROTON_ENABLE_HDR" | "DXVK_HDR" => (G, "HDR"),
         "PROTON_USE_WOW64" | "WINEARCH" => (C, "WoW64"),
-        "PROTON_ENABLE_NVAPI" | "PROTON_DISABLE_NVAPI" | "DXVK_ENABLE_NVAPI" | "DXVK_NVAPI_ALLOW_OTHER_DRIVERS" => (C, "DXVK-NVAPI"),
+        "PROTON_ENABLE_NVAPI" | "PROTON_DISABLE_NVAPI" | "DXVK_ENABLE_NVAPI" | "DXVK_NVAPI_ALLOW_OTHER_DRIVERS" => (G, "DXVK-NVAPI"),
         "PROTON_EAC_RUNTIME" => (C, "Easy Anti-Cheat"),
         "PROTON_BATTLEYE_RUNTIME" => (C, "BattlEye"),
         "PRESSURE_VESSEL_FILESYSTEMS_RW" => (C, tr!("Folders visible to Proton")),
@@ -313,15 +328,24 @@ fn source_of(name: &str, value: &str, s: &GameSettings) -> Source {
         "DXVK_HUD" => (P, tr!("FPS counter")),
         "DXVK_FRAME_RATE" | "VKD3D_FRAME_RATE" => (P, tr!("FPS limit")),
         "MANGOHUD_CONFIG" | "MANGOHUD" => (P, "MangoHud"),
-        "WINE_FULLSCREEN_FSR" | "WINE_FULLSCREEN_FSR_STRENGTH" if s.enable_fsr => (P, tr!("Wine FSR")),
-        "PROTON_PREFER_SDL" => (P, tr!("Read controllers through SDL")),
+        "WINE_FULLSCREEN_FSR" | "WINE_FULLSCREEN_FSR_STRENGTH" if s.enable_fsr => (G, tr!("Wine FSR")),
+        "PROTON_PREFER_SDL" => (C, tr!("Read controllers through SDL")),
         "PROTON_LOG" | "WINEDEBUG" | "DXVK_LOG_LEVEL" | "VKD3D_DEBUG" if s.verbose_logs => (L, tr!("Detailed logs")),
         _ => return Source::Always,
     };
     Source::Setting(found.0, found.1)
 }
 
-/// The GPU tab's label of a setting key.
+/// The group of a graphics card setting: frame generation, latency and
+/// tweaks are Performance's, the rest Graphics'.
+fn gpu_section(key: &str) -> Section {
+    match key {
+        gpu::KEY_SMOOTH_MOTION | gpu::KEY_REFLEX | gpu::KEY_ANTI_LAG | gpu::KEY_SHADER_CACHE | gpu::KEY_GLTHREAD => Section::Performance,
+        _ => Section::Graphics,
+    }
+}
+
+/// The label of a graphics card setting key.
 fn gpu_label(key: &str) -> &'static str {
     match key {
         gpu::KEY_DEVICE => tr!("Draws the game"),

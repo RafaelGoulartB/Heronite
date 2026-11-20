@@ -169,7 +169,7 @@ impl SaveBackupsView {
 
     pub(super) fn render_console(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> AnyElement {
         let rows = self.console_rows();
-        let active = !self.layer.is_open();
+        let active = !self.layer.is_open() && self.console_active;
         div()
             .size_full()
             .child(self.console_list.render("console-save-backups", &rows, active).size_full())
@@ -200,6 +200,12 @@ impl SaveBackupsView {
 
     pub fn console_reset(&mut self) {
         self.console_list.reset();
+    }
+
+    /// Whether the rows have the focus (the game settings put the cloud
+    /// saves under them).
+    pub fn set_console_active(&mut self, on: bool) {
+        self.console_active = on;
     }
 
     /// Whether the tab takes `pad` before the dialog does: everything while
@@ -271,7 +277,7 @@ impl SaveBackupsView {
                     }
                 }
             },
-            Outcome::Ignored => return false,
+            Outcome::Ignored | Outcome::Edge(_) => return false,
             _ => {}
         }
         cx.notify();

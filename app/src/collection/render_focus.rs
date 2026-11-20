@@ -38,6 +38,8 @@ impl CollectionView {
         let mut focus_extras = self.focus_extras(&vm.key, scale, cx);
         focus_extras.media = self.store_media_section(lay.main_w, scale, cx);
         focus_extras.links = self.links_section(&vm.key, cx);
+        // The settings in the page take the body's place (the width beside the left column).
+        let page = self.page_settings_body(vw - list_w - lay.left_w - lay.offset - 100., cx);
         focus::focus_panel(
             focus::FocusProps {
                 vm,
@@ -53,6 +55,7 @@ impl CollectionView {
                 extras: focus_extras,
                 related_ui: self.facts.related.clone(),
                 details_ui: self.details_ui(cx),
+                page,
             },
             self.focus_actions(cx),
         )

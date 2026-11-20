@@ -1,21 +1,20 @@
-//! Console rows of the "GPU" tab (see `settings_panel::gpu`).
+//! Console rows of the graphics card (see `settings_panel::gpu`).
 
 use std::rc::Rc;
 
 use gpui_kit::*;
 
-use super::super::gpu::GpuRow;
+use super::super::gpu::{GpuPart, GpuRow};
 use super::{item, Act, Item, SettingsPanel};
 use crate::console::list::Row;
 
 impl SettingsPanel {
-    /// `steam`: a Steam game, whose rows follow the launch options' lock.
-    pub(super) fn c_gpu(&self, steam: bool) -> Vec<Item> {
-        let disabled = steam && !self.steam_fields_editable();
-        self.gpu_rows(disabled)
+    /// The rows of `part`. `disabled`: a Steam game whose launch options
+    /// cannot change now.
+    pub(super) fn c_gpu(&self, part: GpuPart, disabled: bool) -> Vec<Item> {
+        self.gpu_rows(part, disabled)
             .into_iter()
             .map(|r| match r {
-                GpuRow::Header(text) => Self::c_header(text),
                 GpuRow::Toggle { key, label, desc, enabled } => self.c_toggle(key, false, label, Some(&desc), !enabled),
                 GpuRow::Info { id, label, value } => Self::c_info(id, &label, value),
                 GpuRow::Choice { id, label, desc, options, selected, enabled, pick } => {
@@ -32,10 +31,10 @@ impl SettingsPanel {
             .collect()
     }
 
-    pub(super) fn c_steam_gpu(&self) -> Vec<Item> {
+    pub(super) fn c_steam_graphics(&self, cx: &App) -> Vec<Item> {
         let mut v = self.c_steam_status();
         if self.steam.as_ref().is_some_and(|s| s.editable) {
-            v.extend(self.c_gpu(true));
+            v.extend(self.c_graphics(true, cx));
         }
         v
     }
