@@ -151,6 +151,15 @@ impl Glide {
         };
         let first = self.handle.bounds_for_item(0)?;
         let item = self.handle.bounds_for_item(ix)?;
+        // A child with no size along the axis was not drawn last frame (a
+        // row of a group that just opened): wait for its layout.
+        let size = match self.axis {
+            Axis::X => item.size.width,
+            Axis::Y => item.size.height,
+        };
+        if size <= px(0.) {
+            return None;
+        }
         let (start, end, view) = match self.axis {
             Axis::X => (item.left() - first.left(), item.right() - first.left(), self.handle.bounds().size.width),
             Axis::Y => (item.top() - first.top(), item.bottom() - first.top(), self.handle.bounds().size.height),

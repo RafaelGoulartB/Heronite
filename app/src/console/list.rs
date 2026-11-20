@@ -67,6 +67,8 @@ pub struct Row {
     /// What a closed group says under its parent's label; without it, its
     /// sub-settings' values ([`group_summary`]).
     pub summary: Option<SharedString>,
+    /// Its group folds even with a single sub-setting ([`Row::always_folds`]).
+    pub folding: bool,
 }
 
 impl Row {
@@ -85,6 +87,7 @@ impl Row {
             verb: None,
             parent: None,
             summary: None,
+            folding: false,
         }
     }
     pub fn action(id: impl Into<SharedString>, label: impl Into<SharedString>) -> Self {
@@ -159,6 +162,12 @@ impl Row {
         self.summary = (!text.is_empty()).then_some(text);
         self
     }
+    /// Its group folds even when it holds a single sub-setting (a parent
+    /// whose sub-settings come and go, so A keeps one meaning).
+    pub fn always_folds(mut self) -> Self {
+        self.folding = true;
+        self
+    }
     /// The word a card list writes at the end of an action row.
     pub fn verb(mut self, v: impl Into<SharedString>) -> Self {
         self.verb = Some(v.into());
@@ -192,7 +201,8 @@ fn kid_count(rows: &[Row], i: usize) -> usize {
 /// Whether row `i` opens a group that folds: two sub-settings or more (a
 /// single one always shows under its parent).
 pub fn folds(rows: &[Row], i: usize) -> bool {
-    kid_count(rows, i) >= 2
+    let n = kid_count(rows, i);
+    n >= 2 || (n == 1 && rows[i].folding)
 }
 
 /// A child's value in a line ("Region: Europe", "Find by name: On").
@@ -209,7 +219,8 @@ fn value_note(r: &Row) -> Option<String> {
 /// Whether a sub-setting of row `i` warns (its summary then does too).
 pub fn group_danger(rows: &[Row], i: usize) -> bool {
     let Some(id) = rows.get(i).map(|r| &r.id) else { return false };
-    rows[i + 1..].iter().take_while(|r| r.parent.as_ref() == Some(id)).any(|r| r.danger)
+    // A destructive action ("Clear favourites") is not a warning.
+    rows[i + 1..].iter().take_while(|r| r.parent.as_ref() == Some(id)).any(|r| r.danger && r.value != Value::Action)
 }
 
 /// What the closed group of row `i` says: its own summary, else its
@@ -279,6 +290,9 @@ pub struct ListNav {
     reveal: bool,
     /// Drawn once (the first reveal jumps instead of gliding).
     shown: bool,
+    /// Renders left that bring the focus into view again, once the rows a
+    /// group just opened have their layout.
+    settle: u8,
     style: RowStyle,
     /// The groups open (by their parent's id); kept across [`Self::reset`],
     /// so a section shows its groups as they were left.
@@ -287,7 +301,15 @@ pub struct ListNav {
 
 impl Default for ListNav {
     fn default() -> Self {
-        Self { focus: 0, glide: Glide::new(Axis::Y), reveal: true, shown: false, style: RowStyle::Pill, open: Default::default() }
+        Self {
+            focus: 0,
+            glide: Glide::new(Axis::Y),
+            reveal: true,
+            shown: false,
+            settle: 0,
+            style: RowStyle::Pill,
+            open: Default::default(),
+        }
     }
 }
 
@@ -664,15 +686,20 @@ impl ListNav {
         lead: Option<Vec<Pad>>,
         mut draw: impl FnMut(usize, &Row, bool) -> AnyElement,
     ) -> Stateful<Div> {
+        // A little of the rows around the focus stays in sight.
+        let goal = Goal::Reveal { ix: self.focus, margin: 34. };
         if self.reveal && active {
             self.reveal = false;
-            // A little of the rows around the focus stays in sight.
-            let goal = Goal::Reveal { ix: self.focus, margin: 34. };
+            self.settle = 3;
             if self.shown {
                 self.glide.go(goal);
             } else {
                 self.glide.jump(goal);
             }
+        } else if self.settle > 0 && active {
+            // The rows measured last frame may predate a group opening.
+            self.settle -= 1;
+            self.glide.go(goal);
         }
         self.shown = true;
         let can: Vec<bool> = (0..rows.len()).map(|i| self.can_focus(rows, i)).collect();
@@ -802,7 +829,7 @@ pub fn render_row_in(
     let note = summary.map(|s| (s, place.warn));
     let row = render_row_full(r, focused, route, note, None, false);
     match place.group {
-        Some(open) => row.child(chevron(&r.id, open, chevron_pads)),
+        Some(open) => row.child(chevron(&r.id, open, focused, chevron_pads)),
         None => row,
     }
 }
@@ -970,14 +997,22 @@ fn card_value(r: &Row, route: Option<&[Pad]>, usable: bool) -> AnyElement {
 /// The open / closed mark of a group: ⌄ closed, ⌃ open (crossing between
 /// them); a click sends `pads`. An action's "›" stays for what opens
 /// something else.
-fn chevron(id: &SharedString, open: bool, pads: Vec<Pad>) -> AnyElement {
-    let mark = div().flex_none().size(u(28.)).flex().items_center().justify_center().rounded_full().bg(kit::ink(0.08));
-    let mark = motion::spring(SharedString::from(format!("chev-{id}")), mark, motion::SOFT, open, |d, k| {
-        let k = k.clamp(0., 1.);
-        // Two icons crossing over: the fonts have no rotation.
-        d.child(div().absolute().opacity(1. - k).child(icon(Icon::ExpandMore, u(20.), theme::text_muted())))
-            .child(div().absolute().opacity(k).child(icon(Icon::ExpandLess, u(20.), theme::text_muted())))
-    });
+fn chevron(id: &SharedString, open: bool, on_pill: bool, pads: Vec<Pad>) -> AnyElement {
+    // On the light focus pill of a bare row it takes the pill's text colour.
+    let (ink, fill): (Hsla, Hsla) = if on_pill {
+        let c: Hsla = theme::console_on_focus().into();
+        (c, Hsla { a: 0.12, ..c })
+    } else {
+        (theme::text_muted().into(), kit::ink(0.08))
+    };
+    let mark = div().flex_none().size(u(28.)).flex().items_center().justify_center().rounded_full().bg(fill);
+    let mark =
+        motion::spring(SharedString::from(format!("chev-{id}")), mark, motion::SOFT, open, move |d, k| {
+            let k = k.clamp(0., 1.);
+            // Two icons crossing over: the fonts have no rotation.
+            d.child(div().absolute().opacity(1. - k).child(icon(Icon::ExpandMore, u(20.), ink)))
+                .child(div().absolute().opacity(k).child(icon(Icon::ExpandLess, u(20.), ink)))
+        });
     div().flex_none().relative().p(u(4.)).m(u(-4.)).child(mark).on_pads(pads).into_any_element()
 }
 
@@ -1042,7 +1077,7 @@ pub fn render_card_in(
         .when(place.body, |d| d.rounded_bl(px(0.)).rounded_br(px(0.)))
         .child(text.opacity(fade))
         .child(div().flex().flex_none().max_w(relative(0.55)).justify_end().opacity(fade).child(value))
-        .children(place.group.map(|open| chevron(&r.id, open, chevron_pads)))
+        .children(place.group.map(|open| chevron(&r.id, open, false, chevron_pads)))
 }
 
 /// A sub-setting inside its parent's card.
@@ -1283,6 +1318,22 @@ mod tests {
             assert!(!matches!(nav.on_pad(Pad::Left, &r), Outcome::Changed(..)));
         }
         assert!(!nav.shows(&r, 1));
+    }
+
+    #[test]
+    fn a_parent_can_fold_a_single_sub_setting_and_actions_do_not_warn() {
+        use super::{folds, group_danger};
+        let mut r = vec![
+            Row::number("limit", "Limit", 30, 0, 60, 10, "").always_folds(),
+            Row::choice("how", "How", vec!["A".into()], 0).child_of("limit"),
+            Row::group("fav", "Favourites"),
+            Row::info("f1", "Game", "").child_of("fav"),
+            Row::action("clear", "Clear").danger().child_of("fav"),
+        ];
+        assert!(folds(&r, 0), "folds with one sub-setting");
+        assert!(!group_danger(&r, 2), "a destructive action is not a warning");
+        r[3].danger = true;
+        assert!(group_danger(&r, 2));
     }
 
     #[test]
