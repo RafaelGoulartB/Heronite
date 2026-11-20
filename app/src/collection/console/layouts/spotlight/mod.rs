@@ -672,13 +672,16 @@ impl CollectionView {
             Some(g) => {
                 page = page.children(self.spotlight_head(g, &shape, &focus, strips[0], window));
                 if lift > 0.01 {
-                    page = page.children(self.spotlight_below(g, &shape, &focus, strips, window, cx));
+                    page = page.children(self.spotlight_below(g, &shape, &focus, strips, None, window, cx));
                 } else {
-                    // On the row the sidebar peeks in beside the strip, as
-                    // the page going on below (no focus until it is reached).
-                    let side = div().absolute().inset_0().children(self.spotlight_mid(g, &shape, &focus, true, cx));
+                    // On the row each column's first section peeks in at the
+                    // bottom, as the page going on below (no focus until it
+                    // is reached; the store strip is part of the head).
+                    let first = shape.first_left().filter(|z| *z != Zone::Media);
+                    let peek =
+                        div().absolute().inset_0().children(self.spotlight_below(g, &shape, &focus, strips, Some(first), window, cx));
                     page =
-                        page.child(reveal(SharedString::from(format!("spot-side-{}", shape.key)), side, focus.rest_hold, REST_FADE, None));
+                        page.child(reveal(SharedString::from(format!("spot-peek-{}", shape.key)), peek, focus.rest_hold, REST_FADE, None));
                 }
             }
             None => page = page.child(self.spotlight_all_games(from)),
@@ -702,7 +705,7 @@ impl CollectionView {
         // On the row the strip and the art under it dissolve into the dark
         // towards the bottom edge, where the hints float: one gradient down
         // the strip, a darker one under it, meeting at the same shade.
-        let veil = ((shape.media > 0 || shape.has_side()) && lift < 0.99).then(|| {
+        let veil = ((shape.first_left().is_some() || shape.has_side()) && lift < 0.99).then(|| {
             let top = shape.geo.media + page::TILE_H * 0.1 - rise;
             let foot = (view_h - TOP_BAR - 96.).max(top + 40.);
             let mid = 0.7;
@@ -839,20 +842,24 @@ impl CollectionView {
         )
     }
 
-    /// The sections under the head, while the page has risen.
+    /// The sections under the head, while the page has risen; `only`: on the
+    /// row, the sidebar and only that one of the left column (none: `None`).
+    #[allow(clippy::too_many_arguments)]
     fn spotlight_below(
         &mut self,
         g: &CollectionGame,
         shape: &Shape,
         f: &Focus,
         strips: [f32; 3],
+        only: Option<Option<Zone>>,
         window: &Window,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let geo = shape.geo;
+        let shows = |z: Zone| only.is_none_or(|o| o == Some(z));
         let mut out = Vec::new();
-        out.extend(self.spotlight_mid(g, shape, f, false, cx));
-        if shape.cards > 0 {
+        out.extend(self.spotlight_mid(g, shape, f, !shows(Zone::About), cx));
+        if shape.cards > 0 && shows(Zone::Cards) {
             let cards = self.spotlight_cards(g);
             let row =
                 div().absolute().top(u(geo.cards)).left(u(SIDE)).flex().gap(u(18.)).children(cards.iter().enumerate().map(|(i, c)| {
@@ -864,10 +871,10 @@ impl CollectionView {
                 }));
             out.push(row.into_any_element());
         }
-        if shape.shots > 0 {
+        if shape.shots > 0 && shows(Zone::Shots) {
             out.push(self.spotlight_shots(shape, f));
         }
-        if !shape.related.is_empty() {
+        if !shape.related.is_empty() && shows(Zone::Related) {
             let w = page::COVER_W;
             let h = w * self.cover_aspect;
             let step = w + page::STRIP_GAP;
@@ -1090,7 +1097,9 @@ impl CollectionView {
         }
         // The sidebar, beside the left column from its first section down.
         if shape.has_side() {
-            out.push(div().absolute().top(u(geo.side)).left(u(SIDE + geo.left + page::COLUMN_GAP)).child(column).into_any_element());
+            // Beside the left column, or in its place when it has nothing.
+            let x = if shape.first_left().is_some() { SIDE + geo.left + page::COLUMN_GAP } else { SIDE };
+            out.push(div().absolute().top(u(geo.side)).left(u(x)).child(column).into_any_element());
         }
         out
     }

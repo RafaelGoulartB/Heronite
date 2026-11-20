@@ -228,8 +228,9 @@ impl Shape {
     /// Lays the page out: `row` the row's height, `logo_h` the logo's box,
     /// `width` the page's, `cover_h` a cover's of More like this.
     pub fn layout(&mut self, row: f32, logo_h: f32, width: f32, cover_h: f32) {
-        // Without a sidebar the left column takes the whole page.
-        let left = if self.has_side() { left_width(width) } else { width };
+        // Without a sidebar the left column takes the whole page (and the
+        // sidebar has the left's place when that has nothing).
+        let left = if self.has_side() && self.first_left().is_some() { left_width(width) } else { width };
         let mut g = Geo { logo: row + 2., logo_h, width, left, ..Geo::default() };
         g.buttons = g.logo + logo_h + 16.;
         g.facts = g.buttons + BUTTON_H + 18.;
@@ -294,6 +295,20 @@ impl Shape {
         }
         g.end = left_end.max(sy) + 30.;
         self.geo = g;
+    }
+
+    /// The first section of the left column that shows anything, in page
+    /// order (what peeks in at the bottom of the home).
+    pub fn first_left(&self) -> Option<Zone> {
+        [
+            (Zone::Media, self.media > 0),
+            (Zone::Shots, self.shots > 0),
+            (Zone::About, self.about),
+            (Zone::Cards, self.cards > 0),
+            (Zone::Related, !self.related.is_empty()),
+        ]
+        .into_iter()
+        .find_map(|(z, has)| has.then_some(z))
     }
 
     /// Whether the sidebar has anything to show (Achievements, Details, How Long To Beat).
@@ -533,6 +548,26 @@ mod tests {
         assert!(!n.has_side() && n.geo.left == n.geo.width);
         assert!(!n.zones().contains(&Zone::Side));
         assert_eq!(n.shots_shown, 0);
+    }
+
+    #[test]
+    fn whatever_comes_first_on_the_left_starts_beside_the_sidebar() {
+        // Media off: the screenshots card comes first, level with the sidebar.
+        let mut s = Shape { media: 0, shots: 12, ..shape() };
+        s.layout(172., 150., 1500., 192.);
+        assert_eq!(s.first_left(), Some(Zone::Shots));
+        assert_eq!(s.geo.shots, s.geo.side);
+        assert_eq!(s.zones()[2], Zone::Shots);
+        // Media and screenshots off: About this game.
+        let mut a = Shape { media: 0, shots: 0, ..shape() };
+        a.layout(172., 150., 1500., 192.);
+        assert_eq!(a.first_left(), Some(Zone::About));
+        assert_eq!(a.geo.about, a.geo.side);
+        // Nothing on the left: the sidebar takes the whole width.
+        let mut n = Shape { media: 0, shots: 0, about: false, related: Vec::new(), ..shape() };
+        n.layout(172., 150., 1500., 192.);
+        assert_eq!(n.first_left(), None);
+        assert!(n.has_side() && n.geo.left == n.geo.width);
     }
 
     #[test]
