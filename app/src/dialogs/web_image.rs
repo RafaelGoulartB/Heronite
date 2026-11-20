@@ -171,7 +171,7 @@ impl WebImageDialog {
                         this.results = list;
                         // `HERONITE_DEBUG_PICK_ANIMATED=1`: the first animated one picked (captures).
                         if crate::env::flag("HERONITE_DEBUG_PICK_ANIMATED") {
-                            this.selected = this.results.steamgrid.iter().position(|i| i.animated).map(|i| (Source::SteamGrid, i));
+                            this.selected = this.images(Source::SteamGrid).iter().position(|i| i.animated).map(|i| (Source::SteamGrid, i));
                         }
                     }
                     Err(err) => this.error = format!("{err:#}"),
@@ -390,11 +390,13 @@ impl Render for WebImageDialog {
                 kind_label
             )))
             .child(toolbar)
-            .child(grid)
-            // An animated background picked while they are off: it will show still.
-            .children(super::animated_art::hint("wi-animated", picked_animated, cx, |this: &mut Self, cx| {
-                super::animated_art::turn_on(&this.app, cx)
-            }));
+            .child(grid);
+        // An animated background picked while they are off: it will show
+        // still. In the footer, whose height does not change, so the dialog
+        // never moves the picture being clicked.
+        let hint = super::animated_art::hint("wi-animated", picked_animated, cx, |this: &mut Self, cx| {
+            super::animated_art::turn_on(&this.app, cx)
+        });
         if !self.error.is_empty() {
             body = body.child(
                 div()
@@ -409,8 +411,14 @@ impl Render for WebImageDialog {
         }
 
         let footer = div()
+            .w_full()
             .flex()
+            .items_center()
             .gap(px(16.))
+            .child(match hint {
+                Some(h) => h.flex_1().min_w_0(),
+                None => div().flex_1(),
+            })
             .child(action_button(
                 "wi-cancel",
                 ButtonKind::Ghost,

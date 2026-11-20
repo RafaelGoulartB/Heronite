@@ -32,7 +32,7 @@ fn can_download() -> bool {
 
 /// `HERONITE_DEBUG_NO_FFMPEG`: ffmpeg counts as missing.
 pub(super) fn debug_no_ffmpeg() -> bool {
-    crate::env::value("HERONITE_DEBUG_NO_FFMPEG").is_some()
+    crate::env::flag("HERONITE_DEBUG_NO_FFMPEG")
 }
 
 impl CollectionView {
@@ -96,13 +96,8 @@ impl CollectionView {
         } else {
             button_sm("ffmpeg-check", ButtonKind::Primary, tr!("Check again")).on_click(act(Self::live_check_ffmpeg))
         };
-        let error = self.live.ffmpeg_error.clone().map(|e| {
-            div()
-                .text_size(px(12.))
-                .line_height(px(16.))
-                .text_color(theme::danger_text())
-                .child(tr!("Could not install it: {error}", error = e))
-        });
+        let error =
+            self.live.ffmpeg_error.clone().map(|e| div().text_size(px(12.)).line_height(px(16.)).text_color(theme::danger_text()).child(e));
         panel
             .child(title(tr!("Animated backgrounds need ffmpeg")))
             .child(detail(tr!(
@@ -147,7 +142,9 @@ impl CollectionView {
                     Ok(()) => this.live.ffmpeg = Some(true),
                     Err(e) => {
                         log::warn!("ffmpeg download: {e}");
-                        this.live.ffmpeg_error = Some(e);
+                        this.live.ffmpeg_error = Some(tr!("Could not install it: {error}", error = e));
+                        // Said where it was asked for, without another hover.
+                        this.open_menu = Some(Menu::Ffmpeg);
                     }
                 }
                 cx.notify();
@@ -168,6 +165,11 @@ impl CollectionView {
                 .await;
             this.update(cx, |this, cx| {
                 this.live.ffmpeg = Some(found);
+                this.live.ffmpeg_error = (!found).then(|| tr!("ffmpeg is still not found.").to_string());
+                // The answer, where it was asked for.
+                if !found {
+                    this.open_menu = Some(Menu::Ffmpeg);
+                }
                 cx.notify();
             })
             .ok();
@@ -177,6 +179,7 @@ impl CollectionView {
 
     /// Turns "Animated backgrounds" off: nothing needs ffmpeg any more.
     fn live_turn_off(&mut self, cx: &mut Context<Self>) {
+        self.live.ffmpeg_error = None;
         crate::dialogs::animated_art::set(&self.app_paths, false, cx);
     }
 }

@@ -61,7 +61,8 @@ pub(super) struct LiveStage {
     /// Whether ffmpeg is there (asked off the UI thread once).
     pub(super) ffmpeg: Option<bool>,
     /// A background that moves is shown and ffmpeg is missing: the ffmpeg
-    /// pill says so (`ffmpeg_pill.rs`). Asked again every frame.
+    /// pill says so (`ffmpeg_pill.rs`). Kept while the next picture is being
+    /// looked at, so the pill does not blink from game to game.
     pub(super) wants_ffmpeg: bool,
     /// ffmpeg is being downloaded from the pill.
     pub(super) getting_ffmpeg: bool,
@@ -88,6 +89,15 @@ struct Playing {
     generation: u64,
 }
 
+/// What a background is, as far as [`CollectionView::live_path`] knows.
+enum Known {
+    /// Being looked at off the UI thread.
+    Asking,
+    Still,
+    /// The file that plays.
+    Moves(PathBuf),
+}
+
 /// The look a frame gets: the still stage's (blur already scaled to the frame).
 struct Look {
     blur: f32,
@@ -101,7 +111,6 @@ impl CollectionView {
     /// no longer draws stops.
     pub(super) fn sync_live_stage(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.live.draw_asked = None;
-        self.live.wants_ffmpeg = false;
         if std::mem::take(&mut self.live.wants_activation) && self.live.activation.is_none() {
             self.live.activation = Some(cx.observe_window_activation(window, |_, _, cx| cx.notify()));
         }
@@ -116,6 +125,7 @@ impl CollectionView {
             let _ = window.drop_image(old);
         }
         if !std::mem::take(&mut self.live.seen) {
+            self.live.wants_ffmpeg = false;
             self.stop_live_stage();
         }
     }
@@ -138,13 +148,22 @@ impl CollectionView {
     ) -> Option<(SharedString, ImageSource)> {
         self.live.seen = true;
         if !crate::theme::appearance().animated_backgrounds || !crate::theme::animations() {
+            self.live.wants_ffmpeg = false;
             self.stop_live_stage();
             return None;
         }
         // A still picture (or one not known yet) stops what played before.
-        let Some(path) = self.live_path(picture, chain, cx) else {
-            self.stop_live_stage();
-            return None;
+        let path = match self.live_path(picture, chain, cx) {
+            Known::Moves(path) => path,
+            Known::Still => {
+                self.live.wants_ffmpeg = false;
+                self.stop_live_stage();
+                return None;
+            }
+            Known::Asking => {
+                self.stop_live_stage();
+                return None;
+            }
         };
         let ffmpeg = self.live.ffmpeg.map(|f| f && !super::ffmpeg_pill::debug_no_ffmpeg());
         // It would move: the header says what is missing.
@@ -174,14 +193,14 @@ impl CollectionView {
 
     /// The file `chain` plays (its first file, when it moves), once known;
     /// asks for it off the UI thread the first time.
-    fn live_path(&mut self, picture: &str, chain: &[ImageRef], cx: &mut Context<Self>) -> Option<PathBuf> {
+    fn live_path(&mut self, picture: &str, chain: &[ImageRef], cx: &mut Context<Self>) -> Known {
         let first = chain.iter().find_map(|c| match c {
             ImageRef::File(p) => Some(p.clone()),
             _ => None,
         });
         let id = (picture.to_owned(), first);
         if let Some(known) = self.live.known.get(&id) {
-            return known.clone();
+            return known.clone().map_or(Known::Still, Known::Moves);
         }
         if self.live.asking.insert(id.clone()) {
             let chain = chain.to_vec();
@@ -206,7 +225,7 @@ impl CollectionView {
             })
             .detach();
         }
-        None
+        Known::Asking
     }
 
     fn start_live_stage(&mut self, key: String, path: PathBuf, (width, height): (u32, u32), look: Look, cx: &mut Context<Self>) {
