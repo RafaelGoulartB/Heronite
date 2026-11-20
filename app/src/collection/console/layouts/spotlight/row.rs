@@ -20,10 +20,10 @@ use crate::icons::Icon;
 use crate::theme;
 
 /// Side of an icon and of the focused one (square, medium covers), design px.
-const ICON: f32 = 92.;
-const ICON_ON: f32 = 130.;
+const ICON: f32 = 120.;
+const ICON_ON: f32 = 148.;
 /// Between two icons, design px.
-const GAP: f32 = 14.;
+const GAP: f32 = 16.;
 /// Room above the icons (for the focus ring and its glow), design px.
 const PAD: f32 = 12.;
 /// The name under the focused icon: its size, the space above it and its widest, design px.

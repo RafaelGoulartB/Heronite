@@ -619,7 +619,7 @@ impl CollectionView {
         }
         // The art darkens as the page rises, more deeper in it.
         let dim = (lift > 0.005).then(|| {
-            div().absolute().top(u(-TOP_BAR)).left_0().right_0().bottom_0().bg(linear_gradient(
+            div().absolute().top(u(-TOP_BAR)).left_0().right_0().h(u(view_h)).bg(linear_gradient(
                 0.,
                 linear_color_stop(kit::dim(0.35 * lift + 0.4 * deep), 0.),
                 linear_color_stop(kit::dim(0.18 * lift + 0.3 * deep), 1.),
@@ -633,14 +633,32 @@ impl CollectionView {
                 linear_color_stop(kit::dim(0.), 1.),
             ))
         });
-        // On the row the strip dissolves downwards into the dark: there is more below.
+        // On the row the strip and the art under it dissolve into the dark
+        // towards the bottom edge, where the hints float: one gradient down
+        // the strip, a darker one under it, meeting at the same shade.
         let veil = (shape.media > 0 && lift < 0.99).then(|| {
-            let top = shape.geo.media + page::TILE_H * 0.15 - rise;
-            div().absolute().top(u(top)).left_0().right_0().bottom_0().opacity(1. - lift).bg(linear_gradient(
-                180.,
-                linear_color_stop(kit::dim(0.), 0.),
-                linear_color_stop(kit::dim(0.82), 1.),
-            ))
+            let top = shape.geo.media + page::TILE_H * 0.1 - rise;
+            let foot = (view_h - TOP_BAR - 96.).max(top + 40.);
+            let mid = 0.7;
+            // To the window's bottom edge, under a hint bar that takes its own room too.
+            let end = view_h - TOP_BAR;
+            div()
+                .absolute()
+                .top(u(top))
+                .left_0()
+                .right_0()
+                .h(u(end - top))
+                .opacity(1. - lift)
+                .child(div().absolute().top_0().left_0().right_0().h(u(foot - top)).bg(linear_gradient(
+                    180.,
+                    linear_color_stop(kit::dim(0.), 0.),
+                    linear_color_stop(kit::dim(mid), 1.),
+                )))
+                .child(div().absolute().top(u(foot - top)).left_0().right_0().h(u(end - foot)).bg(linear_gradient(
+                    180.,
+                    linear_color_stop(kit::dim(mid), 0.),
+                    linear_color_stop(kit::dim(0.94), 1.),
+                )))
         });
         let mut root = div().relative().size_full().children(dim).child(page).children(veil).children(top_fade);
         if let (Some(i), false) = (viewer, shape.media_shots) {
