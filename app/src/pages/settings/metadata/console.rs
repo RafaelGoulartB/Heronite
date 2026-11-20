@@ -179,6 +179,7 @@ pub(in crate::pages::settings) fn console_apply(
             if let Some(source) = id.strip_prefix("place:") {
                 move_source(d, source, (value - 1).max(0) as usize, cx);
                 // The rows moved: the focus follows the source, not its old place.
+                super::ensure_rows(d, window, cx);
                 let rows = console_rows(d, cx);
                 d.console.list.focus_id(&rows, &id);
             }
