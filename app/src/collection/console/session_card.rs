@@ -150,7 +150,9 @@ impl CollectionView {
         }
         if ui.pending.is_some() && self.lib.is_some() {
             // The launch screen first; a game in front does not count.
-            if window.is_window_active() && self.console.launch.cover_is_none() {
+            // (`HERONITE_DEBUG_FAKE_SESSION` runs on a hidden workspace: as if in front.)
+            let front = window.is_window_active() || crate::env::value("HERONITE_DEBUG_FAKE_SESSION").is_some();
+            if front && self.console.launch.cover_is_none() {
                 let since = *self.console.session.front_since.get_or_insert_with(Instant::now);
                 if since.elapsed() >= DELAY {
                     let ended = self.console.session.pending.take().expect("checked");

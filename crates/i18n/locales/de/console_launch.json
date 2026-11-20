@@ -1,6 +1,10 @@
 {
   "<1m": "<1 Min.",
+  "Back to console": "Zurück zum Konsolenmodus",
+  "Progress the game has not saved is lost. Heronite saves the playtime so far.": "Fortschritt, den das Spiel nicht gespeichert hat, geht verloren. Heronite speichert die bisherige Spielzeit.",
   "Session ended": "Sitzung beendet",
+  "Stop game": "Spiel beenden",
   "this session": "diese Sitzung",
-  "total": "insgesamt"
+  "total": "insgesamt",
+  "{total} total": "{total} insgesamt"
 }

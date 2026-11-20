@@ -274,6 +274,10 @@ impl CollectionView {
             return self.cancel_launch(&game.app_name, cx);
         }
         if self.playing.contains_key(&game.app_name) {
+            // Console mode: Play on a game that runs is its Now Playing (Stop is there).
+            if crate::console::active() && self.playing.get(&game.app_name) == Some(&true) && self.show_now_playing(game) {
+                return;
+            }
             if !self.runtime.stop(&game.app_name) {
                 self.runtime.force_clear(&game.app_name);
             }

@@ -42,8 +42,9 @@ const ERROR_HOLD: Duration = Duration::from_secs(10);
 /// Launch events within this long of console mode starting are the ones
 /// the runtime replays for a window that just opened, not new launches.
 const REPLAY_WINDOW: Duration = Duration::from_millis(1500);
-/// The name stands in for the logo when none came by then.
-const NAME_AFTER: Duration = Duration::from_millis(1200);
+/// The name stands in for the logo when none came by then (a logo that
+/// comes later still replaces it, coming in on its own).
+const NAME_AFTER: Duration = Duration::from_millis(2500);
 /// How often the screen checks whether the game is in front.
 const TICK: Duration = Duration::from_millis(250);
 /// How often the desktop is asked for the game's window.
@@ -59,9 +60,11 @@ const LOGO_RISE: f32 = 26.;
 /// To black, then out.
 const BLACKOUT_MS: u64 = 300;
 const OUT_MS: u64 = 300;
-/// The art's drift: from this scale to that one over this long.
-const ART_FROM: f32 = 1.04;
-const ART_TO: f32 = 1.12;
+/// The art's drift: art this much larger than the screen, its left edge
+/// panning from the first to the second (parts of the screen's width) over
+/// this long.
+const ART_SCALE: f32 = 1.08;
+const ART_PAN: (f32, f32) = (-0.06, -0.02);
 const ART_DRIFT: Duration = Duration::from_secs(20);
 /// The logo's box, design px (the logo is fitted in it, enlarged when
 /// smaller).
@@ -130,6 +133,16 @@ fn decide(f: Facts) -> Verdict {
     }
 }
 
+/// The name's size when there is no logo: large, a step smaller when long,
+/// so it takes one or two lines.
+fn name_size(chars: usize) -> f32 {
+    match chars {
+        0..=18 => 76.,
+        19..=32 => 60.,
+        _ => 46.,
+    }
+}
+
 /// The darkening over the art.
 fn shade_alpha(shade: LaunchShade) -> f32 {
     match shade {
@@ -186,6 +199,8 @@ pub(super) struct Cover {
     piece: Option<(bool, Instant)>,
     /// `HERONITE_DEBUG_LAUNCH_SCREEN`: stays until B, nothing was launched.
     frozen: bool,
+    /// The game runs and was in front: the screen is Now Playing.
+    playing: Option<super::now_playing::NowPlaying>,
 }
 
 /// Console mode's launch screen.
@@ -196,17 +211,47 @@ pub(super) struct LaunchUi {
     seq: u64,
     ticker: Option<Task<()>>,
     debug_done: bool,
+    pub(super) debug_np_done: bool,
 }
 
 impl Default for LaunchUi {
     fn default() -> Self {
-        Self { born: Instant::now(), cover: None, seq: 0, ticker: None, debug_done: false }
+        Self { born: Instant::now(), cover: None, seq: 0, ticker: None, debug_done: false, debug_np_done: false }
     }
 }
 
 impl LaunchUi {
     pub(super) fn cover_is_none(&self) -> bool {
         self.cover.is_none()
+    }
+
+    /// Now Playing, when the screen is it: the game's app name and pid.
+    pub(super) fn playing_mut(&mut self) -> Option<(&String, Option<u32>, &mut super::now_playing::NowPlaying)> {
+        let c = self.cover.as_mut().filter(|c| c.leaving.is_none())?;
+        let pid = c.pid;
+        let np = c.playing.as_mut()?;
+        Some((&c.app_name, pid, np))
+    }
+
+    /// The screen as Now Playing for `game` (it runs since `running_at`).
+    pub(super) fn now_playing_for(&mut self, game: &CollectionGame, pid: Option<u32>, running_at: Instant, frozen: bool) {
+        self.seq += 1;
+        self.cover = Some(Cover {
+            key: game.key.clone().into(),
+            app_name: game.app_name.clone(),
+            title: game.title.clone().into(),
+            since: Instant::now(),
+            id: self.seq,
+            pid,
+            running_at: Some(running_at),
+            failed: None,
+            probe: Probe::Unsupported,
+            probed_at: None,
+            leaving: None,
+            piece: None,
+            frozen,
+            playing: Some(super::now_playing::NowPlaying { was_active: true, ..Default::default() }),
+        });
     }
 }
 
@@ -240,6 +285,18 @@ impl CollectionView {
                     Some(c) => {
                         c.pid = Some(*pid);
                         c.running_at.get_or_insert_with(Instant::now);
+                        // A made-up session's pid 1: nothing to ask the desktop.
+                        if *pid <= 1 {
+                            c.probe = Probe::Unsupported;
+                        }
+                    }
+                    // The window opened again while the game runs (the
+                    // runtime replays it): Now Playing.
+                    None if self.console.launch.born.elapsed() < REPLAY_WINDOW => {
+                        let at = super::now_playing::started_at(app_name);
+                        if let (Some(at), Some(game)) = (at, self.game_of_app(app_name)) {
+                            self.console.launch.now_playing_for(&game, Some(*pid), at, false);
+                        }
                     }
                     // Nothing covers the start: minimize on launch need not wait.
                     None => cx.defer(crate::system::hide_after_cover),
@@ -273,7 +330,8 @@ impl CollectionView {
         if look::theme().launch.screen == LaunchScreen::Off || self.console.launch.born.elapsed() < REPLAY_WINDOW {
             return;
         }
-        if !crate::system::console_in_front(cx) {
+        // `HERONITE_DEBUG_FAKE_SESSION` runs on a hidden workspace: as if in front.
+        if !crate::system::console_in_front(cx) && crate::env::value("HERONITE_DEBUG_FAKE_SESSION").is_none() {
             return;
         }
         let Some(game) = self.game_of_app(app_name) else { return };
@@ -297,6 +355,7 @@ impl CollectionView {
             leaving: None,
             piece: None,
             frozen,
+            playing: None,
         });
     }
 
@@ -307,7 +366,7 @@ impl CollectionView {
         if c.leaving.is_some() {
             return;
         }
-        let running = c.running_at.is_some() && c.failed.is_none();
+        let running = c.running_at.is_some() && c.failed.is_none() && c.playing.is_none();
         if motion::on() {
             c.leaving = Some(Instant::now());
         } else {
@@ -322,8 +381,9 @@ impl CollectionView {
     /// A press while the screen is up: B (or a click) puts it away, the rest
     /// go nowhere. `false` when it is not up.
     pub(super) fn launch_screen_pad(&mut self, pad: Pad, cx: &mut Context<Self>) -> bool {
-        if self.console.launch.cover.is_none() {
-            return false;
+        let Some(c) = self.console.launch.cover.as_ref() else { return false };
+        if c.playing.is_some() && c.leaving.is_none() {
+            return self.now_playing_pad(pad, cx);
         }
         if pad == Pad::B {
             self.leave_launch_screen(false, cx);
@@ -344,6 +404,20 @@ impl CollectionView {
             }
             return Next::Wait;
         }
+        if let Some(np) = c.playing.as_mut() {
+            // Back from the game: Now Playing again.
+            if active && !np.was_active {
+                np.dismissed = false;
+                np.focus = 0;
+                cx.notify();
+            }
+            np.was_active = active;
+            let secs = super::now_playing::started_at(&c.app_name).map_or(0, |t| t.elapsed().as_secs());
+            if active && !np.dismissed && secs != np.shown_secs {
+                cx.notify();
+            }
+            return Next::Wait;
+        }
         if c.frozen {
             cx.notify();
             return Next::Wait;
@@ -359,7 +433,8 @@ impl CollectionView {
         cx.notify();
         match decide(facts) {
             Verdict::Stay => match c.pid {
-                Some(pid) if c.probe != Probe::Unsupported && c.probed_at.is_none_or(|t| t.elapsed() >= PROBE_EVERY) => {
+                // pid 1 is a made-up session's: every window would be "its".
+                Some(pid) if pid > 1 && c.probe != Probe::Unsupported && c.probed_at.is_none_or(|t| t.elapsed() >= PROBE_EVERY) => {
                     c.probed_at = Some(Instant::now());
                     Next::Probe(pid)
                 }
@@ -368,7 +443,7 @@ impl CollectionView {
             Verdict::Ready => {
                 // The game's window is up behind ours: it comes to the front.
                 if active && c.probe == Probe::Shown {
-                    if let Some(pid) = c.pid {
+                    if let Some(pid) = c.pid.filter(|p| *p > 1) {
                         cx.background_spawn(async move {
                             if let Err(e) = heronite_overlay::game_window::focus(pid) {
                                 log::debug!("launch screen: focusing the game: {e}");
@@ -377,7 +452,10 @@ impl CollectionView {
                         .detach();
                     }
                 }
-                self.leave_launch_screen(true, cx);
+                c.playing = Some(super::now_playing::NowPlaying { was_active: active, ..Default::default() });
+                // Minimize on launch: the game is in front now.
+                cx.defer(crate::system::hide_after_cover);
+                cx.notify();
                 Next::Wait
             }
             Verdict::GiveUp => {
@@ -478,35 +556,46 @@ impl CollectionView {
     /// The launch screen, over everything (`None` when it is not up).
     fn render_launch_screen(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         self.debug_launch_screen();
+        self.debug_now_playing();
         self.ensure_launch_ticker(window, cx);
         let opts = look::theme().launch.clone();
         let c = self.console.launch.cover.as_ref()?;
+        // Now Playing (`None`: still starting); put away with Back to console.
+        let playing = c.playing.as_ref().map(|np| np.dismissed);
+        if playing == Some(true) && c.leaving.is_none() {
+            return None;
+        }
+        let playing = playing.is_some();
         let (key, id, since, leaving) = (c.key.clone(), c.id, c.since, c.leaving);
         let title = c.title.clone();
         let failed = c.failed.as_ref().map(|(m, _)| m.clone());
         let step = self.preparing.get(&c.app_name).map(|s| s.label()).unwrap_or_else(|| tr!("Starting...").into());
         let moves = motion::on() && !motion::reduced();
-        let art = (opts.screen == LaunchScreen::ArtLogo).then(|| self.launch_art(&key, window)).flatten();
+        let art = (opts.screen == LaunchScreen::ArtLogo || playing).then(|| self.launch_art(&key, window)).flatten();
         let logo = self.console_logo(&key, LOGO_W, LOGO_H, true, window);
 
         let mut layer = div().absolute().inset_0().bg(black());
         if let Some(img_) = art {
             let picture = img(ImageSource::Render(img_)).absolute().inset_0().size_full().object_fit(ObjectFit::Cover);
-            let drift = moves && opts.motion;
-            let scaled = div().absolute().inset_0().child(picture);
+            let drift = moves && opts.motion && !playing;
+            // A slow pan of art a little larger than the screen: its size
+            // never changes, so pixel snapping moves it a pixel at a time
+            // instead of making its edges wobble (a zoom did). At the
+            // display's rate, from when the screen came up.
+            let started = since;
+            let scaled = div()
+                .absolute()
+                .w(relative(ART_SCALE))
+                .h(relative(ART_SCALE))
+                .top(relative(-(ART_SCALE - 1.) / 2.))
+                .left(relative(ART_PAN.0))
+                .child(picture);
             let scaled = if drift {
-                let started = since;
                 scaled
-                    .with_animation(
-                        SharedString::from(format!("launch-drift-{id}")),
-                        Animation::new(ART_DRIFT).with_max_fps(30.),
-                        move |d, _| {
-                            // From when the screen came up, so art that arrives late is already on its way.
-                            let t = started.elapsed().as_secs_f32() / ART_DRIFT.as_secs_f32();
-                            let side = -(ART_FROM + (ART_TO - ART_FROM) * sine_out(t) - 1.) / 2.;
-                            d.top(relative(side)).bottom(relative(side)).left(relative(side)).right(relative(side))
-                        },
-                    )
+                    .with_animation(SharedString::from(format!("launch-drift-{id}")), Animation::new(ART_DRIFT), move |d, _| {
+                        let t = sine_out(started.elapsed().as_secs_f32() / ART_DRIFT.as_secs_f32());
+                        d.left(relative(ART_PAN.0 + (ART_PAN.1 - ART_PAN.0) * t))
+                    })
                     .into_any_element()
             } else {
                 scaled.into_any_element()
@@ -530,18 +619,25 @@ impl CollectionView {
         let logo_ready = logo.is_some();
         let centre: Option<AnyElement> = match logo {
             Some(src) => Some(img(src).w(u(LOGO_W)).h(u(LOGO_H)).object_fit(ObjectFit::Contain).into_any_element()),
-            None if since.elapsed() >= NAME_AFTER || !motion::on() => Some(
-                div()
-                    .max_w(relative(0.8))
-                    .text_center()
-                    .font_family(kit::heading_font())
-                    .font_weight(theme::W_BOLD)
-                    .text_size(u(52.))
-                    .line_height(u(60.))
-                    .text_color(white())
-                    .child(title.clone())
-                    .into_any_element(),
-            ),
+            // A box of its own width, so it wraps between words only (in a
+            // box of no width it broke "Contr / ol"), large, smaller when long.
+            None if since.elapsed() >= NAME_AFTER || !motion::on() => {
+                let size = name_size(title.chars().count());
+                Some(
+                    div()
+                        .w(u(1100.))
+                        .max_w(relative(0.8))
+                        .text_center()
+                        .font_family(kit::heading_font())
+                        .font_weight(theme::W_BOLD)
+                        .text_size(u(size))
+                        .line_height(u(size * 1.15))
+                        .line_clamp(2)
+                        .text_color(white())
+                        .child(title.clone())
+                        .into_any_element(),
+                )
+            }
             None => None,
         };
         // Its entrance starts after the screen's fade, or when it comes.
@@ -559,7 +655,7 @@ impl CollectionView {
             at.max(since + Duration::from_millis(FADE_IN_MS + LOGO_DELAY_MS))
         });
         let centre = centre.zip(entrance).map(|(el, start)| {
-            let holder = div().relative().flex().items_center().justify_center().child(el);
+            let holder = div().relative().w_full().flex().items_center().justify_center().child(el);
             if !motion::on() {
                 return holder.into_any_element();
             }
@@ -577,8 +673,12 @@ impl CollectionView {
                 )
                 .into_any_element()
         });
-        layer = layer.child(div().absolute().inset_0().flex().items_center().justify_center().children(centre));
-        layer = layer.child(status_line(id, step, failed));
+        if playing {
+            layer = layer.children(self.render_now_playing(&key, id, window));
+        } else {
+            layer = layer.child(div().absolute().inset_0().flex().items_center().justify_center().children(centre));
+            layer = layer.child(status_line(id, step, failed));
+        }
 
         // In, then on leaving to black and out (worked out here, so the
         // tree, and every animation in it, stays as it was).
@@ -593,11 +693,16 @@ impl CollectionView {
             .child(motion::fade_in(SharedString::from(format!("launch-in-{id}")), layer, FADE_IN_MS))
             .child(div().absolute().inset_0().bg(theme::black_a(black_a)));
         // Nothing under it takes a click; a click puts it away.
-        let dismiss = self.console_click(|this, _, cx| {
-            this.leave_launch_screen(false, cx);
+        // Now Playing: a click on the art does nothing, the right button is B.
+        let dismiss = self.console_click(move |this, _, cx| {
+            if !playing {
+                this.leave_launch_screen(false, cx);
+            }
         });
         let dismiss_right = self.console_click(|this, _, cx| {
-            this.leave_launch_screen(false, cx);
+            if !this.now_playing_pad(Pad::B, cx) {
+                this.leave_launch_screen(false, cx);
+            }
         });
         Some(
             div()
@@ -640,7 +745,7 @@ fn status_line(id: u64, step: SharedString, failed: Option<SharedString>) -> Div
         spark
             .with_animation(
                 SharedString::from(format!("launch-sweep-{id}")),
-                Animation::new(Duration::from_millis(1600)).repeat().with_easing(ease_in_out).with_max_fps(30.),
+                Animation::new(Duration::from_millis(1600)).repeat().with_easing(ease_in_out),
                 |d, t| {
                     // Across and back, fading at the ends.
                     let p = if t < 0.5 { t * 2. } else { 2. - t * 2. };

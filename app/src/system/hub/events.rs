@@ -13,6 +13,8 @@ use crate::system::single_instance::Message;
 use crate::system::tray::TrayCmd;
 
 pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
+    // When each game started running (console mode's Now Playing).
+    crate::collection::note_launch_event(&ev);
     let hub = hub(cx);
     let (started, ended, settings) = {
         let mut s = hub.0.borrow_mut();

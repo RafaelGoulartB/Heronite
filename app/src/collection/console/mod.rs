@@ -22,6 +22,7 @@ mod game;
 mod hero;
 pub(super) mod launch_screen;
 mod layouts;
+pub(super) mod now_playing;
 mod power;
 pub(super) mod session_card;
 mod sidebar;

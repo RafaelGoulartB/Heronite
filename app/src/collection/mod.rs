@@ -88,6 +88,7 @@ mod view_options;
 mod welcome;
 mod whole_cover;
 pub(crate) use console::launch_screen::covers as launch_screen_covers;
+pub(crate) use console::now_playing::note as note_launch_event;
 pub(crate) use console::session_card::remember as remember_session_end;
 pub use load::{discard_preload, preload_library};
 pub(crate) use open_links::open_install_folder_of;
