@@ -26,9 +26,9 @@ const ICON_ON: f32 = 148.;
 const GAP: f32 = 16.;
 /// Room above the icons (for the focus ring and its glow), design px.
 const PAD: f32 = 12.;
-/// The name under the focused icon: its size, the space above it and its widest, design px.
+/// The name beside the focused icon: its size, the space before it and its widest, design px.
 const NAME: f32 = 17.;
-const NAME_GAP: f32 = 10.;
+const NAME_GAP: f32 = 14.;
 const NAME_MAX: f32 = 560.;
 /// Icons kept in sight before the focused one.
 const LEAD: f32 = 2.;
@@ -55,10 +55,10 @@ pub(super) fn icon_sizes(cover_aspect: f32) -> ((f32, f32), (f32, f32)) {
     (dims(ICON * k), dims(ICON_ON * k))
 }
 
-/// Height of the row: the focused icon, its name under it and the room
-/// around them, design px.
+/// Height of the row: the focused icon (its name beside it, under the
+/// smaller ones) and the room around it, design px.
 pub(super) fn row_height(on: (f32, f32)) -> f32 {
-    PAD + on.1 + NAME_GAP + NAME * 1.3 + PAD
+    PAD + on.1 + PAD
 }
 
 /// Where an icon sits and how large, design px from the focused icon's place.
@@ -191,7 +191,7 @@ impl CollectionView {
                 None => all_games(p.w, p.h, k),
             };
             if d.abs() < 1. {
-                names.push(name_label(self.spotlight_name(found, i), x, d, on, look));
+                names.push(name_label(self.spotlight_name(found, i), x, p, d, look));
             }
             let ring = near * look.ring;
             let mut pads = to_row.to_vec();
@@ -248,16 +248,17 @@ impl CollectionView {
     }
 }
 
-/// The name of the icon at `x` (`d` places from the focus) under the place
-/// of the focused one. It rides along with its icon and is fully there only
-/// at the focus: the name of the icon arriving fades in as the one leaving
-/// fades out.
-fn name_label(name: String, x: f32, d: f32, on: (f32, f32), look: &Look) -> Div {
+/// The name of the icon `p` at `x` (`d` places from the focus) just right of
+/// it, on the line of its bottom edge: the focused icon reaches lower than
+/// the others, so the name reads under the next ones. It rides along with
+/// its icon and is fully there only at the focus: the name of the icon
+/// arriving fades in as the one leaving fades out.
+fn name_label(name: String, x: f32, p: Place, d: f32, look: &Look) -> Div {
     let fade = (1. - d.abs()).clamp(0., 1.).powi(3);
     div()
         .absolute()
-        .left(u(x))
-        .top(u(PAD + on.1 + NAME_GAP))
+        .left(u(x + p.w + NAME_GAP))
+        .top(u(PAD + p.h - NAME * 1.3 + 1.))
         .max_w(u(NAME_MAX))
         .text_size(u(NAME))
         .line_height(u(NAME * 1.3))
