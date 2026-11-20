@@ -69,6 +69,7 @@ mod script_install;
 mod scroll;
 mod section_menus;
 mod selection;
+mod setup_card;
 mod sideload_uninstall;
 mod smart_groups;
 mod steam_copy;

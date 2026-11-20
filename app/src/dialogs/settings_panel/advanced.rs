@@ -1,6 +1,6 @@
-//! The panel's "Launch" section (Heroic's Advanced tab): arguments, offline
+//! The panel's "Start" group (Heroic's Advanced tab): arguments, offline
 //! and updates, language, scripts, programs alongside, then the advanced
-//! part (alternative exe, logs, runtime, umu, presets, wrappers, variables).
+//! part (alternative exe, logs, runtime, presets, wrappers, variables).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -50,7 +50,7 @@ pub(super) const WRAPPERS: PairTable = PairTable {
 };
 
 impl SettingsPanel {
-    /// The game's launch settings (Heroic's Advanced tab); the Launch tab of
+    /// The game's launch settings (Heroic's Advanced tab); the Start group of
     /// the game settings shows them under Play and the actions.
     pub(super) fn launch_opts_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         if self.steam_direct() {
@@ -97,56 +97,46 @@ impl SettingsPanel {
                 cx,
             ));
         }
-        if !sideload {
+        if !sideload && self.shows("language") {
             start = start.field_help(
                 self.text_row("language", Some(tr!("Game language")), None, cx),
                 vec![help(tr!("A code like en or pt-BR; empty: the app's language. Not every game reads it."))],
             );
         }
-        col = col.child(heading(tr!("Starting"))).child(start.card());
+        col = col.children(start.titled(tr!("Starting")));
         let (extras, wrappers) = (logic::extras(), logic::wrappers());
         if extras {
-            col = col.child(self.scripts_section(false, cx));
+            col = col.children(self.scripts_section(false, cx));
         }
-        if game && extras {
+        if game && extras && self.shows("companions") {
             col = col.child(self.companions_section(cx));
         }
+        col = col.child(self.pair_table(ENV, cx));
 
         let mut advanced = rows();
-        if game && !sideload {
+        if game && !sideload && self.shows("targetExe") {
             advanced = advanced.field(self.path_row("targetExe", Some(tr!("Alternative executable")), false, tr!("Select EXE"), true, cx));
         }
-        advanced = advanced.child(self.toggle_row(
-            "verbose",
-            "verboseLogs",
-            true,
-            tr!("Detailed logs"),
-            Some(tr!("More detail in the game's log, for troubleshooting")),
-            false,
-            cx,
-        ));
-        if native && wrappers {
+        if self.shows("verboseLogs") {
+            advanced = advanced.child(self.toggle_row(
+                "verbose",
+                "verboseLogs",
+                true,
+                tr!("Detailed logs"),
+                Some(tr!("More detail in the game's log, for troubleshooting")),
+                false,
+                cx,
+            ));
+        }
+        if native && wrappers && self.shows("steam-runtime") {
             advanced = advanced.field_help(
                 self.steam_runtime_field(cx),
                 vec![help(tr!("Steam's libraries for Linux games; can help a game that misses some"))],
             );
         }
-        if game && !native && self.wine_version().kind == "proton" {
-            advanced = advanced.child(self.toggle_row(
-                "disable-umu",
-                "disableUMU",
-                false,
-                tr!("Disable umu"),
-                Some(tr!("Runs Proton directly, without umu and its game fixes")),
-                false,
-                cx,
-            ));
-        }
-        col.child(heading(tr!("Advanced")))
-            .child(advanced.card())
-            .when(extras, |c| c.child(self.presets_section(false, cx)))
-            .when(wrappers, |c| c.child(self.pair_table(WRAPPERS, cx)))
-            .child(self.pair_table(ENV, cx))
+        col.children(advanced.titled(tr!("Advanced")))
+            .when(extras && self.shows("presets"), |c| c.child(self.presets_section(false, cx)))
+            .when(wrappers && self.shows("wrapperOptions"), |c| c.child(self.pair_table(WRAPPERS, cx)))
             .when(self.has_preview(), |c| c.child(self.preview_section(cx)))
     }
 
@@ -155,7 +145,8 @@ impl SettingsPanel {
     fn steam_direct_tab(&mut self, cx: &mut Context<Self>) -> Div {
         let mut col = column();
         if heronite_launch::steam_extras::supported() {
-            col = col.child(self.scripts_section(false, cx)).child(self.companions_section(cx)).child(
+            // Here they are all this group has: never folded.
+            col = col.child(self.scripts_card(false, cx)).child(self.companions_section(cx)).child(
                 help(tr!("Steam starts the game itself, as from its library. Heronite runs these when you play from Heronite.")).px(px(6.)),
             );
         }
@@ -165,9 +156,16 @@ impl SettingsPanel {
         col
     }
 
+    /// The scripts, unless they are rarely used ones folded away.
+    pub(super) fn scripts_section(&mut self, steam: bool, cx: &mut Context<Self>) -> Option<Div> {
+        // Both are counted, then shown together.
+        let (before, after) = (self.shows("beforeScript"), self.shows("afterScript"));
+        (before || after).then(|| self.scripts_card(steam, cx))
+    }
+
     /// The user's scripts before the game starts and after it exits.
     /// `steam`: Steam runs them through Heronite's wrapper script.
-    pub(super) fn scripts_section(&mut self, steam: bool, cx: &mut Context<Self>) -> Div {
+    fn scripts_card(&mut self, steam: bool, cx: &mut Context<Self>) -> Div {
         let mut r = rows()
             .field(self.path_row("beforeScript", Some(tr!("Before the game starts")), false, tr!("Select script ..."), true, cx))
             .field(self.path_row("afterScript", Some(tr!("After the game exits")), false, tr!("Select script ..."), true, cx));

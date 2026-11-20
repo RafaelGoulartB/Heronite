@@ -591,5 +591,11 @@
   "{n} shows a crop on the desktop": "{n} est recadré sur le bureau",
   "{n} show a crop on the desktop": "{n} sont recadrés sur le bureau",
   "{n} shows another picture on the desktop": "{n} affiche une autre image sur le bureau",
-  "{n} show another picture on the desktop": "{n} affichent une autre image sur le bureau"
+  "{n} show another picture on the desktop": "{n} affichent une autre image sur le bureau",
+  "All settings": "Tous les paramètres",
+  "Edit details": "Modifier les détails",
+  "Edit details…": "Modifier les détails…",
+  "Name, images, description, tags": "Nom, images, description, tags",
+  "Setup": "Configuration",
+  "Show all": "Tout afficher"
 }

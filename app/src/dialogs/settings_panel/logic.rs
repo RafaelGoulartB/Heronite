@@ -9,37 +9,39 @@ use heronite_launch::SystemProbe;
 use heronite_wine::WineInstallation;
 use serde_json::{json, Value};
 
-/// Tabs of the game settings, by what the user wants to change (the General
+/// Groups of the game settings, by the question the player has (the General
 /// one only exists for the global settings). Heroic's tabs are spread over
 /// them: Wine (or a Steam game's Proton) is Compatibility, Other and Gamescope
-/// are Performance, Advanced is Launch.
+/// are Graphics and Performance, Advanced is Start.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Section {
     General,
-    /// How the game starts: arguments, scripts, programs alongside, variables.
-    Launch,
-    /// Wine / Proton, the prefix and what makes Windows games run.
+    /// What runs when Play is pressed, and with what: arguments, scripts,
+    /// programs alongside, variables (the game settings add Play and the
+    /// actions).
+    Start,
+    /// How a Windows game runs here: Wine / Proton, the prefix, DXVK, sync,
+    /// anti-cheat, the sandbox.
     Compatibility,
-    /// Overlays, the FPS limit, frame generation, gamescope.
+    /// How it looks: the graphics card, HDR, VSync, every upscaler,
+    /// gamescope, ReShade.
+    Graphics,
+    /// How it runs: overlays, the FPS limit, frame generation, latency,
+    /// system tweaks.
     Performance,
-    /// The graphics card: which one, its driver's features, upscalers.
-    Gpu,
-    /// The store's cloud saves.
+    /// The store's cloud saves (the game settings add the backups).
     Saves,
-    /// What the game can reach (`heronite_launch::sandbox`).
-    Sandbox,
 }
 
 impl Section {
     pub fn label(self) -> &'static str {
         match self {
             Section::General => tr!("General"),
-            Section::Launch => tr!("Launch"),
+            Section::Start => tr!("Start"),
             Section::Compatibility => tr!("Compatibility"),
+            Section::Graphics => tr!("Graphics"),
             Section::Performance => tr!("Performance"),
-            Section::Gpu => tr!("GPU"),
-            Section::Saves => tr!("Cloud saves"),
-            Section::Sandbox => tr!("Sandbox"),
+            Section::Saves => tr!("Saves"),
         }
     }
 }
@@ -94,6 +96,10 @@ pub struct GameFacts {
     pub protondb_id: Option<String>,
     /// The game itself, to show how it starts.
     pub game: Option<Game>,
+    /// The game was put in the sandbox (when it was added or installed),
+    /// where there is one: Compatibility ends with its switches. Decided
+    /// once, so turning it off there keeps them.
+    pub sandbox: bool,
 }
 
 impl GameFacts {
@@ -163,6 +169,10 @@ impl GameFacts {
                 .map(str::to_owned);
         // Only a game whose settings (or launch options) are Steam's reads them from Steam.
         let steam_app_id = steam_app_id.filter(|_| run_kind == RunKind::Steam || (run_kind == RunKind::SteamDirect && steam_line()));
+        // Steam starts its games itself: they cannot run in the sandbox.
+        let sandbox = matches!(run_kind, RunKind::Wine | RunKind::Native)
+            && heronite_platform::supported(heronite_platform::Feature::Sandbox)
+            && sandboxed(&game.app_name);
         Self {
             app_name: game.app_name.clone(),
             title: game.title.clone(),
@@ -172,6 +182,7 @@ impl GameFacts {
             protondb_id,
             steam_app_id,
             game: Some(game.clone()),
+            sandbox,
         }
     }
 
@@ -183,21 +194,28 @@ impl GameFacts {
         self.runner == "sideload" || self.runner == "zoom"
     }
 
-    /// Tabs shown for this game, in Heroic's order (`GamesSettings`).
+    /// Groups shown for this game, in order.
     pub fn sections(&self) -> Vec<Section> {
-        sections_for(self.run_kind, &self.runner, self.cloud_saves)
+        sections_for(self.run_kind, &self.runner, self.cloud_saves, self.sandbox)
     }
 
-    /// The tab the game settings open on (Heroic's `getStartingTab`).
+    /// The group the game settings open on (Heroic's `getStartingTab`).
     pub fn start_section(&self) -> Option<Section> {
         match self.run_kind {
             RunKind::Wine | RunKind::Steam => Some(Section::Compatibility),
-            RunKind::Native if !wrappers() => Some(Section::Launch),
-            RunKind::SteamDirect => Some(Section::Launch),
+            RunKind::Native if !wrappers() => Some(Section::Start),
+            RunKind::SteamDirect => Some(Section::Start),
             RunKind::Native => Some(Section::Performance),
             RunKind::None => None,
         }
     }
+}
+
+/// The game's settings have the sandbox on (a tiny read of its config).
+fn sandboxed(app_name: &str) -> bool {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
+    let settings = heronite_data::game_config::load_game(&heronite_data::DataPaths::detect(), app_name, &home);
+    heronite_launch::sandbox::Sandbox::from_map(&settings).enabled
 }
 
 /// Whether the launch extras exist here (`heronite_platform::Feature::LaunchExtras`):
@@ -240,54 +258,46 @@ pub fn windows_gpu() -> bool {
     cfg!(windows)
 }
 
-/// A game whose Performance tab is ReShade alone: Steam starts it as it is,
-/// or Linux's tools (wrappers, overlays, gamescope) are not there (Windows).
+/// A game Steam starts as it is, or one without Linux's tools (wrappers,
+/// overlays, gamescope; Windows): no Performance group, and Graphics holds
+/// what applies (ReShade, Windows' GPU preference).
 pub fn reshade_only(run_kind: RunKind) -> bool {
     run_kind == RunKind::SteamDirect || (run_kind == RunKind::Native && !wrappers())
 }
 
-/// Whether a game gets the Cloud saves tab: an Epic or GOG game with cloud
-/// saves whose Windows build runs through Wine, or as it is on Windows (the
-/// stores resolve the save folders of this PC then).
+/// Whether a game gets cloud saves in its Saves group: an Epic or GOG game
+/// with cloud saves whose Windows build runs through Wine, or as it is on
+/// Windows (the stores resolve the save folders of this PC then).
 pub fn saves_tab(run_kind: RunKind, runner: &str, cloud_saves: bool) -> bool {
     cloud_saves && matches!(runner, "legendary" | "gog") && (run_kind == RunKind::Wine || (run_kind == RunKind::Native && cfg!(windows)))
 }
 
-/// The panel's sections of a game, in tab order.
-pub fn sections_for(run_kind: RunKind, runner: &str, cloud_saves_tab: bool) -> Vec<Section> {
-    let mut out = vec![Section::Launch];
-    let saves = saves_tab(run_kind, runner, cloud_saves_tab);
+/// The panel's groups of a game, in order. `sandbox`: the game is in the
+/// sandbox; its switches end Compatibility, which a native game gets then.
+pub fn sections_for(run_kind: RunKind, runner: &str, cloud_saves_tab: bool, sandbox: bool) -> Vec<Section> {
+    let mut out = vec![Section::Start];
     match run_kind {
         RunKind::None => return Vec::new(),
-        // Their Performance tab only has ReShade (`reshade_only`).
-        RunKind::SteamDirect | RunKind::Native if reshade_only(run_kind) => {
-            out.extend(run_kind.reshade().map(|_| Section::Performance));
-            // Steam starts its games itself: Heronite cannot set the
-            // preference for the program it runs.
-            if run_kind == RunKind::Native && windows_gpu() {
-                out.push(Section::Gpu);
+        _ if reshade_only(run_kind) => {
+            // ReShade, and Windows' own GPU preference (Steam starts its
+            // games itself: Heronite cannot set it for the program it runs).
+            if run_kind.reshade().is_some() || (run_kind == RunKind::Native && windows_gpu()) {
+                out.push(Section::Graphics);
             }
-            if saves {
-                out.push(Section::Saves);
-            }
-            return out;
         }
-        RunKind::SteamDirect => return out,
-        RunKind::Steam | RunKind::Wine => out.extend([Section::Compatibility, Section::Performance, Section::Gpu]),
-        RunKind::Native => out.extend([Section::Performance, Section::Gpu]),
+        RunKind::Native if !sandbox => out.extend([Section::Graphics, Section::Performance]),
+        // Steam and Wine (Steam's own start is `reshade_only`), and a native
+        // game in the sandbox.
+        _ => out.extend([Section::Compatibility, Section::Graphics, Section::Performance]),
     }
-    // Steam starts its games itself: they cannot run in the sandbox.
-    if run_kind != RunKind::Steam {
-        out.push(Section::Sandbox);
-    }
-    if saves {
+    if saves_tab(run_kind, runner, cloud_saves_tab) {
         out.push(Section::Saves);
     }
     out
 }
 
-/// Tabs of the global "Game defaults" editor.
-pub const DEFAULT_SECTIONS: [Section; 4] = [Section::Compatibility, Section::Performance, Section::Gpu, Section::Launch];
+/// Groups of the global "Game defaults" editor.
+pub const DEFAULT_SECTIONS: [Section; 4] = [Section::Compatibility, Section::Graphics, Section::Performance, Section::Start];
 
 /// Wine name as Heroic lists it (`WineVersionListItem`).
 pub fn display_wine_name(name: &str) -> String {
@@ -502,26 +512,34 @@ mod tests {
     }
 
     #[test]
-    fn sections_follow_gamessettings() {
+    fn groups_follow_what_the_game_has() {
         use Section::*;
-        assert_eq!(sections_for(RunKind::Wine, "legendary", true), [Launch, Compatibility, Performance, Gpu, Sandbox, Saves]);
-        assert_eq!(sections_for(RunKind::Wine, "sideload", true), [Launch, Compatibility, Performance, Gpu, Sandbox]);
-        // Without Linux's wrappers (Windows), a native game has Launch, and
-        // ReShade where it applies.
+        assert_eq!(sections_for(RunKind::Wine, "legendary", true, false), [Start, Compatibility, Graphics, Performance, Saves]);
+        assert_eq!(sections_for(RunKind::Wine, "sideload", true, false), [Start, Compatibility, Graphics, Performance]);
+        // The sandbox is a block of Compatibility, not a group of its own.
+        assert_eq!(sections_for(RunKind::Wine, "sideload", false, true), [Start, Compatibility, Graphics, Performance]);
+        // Without Linux's wrappers (Windows), a native game has Start, and
+        // Graphics where ReShade or Windows' GPU preference applies.
         let native: &[Section] = match (wrappers(), cfg!(windows)) {
-            (true, _) => &[Launch, Performance, Gpu, Sandbox],
-            // Windows' own GPU preference.
-            (false, true) => &[Launch, Performance, Gpu],
-            (false, false) => &[Launch],
+            (true, _) => &[Start, Graphics, Performance],
+            (false, true) => &[Start, Graphics],
+            (false, false) => &[Start],
         };
-        assert_eq!(sections_for(RunKind::Native, "sideload", false), native);
-        assert!(!sections_for(RunKind::Wine, "legendary", false).contains(&Section::Saves));
-        assert!(sections_for(RunKind::None, "legendary", true).is_empty());
-        assert!(sections_for(RunKind::Wine, "gog", true).contains(&Section::Saves));
-        assert!(!sections_for(RunKind::Wine, "gog", false).contains(&Section::Saves));
-        assert_eq!(sections_for(RunKind::Steam, "sideload", true), [Launch, Compatibility, Performance, Gpu]);
-        let direct: &[Section] = if cfg!(windows) { &[Launch, Performance] } else { &[Launch] };
-        assert_eq!(sections_for(RunKind::SteamDirect, "sideload", true), direct);
+        assert_eq!(sections_for(RunKind::Native, "sideload", false, false), native);
+        if wrappers() {
+            // A sandboxed native game gets Compatibility for the sandbox.
+            assert_eq!(sections_for(RunKind::Native, "sideload", false, true), [Start, Compatibility, Graphics, Performance]);
+        }
+        assert!(!sections_for(RunKind::Wine, "legendary", false, false).contains(&Saves));
+        assert!(sections_for(RunKind::None, "legendary", true, true).is_empty());
+        assert!(sections_for(RunKind::Wine, "gog", true, false).contains(&Saves));
+        assert!(!sections_for(RunKind::Wine, "gog", false, false).contains(&Saves));
+        assert_eq!(sections_for(RunKind::Steam, "sideload", true, false), [Start, Compatibility, Graphics, Performance]);
+        let direct: &[Section] = if cfg!(windows) { &[Start, Graphics] } else { &[Start] };
+        assert_eq!(sections_for(RunKind::SteamDirect, "sideload", true, false), direct);
+        // Game defaults: no Saves (it is a game's own), Compatibility first.
+        assert_eq!(DEFAULT_SECTIONS[0], Compatibility);
+        assert!(!DEFAULT_SECTIONS.contains(&Saves));
     }
 
     /// Windows builds that run as they are on Windows sync their cloud saves
@@ -529,15 +547,14 @@ mod tests {
     #[test]
     fn native_windows_games_get_cloud_saves() {
         for runner in ["legendary", "gog"] {
-            assert_eq!(sections_for(RunKind::Native, runner, true).contains(&Section::Saves), cfg!(windows), "{runner}");
-            assert!(!sections_for(RunKind::Native, runner, false).contains(&Section::Saves), "{runner}");
+            assert_eq!(sections_for(RunKind::Native, runner, true, false).contains(&Section::Saves), cfg!(windows), "{runner}");
+            assert!(!sections_for(RunKind::Native, runner, false, false).contains(&Section::Saves), "{runner}");
         }
-        assert!(!sections_for(RunKind::Native, "sideload", true).contains(&Section::Saves));
-        assert!(!sections_for(RunKind::SteamDirect, "legendary", true).contains(&Section::Saves));
+        assert!(!sections_for(RunKind::Native, "sideload", true, false).contains(&Section::Saves));
+        assert!(!sections_for(RunKind::SteamDirect, "legendary", true, false).contains(&Section::Saves));
         if cfg!(windows) && !wrappers() {
             use Section::*;
-            // The GPU tab (Windows' own GPU preference) before Cloud saves, as on Linux.
-            assert_eq!(sections_for(RunKind::Native, "legendary", true), [Launch, Performance, Gpu, Saves]);
+            assert_eq!(sections_for(RunKind::Native, "legendary", true, false), [Start, Graphics, Saves]);
         }
     }
 

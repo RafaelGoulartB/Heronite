@@ -80,7 +80,7 @@ impl CollectionView {
         // The answer may change once the user acts there.
         FITS.with(|f| f.borrow_mut().remove(key));
         crate::dialogs::settings_panel::focus_reshade();
-        let tab = crate::dialogs::game_settings::Tab::Performance;
+        let tab = crate::dialogs::game_settings::Tab::Graphics;
         let view = cx.new(|cx| crate::dialogs::game_settings::GameSettingsDialog::new(ctx, g, tab, window, cx));
         self.open_dialog(view, cx);
     }
