@@ -229,6 +229,19 @@ fn kept_filters_read_leniently() {
 }
 
 #[test]
+fn the_carousel_starts_on_installed_and_a_saved_pill_keeps_its_games() {
+    // New: Installed. A pill saved before Installed came first keeps what it
+    // showed (the number names the filter, not its place in the row).
+    assert_eq!(KeptFilters::default().carousel, CAROUSEL_INSTALLED);
+    let fresh: ConsolePrefs = lenient(json!({ "keptFilters": { "sort": 0 } })).unwrap();
+    assert_eq!(fresh.kept_filters.carousel, CAROUSEL_INSTALLED);
+    for saved in 0..4 {
+        let p: ConsolePrefs = lenient(json!({ "keptFilters": { "carousel": saved } })).unwrap();
+        assert_eq!(p.kept_filters.carousel, saved);
+    }
+}
+
+#[test]
 fn the_controller_options_leave_the_theme_and_keep_what_was_chosen() {
     let dir = tempfile::tempdir().unwrap();
     let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };

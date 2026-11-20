@@ -837,7 +837,8 @@ impl Default for ConsolePrefs {
 /// Filters panel's) Show (index in All / Installed / Not installed), Sort
 /// (Title / Last played / Playtime) and Favourites only; Status and Category
 /// are left out, as they point into statuses and categories that change.
-/// `carousel`: the Carousel's pill (All / Installed / Favourites / Playing).
+/// `carousel`: the Carousel's pill, by what it shows, whatever order the pills
+/// are drawn in: 0 All, 1 Installed (the default), 2 Favourites, 3 Playing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct KeptFilters {
@@ -850,10 +851,12 @@ pub struct KeptFilters {
 
 /// [`KeptFilters::sort`]: by when it was last played.
 pub const SORT_LAST_PLAYED: usize = 1;
+/// [`KeptFilters::carousel`]: the installed games.
+pub const CAROUSEL_INSTALLED: usize = 1;
 
 impl Default for KeptFilters {
     fn default() -> Self {
-        Self { show: 0, sort: SORT_LAST_PLAYED, favourites: false, carousel: 0 }
+        Self { show: 0, sort: SORT_LAST_PLAYED, favourites: false, carousel: CAROUSEL_INSTALLED }
     }
 }
 
