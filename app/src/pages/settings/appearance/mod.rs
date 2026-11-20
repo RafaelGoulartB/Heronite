@@ -769,8 +769,14 @@ fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         choice("bg-picture", tr!("Picture"), console_choice(&console_pictures(), a.background)),
         Row::toggle("bg-slideshow", tr!("Change the screenshot by itself"), a.background_slideshow),
         choice("bg-home", tr!("With no game selected"), console_choice(&console_home_pictures(), a.home_background)),
-        Row::toggle("bg-animated", tr!("Animated backgrounds"), a.animated_backgrounds)
-            .desc(tr!("A background that is a video or an animated picture plays; off, it stays still")),
+        // Console mode has no header pill: ffmpeg missing is said here.
+        Row::toggle("bg-animated", tr!("Animated backgrounds"), a.animated_backgrounds).desc(
+            if a.animated_backgrounds && !d.appearance.ffmpeg {
+                tr!("ffmpeg, which plays them, was not found, so backgrounds stay still.")
+            } else {
+                tr!("A background that is a video or an animated picture plays; off, it stays still")
+            },
+        ),
         Row::header(tr!("Colour")),
         choice("theme", tr!("Theme"), console_choice(&scheme::theme_items(), a.theme)).desc(tr!("Console mode stays dark")),
         choice("accent", tr!("Accent colour"), console_choice(&accents, a.accent)),
