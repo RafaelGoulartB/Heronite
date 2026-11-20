@@ -19,8 +19,9 @@ use crate::theme;
 
 /// Cross-fade of the background art.
 pub(super) const ART_FADE_MS: u64 = 520;
-/// Classic's settle: the new art starts this much larger (design px each
-/// side, more across) and eases into place over this long.
+/// Classic's settle: the new art starts this much larger (design px above and
+/// below, and as much more across as keeps the window's shape, so the
+/// picture only grows and never shifts) and eases into place over this long.
 const SETTLE_PX: f32 = 14.;
 const SETTLE_MS: u64 = 1400;
 
@@ -225,7 +226,10 @@ impl CollectionView {
         let has_still = still_now.is_some();
         if let Some(img) = still_now {
             let same = self.console.art_cur.as_ref().is_some_and(|(_, i)| Arc::ptr_eq(i, &img));
-            if !same {
+            // The same game's art loaded again (its texture was dropped while
+            // off screen) is no new picture: no cross-fade from itself.
+            let same_game = self.console.art_cur.as_ref().is_some_and(|(k, _)| *k == key);
+            if !same && !same_game {
                 // Cross-fade: the old art stays under the new one until it
                 // is fully in.
                 self.console.art_prev = self.console.art_cur.take().map(|(_, i)| i);
@@ -276,12 +280,14 @@ impl CollectionView {
             let current = art.map(|(k, i)| {
                 let id = format!("console-art-{k}-{}", look::epoch());
                 let el = if settle {
+                    let size = crate::ui::content_size(window);
+                    let across = f32::from(size.width) / f32::from(size.height).max(1.);
                     let zoom = div().absolute().inset_0().child(art_img(i)).with_animation(
                         SharedString::from(format!("{id}-settle")),
                         Animation::new(std::time::Duration::from_millis(SETTLE_MS)).with_easing(ease_out_quint()),
-                        |d, t| {
+                        move |d, t| {
                             let z = u(SETTLE_PX) * (1. - t);
-                            d.top(-z).bottom(-z).left(-z * 1.6).right(-z * 1.6)
+                            d.top(-z).bottom(-z).left(-z * across).right(-z * across)
                         },
                     );
                     motion::fade_in(SharedString::from(id), div().absolute().inset_0().child(zoom), ART_FADE_MS)

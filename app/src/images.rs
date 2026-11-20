@@ -4,6 +4,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use gpui_kit::{RenderImage, SharedString, Window};
@@ -55,6 +56,11 @@ const BUDGET_BYTES: usize = 48 << 20;
 /// covers on screen would be evicted and asked again every frame.
 const KEEP_LATEST: [(&str, usize); 2] = [("s:", 2), ("g:", 2)];
 
+/// A texture asked for this recently is on screen: neither limit drops it
+/// (it would be asked for again at once, loaded, and drop another one that is
+/// on screen too: pictures flickering between their fallback and themselves).
+const IN_USE: Duration = Duration::from_millis(1500);
+
 /// A texture of a [`KEEP_LATEST`] kind.
 fn kept_by_count(id: &str) -> bool {
     KEEP_LATEST.iter().any(|(prefix, _)| id.starts_with(prefix))
@@ -73,6 +79,8 @@ pub struct ImageStore {
     next_gen: u64,
     failed: HashSet<SharedString>,
     evicted: Vec<Arc<RenderImage>>,
+    /// When each ready texture was last asked for.
+    used: HashMap<SharedString, Instant>,
 }
 
 impl ImageStore {
@@ -90,6 +98,7 @@ impl ImageStore {
             next_gen: 0,
             failed: HashSet::new(),
             evicted: Vec::new(),
+            used: HashMap::new(),
         };
         (store, rx)
     }
@@ -106,6 +115,7 @@ impl ImageStore {
         priority: i32,
     ) -> Option<Arc<RenderImage>> {
         if let Some((img, _)) = self.ready.get(id) {
+            self.used.insert(id.clone(), Instant::now());
             if self.order.back() != Some(id) {
                 if let Some(pos) = self.order.iter().position(|k| k == id) {
                     self.order.remove(pos);
@@ -152,6 +162,7 @@ impl ImageStore {
                     self.order.retain(|k| k != &id);
                 }
                 self.bytes += size;
+                self.used.insert(id.clone(), Instant::now());
                 self.order.push_back(id);
                 self.evict();
             }
@@ -163,6 +174,7 @@ impl ImageStore {
     }
 
     fn remove(&mut self, id: &SharedString) {
+        self.used.remove(id);
         if let Some((img, size)) = self.ready.remove(id) {
             self.bytes -= size;
             self.evicted.push(img);
@@ -170,11 +182,17 @@ impl ImageStore {
     }
 
     /// Drops the oldest textures over [`KEEP_LATEST`], then the oldest of the
-    /// others over [`BUDGET_BYTES`] (the newest one always stays).
+    /// others over [`BUDGET_BYTES`]; never one still on screen ([`IN_USE`]),
+    /// and the newest one always stays.
     fn evict(&mut self) {
+        let now = Instant::now();
+        let in_use = |s: &Self, id: &SharedString| s.used.get(id).is_some_and(|t| now.duration_since(*t) < IN_USE);
         for (prefix, keep) in KEEP_LATEST {
             let of_kind: Vec<SharedString> = self.order.iter().filter(|k| k.starts_with(prefix)).cloned().collect();
             for id in of_kind.iter().take(of_kind.len().saturating_sub(keep)) {
+                if in_use(self, id) {
+                    continue;
+                }
                 self.remove(id);
                 self.order.retain(|k| k != id);
             }
@@ -183,7 +201,7 @@ impl ImageStore {
         let mut budgeted: usize = self.order.iter().filter(|k| !kept_by_count(k)).map(|k| size(self, k)).sum();
         while budgeted > BUDGET_BYTES {
             let others = self.order.iter().filter(|k| !kept_by_count(k)).count();
-            let Some(at) = self.order.iter().position(|k| !kept_by_count(k)).filter(|_| others > 1) else { break };
+            let Some(at) = self.order.iter().position(|k| !kept_by_count(k) && !in_use(self, k)).filter(|_| others > 1) else { break };
             if let Some(old) = self.order.remove(at) {
                 budgeted -= size(self, &old);
                 self.remove(&old);
@@ -224,6 +242,7 @@ impl ImageStore {
         for id in &ids {
             self.remove(id);
         }
+        self.used.retain(|k, _| !hit(k));
         self.order.retain(|k| !hit(k));
         self.failed.retain(|k| !hit(k));
         self.pending.retain(|k, _| !hit(k));
@@ -264,6 +283,28 @@ mod tests {
         let generation = s.next_gen;
         s.pending.insert(id.into(), generation);
         s.on_loaded((id.into(), generation, Ok(Arc::new(decoded))));
+        // Not on screen (unless a test says so).
+        s.used.insert(id.into(), Instant::now() - IN_USE * 2);
+    }
+
+    #[test]
+    fn what_is_on_screen_is_never_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _rx) = store(dir.path());
+        // Three stage pictures on screen at once (the background, the launch
+        // screen, a card): over the kind's two, yet all stay while asked for.
+        for id in ["s:a:art", "s:b:card", "s:c:cover"] {
+            ready(&mut s, id, 1 << 20);
+            s.used.insert(id.into(), Instant::now());
+        }
+        ready(&mut s, "s:d:art", 1 << 20);
+        assert!(["s:a:art", "s:b:card", "s:c:cover"].iter().all(|id| s.ready.contains_key(*id)));
+        // Once no longer asked for, the oldest go.
+        for id in ["s:a:art", "s:b:card", "s:c:cover"] {
+            s.used.insert(id.into(), Instant::now() - IN_USE * 2);
+        }
+        ready(&mut s, "s:e:art", 1 << 20);
+        assert!(!s.ready.contains_key("s:a:art") && s.ready.contains_key("s:e:art"));
     }
 
     #[test]
