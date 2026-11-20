@@ -612,7 +612,7 @@ impl CollectionView {
         }
         match &game {
             Some(g) => {
-                page = page.children(self.spotlight_head(g, &shape, &focus, from, strips[0], window));
+                page = page.children(self.spotlight_head(g, &shape, &focus, strips[0], window));
                 if lift > 0.01 {
                     page = page.children(self.spotlight_below(g, &shape, &focus, strips, window, cx));
                 }
@@ -701,15 +701,7 @@ impl CollectionView {
     }
 
     /// The logo (or name), the buttons, the facts and genres, and the media strip.
-    fn spotlight_head(
-        &mut self,
-        g: &CollectionGame,
-        shape: &Shape,
-        f: &Focus,
-        from: f32,
-        strip_x: f32,
-        window: &Window,
-    ) -> Vec<AnyElement> {
+    fn spotlight_head(&mut self, g: &CollectionGame, shape: &Shape, f: &Focus, strip_x: f32, window: &Window) -> Vec<AnyElement> {
         let geo = shape.geo;
         let size = HeroSize { title: 54., logo: (600., geo.logo_h), max_w: 760., overview: 0 };
         // The logo, else the name in type, smaller when long, on two lines at most.
@@ -721,9 +713,13 @@ impl CollectionView {
             None => kit::title(g.title.clone(), fitted_title(size.title, g.title.chars().count())).line_clamp(2).into_any_element(),
         };
         let key = &g.key;
-        let logo = div().absolute().top(u(geo.logo)).left(u(SIDE)).w(u(760.)).h(u(geo.logo_h)).flex().items_end().child(
-            motion::enter_from(SharedString::from(format!("spot-logo-{key}")), div().relative().child(name), 360, 22. * from, 0., 0.2),
-        );
+        let logo = div().absolute().top(u(geo.logo)).left(u(SIDE)).w(u(760.)).h(u(geo.logo_h)).flex().items_end().child(reveal(
+            SharedString::from(format!("spot-logo-{key}")),
+            div().relative().child(name),
+            LOGO_HOLD,
+            LOGO_FADE,
+            Some((LOGO_SLIDE, LOGO_SLIDE_MS)),
+        ));
         let actions = (f.zone == Zone::Actions).then_some(f.action);
         let rest = div()
             .relative()
@@ -732,7 +728,7 @@ impl CollectionView {
             .child(self.spotlight_actions(g, actions))
             .child(div().mt(u(18.)).child(self.spotlight_facts(g)))
             .child(div().mt(u(10.)).child(parts::genre_chips(g)));
-        let rest = placed(geo.buttons, motion::enter_from(SharedString::from(format!("spot-rest-{key}")), rest, 420, 0., 8., 0.));
+        let rest = placed(geo.buttons, reveal(SharedString::from(format!("spot-rest-{key}")), rest, REST_HOLD, REST_FADE, None));
         let mut out = vec![logo.into_any_element(), rest];
         if shape.media > 0 {
             out.push(self.spotlight_media(shape, f, strip_x, window));
@@ -770,7 +766,13 @@ impl CollectionView {
                     .on_mouse_down(MouseButton::Left, self.spot_click(Spot::Media(i))),
             );
         }
-        strip(geo.media, geo.left, h, strip_x, tiles).into_any_element()
+        reveal(
+            SharedString::from(format!("spot-strip-{}", shape.key)),
+            strip(geo.media, geo.left, h, strip_x, tiles),
+            REST_HOLD,
+            REST_FADE,
+            None,
+        )
     }
 
     /// The sections under the head, while the page has risen.
@@ -1447,6 +1449,41 @@ fn page_tile(id: (&'static str, usize), x: f32, w: f32, h: f32, radius: f32, foc
 /// the element ends at the page's top, over the row.
 fn placed(top: f32, el: AnyElement) -> AnyElement {
     div().absolute().top(u(top)).left(u(SIDE)).child(el).into_any_element()
+}
+
+/// A new game's logo (or name): hidden at once, it holds, then fades in while
+/// it slides in from the left; the buttons, facts, genres and strip fade in
+/// after it, in place (ms, design px).
+const LOGO_HOLD: u64 = 300;
+const LOGO_FADE: u64 = 450;
+const LOGO_SLIDE: f32 = -30.;
+const LOGO_SLIDE_MS: u64 = 550;
+const REST_HOLD: u64 = 420;
+const REST_FADE: u64 = 400;
+
+/// `el` coming in for a new game (`id` names it: a new id replays it):
+/// hidden, then after `hold` ms it fades in over `fade` ms (ease-out) and,
+/// with `slide` (from design px, over ms), slides into place with a cubic
+/// ease-out. Reduced motion keeps the fade alone; no motion shows it at once.
+fn reveal(id: SharedString, el: Div, hold: u64, fade: u64, slide: Option<(f32, u64)>) -> AnyElement {
+    if !motion::on() {
+        return el.into_any_element();
+    }
+    let slide = slide.filter(|_| !motion::reduced());
+    let total = hold + fade.max(slide.map_or(0, |(_, ms)| ms));
+    el.with_animation(id, Animation::new(std::time::Duration::from_millis(total)), move |el, t| {
+        let ms = t * total as f32 - hold as f32;
+        let f = (ms / fade as f32).clamp(0., 1.);
+        let el = el.opacity(1. - (1. - f) * (1. - f));
+        match slide {
+            Some((dx, slide_ms)) => {
+                let k = (ms / slide_ms as f32).clamp(0., 1.);
+                el.left(u(dx * (1. - k).powi(3)))
+            }
+            None => el,
+        }
+    })
+    .into_any_element()
 }
 
 /// Room around a strip's tiles for the focus ring, design px.
