@@ -172,6 +172,7 @@ impl CollectionView {
         if let Some(key) = debug.as_deref().and_then(|d| d.strip_prefix("game:")) {
             self.open_game_page(key.to_string().into());
         }
+        self.debug_console_achievements(cx);
         if debug.as_deref() == Some("menu") {
             self.open_sidebar();
         }
@@ -587,6 +588,12 @@ impl CollectionView {
             }
             return;
         }
+        if self.console.achievements.is_some() {
+            if !self.achievements_pad(pad, window, cx) && pad == Pad::B {
+                self.close_console_achievements();
+            }
+            return;
+        }
         if let Screen::Game(key) = self.console.screen.clone() {
             if !self.game_pad(&key, pad, window, cx) && pad == Pad::B {
                 self.close_game_page();
@@ -637,7 +644,10 @@ impl CollectionView {
     /// The tab's layout takes the presses: no page, game page, dialog, menu
     /// or panel over it.
     fn tabs_in_focus(&self) -> bool {
-        self.page == Page::Collection && matches!(self.console.screen, Screen::Tabs) && self.body_in_focus()
+        self.page == Page::Collection
+            && matches!(self.console.screen, Screen::Tabs)
+            && self.console.achievements.is_none()
+            && self.body_in_focus()
     }
 
     /// The screen under the layers (tab, page or game page) takes the
@@ -655,10 +665,12 @@ impl CollectionView {
     /// On a game page with long text, the wheel scrolls it.
     fn wheel_axis(&self) -> WheelAxis {
         let row = matches!(self.console_shown_tab().1.layout, Layout::Carousel | Layout::Spotlight);
-        let game_page = self.page == Page::Collection && matches!(self.console.screen, Screen::Game(_)) && self.body_in_focus();
+        let game_page = self.page == Page::Collection
+            && (matches!(self.console.screen, Screen::Game(_)) || self.console.achievements.is_some())
+            && self.body_in_focus();
         if row && self.tabs_in_focus() {
             WheelAxis::Horizontal
-        } else if game_page && self.game_page_scrolls_text() {
+        } else if game_page && (self.console.achievements.is_some() || self.game_page_scrolls_text()) {
             WheelAxis::Text
         } else {
             WheelAxis::Vertical
@@ -753,6 +765,9 @@ impl CollectionView {
             }
             h.push(hint(Btn::Start, tr!("Menu")));
             return h;
+        }
+        if self.console.achievements.is_some() {
+            return self.achievements_hints();
         }
         match &self.console.screen {
             Screen::Game(key) => self.game_hints(key),
@@ -884,6 +899,8 @@ impl CollectionView {
             Screen::Game(k) if !on_page => Some(k.clone()),
             _ => None,
         };
+        // The Achievements screen of a game, full screen over the rest.
+        let ach = !on_page && self.console.achievements.is_some();
         let body: AnyElement = if on_page {
             match self.render_page_view() {
                 // Pages rise in.
@@ -896,6 +913,8 @@ impl CollectionView {
                 ),
                 None => div().into_any_element(),
             }
+        } else if ach {
+            self.render_console_achievements(window, cx)
         } else if let Some(key) = &game_key {
             self.render_console_game(key, window, cx)
         } else {
@@ -910,7 +929,7 @@ impl CollectionView {
             )
         };
         self.sync_console_colour();
-        let keeps_tabs = !on_page && (game_key.is_none() || self.game_page_keeps_tabs());
+        let keeps_tabs = !on_page && !ach && (game_key.is_none() || self.game_page_keeps_tabs());
         // The tabs take clicks only while LB / RB switch them.
         let tabs_input = self.tabs_in_focus() && !self.console.results;
         let blocked = |d: Div| if tabs_input { d } else { d.child(div().absolute().inset_0().occlude()) };
@@ -918,6 +937,8 @@ impl CollectionView {
         let bottom_tabs = if keeps_tabs { self.console_bottom_tabs().map(|d| blocked(d.relative())) } else { None };
         let scrim = if on_page {
             Scrim::Page
+        } else if ach {
+            Scrim::Classic
         } else if game_key.is_some() {
             self.game_scrim(&spec)
         } else {
@@ -925,7 +946,7 @@ impl CollectionView {
         };
         let backdrop = self.render_console_backdrop(scrim, window, cx);
         let hints_on = self.hints_visible();
-        let float = !on_page && game_key.is_none() && layouts::hints_float(spec.layout);
+        let float = ach || (!on_page && game_key.is_none() && layouts::hints_float(spec.layout));
         let hints = if hints_on || float { self.console_hints(cx) } else { Vec::new() };
         let idle = self.render_idle(window, cx);
         let customize = self.render_console_customize();
@@ -933,6 +954,7 @@ impl CollectionView {
         // Over the whole window but the hint bar (the Sheet game page floats).
         let game_layer = game_key
             .as_ref()
+            .filter(|_| !ach)
             .and_then(|k| self.render_console_game_layer(k, window, cx))
             .map(|layer| div().absolute().top_0().left_0().right_0().bottom(if hints_on { u(60.) } else { px(0.) }).child(layer));
         let (_, body_font) = look::fonts();
