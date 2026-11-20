@@ -1189,7 +1189,10 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   things request frames; `HERONITE_NO_ANIMATIONS=1` jumps instead. Off-screen covers are empty boxes of the same size.
 - Layout: top bar = the theme's tabs (`kit::tabs`; `interface.tabBar` may move them to a bar along the bottom, show only
   the current one as a centred title, or show the names alone) + `kit::clock` (pages keep their own title with `kit::wordmark`), content padded `u(46.)`, lists about `u(900.)`
-  wide; the shell draws the hint bar from `hints()` (it adds Back / Menu). B goes back; Start opens the menu.
+  wide; the shell draws the hint bar from `hints()` (it adds Back / Menu): no surface of its own over a shade fading
+  up from the bottom (`kit::hint_shade`), the menu and tabs on the left, the actions on the right with A last, the
+  glyphs monochrome (a disc of the strong ink with its letter or symbol cut out, outlined caps for the shoulders),
+  whatever the controller's glyph set. B goes back; Start opens the menu.
 - **Console themes** (`heronite_data::console_theme`, shareable JSON; `console.json` holds the one in use and the
   machine options, `console-themes/` the saved ones, each with its picture as `<id>.background-<hash>.<ext>`; an
   export carries the picture inside as a `data:` URL and leaves out a local path it does not use, an import writes it
@@ -1232,16 +1235,18 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   strip of the store's screenshots (`store_media_of`, read in console mode only for Spotlight, never played; else the
   user's captures) dissolving at the bottom. Leaving the row lifts the whole screen (the row and the top bar fade, the
   art darkens, the wheel turns to ↑ ↓) into the page (`page.rs`): the strip, About this game (clamped, "Read more"
-  opens the whole text in a sheet) beside Achievements (A: `open_console_achievements`) and Details with link buttons
-  (folder, store page, HowLongToBeat), the cards, the user's screenshots and More like this (A jumps the row to the
+  opens the whole text in a sheet) beside Achievements (A: `open_console_achievements`), Details with link buttons
+  (folder, store page) and How Long To Beat (the desktop section's bar, times and match note, `focus::hltb_*`; A opens
+  its page; "no times" when it has none), the cards, the user's screenshots and More like this (A jumps the row to the
   game, else opens its page), each when `spotlightSections` keeps it and the game has data. Every section's place
   comes from counts and fixed heights, never a measure, so nothing jumps; the page rises on a slow spring until the
   focused section's title nears the top, never past the page's end. ↑ ↓ between sections, ← → inside one (the strips
   slide), B back to the buttons then the row, X plays anywhere; clicks focus then use (`cover_click`). A screenshot
   opens full screen (store ones in `viewer.rs`, the user's in the game page's viewer). Options opens the theme's game
   page (Pulse: the Sheet over Spotlight). With `Hints::Auto` the hint bar floats (`layouts::hints_float`).
-  `HERONITE_DEBUG_SPOTLIGHT=<zone>[:<n>]` (`actions`, `media`, `viewer`, `about`, `sheet`, `achievements`, `links`,
-  `cards`, `shots`, `related`) opens a section, on the row's `n`th game.
+  `HERONITE_DEBUG_SPOTLIGHT=<zone>[:<n>|:<name>]` (`actions`, `media`, `viewer`, `about`, `sheet`, `achievements`,
+  `links`, `hltb`, `cards`, `shots`, `related`) opens a section, on the row's `n`th game or the first whose name holds
+  `<name>` (on the first tab that has it).
   **Achievements (console)** (`collection/console/achievements/`): one game's achievements full screen over its art
   (no top bar), reached from the game page's "Achievements" action in every theme (a row of the actions, a button on
   Hero, a row of the Sheet) and from anything that calls `open_console_achievements(key)`; B goes back to where it
