@@ -1238,28 +1238,28 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   file read as. Cinema took over from it and from the first Cinema (one row of covers, tabs along the bottom): a
   console.json on either (or on the Cinema of shelves that came between), unchanged, becomes today's Cinema on load
   (`upgrade_cinema`; a changed one keeps its values, and `Layout::Shelves` / `Layout::Cinema` still load from theme
-  files). Cinema (`layouts/cinema.rs`): the focused game's key art full bleed under a soft vignette on the left and the
-  bottom and a little at the top (`Scrim::Cinema`); at the left edge of the row of covers its logo large (else its name
-  as written in large title type, words kept whole, two lines at most, shrinking to fit), a line of facts (spaced
-  small-caps labels over values between thin champagne rules: playtime, last played, platform with the store's icon,
-  released, time to beat) and the genres as plain words, centred on each other (the block as wide as its widest line)
-  over a soft shade of their own; on the right, level with the facts, its achievements (a trophy, n / N, the
-  share and a thin bar) when it has a list; along the bottom one row of large portrait covers (about a third of the
-  screen) that keeps the focused cover whole in view (`row_offset`, from the row's fixed geometry), ringed in the
-  theme's champagne gold (`presets::CINEMA_GOLD`, its accent).
-  While the focus moves along the row the game's block steps aside so the art shows whole; 400 ms after it rests it
-  comes back (`motion::reveal`: the logo, then the rest; a return replays it, the same game never does). Tabs
-  Installed, All games, Recently played (`recent`: played games), Favourites and Not played yet, each the most
-  recently played first (Not played yet A–Z), as a centred gold pill between LB and RB; on the right a cluster of
-  monochrome icons (`layouts::layout_status`): search (the Filters panel), downloads with a badge of how many queue,
-  the controller while one is connected, and the clock; tabs that would come within 48 px of them show around the
-  current one, and below 1500 design px across the activity pill gives way to a thin progress bar under the download
-  icon. Hints always on, floating over the art from the row's left edge; `Hint::sub` adds a small second line (Menu:
-  what it leads to; Tabs: the next one). A and X follow `nav.aButton` like every theme, Y opens the game's actions in
-  a sheet (with "Change background…", the Covers dialog on its Background slot, for art that fights the logo), View
-  (`Btn::Select`) the Filters panel. Its page is Showcase without glass (`layouts.showcaseGlass: false`): the home's
-  block at the page's left edge with Play / Options / ♥ centred under it, the sections over the darkened art with
-  their titles over a thin champagne rule, no cards, the gold focus, and the page stopping above the hint bar.
+  files; an earlier Cinema that set `nav.aButton: play` is compared without it and goes back to the default, as A and
+  X are the user's choice). Cinema (`layouts/cinema.rs`): the focused game's key art full bleed under a soft vignette
+  on the left and the bottom and a little at the top (`Scrim::Cinema`); at the left edge of the row of covers its logo
+  large (else its name as written in large title type, words kept whole, two lines at most, shrinking to fit), a line
+  of facts (spaced small-caps labels over values between thin champagne rules: playtime, last played, platform with the
+  store's icon, released, time to beat) and the genres as plain words, each line from the block's left edge, over a
+  soft shade of its own; on the right, level with the facts, its achievements (a dark trophy disc ringed in gold, n / N,
+  the share and a thin bar, over a smaller shade) when it has a list; along the bottom one row of large portrait covers
+  (about a third of the screen) that keeps the focused cover whole in view (`row_offset`, from the row's fixed
+  geometry), ringed in the theme's champagne gold (`presets::CINEMA_GOLD`, its accent). While the focus moves along
+  the row the game's block steps aside so the art shows whole; 400 ms after it rests it comes back (`motion::reveal`:
+  the logo, then the rest; a return replays it, the same game never does). Tabs Installed, All games, Recently played
+  (`recent`: played games) and Favourites (the most recently played first), then Library (a Grid of every game), as a
+  centred gold pill between LB and RB; tabs that would come within 48 px of the clock show around the current one with
+  a muted "+N" for the others. On the right only the clock (and the shared activity pill while something runs), the
+  bar's right edge level with the row's. Hints always on, floating over the art from the row's left edge, the shared
+  ones (A and X as `nav.aButton` says, Y the search and filters, the tabs, the menu); `Hint::sub` adds a small second
+  line (Menu: what it leads to; Tabs: the next one). The game's actions (with "Change background…", the Covers dialog
+  on its Background slot, for art that fights the logo) are on its page's Options. Its page is Showcase without glass
+  (`layouts.showcaseGlass: false`): the home's block at the page's left edge with Play / Options / ♥ under it, the
+  sections over the darkened art with their titles over a thin champagne rule, no cards or boxed buttons, the gold
+  focus, the page fading into the dark under the hint bar.
   Shelves (the base's home and Hub's): Shelves count a shelf's games
   before `shelfLimit` cuts it and end a cut one with a "View all" tile (A opens the first Grid tab with the filters
   that show them, `grid::Nav::show_like`), LT / RT page along a shelf, the focused game's text slides in from the side
