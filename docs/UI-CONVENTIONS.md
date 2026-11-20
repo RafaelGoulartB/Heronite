@@ -1226,9 +1226,22 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   follow the theme too. A light `colors.background` (`ColourOptions::is_light`, `look::light()`) makes the console
   light: dark text and focus, white panels, the art washed out; surfaces use the scheme's ink, never a bare white.
   The built-in themes (`presets.rs`), in the order they are listed: Minimal (what a new install uses,
-  `presets::DEFAULT`, and what Reset goes back to), Classic (the base the others start from and what missing keys of a
-  theme file read as), and Cinema, Pulse, Arcade (Wheel), Hub (Dashboard, the rail) and Living room (Series X),
-  modelled on other launchers' fullscreen themes and consoles' home screens. Classic's screens: Shelves count a shelf's games
+  `presets::DEFAULT`, and what Reset goes back to), Cinema, Pulse, Arcade (Wheel), Hub (Dashboard, the rail) and Living
+  room (Series X), modelled on other launchers' fullscreen themes and consoles' home screens. Classic
+  (`presets::classic`) is no longer listed: it stays the base the others start from and what missing keys of a theme
+  file read as. Cinema took over from it and from the first Cinema (one row of covers, tabs along the bottom): a
+  console.json on either, unchanged, becomes today's Cinema on load (`upgrade_cinema`; a changed one keeps its values,
+  and `Layout::Shelves` / `Layout::Cinema` still load from theme files). Cinema: tabs Installed, All games, Favourites
+  (Cinema layout) and Library (Grid, last played first) as names along the top; the Hero game page; hints that fade
+  (`Hints::Auto`, floating over the bottom). Its home (`layouts/cinema.rs`): the game's art full bleed with the logo
+  large (the name when there is none), chips and genres at the foot of the room over the first shelf of covers, the
+  next shelf's title peeking under it. ↓ takes the whole view down through the shelves (one scroll area, its offset
+  worked out from the fixed shelf height, `view_offset`): the large block scrolls away, the logo comes back small with a
+  line of facts at the top, the art darkens behind the shelves, the focused shelf sits right under the small block,
+  the next ones dimmer, the passed ones gone; ↑ to the first shelf brings it all back. Shelves count their games and
+  end a cut one with "View all", as Shelves do. A new game's logo holds 0.3 s, fades in over 0.45 s sliding in, its
+  facts 0.15 s after over 0.3 s (`motion::reveal`, shared with Minimal; the same game never replays it).
+  Shelves (the base's home and Hub's): Shelves count a shelf's games
   before `shelfLimit` cuts it and end a cut one with a "View all" tile (A opens the first Grid tab with the filters
   that show them, `grid::Nav::show_like`), LT / RT page along a shelf, the focused game's text slides in from the side
   the focus came from (with "Last played", a long name shrinks) over a soft shade of its own; the Grid without a panel
