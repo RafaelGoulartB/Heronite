@@ -172,16 +172,58 @@ impl CollectionView {
         self.images.get_or_request(&id, chain, size.0, size.1, variant, 1000)
     }
 
+    /// The frame of the background for `key` while it moves (Settings →
+    /// Appearance → "Animated backgrounds", `live_stage.rs`): the game's art,
+    /// or the theme's own picture, when that is a video or an animated
+    /// picture. Its still stays [`Self::backdrop_image`], which the
+    /// cross-fade between games follows.
+    fn console_live(&mut self, key: &SharedString, window: &Window, cx: &mut Context<Self>) -> Option<Arc<RenderImage>> {
+        // The console theme's motion too, as its Drift.
+        if !motion::on() || motion::reduced() {
+            return None;
+        }
+        let theme = look::theme();
+        let size = backdrop_size(window);
+        let blur = f32::from(theme.background.blur);
+        let (owner, tag, chain): (Option<&str>, Cow<'static, str>, Vec<ImageRef>) = match theme.background.source {
+            BackgroundSource::Art => (Some(key.as_ref()), "art".into(), self.stage_chains.get(key).cloned().unwrap_or_default()),
+            BackgroundSource::Image => {
+                let src = theme.background.image.trim();
+                if src.is_empty() || src.starts_with("http://") || src.starts_with("https://") {
+                    return None;
+                }
+                (None, format!("img:{src}").into(), vec![ImageRef::File(src.into())])
+            }
+            // Covers and screenshots are pictures; no picture, no motion.
+            _ => return None,
+        };
+        let id = backdrop_id(owner, &tag, size, blur);
+        // The art failed: the still is the blurred cover, which does not move.
+        if self.images.is_failed(&id) {
+            return None;
+        }
+        let picture = format!("console:{}:{tag}", owner.unwrap_or(""));
+        let look = super::super::live_stage::StageLook { blur, saturation: 1., rolloff: 0. };
+        match self.live_stage(&id, &picture, &chain, size, look, window, cx)?.1 {
+            ImageSource::Render(frame) => Some(frame),
+            _ => None,
+        }
+    }
+
     /// The art behind the screen and the one it fades from.
+    /// `drawn`: the screen shows the art (not a page over it).
     pub(super) fn console_art(
         &mut self,
+        drawn: bool,
         window: &Window,
         cx: &mut Context<Self>,
     ) -> (Option<Arc<RenderImage>>, Option<(SharedString, Arc<RenderImage>)>) {
         let Some(key) = self.console.art_key.clone() else {
             return (self.console.art_prev.clone(), self.console.art_cur.clone());
         };
-        if let Some(img) = self.backdrop_image(&key, window) {
+        let still_now = self.backdrop_image(&key, window);
+        let has_still = still_now.is_some();
+        if let Some(img) = still_now {
             let same = self.console.art_cur.as_ref().is_some_and(|(_, i)| Arc::ptr_eq(i, &img));
             if !same {
                 // Cross-fade: the old art stays under the new one until it
@@ -197,18 +239,26 @@ impl CollectionView {
                 }));
             }
             self.console.art_cur = Some((key.clone(), img.clone()));
-            self.shown_stage = Some((key, img));
+            self.shown_stage = Some((key.clone(), img));
         } else if matches!(look::theme().background.source, BackgroundSource::Solid | BackgroundSource::GameColour) {
             self.console.art_cur = None;
             self.console.art_prev = None;
         }
-        (self.console.art_prev.clone(), self.console.art_cur.clone())
+        // A background that moves: its frame drawn in place of its still,
+        // which the cross-fade keeps following (a frame is not a new
+        // picture), once that still is the one shown (not the last game's
+        // while the new one loads). Not while nothing shows it (a page, the
+        // idle screen): it then stops.
+        let live = (drawn && !self.console_idle_shown()).then(|| self.console_live(&key, window, cx)).flatten();
+        let ours = has_still && self.console.art_cur.as_ref().is_some_and(|(k, _)| *k == key);
+        let cur = self.console.art_cur.clone().map(|(k, still)| (k, live.filter(|_| ours).unwrap_or(still)));
+        (self.console.art_prev.clone(), cur)
     }
 
     /// The whole background layer: art (or colour), darkening, shading.
     pub(super) fn render_console_backdrop(&mut self, scrim: Scrim, window: &Window, cx: &mut Context<Self>) -> Div {
         let theme = look::theme();
-        let (art_prev, art) = self.console_art(window, cx);
+        let (art_prev, art) = self.console_art(scrim != Scrim::Page, window, cx);
         let drift = theme.background.motion == BackgroundMotion::Drift && motion::on();
         // Classic's and Spotlight's screens: new art settles in from a touch closer while it fades.
         let settle = !drift && matches!(scrim, Scrim::Classic | Scrim::Library | Scrim::Home) && motion::on() && !motion::reduced();

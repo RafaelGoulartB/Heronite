@@ -4,7 +4,7 @@
 use std::sync::{Arc, LazyLock};
 
 use heronite_data::models::CollectionGameMetadata;
-use heronite_data::settings::METADATA_FIELDS;
+use heronite_data::settings::STORE_MEDIA;
 use heronite_data::source_prefs::ids::{HOW_LONG_TO_BEAT, PROTONDB, STEAMGRIDDB, STEAM_TAGS, WEB_IMAGES};
 use heronite_i18n::n_;
 use parking_lot::RwLock;
@@ -16,14 +16,18 @@ use super::{
     AlsoFor, AppliesTo, Asked, Entry, MetadataSource, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind, SourceRegistry,
     SourceTest,
 };
-use crate::covers::{find_steamgrid_game, search_steam, steamgrid_api_key, steamgrid_pictures};
+use crate::covers::{
+    find_steamgrid_game, search_steam, steam_id_alone, steam_id_in, steamgrid_api_key, steamgrid_pictures, strict_steam_score,
+};
 use crate::igdb::{Igdb, IgdbCredentials};
 use crate::launchbox::{self, map as lb_map, LaunchBox};
 use crate::libretro;
 use crate::lutris::{fetch_lutris_metadata, search_lutris};
 use crate::providers::{fetch_playnite_metadata, metadata_from_store_game, PlayniteSource, StoreLibraries};
 use crate::steam::{self, SteamState};
-use crate::types::{ArtKind, Lookup, MatchedBy, MetadataCandidate, SourceHit};
+use crate::steam_name;
+use crate::types::{release_year, ArtKind, Lookup, MatchedBy, MetadataCandidate, SourceHit};
+pub(crate) use launchbox_source::box_regions;
 use launchbox_source::{region_label, LaunchBoxSource};
 use libretro_source::LibretroSource;
 
@@ -40,6 +44,27 @@ mod libretro_source;
 /// LaunchBox's options.
 const BOX_REGION: &str = "boxRegion";
 const PC_GAMES: &str = "pcGames";
+/// Steam's option (on by default): PC games with no Steam id are looked up
+/// by their exact title.
+const BY_NAME: &str = "byName";
+
+/// Every field of the record but the logo, which IGDB does not have.
+const IGDB_FIELDS: [&str; 14] = [
+    "description",
+    "releaseDate",
+    "developers",
+    "publishers",
+    "genres",
+    "themes",
+    "gameModes",
+    "platforms",
+    "series",
+    "features",
+    "criticScore",
+    "ageRatings",
+    "cover",
+    "hero",
+];
 
 /// The service's state the adapters share with its other entry points
 /// (IGDB token and queue, Steam caches, parsed store libraries, Playnite).
@@ -75,6 +100,7 @@ fn source(id: &str, name: &str, kind: SourceKind, provides: &[&str]) -> SourceDe
         about: None,
         download: None,
         also_for: None,
+        link_for: None,
         leads_for: None,
         extension: None,
     }
@@ -89,7 +115,20 @@ fn key(key: &str, label: &str, kind: OptionKind, help: Option<&str>, link: Optio
     SourceOption { help: help.map(Into::into), link: link.map(Into::into), required: true, ..option(key, label, kind) }
 }
 
+/// The sources that give the Store media (`STORE_MEDIA`, not a field of
+/// the record): Steam's trailers and screenshots, the others' screenshots
+/// ([`crate::store_media::shots`]).
+const STORE_MEDIA_SOURCES: [&str; 5] = [STEAM, IGDB, STORE, LAUNCHBOX, LIBRETRO];
+
 static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
+    let mut list = descriptors();
+    for d in list.iter_mut().filter(|d| STORE_MEDIA_SOURCES.contains(&d.id.as_str())) {
+        d.provides.push(STORE_MEDIA.into());
+    }
+    list
+});
+
+fn descriptors() -> Vec<SourceDescriptor> {
     use MatchedBy::*;
     use SourceKind::*;
     vec![
@@ -107,12 +146,24 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
                 ),
                 key("clientSecret", n_!("Client secret"), OptionKind::Secret, None, None),
             ],
-            ..source(IGDB, "IGDB", Details, &METADATA_FIELDS)
+            ..source(IGDB, "IGDB", Details, &IGDB_FIELDS)
         },
         SourceDescriptor {
             applies_to: AppliesTo::HasSteamId,
-            finds_by: vec![SteamId],
+            finds_by: vec![SteamId, ExactTitle],
             searchable: true,
+            link_for: Some(AppliesTo::Pc),
+            also_for: Some(AlsoFor { option: BY_NAME.into(), applies_to: AppliesTo::Pc }),
+            options: vec![SourceOption {
+                help: Some(
+                    n_!("A PC game with no Steam page is looked up on Steam by its exact title. A title that is only alike is never taken.")
+                        .into(),
+                ),
+                // Off unless turned on: a game of the same title from another
+                // year is taken when neither side knows the year.
+                default: Some(OptionValue::Switch(false)),
+                ..option(BY_NAME, n_!("Find games not on Steam by name"), OptionKind::Switch)
+            }],
             ..source(
                 STEAM,
                 "Steam",
@@ -184,7 +235,7 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
             also_for: Some(AlsoFor { option: PC_GAMES.into(), applies_to: AppliesTo::Pc }),
             leads_for: Some(AppliesTo::Emulated),
             about: Some(n_!(
-                "The LaunchBox Games Database (gamesdb.launchbox-app.com), made for emulated games: it knows each platform's games by their dump names, with box art by region. Downloaded once to this PC and refreshed every week while it is on. Heronite is not affiliated with LaunchBox."
+                "The LaunchBox Games Database (gamesdb.launchbox-app.com), made for emulated games: it knows each platform's games by their dump names, with box art by region. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Downloaded once to this PC and refreshed every week while it is on. Heronite is not affiliated with LaunchBox."
             )
             .into()),
             options: vec![
@@ -216,6 +267,8 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
                     "cover",
                     "hero",
                     "coverSquare",
+                    "coverWide",
+                    "logo",
                 ],
             )
         },
@@ -229,7 +282,7 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
                 Some(n_!("Optional. Get a key at steamgriddb.com/profile/preferences/api")),
                 Some("https://www.steamgriddb.com/profile/preferences/api"),
             )],
-            ..source(STEAMGRIDDB, "SteamGridDB", Pictures, &["cover", "hero", "coverSquare", "coverWide"])
+            ..source(STEAMGRIDDB, "SteamGridDB", Pictures, &["cover", "hero", "coverSquare", "coverWide", "logo"])
         },
         // Box art by the dump's own file name: for the emulated games of the
         // platforms that have a folder on the server. It goes ahead of the
@@ -240,10 +293,10 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
             finds_by: vec![ExactTitle, FuzzyTitle],
             leads_for: Some(AppliesTo::Emulated),
             about: Some(n_!(
-                "The box art RetroArch uses (thumbnails.libretro.com), found by each game's dump file name on its platform. No key or account. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Heronite is not affiliated with libretro."
+                "The box art RetroArch uses (thumbnails.libretro.com), found by each game's dump file name on its platform, and the logo beside it when the platform has logos. No key or account. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Heronite is not affiliated with libretro."
             )
             .into()),
-            ..source(LIBRETRO, "Libretro", Pictures, &["cover", "coverSquare", "coverWide"])
+            ..source(LIBRETRO, "Libretro", Pictures, &["cover", "coverSquare", "coverWide", "logo"])
         },
         SourceDescriptor {
             finds_by: vec![FuzzyTitle],
@@ -266,7 +319,7 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
         },
         SourceDescriptor { finds_by: vec![SteamId, ExactTitle], ..source(PROTONDB, "ProtonDB", Extras, &[LINUX_RATING]) },
     ]
-});
+}
 
 /// The platforms that have a system folder on libretro's server.
 fn libretro_platforms() -> Vec<String> {
@@ -385,7 +438,29 @@ impl MetadataSource for SteamSource {
     }
 
     fn lookup(&self, ctx: &SourceContext<'_>, game: &SourceGame) -> Lookup<MetadataCandidate> {
-        self.app(ctx, game, game.steam_app_id.as_deref(), MatchedBy::SteamId)
+        match game.steam_app_id.as_deref() {
+            Some(id) => self.app(ctx, game, Some(id), MatchedBy::SteamId),
+            // A game with no id is asked for only while the search by name is on (the
+            // audience): the game of that exact title, never one that is alike.
+            None => match steam_name::app_id(ctx.paths, ctx.http, &game.title) {
+                Lookup::Found(id) => self.app(ctx, game, Some(&id), MatchedBy::ExactTitle).and_then(|c| {
+                    let md = &c.metadata;
+                    if steam_name::is_the_game(
+                        &game.title,
+                        game.year,
+                        md.title.as_deref().unwrap_or(""),
+                        release_year(md.release_date.as_deref()),
+                    ) {
+                        Lookup::Found(c)
+                    } else {
+                        Lookup::NotFound
+                    }
+                }),
+                Lookup::NotFound => Lookup::NotFound,
+                Lookup::Unreachable => Lookup::Unreachable,
+                Lookup::Skipped => Lookup::Skipped,
+            },
+        }
     }
 
     fn lookup_id(&self, ctx: &SourceContext<'_>, game: &SourceGame, id: &str) -> Lookup<MetadataCandidate> {
@@ -393,11 +468,46 @@ impl MetadataSource for SteamSource {
     }
 
     fn search(&self, ctx: &SourceContext<'_>, query: &str) -> Lookup<Vec<SourceHit>> {
-        search_steam(ctx.http, query)
+        // A store address names its game: it comes first. A number alone may be an
+        // app id or a title ("2048"): it comes after the games of that name.
+        let from_address = steam_id_in(query).and_then(|id| self.hit_of(ctx, &id));
+        let from_number = steam_id_alone(query).and_then(|id| self.hit_of(ctx, &id));
+        let by_name = search_steam(ctx.http, query);
+        let mut ranked: Vec<(i32, SourceHit)> = match by_name {
+            Lookup::Found(hits) => hits.into_iter().map(|h| (h.title.as_deref().map_or(0, |t| strict_steam_score(query, t)), h)).collect(),
+            other if from_address.is_none() && from_number.is_none() => return other,
+            _ => Vec::new(),
+        };
+        for (score, hit) in [(1000, from_address), (99, from_number)] {
+            if let Some(hit) = hit {
+                ranked.retain(|(_, h)| h.id != hit.id);
+                ranked.push((score, hit));
+            }
+        }
+        // Stable: the store's own order among equals (it lists a sequel first).
+        ranked.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
+        Lookup::Found(ranked.into_iter().map(|(_, h)| h).collect())
     }
 }
 
 impl SteamSource {
+    /// The game of `id` as a search hit: its name, year and cover (`None`:
+    /// Steam has no such app, or could not be asked).
+    fn hit_of(&self, ctx: &SourceContext<'_>, id: &str) -> Option<SourceHit> {
+        let details = steam::get_steam_app_details(ctx.paths, ctx.http, &self.state, id, None)?;
+        Some(SourceHit {
+            source: STEAM.into(),
+            thumb_url: steam::steam_cdn_cover(Some(id)),
+            id: Some(id.to_owned()),
+            title: Some(details.name.clone()).filter(|n| !n.is_empty()),
+            year: release_year(details.release_date.as_deref()),
+            platform: None,
+            matched_by: None,
+            alt_title: None,
+            thumb_adult: false,
+        })
+    }
+
     fn app(&self, ctx: &SourceContext<'_>, game: &SourceGame, id: Option<&str>, matched_by: MatchedBy) -> Lookup<MetadataCandidate> {
         steam::fetch_steam_metadata(ctx.paths, ctx.http, &self.state, &game.app_name, &game.runner, id, game.language.as_deref()).map(
             |md| {

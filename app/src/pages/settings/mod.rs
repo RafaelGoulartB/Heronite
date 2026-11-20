@@ -29,7 +29,7 @@
 //!
 //! Debug: `HERONITE_DEBUG_SETTINGS_SEARCH=<text>` types it in the search (`<text>!`: and presses Enter),
 //! `HERONITE_DEBUG_SETTINGS_KEYS=down,down,enter` then presses those keys in it (`lang:pt-BR` switches the language);
-//! `HERONITE_DEBUG_PAGE=settings[:general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|integrations|storage|mods|overlay|replay|metadata|screenshots|backups|cloud|logs|about]`.
+//! `HERONITE_DEBUG_PAGE=settings[:controls|general|appearance|quick-launcher|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|integrations|storage|mods|overlay|replay|metadata|screenshots|backups|cloud|logs|about]`.
 
 mod about;
 mod achievements;
@@ -39,6 +39,7 @@ mod backup;
 mod cloud;
 mod console;
 mod console_mode;
+mod controls;
 mod integrations;
 mod launchers;
 mod library;
@@ -48,12 +49,14 @@ mod mods;
 mod nav_keys;
 mod overlay;
 mod palette;
+mod quick_launch;
 mod replay;
 mod saves;
 mod saves_restore;
 mod screenshots;
 mod search;
 mod section;
+mod shortcuts;
 mod storage;
 pub mod sysinfo;
 mod updates;
@@ -88,6 +91,41 @@ use crate::ui::glass::glass_panel;
 
 /// Frames the page waits for a setting picked in the search to be drawn.
 const FIND_FRAMES: u8 = 30;
+
+/// Width of the section list.
+const NAV_W: f32 = 230.;
+/// Width of the column of icons a narrow window shows instead of the list.
+const RAIL_W: f32 = 60.;
+/// Below this width (of the window's content) the section list turns into a
+/// column of icons, so the page keeps room for its rows.
+const COMPACT_BELOW: f32 = 1000.;
+
+fn window_w(window: &Window) -> f32 {
+    f32::from(crate::ui::content_size(window).width)
+}
+
+/// The section list is a column of icons (the window is narrow).
+fn compact(window: &Window) -> bool {
+    window_w(window) < COMPACT_BELOW
+}
+
+/// The content's padding on each side.
+fn pad_x(window: &Window) -> f32 {
+    if compact(window) {
+        22.
+    } else {
+        36.
+    }
+}
+
+/// Horizontal room for a section's content: the window minus the sheet's
+/// inset, the section list and the content's padding (before the column's
+/// own `max_w`). Sections lay their blocks out from it (side by side or
+/// stacked), since a row cannot ask how wide its parent is.
+pub(crate) fn room(window: &Window) -> f32 {
+    let nav = if compact(window) { RAIL_W } else { NAV_W };
+    (window_w(window) - 24. - nav - 2. * pad_x(window)).max(0.)
+}
 
 /// Section the command palette asked for; taken by the page when it is
 /// created or shown again (see [`request_section`]).
@@ -150,16 +188,23 @@ pub struct SettingsPage {
     integrations: integrations::State,
     overlay: overlay::State,
     replay: replay::State,
+    quick_launch: quick_launch::State,
     mods: mods::State,
     storage: storage::State,
     advanced: advanced::State,
     about: about::State,
     logs: logs::State,
     console_mode: Option<console_mode::State>,
+    controls: controls::State,
     /// Console mode focus, keyboard and pickers.
     console: console::ConsoleState,
     /// The section list's scroll, for its scrollbar.
     nav_scroll: ScrollHandle,
+    /// The scroll of the icons a narrow window shows instead of the list.
+    rail_scroll: ScrollHandle,
+    /// In a narrow window, the whole list is open over the page (the search
+    /// or the list has the keyboard); picking an item closes it.
+    nav_open: bool,
     /// The search above the section list, and what is typed in it.
     nav_search: Entity<InputState>,
     nav_query: String,
@@ -248,14 +293,18 @@ impl SettingsPage {
             integrations: integrations::State::new(window, cx),
             overlay: overlay::State::new(&ctx, cx),
             replay: replay::State::new(&ctx, cx),
+            quick_launch: quick_launch::State::new(cx),
             mods: mods::State::new(window, cx),
             storage,
             advanced: advanced::State::default(),
             about: about::State::default(),
             logs: logs::State::default(),
             console_mode: None,
+            controls: controls::State::new(cx),
             console: Default::default(),
             nav_scroll: ScrollHandle::new(),
+            rail_scroll: ScrollHandle::new(),
+            nav_open: false,
             nav_search,
             nav_query,
             nav_lang: heronite_i18n::current(),
@@ -371,6 +420,7 @@ impl SettingsPage {
     /// The Collection hid the page: its sections free what only a visible one
     /// needs (`refresh` brings it back when the page is shown).
     pub fn hidden(&mut self, window: &mut Window) {
+        controls::hidden(self);
         self.storage.hidden(window);
         console_mode::hidden(self, window);
         self.logs.release();
@@ -442,6 +492,7 @@ impl SettingsPage {
             Section::About => self.about.load(&self.ctx, cx),
             Section::Screenshots => self.screenshots.shown(cx),
             Section::Achievements => achievements::shown(self, cx),
+            Section::Controls => controls::shown(self, cx),
             Section::Overlay => overlay::shown(cx),
             Section::Launchers => launchers::shown(self, cx),
             Section::Replay => replay::shown(self, cx),
@@ -528,7 +579,7 @@ impl SettingsPage {
         };
         let layer = |ix: usize, radius: f32| nav_keys::item_layer(&self.nav_bounds, ix, cursor == Some(ix), px(radius));
         let pill = |s: Section, ix: usize, cx: &mut Context<Self>| {
-            nav_pill(SharedString::from(format!("settings-nav-{s:?}")), s.icon(), s.label(), self.section == s)
+            nav_pill(SharedString::from(format!("settings-nav-{s:?}")), nav_icon(s), s.label(), self.section == s)
                 .relative()
                 .child(layer(ix, 999.))
                 .on_click(cx.listener(move |this, _, window, cx| this.nav_clicked(ix, search::Pick::Section(s), window, cx)))
@@ -617,12 +668,106 @@ impl SettingsPage {
         div()
             .relative()
             .flex_none()
-            .w(px(230.))
+            .w(px(NAV_W))
             .h_full()
             .border_r_1()
             .border_color(theme::row_separator())
             .child(col)
             .children(scrollbar.map(|b| b.right(px(2.))))
+    }
+
+    /// The section list of a narrow window: the search's button, then an
+    /// icon per section (its name under the pointer), a line between groups.
+    /// The search's button (or Ctrl F, or typing on the icons) opens the whole
+    /// list over the page ([`Self::nav_overlay`]).
+    fn rail(&self, window: &Window, cx: &mut Context<Self>) -> Div {
+        let cursor = if self.nav_open { None } else { self.nav_cursor_shown(window) };
+        let search = div()
+            .id("settings-rail-search")
+            .flex_none()
+            .size(px(40.))
+            .rounded(px(12.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(theme::ink_a(0.05))
+            .cursor_pointer()
+            .hover(|s| s.bg(theme::ink_a(0.09)))
+            .tooltip(crate::ui::tooltip(tr!("Search settings")))
+            .child(crate::ui::icon(Icon::FaSearch, px(15.), theme::nav_text()))
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.nav_open = true;
+                this.focus_search(window, cx);
+            }));
+        let mut col = div()
+            .id("settings-rail")
+            .track_focus(&self.nav_focus)
+            .on_key_down(cx.listener(Self::nav_key))
+            .size_full()
+            .overflow_y_scroll()
+            .track_scroll(&self.rail_scroll)
+            .flex()
+            .flex_col()
+            .items_center()
+            .pt(px(26.))
+            .pb(px(16.))
+            .child(search);
+        let mut ix = 0;
+        let mut first = true;
+        for (_, sections) in Section::GROUPS {
+            if !sections.iter().any(|s| s.available()) {
+                continue;
+            }
+            col = col.child(div().flex_none().w(px(24.)).h(px(1.)).my(px(10.)).when(!first, |d| d.bg(theme::row_separator())));
+            first = false;
+            for s in sections.iter().copied().filter(|s| s.available()) {
+                let active = self.section == s;
+                let at = ix;
+                ix += 1;
+                col = col.child(
+                    div()
+                        .id(SharedString::from(format!("settings-rail-{s:?}")))
+                        .relative()
+                        .flex_none()
+                        .size(px(40.))
+                        .mb(px(2.))
+                        .rounded(px(12.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .when(active, |d| d.bg(theme::accent_tint()))
+                        .when(!active, |d| d.hover(|s| s.bg(theme::ink_a(0.05))))
+                        .tooltip(crate::ui::tooltip(s.label()))
+                        .child(crate::ui::icon(nav_icon(s), px(18.), if active { theme::accent() } else { theme::nav_text() }))
+                        .when(!self.nav_open, |d| d.child(nav_keys::item_layer(&self.nav_bounds, at, cursor == Some(at), px(12.))))
+                        .on_click(cx.listener(move |this, _, window, cx| this.nav_clicked(at, search::Pick::Section(s), window, cx))),
+                );
+            }
+        }
+        div().relative().flex_none().w(px(RAIL_W)).h_full().border_r_1().border_color(theme::row_separator()).child(col)
+    }
+
+    /// The whole section list over the page of a narrow window, while the
+    /// search or the list has the keyboard; a click beside it closes it.
+    fn nav_overlay(&mut self, window: &Window, cx: &mut Context<Self>) -> Option<Div> {
+        if self.nav_search.read(cx).focus_handle(cx).is_focused(window) {
+            self.nav_open = true;
+        }
+        let keyboard = self.nav_focus.is_focused(window) || self.nav_search.read(cx).focus_handle(cx).is_focused(window);
+        if !self.nav_open || !keyboard {
+            self.nav_open = false;
+            return None;
+        }
+        let list = crate::ui::glass::glass_menu_surface(theme::R_SHEET).absolute().top_0().bottom_0().left_0().child(self.nav(window, cx));
+        let shade = div().id("settings-nav-shade").absolute().inset_0().rounded(px(theme::R_SHEET)).bg(theme::black_a(0.25)).on_click(
+            cx.listener(|this, _, window, cx| {
+                this.nav_open = false;
+                window.focus(&this.nav_focus, cx);
+                cx.notify();
+            }),
+        );
+        Some(div().absolute().inset_0().child(shade).child(list))
     }
 
     /// The search above the section list, with a clear button once something is typed. Esc
@@ -647,6 +792,11 @@ impl SettingsPage {
             search::Pick::Section(section) => (section, None),
             search::Pick::Setting(section, setting) => (section, Some(setting)),
         };
+        // A narrow window's list closes over the section it opened.
+        if self.nav_open {
+            self.nav_open = false;
+            window.focus(&self.nav_focus, cx);
+        }
         self.select(section, window, cx);
         let Some(setting) = setting else {
             crate::ui::find::clear();
@@ -728,6 +878,7 @@ impl SettingsPage {
 
     /// Ctrl F on the page: the keyboard in the nav's search, its text selected.
     pub fn focus_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.nav_open = compact(window);
         self.nav_search.update(cx, |s, cx| {
             s.select_all(window, cx);
             s.focus(window, cx);
@@ -752,10 +903,12 @@ impl SettingsPage {
             Section::Library => self.library_section(cx).into_any_element(),
             Section::Storage => storage::render(self, window, cx),
             Section::Mods => mods::render(self, window, cx),
+            Section::Controls => controls::render(self, window, cx),
             Section::Overlay => overlay::render(self, window, cx),
             Section::Launchers => launchers::render(self, cx),
             Section::Integrations => integrations::render(self, window, cx),
             Section::Replay => replay::render(self, window, cx),
+            Section::QuickLauncher => quick_launch::render(self, window, cx),
             Section::Appearance => Self::collection_section(appearance::render(self, window, cx), self.error.clone()),
             Section::Metadata => Self::collection_section(metadata::render(self, window, cx), self.error.clone()),
             Section::Achievements => achievements::render(self, window, cx),
@@ -827,7 +980,7 @@ impl Render for SettingsPage {
                 .h_full()
                 .flex()
                 .flex_col()
-                .px(px(36.))
+                .px(px(pad_x(window)))
                 .pt(px(26.))
                 .pb(px(18.))
                 .child(column.flex_1().min_h_0())
@@ -839,7 +992,7 @@ impl Render for SettingsPage {
                 .h_full()
                 .overflow_y_scroll()
                 .track_scroll(&self.content_scroll)
-                .px(px(36.))
+                .px(px(pad_x(window)))
                 .pt(px(26.))
                 .pb(px(32.))
                 .child(column)
@@ -850,14 +1003,30 @@ impl Render for SettingsPage {
             .right(px(20.))
             .on_click(cx.listener(|_, _, _, cx| cx.emit(PageEvent::Navigate(Page::Collection))));
         // The sheet floats over the blurred art, inset from the window edges.
+        let (nav, overlay) = if compact(window) {
+            (self.rail(window, cx), self.nav_overlay(window, cx))
+        } else {
+            self.nav_open = false;
+            (self.nav(window, cx), None)
+        };
         let sheet = glass_panel(theme::R_SHEET)
             .flex()
             .size_full()
             .text_color(theme::text_primary())
             .font_family(theme::font_body())
-            .child(self.nav(window, cx))
+            .child(nav)
             .child(content)
-            .child(close);
+            .child(close)
+            .children(overlay);
         div().size_full().p(px(12.)).pt(px(2.)).child(sheet).into_any_element()
+    }
+}
+
+/// A section's icon in the left list: [`Section::icon`] (which console mode
+/// draws too), except Mods, a puzzle piece here.
+fn nav_icon(section: Section) -> Icon {
+    match section {
+        Section::Mods => Icon::Extension,
+        s => s.icon(),
     }
 }

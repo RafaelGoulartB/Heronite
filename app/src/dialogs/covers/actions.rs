@@ -7,7 +7,7 @@ use heronite_data::cover_family::CoverFamily;
 use heronite_data::models::CollectionGameArt;
 use heronite_i18n::tr;
 use heronite_metadata::web_images::{cover_query, wallpaper_query};
-use heronite_metadata::ArtImages;
+use heronite_metadata::{ArtImages, MetadataApplyArgs};
 
 use gpui_kit::*;
 
@@ -39,6 +39,8 @@ impl CoversDialog {
             return;
         }
         self.slot = slot;
+        self.source = None;
+        self.style = None;
         self.error.clear();
         self.search(cx);
         cx.notify();
@@ -50,6 +52,10 @@ impl CoversDialog {
         // Every search, even one shown from before, makes the answers of
         // those still running stale: they must not replace what is shown.
         self.request += 1;
+        self.note = None;
+        // Whatever the last search said is not about this one (nor about one shown from before).
+        self.error.clear();
+        self.console_scroll.reset();
         self.selected = None;
         self.visible = found::PAGE;
         self.results = ArtImages::default();
@@ -83,8 +89,16 @@ impl CoversDialog {
             Slot::Cover(_) => cover_query(&typed),
         };
         let (service, kind) = (self.service.clone(), slot.kind());
+        let game = MetadataApplyArgs {
+            app_name: self.game.app_name.clone(),
+            runner: self.runner.clone(),
+            title: self.game.title.clone(),
+            steam_app_id: self.game.steam_app_id.clone(),
+            ..Default::default()
+        };
+        let words = typed.clone();
         cx.spawn(async move |this, cx| {
-            let res = cx.background_spawn(async move { service.search_art_images(&query, kind, false) }).await;
+            let res = cx.background_spawn(async move { service.search_game_art_images(&game, &words, &query, kind) }).await;
             this.update(cx, |this, cx| this.found_for(id, slot, typed, res, cx)).ok();
         })
         .detach();
@@ -102,6 +116,10 @@ impl CoversDialog {
                 if self.slot == slot {
                     self.results = list;
                     self.selected = None;
+                    // `HERONITE_DEBUG_PICK_ANIMATED=1`: the first animated one picked (captures).
+                    if crate::env::flag("HERONITE_DEBUG_PICK_ANIMATED") {
+                        self.selected = self.found().iter().position(|f| f.image.animated);
+                    }
                 }
             }
             Err(err) => self.error = format!("{err:#}"),
@@ -116,6 +134,8 @@ impl CoversDialog {
             Ok(art) => {
                 self.art = art;
                 self.selected = None;
+                self.sizes.update(cx, |s, _| s.forget_local());
+                self.note = Some(tr!("Saved"));
                 self.compute_slots();
                 if self.fake.is_none() {
                     cx.emit(DialogEvent::Changed);
@@ -156,7 +176,7 @@ impl CoversDialog {
     /// "Use for <family>": downloads the picture picked (`pick`, else the
     /// selection) as the slot's.
     pub(super) fn use_selected(&mut self, pick: Option<usize>, cx: &mut Context<Self>) {
-        let Some((_, image)) = pick.or(self.selected).and_then(|i| self.found().get(i).map(|(s, img)| (*s, (*img).clone()))) else {
+        let Some(image) = pick.or(self.selected).and_then(|i| self.found().get(i).map(|f| f.image.clone())) else {
             return;
         };
         self.selected = pick.or(self.selected);
@@ -175,19 +195,16 @@ impl CoversDialog {
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = rx.await else { return };
             let Some(path) = paths.into_iter().next() else { return };
-            this.update(cx, |this, cx| {
-                let kind = this.kind();
-                let file = path.to_string_lossy().into_owned();
-                let shown = file.clone();
-                this.save(
-                    move |s, runner, app| s.set_art_from_file(runner, app, kind, &file),
-                    move |art| *kind.of_art_mut(art) = Some(shown),
-                    cx,
-                );
-            })
-            .ok();
+            this.update(cx, |this, cx| this.use_file(path.to_string_lossy().into_owned(), cx)).ok();
         })
         .detach();
+    }
+
+    /// The file at `file` as the slot's picture.
+    pub(super) fn use_file(&mut self, file: String, cx: &mut Context<Self>) {
+        let kind = self.kind();
+        let shown = file.clone();
+        self.save(move |s, runner, app| s.set_art_from_file(runner, app, kind, &file), move |art| *kind.of_art_mut(art) = Some(shown), cx);
     }
 
     /// "Reset": back to what the sources gave for the slot.

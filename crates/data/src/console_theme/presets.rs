@@ -115,7 +115,6 @@ pub fn pulse() -> ConsoleTheme {
         t.tiles.corners = Corners::Soft;
         t.interface.tab_bar = TabBar::Names;
         t.interface.font = ConsoleFont::System;
-        t.controls.glyphs = Glyphs::PlayStation;
         t.controls.hints = Hints::Auto;
         t.layouts.spotlight_actions = SpotActions::Play;
         t.layouts.grid_panel = GridPanel::Right;
@@ -159,7 +158,6 @@ pub fn arcade() -> ConsoleTheme {
             focus_text: String::new(),
             on: "#2de2e6".into(),
         };
-        t.controls.glyphs = Glyphs::Auto;
     })
 }
 

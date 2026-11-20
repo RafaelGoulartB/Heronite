@@ -3513,7 +3513,7 @@ checksum = "e17592d60ebacc7d5e169f4663c5f84f9161cc90328abcfe8456f41e4dfcb284"
 
 [[package]]
 name = "heronite"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "ashpd",
@@ -3569,11 +3569,12 @@ dependencies = [
  "smallvec",
  "tempfile",
  "trash",
+ "usvg 0.46.0",
 ]
 
 [[package]]
 name = "heronite-achievements"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "aes",
  "anyhow",
@@ -3598,7 +3599,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-amazon"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "heronite-data",
@@ -3616,7 +3617,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-backup"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3632,7 +3633,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-clients"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3649,7 +3650,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-data"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3671,7 +3672,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-display"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "heronite-platform",
  "log",
@@ -3683,7 +3684,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-emulation"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3704,7 +3705,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-epic"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3723,7 +3724,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-epic-login"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "embed-resource",
  "gtk",
@@ -3737,7 +3738,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-gog"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "heronite-data",
@@ -3755,14 +3756,14 @@ dependencies = [
 
 [[package]]
 name = "heronite-i18n"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "heronite-images"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "fast_image_resize",
  "image",
@@ -3779,7 +3780,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-import"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3794,7 +3795,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-installer"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "flate2",
@@ -3819,7 +3820,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-launch"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3841,7 +3842,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-media"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "ashpd",
  "async-io",
@@ -3872,7 +3873,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-metadata"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3897,7 +3898,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-metadata-ext"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3921,7 +3922,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-mods"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "heronite-data",
@@ -3940,7 +3941,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-overlay"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "evdev",
  "heronite-data",
@@ -3954,7 +3955,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-platform"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "ashpd",
  "dirs 6.0.0",
@@ -3970,7 +3971,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-shortcuts"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
@@ -3984,7 +3985,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-steam"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4005,7 +4006,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-storage"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
@@ -4022,7 +4023,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-sunshine"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4035,7 +4036,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-sync"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4055,7 +4056,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-update"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "heronite-data",
@@ -4074,7 +4075,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-wine"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
@@ -4092,7 +4093,7 @@ dependencies = [
 
 [[package]]
 name = "heronite-xbox"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

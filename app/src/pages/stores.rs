@@ -80,6 +80,7 @@ fn account_glance(logged_in: bool, expired: bool, owned: usize, installed: usize
 fn steam_glance(state: SteamState, summary: &Summary) -> Glance {
     let library = || counts(summary.games, summary.installed);
     match state {
+        SteamState::Off => glance(Dot::Off, tr!("Off")),
         SteamState::Checking => glance(Dot::Off, tr!("Checking")),
         SteamState::NotInstalled => glance(Dot::Off, tr!("Not found")),
         SteamState::NeedsRestart => glance(Dot::Attention, tr!("Restart once")),
@@ -308,6 +309,8 @@ mod tests {
         assert_eq!(steam_glance(SteamState::NotAnswering, &read).dot, Dot::Attention);
         assert_eq!(steam_glance(SteamState::PortTaken, &read).dot, Dot::Attention);
         assert_eq!(steam_glance(SteamState::Reading, &read).dot, Dot::Busy);
+        // Off says so, whatever the cached library holds.
+        assert_eq!(steam_glance(SteamState::Off, &read).dot, Dot::Off);
     }
 
     #[test]

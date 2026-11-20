@@ -369,7 +369,7 @@ impl GameSettingsDialog {
     /// (the form only when nothing in it was edited yet).
     fn on_metadata_event(&mut self, view: &Entity<MetadataDialog>, ev: &DialogEvent, window: &mut Window, cx: &mut Context<Self>) {
         if matches!(ev, DialogEvent::Changed | DialogEvent::ChangedAndClose) {
-            // Pictures set in its "Choose covers…".
+            // Pictures set in its "More options…".
             if let Some(art) = view.read(cx).covers_art().cloned() {
                 self.art = art;
             }

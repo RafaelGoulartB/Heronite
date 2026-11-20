@@ -36,6 +36,8 @@ pub struct Endpoints {
     pub libretro_thumbnails: String,
     pub steamgriddb: String,
     pub bottles_steamgrid: String,
+    /// GOG's product API (`/products/<id>`).
+    pub gog_api: String,
     pub hltb: String,
     pub protondb: String,
     pub duckduckgo: String,
@@ -64,6 +66,7 @@ impl Default for Endpoints {
             libretro_thumbnails: "https://thumbnails.libretro.com".into(),
             steamgriddb: "https://www.steamgriddb.com/api/v2".into(),
             bottles_steamgrid: "https://steamgrid.usebottles.com".into(),
+            gog_api: "https://api.gog.com".into(),
             hltb: "https://howlongtobeat.com".into(),
             protondb: "https://www.protondb.com".into(),
             duckduckgo: "https://duckduckgo.com".into(),
@@ -87,6 +90,37 @@ impl std::fmt::Display for Unreachable {
 }
 
 impl std::error::Error for Unreachable {}
+
+/// A server's refusal (a status that is not a success): the message is
+/// `HTTP <status>: <start of the body>`.
+#[derive(Debug)]
+pub struct Refused {
+    pub status: u16,
+    /// `Retry-After`, in seconds, when the server sent one.
+    pub retry_after: Option<u64>,
+    text: String,
+}
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "HTTP {}: {}", self.status, self.text)
+    }
+}
+
+impl std::error::Error for Refused {}
+
+/// Whether `err` is a server that could not answer now: it is throttling
+/// (429) or failing (5xx). Not "no such thing".
+pub fn is_busy(err: &anyhow::Error) -> bool {
+    busy_for(err).is_some()
+}
+
+/// How long a server that is busy ([`is_busy`]) should be left alone: what
+/// it asked (up to an hour), else five minutes.
+pub fn busy_for(err: &anyhow::Error) -> Option<Duration> {
+    let r = err.downcast_ref::<Refused>().filter(|r| r.status == 429 || r.status >= 500)?;
+    Some(Duration::from_secs(r.retry_after.unwrap_or(300).clamp(30, 3600)))
+}
 
 /// A body over the request's [`Request::max_bytes`]. Counts as
 /// [`Unreachable`] for [`is_unreachable`], as it always did; the extension
@@ -137,7 +171,7 @@ impl Response {
     pub fn error(&self) -> anyhow::Error {
         let body = self.text();
         let body: String = body.chars().take(300).collect();
-        anyhow!("HTTP {}: {}", self.status, body)
+        anyhow::Error::new(Refused { status: self.status, retry_after: self.retry_after, text: body })
     }
 }
 
@@ -201,6 +235,41 @@ impl<'a> Request<'a> {
     }
 
     pub fn send(self) -> Result<Response> {
+        let max = self.max_bytes;
+        self.send_reading(|url, body| {
+            body.with_config().limit(max).read_to_vec().map_err(|e| match e {
+                ureq::Error::BodyExceedsLimit(max) => anyhow::Error::new(BodyTooLarge(max)),
+                e => anyhow::Error::new(Unreachable(format!("{url}: {e}"))),
+            })
+        })
+    }
+
+    /// [`send`](Self::send) that reads only the start of the body: up to
+    /// `max` bytes, and no further once `enough` says the bytes read are
+    /// (checked after each chunk). For a server that ignores `Range` (the
+    /// rest of the answer is dropped with the connection). Never fails for
+    /// a long body.
+    pub fn send_head(self, max: usize, enough: impl Fn(&[u8]) -> bool) -> Result<Response> {
+        self.send_reading(|url, body| {
+            let mut reader = body.as_reader();
+            let mut out: Vec<u8> = Vec::new();
+            let mut chunk = [0u8; 8 * 1024];
+            while out.len() < max && !enough(&out) {
+                let want = chunk.len().min(max - out.len());
+                match reader.read(&mut chunk[..want]) {
+                    Ok(0) => break,
+                    Ok(n) => out.extend_from_slice(&chunk[..n]),
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                    Err(e) => return Err(anyhow::Error::new(Unreachable(format!("{url}: {e}")))),
+                }
+            }
+            Ok(out)
+        })
+    }
+
+    /// Sends the request and reads its body with `read` (given the address,
+    /// for its errors).
+    fn send_reading(self, read: impl FnOnce(&str, &mut ureq::Body) -> Result<Vec<u8>>) -> Result<Response> {
         let agent = &self.http.agent;
         let redirects = if self.redirects { MAX_REDIRECTS } else { 0 };
         let mut resp = if self.post {
@@ -230,10 +299,7 @@ impl<'a> Request<'a> {
         let retry_after = header("retry-after").and_then(|v| v.trim().parse().ok());
         let headers =
             resp.headers().iter().filter_map(|(k, v)| Some((k.as_str().to_ascii_lowercase(), v.to_str().ok()?.to_owned()))).collect();
-        let body = resp.body_mut().with_config().limit(self.max_bytes).read_to_vec().map_err(|e| match e {
-            ureq::Error::BodyExceedsLimit(max) => anyhow::Error::new(BodyTooLarge(max)),
-            e => anyhow::Error::new(Unreachable(format!("{}: {e}", self.url))),
-        })?;
+        let body = read(&self.url, resp.body_mut())?;
         Ok(Response { status, content_type, content_length, retry_after, headers, body })
     }
 

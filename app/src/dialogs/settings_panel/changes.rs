@@ -65,6 +65,7 @@ const GROUPS: &[Group] = &[
     t(heronite_steam::options::KEY_WINED3D, C, &[heronite_steam::options::KEY_WINED3D]),
     g("showFps", P, &["showFps"]),
     g("showMangohud", P, &["showMangohud"]),
+    g(fps_limit::KEY_MANGOHUD_HIDDEN, P, &[fps_limit::KEY_MANGOHUD_HIDDEN]),
     t("fps", P, &[fps_limit::KEY_LIMIT, fps_limit::KEY_METHOD, fps_limit::KEY_SMOOTH, fps_limit::KEY_NO_FOCUS]),
     t("lsfg", P, &lsfg::INHERITED_KEYS),
     g("enableFSR", P, &["enableFSR"]),

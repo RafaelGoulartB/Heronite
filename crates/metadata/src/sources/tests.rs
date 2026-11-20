@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use heronite_data::models::LocalGameMeta;
-use heronite_data::settings::{default_field_priority, ALL_FIELDS, SOURCE_IDS};
+use heronite_data::settings::{default_field_priority, ALL_FIELDS, SOURCE_IDS, STORE_MEDIA};
 use parking_lot::RwLock;
 
 use super::*;
@@ -93,11 +93,15 @@ fn cover_families_by_source() {
     let reg = registry();
     let gives = |field: &str| reg.descriptors().filter(|d| d.provides(field)).map(|d| d.id.as_str()).collect::<Vec<_>>();
     assert_eq!(gives("coverSquare"), ["launchbox", "steamgriddb", "libretro"]);
-    assert_eq!(gives("coverWide"), ["steam", "store", "steamgriddb", "libretro"]);
+    assert_eq!(gives("coverWide"), ["steam", "store", "launchbox", "steamgriddb", "libretro"]);
     // The tall cover keeps its sources; IGDB and Lutris give only that one.
     assert_eq!(gives("cover"), ["igdb", "steam", "store", "lutris", "playnite", "launchbox", "steamgriddb", "libretro", "webimages"]);
     // No background: its screenshots are 240 to 512 px wide.
     assert!(!gives("hero").contains(&"libretro"));
+    // Logos: the pictures sources that have them; Steam's and the stores'
+    // official ones are console mode's own, ahead of this field.
+    assert_eq!(gives("logo"), ["launchbox", "steamgriddb", "libretro"]);
+    assert_eq!(reg.field_order(&MetadataSettings::default(), "logo"), ["steamgriddb", "launchbox", "libretro"]);
 }
 
 /// `heronite_data::settings` keeps the ids of the default priorities and of
@@ -114,7 +118,7 @@ fn data_crate_ids_match_the_details_sources() {
         }
     }
     for d in reg.descriptors().filter(|d| d.kind == SourceKind::Details) {
-        assert!(d.provides.iter().all(|f| ALL_FIELDS.contains(&f.as_str())), "{}", d.id);
+        assert!(d.provides.iter().all(|f| ALL_FIELDS.contains(&f.as_str()) || f == STORE_MEDIA), "{}", d.id);
     }
 }
 
@@ -229,12 +233,36 @@ fn the_file_name_is_the_roms_else_the_install_folders() {
 }
 
 #[test]
+fn steam_is_for_games_with_an_id_and_can_be_linked_to_the_other_pc_games() {
+    let reg = registry();
+    let d = reg.get("steam").unwrap();
+    assert!(d.searchable && d.applies_to == AppliesTo::HasSteamId && d.finds_by.contains(&MatchedBy::ExactTitle));
+    // The by-name search is an option, off until the user turns it on.
+    assert_eq!(d.also_for, Some(AlsoFor { option: "byName".into(), applies_to: AppliesTo::Pc }));
+    assert_eq!(d.options.iter().map(|o| o.key.as_str()).collect::<Vec<_>>(), ["byName"]);
+    assert_eq!(d.options[0].default, Some(OptionValue::Switch(false)));
+    let game = |steam: Option<&str>, emulated: bool| SourceGame {
+        steam_app_id: steam.map(Into::into),
+        emulated,
+        ..SourceGame::new(&args(None), None, &[])
+    };
+    let link = d.link_for.as_ref().expect("a link to a Steam page can be made by hand");
+    assert!(link.matches(&game(None, false)), "a game added by hand");
+    assert!(!link.matches(&game(None, true)), "an emulated game is never linked to a Steam page");
+    assert!(d.applies_to.matches(&game(Some("620"), false)) && !d.applies_to.matches(&game(None, false)));
+    // Only Steam can be linked by hand.
+    let linkable: Vec<_> = reg.lookups().map(|s| s.descriptor()).filter(|d| d.link_for.is_some()).map(|d| d.id.as_str()).collect();
+    assert_eq!(linkable, ["steam"]);
+}
+
+#[test]
 fn libretro_is_for_the_emulated_games_of_platforms_with_a_folder() {
     let reg = registry();
     let d = reg.get("libretro").unwrap();
     assert_eq!((d.kind, d.needs, d.network, d.searchable, d.hidden), (SourceKind::Pictures, Needs::Nothing, true, false, false));
     assert!(d.options.is_empty() && d.download.is_none() && d.also_for.is_none() && !d.manual_only && d.asked == Asked::Always);
-    assert_eq!(d.provides, ["cover", "coverSquare", "coverWide"], "no background: its screenshots are small");
+    // No background: its screenshots are small; they are the Store media's last resort.
+    assert_eq!(d.provides, ["cover", "coverSquare", "coverWide", "logo", STORE_MEDIA]);
     assert_eq!(d.finds_by, [MatchedBy::ExactTitle, MatchedBy::FuzzyTitle]);
     assert_eq!(d.leads_for, Some(AppliesTo::Emulated));
     let game = |platform: Option<&str>, emulated: bool| SourceGame {

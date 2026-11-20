@@ -184,7 +184,8 @@ mod tests {
 
     #[test]
     fn imported_reserved_screenshot_buttons_use_rb() {
-        let opts = Options { screenshot: true, screenshot_button: Button::Start, volume: true, moment: true, replay: false };
+        let opts =
+            Options { screenshot: true, screenshot_button: Button::Start, volume: true, moment: true, replay: false, console_hold: false };
         for button in [Button::Start, Button::Select] {
             assert_eq!(options(Options { screenshot_button: button, ..opts }).screenshot_button, Button::RB);
         }

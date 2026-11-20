@@ -147,6 +147,9 @@ fn setup_with(delay: Duration) -> Setup {
     let server = mock(delay);
     let paths = make_root(dir.path(), &server.base);
     let svc = Arc::new(MetadataService::with_endpoints(paths.clone(), server.endpoints()));
+    // These jobs count what is asked of each source for the games with a Steam id; the search by name
+    // of the games with none is tested in `steam_link`.
+    svc.set_source_option("steam", "byName", heronite_metadata::sources::OptionValue::Switch(false)).unwrap();
     Setup { _dir: dir, paths, server, svc }
 }
 
@@ -289,6 +292,7 @@ fn dead_endpoints() -> Endpoints {
         twitch_token: format!("{base}/twitch/oauth2/token"),
         igdb: format!("{base}/igdb/v4"),
         steam_store: format!("{base}/steam"),
+        steam_community: format!("{base}/community"),
         lutris: format!("{base}/lutris"),
         ..Endpoints::default()
     }
@@ -443,6 +447,29 @@ fn a_job_started_while_one_runs_waits_its_turn() {
 }
 
 #[test]
+fn when_a_job_ends_with_one_waiting_the_progress_is_already_the_next_ones() {
+    let s = setup_with(Duration::from_millis(60));
+    // What the service shows while job 1's `Done` is handed out, before job
+    // 2 sends its first progress.
+    let seen: Arc<Mutex<Option<BulkProgress>>> = Arc::default();
+    let (svc, at_done) = (Arc::downgrade(&s.svc), seen.clone());
+    let a = move |p: &BulkProgress| {
+        if p.state == BulkState::Done {
+            *at_done.lock() = svc.upgrade().map(|svc| svc.bulk_progress());
+        }
+    };
+    s.svc.start_bulk_metadata(BulkArgs::fill_missing(vec![plain(), item("g3", "Third Game", None)]), a);
+    let queued = s.svc.start_bulk_metadata(BulkArgs::fill_missing(vec![item("g4", "Fourth Game", None)]), |_| {});
+    assert_eq!(queued.queued.len(), 1, "job 2 waits behind job 1");
+    wait_idle(&s.svc);
+
+    let between = seen.lock().clone().expect("job 1 ended");
+    assert_eq!((between.job, between.state), (2, BulkState::Running), "never idle between the two");
+    assert!(between.queued.is_empty() && !between.can_undo);
+    assert_eq!(s.svc.bulk_progress().job, 2);
+}
+
+#[test]
 fn stop_ends_the_running_job_and_clear_drops_the_waiting_ones() {
     let s = setup_with(Duration::from_millis(60));
     let games = vec![plain(), item("g3", "Third Game", None), item("g4", "Fourth Game", None)];
@@ -591,6 +618,7 @@ fn counts_for_two_thousand_games_read_each_file_once() {
                 md["series"] = json!("s");
                 md["criticScore"] = json!(80);
                 md["coverUrl"] = json!("https://c");
+                md["logoUrl"] = json!("https://l");
                 md["ageRatings"] = json!([{"system": "esrb", "rating": "T"}]);
                 for list in ["developers", "publishers", "genres", "themes", "gameModes", "platforms", "features"] {
                     md[list] = json!(["x"]);
@@ -851,8 +879,9 @@ fn a_job_started_as_the_one_before_ends_gets_its_own_id() {
 
     let (id, now) = started.lock().clone().unwrap();
     assert_eq!(id, 3);
-    // What the progress says then: the job before, done.
-    assert_eq!((now.job, now.state), (1, BulkState::Done));
+    // What the progress says then: job 2, already started, with job 3 behind it.
+    assert_eq!((now.job, now.state), (2, BulkState::Running));
+    assert_eq!(now.queued.iter().map(|q| q.id).collect::<Vec<_>>(), [3]);
     let c_done = last_done(&c_events).unwrap();
     assert_eq!((c_done.job, c_done.results[0].title.as_str()), (3, "Ghost Game"));
 }

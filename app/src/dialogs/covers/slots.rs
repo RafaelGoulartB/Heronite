@@ -36,6 +36,15 @@ impl Slot {
         }
     }
 
+    /// The picture of a record's field (`cover`, `coverSquare`, `coverWide`,
+    /// `hero`); `None` for any other field.
+    pub fn of_field(field: &str) -> Option<Slot> {
+        match field {
+            "hero" => Some(Slot::Background),
+            other => CoverFamily::from_field(other).map(Slot::Cover),
+        }
+    }
+
     pub fn parse(id: &str) -> Option<Slot> {
         match id {
             "background" | "hero" => Some(Slot::Background),
@@ -117,16 +126,23 @@ impl CoversDialog {
             .collect();
     }
 
+    /// The slot's stand-in picture is shown whole, not cropped ([`words::shown_whole`]).
+    pub(super) fn shown_whole(&self, slot: Slot) -> bool {
+        matches!(slot, Slot::Cover(f) if words::shown_whole(self.families.state(f)))
+    }
+
     pub(super) fn info(&self, slot: Slot) -> Option<&SlotInfo> {
         self.slots.iter().find(|s| s.slot == slot)
     }
 
     /// The muted line of a slot: where its picture comes from, then who
     /// draws it.
-    fn slot_line(&self, info: &SlotInfo) -> String {
+    pub(super) fn slot_line(&self, info: &SlotInfo) -> String {
         let what = match info.look {
             Look::NotKept => return tr!("Not kept on this PC").to_string(),
             Look::Missing => tr!("No picture").to_string(),
+            Look::Cropped(CoverOrigin::Background) if self.shown_whole(info.slot) => tr!("The background, whole").to_string(),
+            Look::Cropped(_) if self.shown_whole(info.slot) => tr!("The tall cover, whole").to_string(),
             Look::Cropped(CoverOrigin::Background) => tr!("Cropped from the background").to_string(),
             Look::Cropped(_) => tr!("Cropped from the tall cover").to_string(),
             Look::Own => info.from.clone().unwrap_or_default(),
@@ -175,6 +191,8 @@ impl CoversDialog {
             if look == Look::NotKept { self.picture_box("none", &[], w, h, cx) } else { self.picture_box("slot", &chain, w, h, cx) };
         let dot: Hsla = match look {
             Look::Own => theme::success().into(),
+            // Shown whole: another picture, but nothing to warn about.
+            Look::Cropped(_) if self.shown_whole(slot) => theme::text_muted().into(),
             Look::Cropped(_) => theme::warning().into(),
             Look::Missing | Look::NotKept => theme::ink_a(0.25),
         };

@@ -446,6 +446,10 @@ impl AppPaths {
     pub fn replay_prefs(&self) -> PathBuf {
         self.config.join("replay.json")
     }
+    /// Quick launcher options (see `heronite_data::quick_launch_prefs`).
+    pub fn quick_launch_prefs(&self) -> PathBuf {
+        self.config.join("quick-launch.json")
+    }
     /// Settings → Integrations → Sunshine (see `heronite_sunshine::prefs`).
     pub fn sunshine_prefs(&self) -> PathBuf {
         self.config.join("sunshine.json")
@@ -466,6 +470,12 @@ impl AppPaths {
     }
     pub fn thumbs_dir(&self) -> PathBuf {
         self.cache.join("thumbs")
+    }
+    /// The stores' trailers and screenshots lists, and the start of some
+    /// trailers (`heronite_metadata::store_media`): deleted when the "Store
+    /// media" section is turned off.
+    pub fn store_media_dir(&self) -> PathBuf {
+        self.cache.join("store-media")
     }
     /// Settings → Sync of this PC: where the library syncs and this PC's id
     /// (see `heronite_sync::prefs`).

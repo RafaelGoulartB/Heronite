@@ -246,6 +246,7 @@ pub fn record(
                 (Some("cover"), Some("square")) => ArtKind::CoverSquare,
                 (Some("cover"), Some("wide")) => ArtKind::CoverWide,
                 (Some("background"), _) => ArtKind::Hero,
+                (Some("logo"), _) => ArtKind::Logo,
                 _ => continue,
             };
             let slot = kind.of_record_mut(&mut md);

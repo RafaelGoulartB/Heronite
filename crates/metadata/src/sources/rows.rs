@@ -12,6 +12,7 @@ use parking_lot::Mutex;
 use super::download::{DownloadState, SourceDownload};
 use super::options::{option_values, OptionValue, SourceOption};
 use super::{Needs, SourceDescriptor, SourceHealth, SourceKind, SourceRegistry};
+use heronite_data::settings::STORE_MEDIA;
 
 /// A source's state, worded by the interface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -181,7 +182,12 @@ impl SourceRegistry {
                     download,
                     enabled,
                     options: values.into_iter().map(|(option, value)| OptionRow { option, value }).collect(),
-                    fields: d.provides.iter().map(|f| FieldRow { field: f.clone(), on: is_field_on(m, &d.id, f), switchable }).collect(),
+                    // The Store media are not merged: any source that gives them may be switched off for them.
+                    fields: d
+                        .provides
+                        .iter()
+                        .map(|f| FieldRow { field: f.clone(), on: is_field_on(m, &d.id, f), switchable: switchable || f == STORE_MEDIA })
+                        .collect(),
                     can_test: self.has_test(&d.id),
                     reorderable: merged,
                     problem: match health {
@@ -279,7 +285,12 @@ mod tests {
         let libretro = row(&rows, "libretro");
         assert_eq!(libretro.status, SourceStatus::On, "no key, no download, no option");
         assert!(libretro.options.is_empty() && libretro.download.is_none() && !libretro.can_test && !libretro.reorderable);
-        assert_eq!(libretro.fields.iter().map(|f| f.field.as_str()).collect::<Vec<_>>(), ["cover", "coverSquare", "coverWide"]);
+        assert_eq!(
+            libretro.fields.iter().map(|f| f.field.as_str()).collect::<Vec<_>>(),
+            ["cover", "coverSquare", "coverWide", "logo", STORE_MEDIA]
+        );
+        // A pictures source's covers are not switched per field; its Store media are.
+        assert_eq!(libretro.fields.iter().filter(|f| f.switchable).map(|f| f.field.as_str()).collect::<Vec<_>>(), [STORE_MEDIA]);
         assert_eq!(status("protondb"), SourceStatus::On);
         let steam = row(&rows, "steam");
         assert!(steam.fields.iter().all(|f| f.switchable && f.on == (f.field != "cover")));

@@ -1,0 +1,15 @@
+{
+  "Ask shows a notice in the corner of the screen, even with Heronite in the tray.": "L’option Demander affiche une notification dans le coin de l’écran, même si Heronite est dans la zone de notification.",
+  "Button to enter console mode": "Bouton pour passer en mode console",
+  "Controller connected": "Manette connectée",
+  "Heronite comes to the front": "Heronite passe au premier plan",
+  "Hold Back + Start": "Maintenir Back + Start",
+  "Hold Guide": "Maintenir Guide",
+  "Hold LB + RB": "Maintenir LB + RB",
+  "Hold it for a second, from any app. Not while a game runs.": "Maintenez pendant une seconde, depuis n’importe quelle application. Indisponible lorsqu’un jeu est en cours.",
+  "Hold to enter console mode": "Maintenir pour passer en mode console",
+  "Hold {button} to enter console mode": "Maintenez {button} pour passer en mode console",
+  "Keep holding…": "Continuez à maintenir…",
+  "Opening console mode…": "Ouverture du mode console…",
+  "Release to cancel": "Relâchez pour annuler"
+}

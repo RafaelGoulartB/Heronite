@@ -20,7 +20,7 @@
 //! still the default one (no field set by hand, no source moved).
 
 use heronite_data::models::MetadataSettings;
-use heronite_data::settings::{default_field_priority, ADDED_SOURCES, ALL_FIELDS};
+use heronite_data::settings::{default_field_priority, ADDED_SOURCES, ALL_FIELDS, STORE_MEDIA};
 use heronite_data::source_prefs::{is_field_customised, is_field_on, is_on};
 use indexmap::IndexMap;
 
@@ -80,7 +80,20 @@ impl SourceRegistry {
         }
         let default = default_field_priority(field);
         let joins = |d: &SourceDescriptor| d.kind != SourceKind::Pictures || d.extension.is_some() || default.contains(&d.id);
-        self.order(m).into_iter().filter(|id| self.has_lookup(id) && self.get(id).is_some_and(|d| d.provides(field) && joins(d))).collect()
+        let mut list: Vec<String> = self
+            .order(m)
+            .into_iter()
+            .filter(|id| self.has_lookup(id) && self.get(id).is_some_and(|d| d.provides(field) && joins(d)))
+            .collect();
+        // The Store media keep Steam first (its trailers) wherever its row
+        // is; the others follow the rows. Only the field's own order moves it.
+        if field == STORE_MEDIA {
+            if let Some(at) = list.iter().position(|id| id == "steam") {
+                let steam = list.remove(at);
+                list.insert(0, steam);
+            }
+        }
+        list
     }
 
     /// The user's list for `field` when set, else [`Self::base_order`],
@@ -205,13 +218,30 @@ mod tests {
         let reg = SourceRegistry::for_tests();
         for m in [untouched(), normalize_metadata(Some(&MetadataSettings::default()))] {
             assert!(!reg.is_order_customised(&m));
-            for field in ALL_FIELDS {
+            for field in ALL_FIELDS.into_iter().chain([STORE_MEDIA]) {
                 assert_eq!(reg.field_order(&m, field), default_field_priority(field), "{field}");
                 assert_eq!(reg.base_order(&m, field), default_field_priority(field), "{field}");
             }
-            assert_eq!(reg.field_orders(&m), m.field_priority, "what the merge used before");
+            let mut merged = m.field_priority.clone();
+            merged.shift_remove(STORE_MEDIA);
+            assert_eq!(reg.field_orders(&m), merged, "what the merge used before");
         }
         assert_eq!(reg.order(&untouched()), reg.descriptors().map(|d| d.id.clone()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn the_store_media_keep_steam_first_after_a_move() {
+        let reg = SourceRegistry::for_tests();
+        let mut m = untouched();
+        moved(&reg, &mut m, "launchbox", 0);
+        moved(&reg, &mut m, "igdb", 0);
+        assert_eq!(reg.field_order(&m, "description")[..3], ["igdb", "launchbox", "steam"]);
+        // Steam leads; the others follow the rows.
+        assert_eq!(reg.field_order(&m, STORE_MEDIA), ["steam", "igdb", "launchbox", "store", "libretro"]);
+        // The field's own order still puts it anywhere.
+        m.field_priority
+            .insert(STORE_MEDIA.into(), vec!["igdb".into(), "steam".into(), "store".into(), "launchbox".into(), "libretro".into()]);
+        assert_eq!(reg.field_order(&m, STORE_MEDIA)[..2], ["igdb", "steam"]);
     }
 
     #[test]
@@ -239,7 +269,7 @@ mod tests {
         assert_eq!(reg.field_order(&m, "gameModes"), ["igdb", "launchbox"]);
         // SteamGridDB joins only the families whose default names it.
         assert_eq!(reg.field_order(&m, "hero"), ["lutris", "igdb", "steam", "store", "playnite", "launchbox"]);
-        assert_eq!(reg.field_order(&m, "coverWide"), ["steam", "store", "steamgriddb", "libretro"]);
+        assert_eq!(reg.field_order(&m, "coverWide"), ["steam", "store", "launchbox", "steamgriddb", "libretro"]);
         assert_eq!(reg.field_order(&m, "coverSquare"), ["launchbox", "steamgriddb", "libretro"]);
 
         // Pictures and extras keep their own places; moving back is the default again.
@@ -366,9 +396,12 @@ mod tests {
             assert!(!is_field_customised(&m, field), "{field}");
             assert_eq!(reg.field_order(&m, field), default_field_priority(field), "{field}");
         }
-        // A list the user set then gets it at its end, only where it fills.
+        // A list the user set then gets them at its end, only where they fill.
         m.field_priority.insert("coverWide".into(), strings(&["steamgriddb", "steam"]));
-        assert_eq!(reg.field_order(&m, "coverWide"), ["steamgriddb", "steam", "libretro"]);
+        assert_eq!(reg.field_order(&m, "coverWide"), ["steamgriddb", "steam", "launchbox", "libretro"]);
+        // The wide cover as 1.6 saved it: LaunchBox's landscape boxes joined it after libretro.
+        m.field_priority.insert("coverWide".into(), strings(&["steam", "store", "steamgriddb", "libretro"]));
+        assert_eq!(reg.field_order(&m, "coverWide"), ["steam", "store", "launchbox", "steamgriddb", "libretro"]);
         m.field_priority.insert("hero".into(), strings(&["steam"]));
         assert_eq!(reg.field_order(&m, "hero"), ["steam", "launchbox"], "libretro has no background");
         // Placed by the user: kept where it is.
@@ -400,7 +433,7 @@ mod tests {
         let both = reg.field_orders_led(&m, &strings(&["launchbox", "libretro"]), &strings(&["igdb", "steamgriddb"]));
         assert_eq!(both["cover"], ["launchbox", "libretro", "igdb", "steam", "lutris", "playnite", "store"]);
         assert_eq!(both["coverSquare"], ["launchbox", "libretro", "steamgriddb"]);
-        assert_eq!(both["coverWide"], ["steam", "store", "libretro", "steamgriddb"]);
+        assert_eq!(both["coverWide"], ["steam", "store", "launchbox", "libretro", "steamgriddb"]);
         assert_eq!(both["hero"].first().map(String::as_str), Some("launchbox"), "no background from libretro");
         // Alone, it goes ahead of IGDB without LaunchBox.
         let alone = reg.field_orders_led(&m, &strings(&["libretro"]), &strings(&["igdb"]));

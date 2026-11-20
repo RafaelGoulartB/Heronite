@@ -7,9 +7,12 @@ use std::path::{Path, PathBuf};
 
 use heronite_i18n::Lang;
 
-use super::index::{ImageKind, Index, NameHit};
+use heronite_data::cover_family::CoverFamily;
+
+use super::index::{ImageKind, Index, LbImage, NameHit};
 use super::*;
-use crate::launchbox::map::{record, region_order};
+use crate::launchbox::map::{choices, pictures_for, record, region_order};
+use crate::types::ArtKind;
 
 fn fixture(name: &str) -> Vec<u8> {
     std::fs::read(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/launchbox").join(name)).unwrap()
@@ -64,9 +67,12 @@ fn the_index_keeps_what_the_source_uses() {
     assert_eq!(zelda.released.as_deref(), Some("1991-11-21"));
     assert_eq!((zelda.detail.max_players, zelda.detail.votes), (Some(1), 1379));
     assert!(zelda.detail.overview.as_deref().is_some_and(|o| o.contains("Hyrule") && !o.contains('\n')));
-    // Box fronts of each region, one background; no banners, logos or screenshots.
+    // Box fronts and logos of each region, one background, the gameplay
+    // screenshots; no banners.
     assert!(zelda.images.iter().filter(|i| i.kind == ImageKind::BoxFront).count() >= 4);
+    assert_eq!(zelda.images.iter().filter(|i| i.kind == ImageKind::ClearLogo).count(), 2, "World and Japan");
     assert!(zelda.images.iter().filter(|i| i.kind == ImageKind::Background).count() <= 1);
+    assert_eq!(zelda.images.iter().filter(|i| i.kind == ImageKind::Screenshot).count(), 2);
     let names = index.names_of(1318).unwrap();
     assert!(names.contains(&("legendofzeldaalinktothepast".to_string(), false)));
     assert!(names.iter().any(|(k, alt)| *alt && k == "zeldanodensetsukamigaminotriforce"));
@@ -75,6 +81,17 @@ fn the_index_keeps_what_the_source_uses() {
     let arcade = index.platform_ids(&["Arcade"]).unwrap();
     assert_eq!(index.file_key(&arcade, "SFA2").unwrap().as_deref(), Some("streetfighteralpha2"));
     assert_eq!(index.platform_ids(&["Arcade", "Nintendo 64", "Windows"]).unwrap().len(), 2, "unknown platforms left out");
+}
+
+#[test]
+fn the_store_media_take_a_games_gameplay_screenshots() {
+    let (_dir, paths) = with_index();
+    let lb = LaunchBox::new();
+    let http = Http::new(crate::Endpoints { launchbox_images: "https://lb.test/images".into(), ..Default::default() });
+    let Lookup::Found(m) = crate::store_media::shots::launchbox(&lb, &paths, &http, 1318) else { panic!("no screenshots") };
+    assert_eq!((m.source.as_str(), m.page.as_str()), ("launchbox", "https://gamesdb.launchbox-app.com/games/details/1318"));
+    assert_eq!(m.screenshots.len(), 2);
+    assert!(m.screenshots.iter().all(|s| s.full.starts_with("https://lb.test/images/") && s.thumb == s.full));
 }
 
 #[test]
@@ -263,7 +280,7 @@ fn a_record_with_box_art_of_the_region() {
     let lb = LaunchBox::new();
     let zelda = lb.by_id(&paths, "1318").into_option().unwrap();
     let base = "https://images.launchbox-app.com";
-    let md = record("a", "sideload", &zelda, &region_order("auto", Lang::En), base);
+    let md = record("a", "sideload", &zelda, &region_order("auto", Lang::En), base, None);
     assert_eq!(md.title.as_deref(), Some("The Legend of Zelda: A Link to the Past"));
     assert_eq!(md.cover_url.as_deref(), Some("https://images.launchbox-app.com/r2_689c3eda-bd3b-452d-997c-c25b5335656e.jpg"));
     assert_eq!(md.platforms, ["Super Nintendo Entertainment System"]);
@@ -271,19 +288,81 @@ fn a_record_with_box_art_of_the_region() {
     assert_eq!(md.critic_score.map(|s| s.get()), Some(95.0));
     assert_eq!(md.game_modes, ["Single player"]);
     assert!(md.description.is_some() && md.release_date.as_deref() == Some("1991-11-21"));
-    let br = record("a", "sideload", &zelda, &region_order("auto", Lang::PtBr), base);
+    let br = record("a", "sideload", &zelda, &region_order("auto", Lang::PtBr), base, None);
     assert_eq!(
         br.cover_url.as_deref(),
         Some("https://images.launchbox-app.com/5abfc7aa-e11f-421d-8d7b-3c1ccb6c2437.jpg"),
         "the Brazilian box"
     );
-    let jp = record("a", "sideload", &zelda, &region_order("Japan", Lang::En), base);
+    let jp = record("a", "sideload", &zelda, &region_order("Japan", Lang::En), base, None);
     assert_eq!(jp.cover_url.as_deref(), Some("https://images.launchbox-app.com/1d1c5081-6f2e-427a-ae3f-a05d9d21afeb.jpg"));
+    // The logo of the region too.
+    assert_eq!(md.logo_url.as_deref(), Some("https://images.launchbox-app.com/r2_b4284db1-c07d-47f7-89f1-07f76b19f6a0.png"));
+    assert_eq!(jp.logo_url.as_deref(), Some("https://images.launchbox-app.com/09b4a9a2-0a6a-4379-9abe-f0d0be045dce.png"));
+    assert_eq!(pictures_for(&zelda, ArtKind::Logo).len(), 2);
     // A rating of one vote is no score.
     let hack = lb.by_id(&paths, "457477").into_option().unwrap();
-    assert_eq!((hack.detail.votes, record("a", "s", &hack, &[], base).critic_score), (1, None));
+    assert_eq!((hack.detail.votes, record("a", "s", &hack, &[], base, None).critic_score), (1, None));
     let sor = lb.by_id(&paths, "694").into_option().unwrap();
-    assert_eq!(record("a", "s", &sor, &[], base).game_modes, ["Single player", "Multiplayer", "Co-operative"]);
+    assert_eq!(record("a", "s", &sor, &[], base, None).game_modes, ["Single player", "Multiplayer", "Co-operative"]);
+}
+
+/// Super Metroid's boxes in the fixture, with their real sizes: the North
+/// American one is landscape, the Japanese one tall; LaunchBox's square
+/// art (the index keeps one per game) is 1024 x 1024.
+const METROID_NA: &str = "r2_4f09af04-78b8-43e9-97a9-a8d9c4bb0b85.jpg";
+const METROID_JP: &str = "cc0a933e-52b2-498b-bc3b-3e1d520d70f9.jpg";
+const METROID_SQUARE: &str = "r2_321db153-e1cf-425a-bd76-680e84ba85d1.png";
+
+fn metroid_size(img: &LbImage) -> Option<(u32, u32)> {
+    match img.file.as_str() {
+        METROID_NA => Some((4209, 2937)),
+        METROID_JP => Some((1280, 2302)),
+        METROID_SQUARE => Some((1024, 1024)),
+        _ => None,
+    }
+}
+
+/// The box art is the tall cover whatever its shape, and the cover of the
+/// family its shape says: a landscape box the wide one, a CD case the
+/// square one (ahead of LaunchBox's square art).
+#[test]
+fn box_art_fills_the_family_of_its_shape() {
+    let (_dir, paths) = with_index();
+    let metroid = LaunchBox::new().by_id(&paths, "299").into_option().unwrap();
+    let order = region_order("auto", Lang::En);
+    let url = |file: &str| format!("http://img/{file}");
+    let of = |family: Option<CoverFamily>| {
+        let md = record("a", "s", &metroid, &order, "http://img", family);
+        (md.cover_url, md.cover_square_url, md.cover_wide_url)
+    };
+    assert_eq!(of(None), (Some(url(METROID_NA)), Some(url(METROID_SQUARE)), None), "shape not read: as before");
+    assert_eq!(of(Some(CoverFamily::Tall)), of(None));
+    assert_eq!(of(Some(CoverFamily::Wide)), (Some(url(METROID_NA)), Some(url(METROID_SQUARE)), Some(url(METROID_NA))));
+    assert_eq!(of(Some(CoverFamily::Square)), (Some(url(METROID_NA)), Some(url(METROID_NA)), None));
+}
+
+/// The Covers dialog: every region's box, those of the slot's shape first,
+/// then by region; the square art with the square boxes; the background.
+#[test]
+fn the_dialog_lists_every_box_its_shape_first() {
+    let (_dir, paths) = with_index();
+    let metroid = LaunchBox::new().by_id(&paths, "299").into_option().unwrap();
+    let order = region_order("auto", Lang::En);
+    let list = |kind: ArtKind| choices(&metroid, kind, &order, "http://img", metroid_size);
+    let files =
+        |kind: ArtKind| list(kind).into_iter().map(|c| c.image.image_url.trim_start_matches("http://img/").to_owned()).collect::<Vec<_>>();
+
+    let wide = list(ArtKind::CoverWide);
+    assert_eq!(wide.len(), 6, "the six regions' boxes");
+    assert_eq!((wide[0].region.as_str(), wide[0].image.width, wide[0].image.height), ("North America", 4209, 2937));
+    assert_eq!(files(ArtKind::Cover)[..2], [METROID_JP, METROID_NA], "the tall box first, then by region");
+    let square = files(ArtKind::CoverSquare);
+    assert_eq!(square[0], METROID_SQUARE, "the only square picture first");
+    assert_eq!(square.len(), 7, "the boxes and the square picture");
+    assert!(list(ArtKind::Cover).iter().all(|c| c.image.thumb_url == c.image.image_url));
+    let hero = list(ArtKind::Hero);
+    assert_eq!((hero.len(), hero[0].region.as_str(), hero[0].image.width), (1, "World", 0), "size not read: 0 x 0");
 }
 
 #[test]

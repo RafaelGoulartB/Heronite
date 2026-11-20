@@ -12,9 +12,7 @@ use heronite_images::{ImageRef, Variant};
 
 use super::super::CollectionView;
 use crate::console::{kit, look};
-
-/// File Steam keeps a game's logo in, inside its library cache folder.
-const STEAM_LOGO_FILE: &str = "logo.png";
+use crate::images::logo_chain as to_chain;
 
 /// Request priority of a logo: above the covers around it, below the hero art.
 const LOGO_PRIORITY: i32 = 150;
@@ -54,19 +52,6 @@ impl<G> LogoCache<G> {
         let entry = &self.games[key];
         (&entry.chain, old.is_some_and(|o| o.chain != entry.chain))
     }
-}
-
-/// The loader's chain for logo sources. Steam's cache is searched by the
-/// loader's worker (its folders are hashed), never here.
-fn to_chain(sources: &[LogoSource]) -> Vec<ImageRef> {
-    sources
-        .iter()
-        .map(|s| match s {
-            LogoSource::Url(u) => ImageRef::Url(u.clone()),
-            LogoSource::File(p) => ImageRef::File(p.clone()),
-            LogoSource::SteamCache(dir) => ImageRef::Find { dir: dir.clone(), name: STEAM_LOGO_FILE.into() },
-        })
-        .collect()
 }
 
 /// Texture id of a logo at a physical size (one texture per size; the inked

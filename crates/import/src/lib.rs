@@ -7,9 +7,10 @@
 //!   entries that ask that launcher to start them ([`collection`]), with its
 //!   play time and covers. Steam games they list are left to the Steam
 //!   import.
-//! * [`heroic`] copies the games added by hand in Heroic (with their game
-//!   settings: they start here) and its records of installed Epic, GOG and
-//!   Amazon games, so those show as installed once logged in here.
+//! * [`heroic`] copies the games added by hand in Heroic (they start here)
+//!   and its records of installed Epic, GOG and Amazon games, so those show
+//!   as installed once logged in here; each comes with its game settings
+//!   (its Wine prefix) while it has none here.
 //! * [`playnite`] reads Playnite's library (a LiteDB file, [`litedb`]) on
 //!   Windows: its installed games start through Playnite, like Lutris'.
 //!

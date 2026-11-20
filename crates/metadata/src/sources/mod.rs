@@ -42,7 +42,7 @@ use heronite_data::models::MetadataSettings;
 use heronite_data::paths::DataPaths;
 use heronite_data::settings;
 
-pub(crate) use builtin::Shared;
+pub(crate) use builtin::{box_regions, Shared};
 pub use builtin::{builtin_descriptors, offered};
 pub use descriptor::{extra_fields, AlsoFor, AppliesTo, Asked, ExtensionInfo, GameKind, Needs, SourceDescriptor, SourceGame, SourceKind};
 pub use download::{DownloadProgress, DownloadState, Phase, ProgressSnapshot, SourceDownload};
@@ -374,6 +374,16 @@ impl SourceRegistry {
         })
     }
 }
+
+/// Whether a PC game with no Steam id is looked up on Steam by its exact
+/// title: the Steam source is on, and so is the option its [`AlsoFor`]
+/// names ("Find games not on Steam by name"). Reads the settings; no network.
+pub fn steam_by_name(paths: &DataPaths) -> bool {
+    let m = load_metadata_settings(paths);
+    is_on(&m, STEAM) && builtin_descriptors().iter().find(|d| d.id == STEAM).is_some_and(|d| also_for_on(paths, &m, d).is_some())
+}
+
+const STEAM: &str = "steam";
 
 /// The audience `d`'s option adds, while that option is on.
 fn also_for_on<'d>(paths: &DataPaths, m: &MetadataSettings, d: &'d SourceDescriptor) -> Option<&'d AppliesTo> {

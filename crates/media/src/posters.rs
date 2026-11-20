@@ -14,10 +14,9 @@
 //! stay with the old length.
 
 use std::path::Path;
-use std::process::Command;
-use std::sync::OnceLock;
 use std::time::Duration;
 
+use heronite_data::ffmpeg::{command, Tool};
 use heronite_data::proc::Run;
 use heronite_images::Decoded;
 use sha2::{Digest, Sha256};
@@ -47,15 +46,10 @@ pub fn is_video(path: &Path) -> bool {
     path.extension().and_then(|e| e.to_str()).is_some_and(|e| VIDEO_EXTENSIONS.iter().any(|v| v.eq_ignore_ascii_case(e)))
 }
 
-/// Whether ffmpeg and ffprobe are on the `PATH` (looked up once).
+/// Whether ffmpeg and ffprobe are there: on the `PATH`, or downloaded into
+/// the data folder (`heronite_data::ffmpeg`).
 pub fn available() -> bool {
-    static FOUND: OnceLock<bool> = OnceLock::new();
-    *FOUND.get_or_init(|| {
-        let exe = |n: &str| if cfg!(windows) { format!("{n}.exe") } else { n.to_owned() };
-        ["ffmpeg", "ffprobe"]
-            .iter()
-            .all(|n| std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(exe(n)).is_file())))
-    })
+    heronite_data::ffmpeg::available()
 }
 
 /// Cache file stem of the poster of `source`, `len` bytes long.
@@ -99,7 +93,7 @@ pub(crate) fn render(source: &Path) -> Result<(Decoded, serde_json::Map<String, 
 /// The keyframe at or before `at` seconds, as preview-sized BGRA.
 fn frame(source: &Path, at: f64) -> Result<Vec<u8>, ThumbError> {
     let (w, h) = (THUMB_WIDTH, THUMB_HEIGHT);
-    let mut cmd = Command::new("ffmpeg");
+    let mut cmd = command(Tool::Ffmpeg);
     cmd.args(["-v", "error", "-nostdin", "-threads", "1", "-skip_frame", "nokey", "-noaccurate_seek", "-ss", &format!("{at:.3}"), "-i"])
         .arg(source)
         .args(["-frames:v", "1", "-an", "-sn", "-dn"])
@@ -126,7 +120,7 @@ fn brightness(bgra: &[u8]) -> f64 {
 
 /// Length in seconds (ffprobe), when it reads one.
 fn duration(path: &Path) -> Option<f64> {
-    let mut cmd = Command::new("ffprobe");
+    let mut cmd = command(Tool::Ffprobe);
     cmd.args(["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1"]).arg(path);
     let out = Run::new().timeout(PROBE_TIMEOUT).run(&mut cmd).ok()?;
     out.stdout_text().trim().parse::<f64>().ok().filter(|s| s.is_finite() && *s > 0.)
@@ -145,7 +139,7 @@ mod tests {
             return None;
         }
         let path = dir.join("Replay_2026-11-06_01-57-00.mp4");
-        let mut cmd = Command::new("ffmpeg");
+        let mut cmd = command(Tool::Ffmpeg);
         cmd.args(["-v", "error", "-nostdin", "-f", "lavfi", "-i", "testsrc=duration=3:size=640x360:rate=30", "-g", "30"])
             .args(["-pix_fmt", "yuv420p"])
             .arg(&path);

@@ -19,7 +19,7 @@ mod select;
 mod tags;
 mod text;
 
-pub use hotkey::{accelerator_from_key, hotkey_box};
+pub use hotkey::{hotkey_box, hotkey_press, needs_modifier_text, HotkeyPress};
 pub use input::{
     choose_path, duration_field, input_box, input_box_with, new_input, new_textarea, on_commit, path_field, search_box, search_box_with,
     text_field, textarea_box,

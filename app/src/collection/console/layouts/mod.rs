@@ -19,7 +19,7 @@ use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 use gpui_kit::*;
-use heronite_data::console_theme::{GridPanel, Hints, Layout, TabSpec};
+use heronite_data::console_theme::{GridPanel, Hints, KeptFilters, Layout, TabSpec};
 use heronite_data::CollectionGame;
 use heronite_i18n::tr;
 
@@ -85,11 +85,63 @@ pub(crate) fn step(i: usize, n: usize, delta: isize, wrap: bool) -> usize {
 impl CollectionView {
     /// The focus state of tab `tab` (created on first use).
     pub(super) fn tab_nav(&mut self, tab: usize) -> &mut TabNav {
+        let kept = self.console.kept_filters;
         let navs = &mut self.console.tab_navs;
         if navs.len() <= tab {
-            navs.resize_with(tab + 1, TabNav::default);
+            let theme = look::theme();
+            // The Filters panel's grid of results over a Carousel (a theme
+            // without a Grid) starts from the pill: that is what is on screen,
+            // even when the kept Show disagrees (another theme saved it).
+            let grids = theme.tabs.iter().any(|t| t.layout == Layout::Grid);
+            let carousels = theme.tabs.iter().any(|t| t.layout == Layout::Carousel);
+            let pill_show = if !grids && carousels { carousel::show_for(carousel::Nav::from_kept(kept).filter()) } else { None };
+            // Grids and carousels start with the filters kept from last time.
+            while navs.len() <= tab {
+                let mut nav = TabNav::default();
+                nav.grid.filters = Filters::from_kept(kept);
+                if let Some((show, favourites)) = pill_show.filter(|_| navs.len() >= theme.tabs.len()) {
+                    (nav.grid.filters.show, nav.grid.filters.favourites) = (show, favourites);
+                }
+                nav.carousel = carousel::Nav::from_kept(kept);
+                navs.push(nav);
+            }
         }
         &mut navs[tab]
+    }
+
+    /// Keeps the Show, Sort and Favourites of tab `tab`'s grid for the next
+    /// time console mode starts (and for the grids not shown yet).
+    ///
+    /// In a theme without a Grid (Minimal), `tab` is the Filters panel's
+    /// grid of results over the tab. Over a Carousel, a new Show also moves
+    /// its pill (when one shows the same games), as the pill is what console
+    /// mode starts on and the results grid is not open then; a new Sort,
+    /// Status or Category leaves the pill alone (Playing included).
+    /// `before`: the grid's Show and Favourites only before the change.
+    pub(super) fn keep_grid_filters(&mut self, tab: usize, before: (usize, bool)) {
+        let f = self.tab_nav(tab).grid.filters.clone();
+        let pill = if (f.show, f.favourites) != before && tab >= look::theme().tabs.len() {
+            let (i, spec) = self.console_tab_spec();
+            (spec.layout == Layout::Carousel).then(|| carousel::pill_for(f.show, f.favourites).map(|p| (i, spec, p))).flatten()
+        } else {
+            None
+        };
+        if let Some((i, spec, p)) = &pill {
+            self.move_carousel_pill(*i, spec, *p);
+        }
+        let pill = pill.map(|(_, _, p)| p);
+        self.keep_console_filters(|k| {
+            f.keep_in(k);
+            if let Some(pill) = pill {
+                k.carousel = pill;
+            }
+        });
+    }
+
+    /// Changes the kept filters (in memory and in `console.json`).
+    pub(super) fn keep_console_filters(&mut self, change: impl FnOnce(&mut KeptFilters)) {
+        change(&mut self.console.kept_filters);
+        crate::console::themes::remember_filters(&self.app_paths, self.console.kept_filters);
     }
 
     pub(super) fn render_layout(&mut self, tab: usize, spec: &TabSpec, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {

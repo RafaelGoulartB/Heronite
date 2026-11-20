@@ -2,11 +2,12 @@
 //! Category / Search filters on top (↑ from the first row; Y opens them all
 //! in the Filters panel, `super::super::filters`). Its filters are
 //! console-only state: they never change the desktop Collection's filters.
+//! Show, Sort and Favourites outlast console mode (`Filters::keep_in`).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::categories::{Categories, UNCATEGORIZED};
-use heronite_data::console_theme::{GridPanel, TabSpec};
+use heronite_data::console_theme::{GridPanel, KeptFilters, TabSpec};
 use heronite_data::{CollectionGame, Library};
 use heronite_i18n::{n_, tr};
 
@@ -82,6 +83,18 @@ impl Filters {
         } else {
             (self.category, self.group) = (0, pick - category_n + 1);
         }
+    }
+
+    /// Puts the part kept for the next time console mode starts in `k`.
+    pub(crate) fn keep_in(&self, k: &mut KeptFilters) {
+        (k.show, k.sort, k.favourites) = (self.show, self.sort, self.favourites);
+    }
+
+    /// The filters a grid starts with: the kept ones (a value out of range,
+    /// from an edited file, reads as the first), any status and category.
+    pub(crate) fn from_kept(k: KeptFilters) -> Self {
+        let pick = |v: usize, n: usize| if v < n { v } else { 0 };
+        Self { show: pick(k.show, SHOW.len()), sort: pick(k.sort, SORT.len()), favourites: k.favourites, ..Self::default() }
     }
 }
 
@@ -515,6 +528,7 @@ impl CollectionView {
         let by_letter = self.grid_letters(tab);
         let nav = &mut self.tab_nav(tab).grid;
         let cols = nav.cols.max(1);
+        let before = (nav.filters.show, nav.filters.favourites);
         if let Some(chip) = nav.toolbar {
             match pad {
                 Pad::Left => nav.toolbar = Some(chip.saturating_sub(1)),
@@ -556,6 +570,7 @@ impl CollectionView {
                 let nav = &mut self.tab_nav(tab).grid;
                 nav.index = 0;
                 nav.restart = true;
+                self.keep_grid_filters(tab, before);
             }
             return true;
         }
@@ -632,6 +647,21 @@ mod tests {
     use super::*;
     // `gpui_kit::*` above brings gpui's own `test` macro.
     use core::prelude::v1::test;
+
+    /// Show, Sort and Favourites outlast console mode; Status and Category
+    /// start from "any"; a value out of range reads as the first.
+    #[test]
+    fn kept_filters_round_trip() {
+        let f = Filters { show: 1, sort: 2, favourites: true, status: 3, category: 2, group: 0 };
+        // The carousel's part stays as it was.
+        let mut k = KeptFilters { carousel: 2, ..KeptFilters::default() };
+        f.keep_in(&mut k);
+        assert_eq!(k, KeptFilters { show: 1, sort: 2, favourites: true, carousel: 2 });
+        assert_eq!(Filters::from_kept(k), Filters { status: 0, category: 0, ..f.clone() });
+        assert_eq!(Filters::from_kept(KeptFilters::default()), Filters::default());
+        let odd = Filters::from_kept(KeptFilters { show: 9, sort: 7, ..KeptFilters::default() });
+        assert_eq!((odd.show, odd.sort), (0, 0));
+    }
 
     #[test]
     fn letters_ignore_accents_and_group_symbols() {

@@ -78,6 +78,7 @@ pub fn regions_for(lang: Lang) -> &'static [&'static str] {
     match lang {
         Lang::En => &["USA", "Europe", "USA, Europe", "World", "Japan"],
         Lang::De => &["Germany", "Europe", "USA", "USA, Europe", "World", "Japan"],
+        Lang::Fr => &["France", "Europe", "USA", "USA, Europe", "World", "Japan"],
         Lang::Es => &["Spain", "Europe", "USA", "USA, Europe", "World", "Japan"],
         Lang::PtBr => &["Brazil", "USA", "Europe", "USA, Europe", "World", "Japan"],
     }

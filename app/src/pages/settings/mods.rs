@@ -16,7 +16,7 @@ use crate::icons::Icon;
 use crate::pages::{status_pill, tag_pill};
 use crate::services::mods::{self, HandlerState, JobStage, ModsEvent};
 use crate::theme;
-use crate::ui::controls::{action_button, caption, card, card_box, icon_button_sm, row, ButtonKind};
+use crate::ui::controls::{action_button, button_sm, caption, card, card_box, icon_button_sm, row, ButtonKind};
 use crate::ui::fields::{input_box, labeled, meta_text};
 use crate::ui::icon;
 
@@ -197,6 +197,77 @@ fn account_card(d: &SettingsPage, f: &Facts, cx: &mut Context<SettingsPage>) -> 
     .into_any_element()])
 }
 
+fn unpack_title() -> &'static str {
+    tr!("Install 7-Zip to install mods")
+}
+
+/// `.7z, .rar`: the archive kinds nothing here unpacks.
+fn unpack_why(missing: &[&str]) -> String {
+    let kinds = missing.iter().map(|k| format!(".{k}")).collect::<Vec<_>>().join(", ");
+    tr!(
+        "Most Nexus Mods files are .7z or .rar archives, and this computer has no program that opens {kinds} files: mods would download and then fail to install. Install 7-Zip, then press Look again.",
+        kinds
+    )
+}
+
+fn unpack_no_command() -> &'static str {
+    tr!("Install the 7zip package (p7zip on some distributions) with your package manager.")
+}
+
+/// Shown once an account is connected and 7-Zip (or another program that
+/// unpacks every mod archive) is missing: the downloads would work, the
+/// installs would not.
+fn unpack_card(f: &Facts) -> Option<Div> {
+    let support = f.support.as_ref().filter(|s| !s.unpack_missing.is_empty())?;
+    let header = div()
+        .flex()
+        .items_center()
+        .gap(px(10.))
+        .child(icon(Icon::Warning, px(18.), theme::warning()))
+        .child(div().text_size(px(15.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(unpack_title()));
+    let why = div().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_primary()).child(unpack_why(&support.unpack_missing));
+    let how = match support.seven_zip_command {
+        Some(command) => div()
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .px(px(10.))
+                    .py(px(6.))
+                    .rounded(px(6.))
+                    .bg(theme::ink_a(0.06))
+                    .border_1()
+                    .border_color(theme::ink_a(0.12))
+                    .font_family(theme::FONT_MONO)
+                    .text_size(px(13.))
+                    .text_color(theme::text_primary())
+                    .child(command),
+            )
+            .child(
+                button_sm("mods-copy-7zip", ButtonKind::Glass, tr!("Copy command"))
+                    .on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(command.to_string()))),
+            ),
+        None => meta_text(unpack_no_command()),
+    };
+    let look_again = action_button("mods-unpack-look-again", ButtonKind::Glass, tr!("Look again"), true, |_, _, cx| {
+        mods::service(cx).update(cx, |s, cx| s.refresh_support(cx))
+    });
+    Some(
+        card_box()
+            .py(px(14.))
+            .gap(px(10.))
+            .border_1()
+            .border_color(theme::warning())
+            .child(header)
+            .child(why)
+            .child(how)
+            .child(div().flex().child(look_again)),
+    )
+}
+
 fn links_card(f: &Facts, cx: &mut Context<SettingsPage>) -> Div {
     let (text, ok) = handlers_text(f.handlers);
     let mut control = div().flex().items_center().gap(px(10.));
@@ -304,6 +375,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .child(caption(tr!("Nexus Mods account")))
         .child(account_card(d, &f, cx))
         .children(message)
+        .children(f.account.as_ref().and_then(|_| unpack_card(&f)).map(|c| div().pt(px(10.)).child(c)))
         .child(caption(tr!("Links from the sites")))
         .child(links_card(&f, cx))
         .child(caption(tr!("Applying mods")))
@@ -323,6 +395,11 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
             rows.push(Row::info("account", tr!("Connected as"), name.clone()));
             rows.push(Row::info("plan", tr!("Account"), if *premium { tr!("Premium") } else { tr!("Free") }));
             rows.push(Row::action("disconnect", tr!("Disconnect")));
+            if let Some(support) = f.support.as_ref().filter(|s| !s.unpack_missing.is_empty()) {
+                let how = support.seven_zip_command.unwrap_or(unpack_no_command());
+                rows.push(Row::info("unpack", unpack_title(), how).danger().desc(unpack_why(&support.unpack_missing)));
+                rows.push(Row::action("unpack-look-again", tr!("Look again")).icon(Icon::Refresh));
+            }
         }
         None => {
             let key = d.mods.key.read(cx).value().to_string();
@@ -376,6 +453,7 @@ pub(super) fn console_apply(
         "disconnect" => disconnect(d, cx),
         "register" => mods::service(cx).update(cx, |s, cx| s.register_handlers(cx)),
         "fetch-tool" => mods::service(cx).update(cx, |s, cx| s.fetch_tool(cx)),
+        "unpack-look-again" => mods::service(cx).update(cx, |s, cx| s.refresh_support(cx)),
         _ => {}
     }
 }

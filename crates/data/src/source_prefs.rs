@@ -96,20 +96,22 @@ pub fn set_option(m: &mut MetadataSettings, id: &str, key: &str, value: Option<s
 }
 
 /// Whether the user set an order for `field`: its saved `fieldPriority`
-/// differs from the default one, and from the default as it was before the
-/// [`ADDED_SOURCES`] (what every settings file saved until then), once a
-/// [`DEFAULT_LISTED_EXTENSIONS`] id is left out where those defaults had it.
+/// differs from the default one, and from the default as it was before
+/// some of the [`ADDED_SOURCES`] joined it (what every settings file saved
+/// until then), once a [`DEFAULT_LISTED_EXTENSIONS`] id is left out where
+/// those defaults had it.
 pub fn is_field_customised(m: &MetadataSettings, field: &str) -> bool {
     m.field_priority.get(field).is_some_and(|saved| {
         let list = without_default_listed(saved);
         let default = default_field_priority(field);
         // The default as each earlier build saved it: without the sources
-        // added after it.
-        let saved_before = (0..ADDED_SOURCES.len()).map(|built| {
-            let later = &ADDED_SOURCES[built..];
-            default.iter().filter(|id| !later.contains(&id.as_str())).cloned().collect::<Vec<String>>()
+        // added to the field after it, whichever they are (a source joined
+        // a field after a later source did).
+        let saved_before = (0..1usize << ADDED_SOURCES.len()).map(|later| {
+            let added_after = |id: &str| ADDED_SOURCES.iter().enumerate().any(|(i, a)| later & (1 << i) != 0 && *a == id);
+            default.iter().filter(|id| !added_after(id)).cloned().collect::<Vec<String>>()
         });
-        list != default && saved_before.into_iter().all(|before| list != before)
+        saved_before.into_iter().all(|before| list != before)
     })
 }
 
@@ -179,6 +181,12 @@ mod tests {
         assert_eq!(m.field_priority["coverWide"], ["steam", "store", "steamgriddb"], "the saved list is kept as it is");
         let m = read(r#"{"metadata":{"fieldPriority":{"coverWide":["steamgriddb","steam","store"]}}}"#);
         assert!(is_field_customised(&m, "coverWide"));
+        // The wide cover as 1.6 saved it, before LaunchBox's landscape boxes
+        // joined it (after libretro): still the default.
+        let m = read(r#"{"metadata":{"fieldPriority":{"coverWide":["steam","store","steamgriddb","libretro"]}}}"#);
+        assert!(!is_field_customised(&m, "coverWide"));
+        let m = read(r#"{"metadata":{"fieldPriority":{"coverWide":["steam","store","libretro","steamgriddb"]}}}"#);
+        assert!(is_field_customised(&m, "coverWide"), "reordered by the user");
         // The defaults of the builds where VNDB was built in, with it last of
         // the sources of then: still the default.
         let m = read(

@@ -269,7 +269,8 @@ fn seven_zip_or_tar(archive: &Path, out: &Path, io: &Io) -> Option<Result<(), St
     if let Some(bin) = which_any(SEVEN_ZIP) {
         return Some(run_ok(Command::new(bin).args(["x", "-y", "-aoa"]).arg(format!("-o{}", out.display())).arg(archive), io, None));
     }
-    let bin = which_any(&["bsdtar"]).map(Into::into).or_else(|| builtin::windows_tar().map(PathBuf::into_os_string))?;
+    // 7-Zip first: the name the error gives, as it unpacks every format here.
+    let bin = which_any(&["7z", "bsdtar"]).map(Into::into).or_else(|| builtin::windows_tar().map(PathBuf::into_os_string))?;
     Some(run_ok(Command::new(bin).arg("-xf").arg(archive).arg("-C").arg(out), io, None))
 }
 

@@ -274,7 +274,7 @@ pub fn board_order(preference: &str, lang: Lang) -> Vec<RatingSystem> {
     let first = RatingSystem::parse(preference).unwrap_or(match lang {
         Lang::En => RatingSystem::Esrb,
         Lang::PtBr => RatingSystem::ClassInd,
-        Lang::Es => RatingSystem::Pegi,
+        Lang::Es | Lang::Fr => RatingSystem::Pegi,
         Lang::De => RatingSystem::Usk,
     });
     let mut order = vec![first];
@@ -368,6 +368,7 @@ mod tests {
     #[test]
     fn shows_the_preferred_board_then_the_next_one() {
         let ratings = vec![r(RatingSystem::Esrb, "RP"), r(RatingSystem::Pegi, "16"), r(RatingSystem::ClassInd, "14")];
+        assert_eq!(board_order(AUTO, Lang::Fr)[0], RatingSystem::Pegi);
         let en = board_order(AUTO, Lang::En);
         assert_eq!(shown(&ratings, &en).unwrap().system, "pegi", "pending ESRB is skipped");
         assert_eq!(shown(&ratings, &board_order(AUTO, Lang::PtBr)).unwrap().system, "classind");

@@ -1,8 +1,9 @@
 //! The LaunchBox Games Database's adapter: its lookups from the local
-//! index ([`crate::launchbox`]), its box art region, its download.
+//! index ([`crate::launchbox`]), its box art region and shape, its download.
 
 use std::sync::Arc;
 
+use heronite_data::cover_family::{CoverFamilies, CoverFamily};
 use heronite_data::paths::DataPaths;
 use heronite_i18n::n_;
 
@@ -31,6 +32,14 @@ pub(super) fn region_label(region: &str) -> &'static str {
     }
 }
 
+/// The box art regions of LaunchBox's descriptor `d`, best first, from its
+/// option and the interface language.
+pub(crate) fn box_regions(d: &SourceDescriptor, ctx: &SourceContext<'_>) -> Vec<String> {
+    let opt = d.options.iter().find(|o| o.key == BOX_REGION).expect("the LaunchBox region option");
+    let chosen = crate::sources::options::option_value(ctx.paths, ctx.settings(), d, opt);
+    lb_map::region_order(chosen.as_text(), heronite_i18n::current())
+}
+
 /// The LaunchBox Games Database, from its local index ([`launchbox`]).
 pub(super) struct LaunchBoxSource {
     pub(super) d: &'static SourceDescriptor,
@@ -38,15 +47,27 @@ pub(super) struct LaunchBoxSource {
 }
 
 impl LaunchBoxSource {
-    /// The box art regions, best first, from the option and the interface language.
     fn regions(&self, ctx: &SourceContext<'_>) -> Vec<String> {
-        let opt = self.d.options.iter().find(|o| o.key == BOX_REGION).expect("the LaunchBox region option");
-        let chosen = crate::sources::options::option_value(ctx.paths, ctx.settings(), self.d, opt);
-        lb_map::region_order(chosen.as_text(), heronite_i18n::current())
+        box_regions(self.d, ctx)
+    }
+
+    /// The family of the box art of `lb`, read from its size only while
+    /// this PC keeps the square or the wide family (the tall cover takes
+    /// the box art whatever its shape): one small request per game, none
+    /// for one read before.
+    fn box_family(&self, ctx: &SourceContext<'_>, lb: &LbGame, regions: &[String]) -> Option<CoverFamily> {
+        let front = lb_map::box_front(lb, regions)?;
+        if !CoverFamilies::load(ctx.paths).kept().iter().any(|f| *f != CoverFamily::Tall) {
+            return None;
+        }
+        let (w, h) = self.db.picture_size(ctx.http, &ctx.http.endpoints.launchbox_images, &front.file)?;
+        Some(crate::picture_size::family_of(w, h))
     }
 
     fn candidate(&self, ctx: &SourceContext<'_>, game: &SourceGame, lb: &LbGame, by: MatchedBy) -> MetadataCandidate {
-        let md = lb_map::record(&game.app_name, &game.runner, lb, &self.regions(ctx), &ctx.http.endpoints.launchbox_images);
+        let regions = self.regions(ctx);
+        let family = self.box_family(ctx, lb, &regions);
+        let md = lb_map::record(&game.app_name, &game.runner, lb, &regions, &ctx.http.endpoints.launchbox_images, family);
         candidate(self.d, by)(md).with_id(Some(lb.id.to_string()))
     }
 }

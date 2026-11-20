@@ -73,6 +73,30 @@ impl Item {
 }
 
 impl SettingsPanel {
+    /// MangoHud: off, on, or on and hidden at start (the desktop row's eye
+    /// button).
+    pub(super) fn c_mangohud(&self, disabled: bool) -> Item {
+        use heronite_launch::fps_limit::KEY_MANGOHUD_HIDDEN;
+        let index = match (self.flag("showMangohud", false), self.flag(KEY_MANGOHUD_HIDDEN, false)) {
+            (false, _) => 0,
+            (true, false) => 1,
+            (true, true) => 2,
+        };
+        let options = vec![tr!("Off").into(), tr!("On").into(), tr!("On, starts hidden").into()];
+        let desc =
+            if index == 2 { self.mangohud_hidden_help() } else { tr!("FPS, frame times, temperatures and load (needs MangoHud)").into() };
+        item(
+            Row::choice("c:mangohud", "MangoHud", options, index).desc(desc).enabled(!disabled),
+            Act::Choice(Rc::new(|this, i, cx| {
+                this.set("showMangohud", Value::Bool(i > 0), cx);
+                // Off keeps the choice for the next time it is on.
+                if i > 0 {
+                    this.set(KEY_MANGOHUD_HIDDEN, Value::Bool(i == 2), cx);
+                }
+            })),
+        )
+    }
+
     fn c_toggle(&self, key: &'static str, default: bool, label: &str, desc: Option<&str>, disabled: bool) -> Item {
         let mut r = Row::toggle(SharedString::from(format!("t:{key}")), label.to_string(), self.flag(key, default)).enabled(!disabled);
         if let Some(d) = desc {
@@ -356,13 +380,7 @@ impl SettingsPanel {
         if !native {
             v.push(self.c_toggle("showFps", false, tr!("FPS counter"), Some(tr!("A small counter for DirectX 9 to 11 games")), false));
         }
-        v.push(self.c_toggle(
-            "showMangohud",
-            false,
-            "MangoHud",
-            Some(tr!("FPS, frame times, temperatures and load (needs MangoHud)")),
-            false,
-        ));
+        v.push(self.c_mangohud(false));
         v.extend(self.c_replay(cx));
         v.extend(self.c_fps(false));
         v.extend(self.c_lsfg(false));

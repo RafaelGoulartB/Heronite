@@ -6,8 +6,9 @@
 //!   dot (its own picture, cropped from another, none); a family that is not
 //!   kept says so and can be turned on. Then the background.
 //! - Right (`found.rs`): for the picked slot, the picture it shows now, then
-//!   what SteamGridDB and the web found for it (in its shape), a search field
-//!   and "Load more". "Use for <family>" saves the one picked.
+//!   what LaunchBox (the game's boxes of every region), SteamGridDB and the
+//!   web found for it (in its shape), a search field and "Load more". "Use
+//!   for <family>" saves the one picked.
 //! - Footer: "Choose a file…", "From a screenshot…" and "Reset" (back to
 //!   what the sources gave) for the slot, Close.
 //!
@@ -16,6 +17,7 @@
 //! `HERONITE_DEBUG_DIALOG=covers[:<state>]` makes the searches up (`fake.rs`).
 
 mod actions;
+mod console;
 mod fake;
 mod found;
 mod slots;
@@ -33,7 +35,7 @@ use heronite_data::models::CollectionGameArt;
 use heronite_i18n::tr;
 use heronite_metadata::{ArtImages, ArtKind, MetadataService};
 
-use super::art_images::DialogImages;
+use super::art_images::{DialogImages, PictureSizes};
 use super::metadata_update::hub::hub;
 use super::screenshot_art::ScreenshotArtDialog;
 use super::{DialogCtx, DialogEvent};
@@ -58,6 +60,8 @@ pub struct CoversDialog {
     ctx: DialogCtx,
     service: Arc<MetadataService>,
     images: Entity<DialogImages>,
+    /// What the pictures measure, for the captions under them.
+    sizes: Entity<PictureSizes>,
     game: Game,
     runner: String,
     /// The game's pictures set by hand (`art.json`), as last saved.
@@ -73,6 +77,14 @@ pub struct CoversDialog {
     visible: usize,
     /// An index of [`Self::found`].
     selected: Option<usize>,
+    /// The source whose pictures alone are listed; `None`: every source.
+    source: Option<&'static str>,
+    /// The SteamGridDB style whose pictures alone are listed (of its
+    /// pictures); `None`: every style.
+    style: Option<String>,
+    /// Whether the background picked before moves (it then says it shows
+    /// still while Animated backgrounds is off).
+    bg_moves: crate::dialogs::animated_art::Moves,
     loading: bool,
     busy: Option<Busy>,
     error: String,
@@ -82,6 +94,14 @@ pub struct CoversDialog {
     searched: HashMap<(Slot, String), ArtImages>,
     screenshot: Option<(Entity<ScreenshotArtDialog>, Subscription)>,
     fake: Option<fake::Fake>,
+    /// Console mode: the grid's scroll, the keyboard and sheets over it,
+    /// the thumbnails to a row as last drawn, and what was just saved.
+    console_scroll: crate::console::motion::Glide,
+    layer: crate::console::Layer,
+    console_cols: usize,
+    /// The focused picture and the columns the grid last revealed.
+    console_revealed: (usize, usize),
+    note: Option<&'static str>,
 }
 
 impl EventEmitter<DialogEvent> for CoversDialog {}
@@ -119,6 +139,8 @@ impl CoversDialog {
         let service = hub(cx).read(cx).service.clone();
         let images = cx.new(|cx| DialogImages::new(&ctx, cx));
         cx.observe(&images, |_, _, cx| cx.notify()).detach();
+        let sizes = cx.new(|_| PictureSizes::new(service.clone()));
+        cx.observe(&sizes, |_, _, cx| cx.notify()).detach();
         let query = new_input(window, cx, &game.title, "");
         cx.subscribe_in(&query, window, |this, _, ev: &InputEvent, _, cx| {
             if matches!(ev, InputEvent::PressEnter { .. }) {
@@ -133,6 +155,7 @@ impl CoversDialog {
         let mut this = Self {
             service,
             images,
+            sizes,
             runner,
             art: game.art.as_deref().cloned().unwrap_or_default(),
             game,
@@ -144,6 +167,10 @@ impl CoversDialog {
             results: ArtImages::default(),
             visible: found::PAGE,
             selected: None,
+            source: None,
+            // `HERONITE_DEBUG_SGDB_STYLE=<style>`: opens on that SteamGridDB style (captures).
+            style: crate::env::value("HERONITE_DEBUG_SGDB_STYLE"),
+            bg_moves: Default::default(),
             loading: false,
             busy: None,
             error: String::new(),
@@ -151,6 +178,11 @@ impl CoversDialog {
             searched: HashMap::new(),
             screenshot: None,
             fake,
+            console_scroll: crate::console::motion::Glide::new(crate::console::motion::Axis::Y),
+            layer: Default::default(),
+            console_cols: 1,
+            console_revealed: (usize::MAX, 0),
+            note: None,
         };
         this.compute_slots();
         this
@@ -216,7 +248,8 @@ impl CoversDialog {
                 "cv-file",
                 ButtonKind::Ghost,
                 Icon::FolderOpen,
-                tr!("Choose a file\u{2026}"),
+                // A background may be a video (an animated one).
+                if self.slot == Slot::Background { tr!("Image or video\u{2026}") } else { tr!("Choose a file\u{2026}") },
                 idle && kept,
                 cx.listener(|this, _, _, cx| this.pick_file(cx)),
             ))
@@ -248,6 +281,9 @@ const COLUMNS_H: f32 = 500.;
 impl Render for CoversDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.images.update(cx, |im, _| im.frame(window));
+        if crate::console::active() {
+            return self.render_console(window, cx);
+        }
         let area = crate::ui::content_size(window);
         let (vw, vh) = (f32::from(area.width), f32::from(area.height));
         let columns_h = COLUMNS_H.min(vh * 0.62).max(300.);
@@ -269,6 +305,6 @@ impl Render for CoversDialog {
             },
         );
         let nested: Option<AnyView> = self.screenshot.as_ref().map(|(v, _)| v.clone().into());
-        div().absolute().inset_0().child(main).children(nested)
+        div().absolute().inset_0().child(main).children(nested).into_any_element()
     }
 }

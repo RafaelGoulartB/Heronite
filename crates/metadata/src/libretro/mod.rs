@@ -90,23 +90,7 @@ const BY_EXTENSION: &[(&str, &str)] = &[
     ("hdf", "Commodore - Amiga"),
 ];
 
-/// Width / height below which box art is a tall cover and up to which it
-/// is a square one; above [`WIDE_FROM`] it is wide. The middles (in the
-/// ratio) of 2:3..5:7 and 1:1, and of 1:1 and 16:9.
-const SQUARE_FROM: f32 = 0.85;
-const WIDE_FROM: f32 = 1.33;
-
-/// The cover family a picture of `width` x `height` belongs to.
-pub fn family_of(width: u32, height: u32) -> CoverFamily {
-    let ratio = width as f32 / height.max(1) as f32;
-    if ratio < SQUARE_FROM {
-        CoverFamily::Tall
-    } else if ratio < WIDE_FROM {
-        CoverFamily::Square
-    } else {
-        CoverFamily::Wide
-    }
-}
+pub use crate::picture_size::family_of;
 
 /// The size a PNG's first bytes say (its signature, then the `IHDR`
 /// chunk). `None`: not a PNG.
@@ -160,8 +144,14 @@ enum Probe {
 }
 
 fn picture_url(http: &Http, system: &str, name: &str) -> String {
+    folder_url(http, system, "Named_Boxarts", name)
+}
+
+/// The address of `name` in one of a system's folders (`Named_Boxarts`,
+/// `Named_Logos`).
+fn folder_url(http: &Http, system: &str, folder: &str, name: &str) -> String {
     format!(
-        "{}/{}/Named_Boxarts/{}.png",
+        "{}/{}/{folder}/{}.png",
         http.endpoints.libretro_thumbnails.trim_end_matches('/'),
         encode_uri_component(system),
         encode_uri_component(name)
@@ -287,6 +277,17 @@ impl Libretro {
             }
         }
         Lookup::NotFound
+    }
+
+    /// The logo beside the box art `found` names (`Named_Logos`, which only
+    /// some systems have): one more request.
+    pub fn logo(&self, http: &Http, found: &Found) -> Lookup<String> {
+        let url = folder_url(http, found.system, "Named_Logos", &found.name);
+        match self.probe(http, &url) {
+            Probe::Hit(..) => Lookup::Found(url),
+            Probe::Missing => Lookup::NotFound,
+            Probe::Down => Lookup::Unreachable,
+        }
     }
 }
 

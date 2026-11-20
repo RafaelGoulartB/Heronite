@@ -25,7 +25,7 @@ const MAX_SCREENSHOT_CACHE_LIMIT_MB: f64 = 10_000.0;
 pub const DEFAULT_THEME: &str = "midnightMirage";
 pub const DEFAULT_CAPTURE_ACCELERATOR: &str = "F10";
 
-pub const METADATA_FIELDS: [&str; 14] = [
+pub const METADATA_FIELDS: [&str; 15] = [
     "description",
     "releaseDate",
     "developers",
@@ -40,6 +40,7 @@ pub const METADATA_FIELDS: [&str; 14] = [
     "ageRatings",
     "cover",
     "hero",
+    "logo",
 ];
 
 /// The fields of the cover families beside the tall one (`cover`), see
@@ -49,7 +50,7 @@ pub const METADATA_FIELDS: [&str; 14] = [
 pub const FAMILY_COVER_FIELDS: [&str; 2] = ["coverSquare", "coverWide"];
 
 /// Every field the merge knows: [`METADATA_FIELDS`], then [`FAMILY_COVER_FIELDS`].
-pub const ALL_FIELDS: [&str; 16] = [
+pub const ALL_FIELDS: [&str; 17] = [
     "description",
     "releaseDate",
     "developers",
@@ -64,9 +65,17 @@ pub const ALL_FIELDS: [&str; 16] = [
     "ageRatings",
     "cover",
     "hero",
+    "logo",
     "coverSquare",
     "coverWide",
 ];
+
+/// The Store media of the focus panel (trailers and screenshots): not a
+/// field of the record (the merge never takes it), but the sources that give
+/// them can be switched off for it and put in order like a field, in
+/// `fieldPriority` and `sources.<id>.fieldsOff`. Only the first source in
+/// its order that has any media for a game is shown.
+pub const STORE_MEDIA: &str = "storeMedia";
 
 /// `MetadataSourceId`: the built-in ids of a `fieldPriority`. Every one but
 /// `manual` is a details source of `heronite_metadata::sources` (its tests
@@ -74,12 +83,12 @@ pub const ALL_FIELDS: [&str; 16] = [
 pub const SOURCE_IDS: [&str; 7] = ["igdb", "steam", "store", "playnite", "lutris", "launchbox", "manual"];
 
 /// Sources added after `fieldPriority` lists were already saved in
-/// every settings file (the lists are written whole). A saved list that is
-/// the default without them still reads as the default, and a list the
-/// user set that lacks one gets it at the end where the default names it
-/// (see `heronite_metadata::sources::order`), so a new source fills those
-/// fields without a migration of the file. In the order they were added: a
-/// list saved between two of them lacks only the later ones.
+/// every settings file (the lists are written whole), to some fields or
+/// later to more fields (LaunchBox to the wide cover after libretro). A
+/// saved list that is the default without some of them still reads as the
+/// default, and a list the user set that lacks one gets it at the end
+/// where the default names it (see `heronite_metadata::sources::order`),
+/// so a new source fills those fields without a migration of the file.
 pub const ADDED_SOURCES: [&str; 2] = ["launchbox", "libretro"];
 
 /// Ids of extensions that the default lists of some saved files name, as
@@ -90,7 +99,7 @@ pub const ADDED_SOURCES: [&str; 2] = ["launchbox", "libretro"];
 pub const DEFAULT_LISTED_EXTENSIONS: [&str; 1] = ["vndb"];
 
 /// `DEFAULT_FIELD_PRIORITY`. Uses only [`SOURCE_IDS`], but for the square
-/// and wide covers, which SteamGridDB gives too, and for the covers
+/// and wide covers and the logo, which SteamGridDB gives too, and for the covers
 /// libretro-thumbnails gives (a pictures source, like SteamGridDB: not in
 /// [`SOURCE_IDS`]). The LaunchBox Games Database and libretro-thumbnails
 /// come last: they fill what the others left empty (and move ahead for the
@@ -110,10 +119,16 @@ pub fn default_field_priority(field: &str) -> Vec<String> {
         "ageRatings" => &["igdb", "steam"],
         "cover" => &["igdb", "steam", "lutris", "playnite", "store", "launchbox", "libretro"],
         "hero" => &["igdb", "steam", "lutris", "playnite", "launchbox"],
-        // Official art first (Steam's header, the store's wide box art),
-        // then SteamGridDB's.
         "coverSquare" => &["steamgriddb", "launchbox", "libretro"],
-        "coverWide" => &["steam", "store", "steamgriddb", "libretro"],
+        // Official art first (Steam's header, the store's wide box art,
+        // LaunchBox's landscape boxes), then SteamGridDB's.
+        "coverWide" => &["steam", "store", "launchbox", "steamgriddb", "libretro"],
+        // Pictures sources only. The official logos of Steam and the stores
+        // come before this field when console mode picks one
+        // (`crate::console_art`).
+        "logo" => &["steamgriddb", "launchbox", "libretro"],
+        // Steam first: its trailers; the others have screenshots only.
+        STORE_MEDIA => &["steam", "igdb", "store", "launchbox", "libretro"],
         _ => &[],
     };
     list.iter().map(|s| s.to_string()).collect()
@@ -170,6 +185,16 @@ pub struct EffectiveSettings {
     pub ludusavi: LudusaviSettings,
     /// MB, 0 = no cap ([`DEFAULT_IMAGE_CACHE_LIMIT_MB`] when unset).
     pub image_cache_limit_mb: u32,
+    /// MB of store videos kept on this PC, 0 = none
+    /// ([`DEFAULT_VIDEO_CACHE_LIMIT_MB`] when unset).
+    pub video_cache_limit_mb: u32,
+    /// The focused game's first trailer plays by itself, without sound (off
+    /// by default).
+    pub video_autoplay: bool,
+    pub store_media_kinds: StoreMediaKinds,
+    /// Heronite reads the Steam library and adds its games and the installed
+    /// Steam games to the Collection (on by default).
+    pub read_steam_library: bool,
     /// Heroic `store/config.json` `theme` (default `midnightMirage`).
     pub theme: String,
     /// The interface language (`heronite_i18n`), which also picks the Steam
@@ -240,6 +265,10 @@ impl EffectiveSettings {
                 extra: Default::default(),
             },
             image_cache_limit_mb: file.image_cache_limit_mb.unwrap_or(DEFAULT_IMAGE_CACHE_LIMIT_MB),
+            video_cache_limit_mb: file.video_cache_limit_mb.map_or(DEFAULT_VIDEO_CACHE_LIMIT_MB, |mb| mb.min(MAX_VIDEO_CACHE_LIMIT_MB)),
+            video_autoplay: file.video_autoplay == Some(true),
+            store_media_kinds: file.store_media_kinds.as_deref().map(StoreMediaKinds::parse).unwrap_or_default(),
+            read_steam_library: file.read_steam_library != Some(false),
             theme: config.theme.clone().unwrap_or_else(|| DEFAULT_THEME.to_owned()),
             language: heronite_i18n::current().code().to_owned(),
             all_tiles_in_color: config.all_tiles_in_color.unwrap_or(false),
@@ -279,6 +308,11 @@ pub const BACKUP_OPTIONAL_PARTS: [&str; 3] = ["settings", "art", "logins"];
 /// Cap of the image caches when unset: about 4x what a library of a few
 /// hundred games uses, so it only trims a cache that grew without bound.
 pub const DEFAULT_IMAGE_CACHE_LIMIT_MB: u32 = 1024;
+/// The store videos kept when unset: the start of the trailer of about a
+/// dozen games, so it plays at once while the rest streams.
+pub const DEFAULT_VIDEO_CACHE_LIMIT_MB: u32 = 50;
+/// A hand-edited size is clamped to this.
+pub const MAX_VIDEO_CACHE_LIMIT_MB: u32 = 1024;
 
 /// Shortest and longest time between save backups while a game runs, in
 /// minutes: a hand-edited value is clamped into this range.
@@ -404,7 +438,7 @@ fn normalize_source_prefs(value: Option<&IndexMap<String, SourcePrefs>>) -> Inde
 /// `normalizeMetadata`.
 pub fn normalize_metadata(value: Option<&MetadataSettings>) -> MetadataSettings {
     let mut field_priority: IndexMap<String, Vec<String>> = IndexMap::new();
-    for field in ALL_FIELDS {
+    for field in ALL_FIELDS.into_iter().chain([STORE_MEDIA]) {
         let current = value.and_then(|v| v.field_priority.get(field));
         field_priority.insert(field.to_owned(), as_source_list(current, default_field_priority(field)));
     }
@@ -548,6 +582,78 @@ pub fn save_image_cache_limit(paths: &DataPaths, limit_mb: u32) -> Result<Effect
         Ok(())
     })?;
     load(paths)
+}
+
+pub fn save_video_cache_limit(paths: &DataPaths, limit_mb: u32) -> Result<EffectiveSettings> {
+    json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |file| {
+        file.video_cache_limit_mb = Some(limit_mb.min(MAX_VIDEO_CACHE_LIMIT_MB));
+        Ok(())
+    })?;
+    load(paths)
+}
+
+/// What the "Store media" section shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StoreMediaKinds {
+    #[default]
+    Both,
+    Videos,
+    Screenshots,
+}
+
+impl StoreMediaKinds {
+    pub const ALL: [StoreMediaKinds; 3] = [Self::Both, Self::Videos, Self::Screenshots];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Both => "both",
+            Self::Videos => "videos",
+            Self::Screenshots => "screenshots",
+        }
+    }
+
+    /// An unknown name shows both.
+    pub fn parse(s: &str) -> Self {
+        Self::ALL.into_iter().find(|k| k.as_str() == s).unwrap_or_default()
+    }
+
+    pub fn videos(self) -> bool {
+        self != Self::Screenshots
+    }
+
+    pub fn screenshots(self) -> bool {
+        self != Self::Videos
+    }
+}
+
+pub fn save_store_media_kinds(paths: &DataPaths, kinds: StoreMediaKinds) -> Result<EffectiveSettings> {
+    json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |file| {
+        file.store_media_kinds = Some(kinds.as_str().to_owned());
+        Ok(())
+    })?;
+    load(paths)
+}
+
+pub fn save_video_autoplay(paths: &DataPaths, on: bool) -> Result<EffectiveSettings> {
+    json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |file| {
+        file.video_autoplay = Some(on);
+        Ok(())
+    })?;
+    load(paths)
+}
+
+/// Whether Heronite reads the Steam library and adds Steam's games to the
+/// Collection ([`EffectiveSettings::read_steam_library`]). Reads only
+/// `settings.json`, so the jobs that add games can ask it cheaply.
+pub fn read_steam_library(paths: &DataPaths) -> bool {
+    json_store::read::<CollectionSettingsFile>(&paths.collection_settings()).map_or(true, |f| f.read_steam_library != Some(false))
+}
+
+pub fn save_read_steam_library(paths: &DataPaths, on: bool) -> Result<()> {
+    json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |file| {
+        file.read_steam_library = Some(on);
+        Ok(())
+    })
 }
 
 /// `setCollectionMetadataSettings`: `patch` replaces the metadata section after
@@ -727,6 +833,19 @@ mod tests {
         assert_eq!(s.backup.exclude, ["logins"]);
         assert_eq!(s.image_cache_limit_mb, DEFAULT_IMAGE_CACHE_LIMIT_MB);
         assert_eq!(save_image_cache_limit(&paths, 0).unwrap().image_cache_limit_mb, 0);
+        assert_eq!(s.video_cache_limit_mb, DEFAULT_VIDEO_CACHE_LIMIT_MB);
+        assert_eq!(save_video_cache_limit(&paths, 0).unwrap().video_cache_limit_mb, 0);
+        assert_eq!(save_video_cache_limit(&paths, 1 << 20).unwrap().video_cache_limit_mb, MAX_VIDEO_CACHE_LIMIT_MB);
+        assert!(!s.video_autoplay);
+        assert!(save_video_autoplay(&paths, true).unwrap().video_autoplay);
+        assert!(s.read_steam_library && read_steam_library(&paths));
+        save_read_steam_library(&paths, false).unwrap();
+        assert!(!read_steam_library(&paths) && !load(&paths).unwrap().read_steam_library);
+        save_read_steam_library(&paths, true).unwrap();
+        assert!(read_steam_library(&paths) && load(&paths).unwrap().read_steam_library);
+        assert_eq!(s.store_media_kinds, StoreMediaKinds::Both);
+        assert_eq!(save_store_media_kinds(&paths, StoreMediaKinds::Videos).unwrap().store_media_kinds, StoreMediaKinds::Videos);
+        assert_eq!(StoreMediaKinds::parse("bogus"), StoreMediaKinds::Both);
         let mut md = MetadataSettings { igdb_client_id: " id ".into(), cover_aspect: "dvd".into(), ..Default::default() };
         md.field_priority.insert("cover".into(), vec!["steam".into(), "bogus".into()]);
         let s = save_metadata(&paths, &md).unwrap();
@@ -752,7 +871,7 @@ mod tests {
         let v = json_store::read_value(&paths.collection_settings()).unwrap();
         assert_eq!(v["metadata"]["keepCoverFamilies"], json!(["wide"]));
         assert_eq!(v["metadata"]["fillCoverFamilies"], true);
-        assert_eq!(v["metadata"]["fieldPriority"]["coverWide"], json!(["steam", "store", "steamgriddb", "libretro"]));
+        assert_eq!(v["metadata"]["fieldPriority"]["coverWide"], json!(["steam", "store", "launchbox", "steamgriddb", "libretro"]));
         let s = set_fill_cover_families(&paths, false).unwrap();
         assert!(!s.metadata.fill_cover_families);
         let v = json_store::read_value(&paths.collection_settings()).unwrap();

@@ -14,8 +14,11 @@ mod families;
 mod fetch;
 mod gather;
 mod job_run;
+mod launchbox_art;
+mod picture_sizes;
 mod review;
 mod source_settings;
+mod store_media;
 mod tag_fill;
 mod undo;
 
@@ -97,6 +100,10 @@ pub struct MetadataService {
     steam_tags: gather::SteamTagsCache,
     /// The sources' downloads running now, by source id.
     downloads: source_settings::Downloads,
+    /// LaunchBox's index, shared with its source: the Covers dialog asks it too.
+    launchbox: Arc<crate::launchbox::LaunchBox>,
+    /// The picture sizes read for the dialogs.
+    sizes: picture_sizes::Sizes,
 }
 
 impl MetadataService {
@@ -109,12 +116,13 @@ impl MetadataService {
         let igdb = Arc::new(Igdb::new());
         let steam = Arc::new(SteamState::default());
         let playnite = Arc::new(RwLock::new(None));
+        let launchbox = Arc::new(crate::launchbox::LaunchBox::new());
         let sources = SourceRegistry::builtin(Shared {
             igdb: igdb.clone(),
             steam: steam.clone(),
             stores: Arc::new(StoreLibraries::default()),
             playnite: playnite.clone(),
-            launchbox: Arc::new(crate::launchbox::LaunchBox::new()),
+            launchbox: launchbox.clone(),
         });
         Self {
             paths,
@@ -133,6 +141,8 @@ impl MetadataService {
             review_revision: AtomicU64::new(0),
             steam_tags: Default::default(),
             downloads: Default::default(),
+            launchbox,
+            sizes: Default::default(),
         }
     }
 
@@ -315,20 +325,49 @@ impl MetadataService {
     }
 
     /// The art picker's image search: SteamGridDB's art when it is on and an
-    /// API key is set (not for transparent images, which it does not have)
-    /// and the web's (when on), apart. A failing SteamGridDB only leaves its part empty; the web's
+    /// API key is set (not for transparent images, which it does not have,
+    /// but for its logos) and the web's (when on), apart. A failing SteamGridDB only leaves its part empty; the web's
     /// results leave out the images SteamGridDB already gave. `kind` names
     /// the cover family ([`ArtKind::cover`]): SteamGridDB gives grids of
     /// that shape and the web search favours it.
     pub fn search_art_images(&self, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
-        let key = if transparent { None } else { covers::steamgrid_key_if_on(&self.paths) };
+        self.search_art_images_of(None, query, kind, transparent)
+    }
+
+    /// [`search_art_images`](Self::search_art_images) for `game`: while the
+    /// query is for its title, SteamGridDB's art is of the SteamGridDB game it
+    /// was matched with, else of its Steam app id, before a search by title.
+    pub fn search_game_images(&self, game: &MetadataApplyArgs, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
+        self.search_art_images_of(Some(game), query, kind, transparent)
+    }
+
+    /// What the SteamGridDB search knows of `game`: its title, Steam app id
+    /// and the SteamGridDB game its record was surely matched with (not a
+    /// fuzzy title guess, which a Steam id beats).
+    fn steamgrid_hint(&self, game: &MetadataApplyArgs) -> covers::SteamGridHint {
+        let current = get_game_metadata(&self.paths, &game.runner, &game.app_name).ok().flatten();
+        let view = self.source_game(&self.sources(), game, current.as_ref());
+        let steamgrid_id = current
+            .as_ref()
+            .and_then(|md| crate::record::source_match(md, ids::STEAMGRIDDB))
+            .filter(|m| m.is_sure())
+            .and_then(|m| m.id.parse().ok());
+        covers::SteamGridHint { title: game.title.clone(), steam_app_id: view.steam_app_id, steamgrid_id }
+    }
+
+    fn search_art_images_of(&self, game: Option<&MetadataApplyArgs>, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
+        let key = if transparent && kind != ArtKind::Logo { None } else { covers::steamgrid_key_if_on(&self.paths) };
         let title = web_images::title_of_query(query);
+        let hint = key.as_ref().and(game).map(|g| self.steamgrid_hint(g));
+        // Adult pictures only where the settings keep them.
+        let adult = key.is_some() && self.metadata_settings().allow_adult_covers;
         let (sgdb, web) = std::thread::scope(|s| {
             let sgdb = s.spawn(|| match key.as_deref() {
-                Some(key) if !title.is_empty() => covers::steamgrid_images(&self.http, key, &title, kind).unwrap_or_else(|e| {
-                    log::warn!("SteamGridDB image search failed for \"{title}\": {e:#}");
-                    Vec::new()
-                }),
+                Some(key) if !title.is_empty() => covers::steamgrid_images(&self.http, key, &title, hint.as_ref(), kind, adult)
+                    .unwrap_or_else(|e| {
+                        log::warn!("SteamGridDB image search failed for \"{title}\": {e:#}");
+                        Vec::new()
+                    }),
                 _ => Vec::new(),
             });
             let web = self.search_web_images_shaped(query, transparent, kind.family());
@@ -341,7 +380,7 @@ impl MetadataService {
         };
         let mut seen: std::collections::HashSet<String> = sgdb.iter().map(|img| img.image_url.clone()).collect();
         let web = web.into_iter().filter(|img| seen.insert(img.image_url.clone())).collect();
-        Ok(ArtImages { steamgrid: sgdb, web })
+        Ok(ArtImages { steamgrid: sgdb, web, ..Default::default() })
     }
 
     /// HowLongToBeat for a game (cache first; see [`hltb::get_or_fetch_hltb`]).

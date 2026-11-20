@@ -12,7 +12,7 @@ use super::epic::FocusEpic;
 use super::focus::{panel, Layout};
 use super::game_facts::{Backup, Linux};
 use super::vm::FocusVm;
-use super::CollectionView;
+use super::{whole_cover, CollectionView};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::{icon, round_button, tooltip};
@@ -34,11 +34,14 @@ impl CollectionView {
     ) -> AnyElement {
         let cover_w = if lay.narrow { NARROW_COVER_W } else { lay.left_w };
         let cover_h = cover_w * self.cover_aspect;
-        let cover = self.cover(&vm.cover_key, cover_w, cover_h, scale, 200);
+        let whole = whole_cover::on();
+        let cover = self.tall_cover(&vm.cover_key, cover_w, cover_h, scale, 200, whole);
+        // A whole cover sits on the bottom of its place, over the Play button.
+        let (box_w, box_h) = if whole { whole_cover::whole_box(cover.as_ref(), cover_w, cover_h) } else { (cover_w, cover_h) };
         let cover = div()
             .flex_none()
-            .w(px(cover_w))
-            .h(px(cover_h))
+            .w(px(box_w))
+            .h(px(box_h))
             .rounded(px(12.))
             .overflow_hidden()
             .bg(theme::ink_a(0.06))
@@ -50,6 +53,7 @@ impl CollectionView {
                 inset: false,
             }])
             .children(cover.map(|src| img(src).size_full().rounded(px(12.)).object_fit(ObjectFit::Cover)));
+        let cover = div().flex_none().flex().items_end().justify_center().w(px(cover_w)).h(px(cover_h)).child(cover);
 
         let controls = div()
             .flex()
@@ -124,7 +128,12 @@ impl CollectionView {
                 }))
         });
         // Installed, with other ways to start or actions: an arrow with them.
-        let more = if vm.installed && !vm.playing { self.launch_more_button(&vm.key, cx) } else { None };
+        // Playing: an arrow back to the game's window.
+        let more = match (vm.installed, vm.playing) {
+            (_, true) => self.back_to_game_button(&vm.key, cx),
+            (true, false) => self.launch_more_button(&vm.key, cx),
+            (false, false) => None,
+        };
         let play = match (play, more) {
             (Some(play), Some(more)) => {
                 let row = div()
@@ -134,7 +143,7 @@ impl CollectionView {
                     .w_full()
                     .child(play.flex_1().w_auto())
                     .child(more)
-                    .children(self.launch_menu(&vm.key, cx))
+                    .children((!vm.playing).then(|| self.launch_menu(&vm.key, cx)).flatten())
                     .into_any_element();
                 return div().flex().flex_col().gap(px(8.)).child(row).children(epic_el).into_any_element();
             }

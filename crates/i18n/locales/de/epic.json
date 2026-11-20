@@ -385,5 +385,8 @@
   "Always the newest release. Once installed, it updates by itself.": "Immer die neueste Version. Einmal installiert, aktualisiert sie sich selbst.",
   "Hide other versions": "Andere Versionen ausblenden",
   "Other versions ({n})": "Andere Versionen ({n})",
-  "The newest release.": "Die neueste Version."
+  "The newest release.": "Die neueste Version.",
+  "{title} needs your Epic Games account, and you are signed out of it. Log in on the Epic Games page, or turn on \"Play offline\" in the game's settings.": "{title} braucht dein Epic-Games-Konto, und du bist davon abgemeldet. Melde dich auf der Epic-Games-Seite an oder schalte „Offline spielen“ in den Einstellungen des Spiels ein.",
+  "Signed out of Epic Games": "Von Epic Games abgemeldet",
+  "{title} needs your Epic Games account to start, and Heronite is no longer signed in to it: Epic ended the saved session, or you logged out.\nLog in again to play. Play offline starts the game without the account, but some games need it and will not open.": "{title} braucht zum Starten dein Epic-Games-Konto, und Heronite ist nicht mehr damit angemeldet: Epic hat die gespeicherte Sitzung beendet, oder du hast dich abgemeldet.\nMelde dich erneut an, um zu spielen. Offline spielen startet das Spiel ohne das Konto, aber manche Spiele brauchen es und öffnen sich nicht."
 }

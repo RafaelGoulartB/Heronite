@@ -74,6 +74,9 @@ pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
     }
     tell_downloads(cx, &ev);
     tell_compression(cx, &ev);
+    if !matches!(ev, LaunchEvent::Status { .. } | LaunchEvent::Preparing { .. }) {
+        crate::quick_launch::running_changed(cx);
+    }
     // Heroic's `minimizeOnLaunch`, once the game runs: the window shows the
     // launch's progress until then. Needs the tray to come back from.
     if started && settings.minimize_on_launch && close_window_keep_alive(cx) {
@@ -192,18 +195,24 @@ fn show_from_tray(cx: &mut App) {
 /// `heronite://stop`: closes the game when it runs here (a Sunshine stream
 /// of it ended); anything else running is left alone.
 fn stop_game(cx: &mut App, req: &crate::system::cli::LaunchRequest) {
+    stop_running(cx, &req.app_name);
+}
+
+/// Closes the game `app_name` when it runs here (`heronite://stop`, the
+/// quick launcher).
+pub fn stop_running(cx: &mut App, app_name: &str) {
     let hub = hub(cx);
     let (running, runtime) = {
         let s = hub.0.borrow();
-        (s.running.contains_key(&req.app_name), s.runtime.clone())
+        (s.running.contains_key(app_name), s.runtime.clone())
     };
     if !running {
-        log::info!("stop request for {}: not running", req.app_name);
+        log::info!("stop request for {app_name}: not running");
         return;
     }
-    log::info!("stop request: closing {}", req.app_name);
-    if !runtime.stop(&req.app_name) {
-        runtime.force_clear(&req.app_name);
+    log::info!("stop request: closing {app_name}");
+    if !runtime.stop(app_name) {
+        runtime.force_clear(app_name);
     }
 }
 
@@ -238,10 +247,19 @@ pub(super) fn on_message(cx: &mut App, msg: Message) {
         log::info!("request from another invocation ignored: quitting");
         return;
     }
-    log::info!("request from another invocation: {msg:?}");
+    // The activation token is a credential: logged only as there or not.
+    let logged = Message { activation_token: msg.activation_token.as_ref().map(|_| "…".into()), ..msg.clone() };
+    log::info!("request from another invocation: {logged:?}");
     if let Some(req) = &msg.stop {
         stop_game(cx, req);
         if msg.launch.is_none() {
+            return;
+        }
+    }
+    if msg.quick_launch {
+        // An older instance reads this as a plain start and shows its window.
+        crate::quick_launch::toggle_with(cx, msg.activation_token.clone());
+        if msg.launch.is_none() && msg.open_client.is_none() {
             return;
         }
     }
