@@ -52,6 +52,7 @@ enum Button {
     Status,
     Favourite,
     Settings,
+    Achievements,
     More,
 }
 
@@ -63,6 +64,7 @@ impl Button {
             Button::Status => Some("status"),
             Button::Favourite => Some("favourite"),
             Button::Settings => Some("settings"),
+            Button::Achievements => Some("achievements"),
             Button::More => None,
         }
     }
@@ -97,13 +99,16 @@ fn buttons(rows: &[Row]) -> Vec<Button> {
     if has("settings") {
         out.push(Button::Settings);
     }
+    if has("achievements") {
+        out.push(Button::Achievements);
+    }
     out.push(Button::More);
     out
 }
 
 /// The actions the buttons do not cover (what "More" lists).
 fn more_rows(rows: &[Row]) -> Vec<Row> {
-    rows.iter().filter(|r| !["primary", "status", "favourite", "settings"].contains(&r.id.as_ref())).cloned().collect()
+    rows.iter().filter(|r| !["primary", "status", "favourite", "settings", "achievements"].contains(&r.id.as_ref())).cloned().collect()
 }
 
 /// First item to show so that `focus` is among the `visible` from it,
@@ -218,7 +223,7 @@ impl CollectionView {
     }
 
     /// A screenshot thumbnail `w`×`h` design px (its picture loads when drawn).
-    pub(super) fn shot_thumb(&mut self, i: usize, w: f32, h: f32, focused: bool) -> Div {
+    pub(in crate::collection::console) fn shot_thumb(&mut self, i: usize, w: f32, h: f32, focused: bool) -> Div {
         let src = self.shots.items.get(i).map(|s| s.path.clone()).and_then(|p| self.shots.thumb(&p));
         div()
             .relative()
@@ -235,14 +240,14 @@ impl CollectionView {
     }
 
     /// Opens screenshot `i` full screen.
-    pub(super) fn shot_open(&mut self, i: usize, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::collection::console) fn shot_open(&mut self, i: usize, window: &mut Window, cx: &mut Context<Self>) {
         self.shots_open_view(i, window, cx);
         // Decoded for the whole window, drawn by `shot_viewer`.
         self.shots.fit = true;
     }
 
     /// The open screenshot over the page.
-    pub(super) fn shot_viewer(&self) -> Option<AnyElement> {
+    pub(in crate::collection::console) fn shot_viewer(&self) -> Option<AnyElement> {
         let i = self.shots.view?;
         let path = &self.shots.items.get(i)?.path;
         let shown = self.shots.full.as_ref().filter(|f| f.path == *path).map(|f| f.img.clone());
@@ -280,7 +285,7 @@ impl CollectionView {
     }
 
     /// While a screenshot is open every press is for it: ◀ ▶ browse, A / B close.
-    pub(super) fn shot_viewer_pad(&mut self, pad: Pad) -> bool {
+    pub(in crate::collection::console) fn shot_viewer_pad(&mut self, pad: Pad) -> bool {
         let Some(i) = self.shots.view else { return false };
         let n = self.shots.items.len().max(1);
         match pad {
@@ -304,7 +309,7 @@ impl CollectionView {
     }
 
     /// Hints while a screenshot is open.
-    pub(super) fn shot_viewer_hints(&self) -> Option<Vec<Hint>> {
+    pub(in crate::collection::console) fn shot_viewer_hints(&self) -> Option<Vec<Hint>> {
         self.shots.view.map(|_| vec![hint(Btn::LeftRight, tr!("Browse")), hint(Btn::B, tr!("Close"))])
     }
 
@@ -527,6 +532,7 @@ fn hero_button(b: Button, rows: &[Row], g: &CollectionGame, focused: bool) -> Di
         Button::Favourite if g.favourite => (Icon::Favorite, None, Some(rgb(STAR))),
         Button::Favourite => (Icon::FavoriteBorder, None, None),
         Button::Settings => (Icon::Tune, None, None),
+        Button::Achievements => (Icon::Trophy, None, None),
         Button::More => (Icon::Menu, None, None),
     };
     pill_button(focused, ic, label, tint, PillSize::LARGE)
