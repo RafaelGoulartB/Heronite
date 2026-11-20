@@ -302,6 +302,11 @@ pub(crate) fn mark(style: Glyphs, btn: Btn, swap_ab: bool) -> Mark {
             Glyphs::Nintendo => Mark::Cap("+"),
             _ => Mark::Menu,
         },
+        Btn::Select => match style {
+            Glyphs::PlayStation => Mark::Cap("Create"),
+            Glyphs::Nintendo => Mark::Cap("\u{2212}"),
+            _ => Mark::Cap("View"),
+        },
         Btn::LeftRight => Mark::Arrows,
         Btn::Left => Mark::Arrow(false),
         Btn::Right => Mark::Arrow(true),
@@ -427,6 +432,7 @@ pub fn key_glyph(btn: Btn) -> Div {
         Btn::RB => key_cap("E"),
         Btn::Bumpers => draw(Mark::Pair("Q", "E")),
         Btn::Start => key_cap("M"),
+        Btn::Select => key_cap("Tab"),
         // No key for these: the pad's own look.
         Btn::LT | Btn::LeftRight | Btn::Left | Btn::Right => draw(mark(Glyphs::Xbox, btn, false)),
     }
@@ -463,6 +469,7 @@ pub fn btn_pad(btn: Btn) -> Pad {
         Btn::RB | Btn::Bumpers => Pad::RB,
         Btn::LT => Pad::LT,
         Btn::Start => Pad::Start,
+        Btn::Select => Pad::Select,
         Btn::LeftRight | Btn::Right => Pad::Right,
         Btn::Left => Pad::Left,
     }
@@ -491,10 +498,19 @@ pub fn hint_item(h: &Hint, keys: bool, size: f32, gap: f32) -> Div {
 /// [`hint_item`]; `live` false draws it without taking clicks.
 fn hint_row(h: &Hint, keys: bool, size: f32, gap: f32, live: bool) -> Div {
     let row = div().flex().items_center().gap(u(gap)).text_size(u(size)).text_color(theme::text_primary());
+    // The label, with its second line under it when it has one.
+    let label = match &h.sub {
+        None => div().child(h.label.clone()),
+        Some(sub) => div()
+            .flex()
+            .flex_col()
+            .child(div().line_height(u(size * 1.15)).child(h.label.clone()))
+            .child(div().text_size(u(size * 0.72)).line_height(u(size * 0.9)).text_color(theme::text_dim()).child(sub.clone())),
+    };
     if !live {
-        return row.child(if keys { key_glyph(h.btn) } else { glyph(h.btn) }).child(h.label.clone());
+        return row.child(if keys { key_glyph(h.btn) } else { glyph(h.btn) }).child(label);
     }
-    row.child(clickable_glyph(h.btn, keys)).child(h.label.clone()).on_pads([btn_pad(h.btn)])
+    row.child(clickable_glyph(h.btn, keys)).child(label).on_pads([btn_pad(h.btn)])
 }
 
 /// Footer with the button hints of the current screen (a click on one
@@ -514,7 +530,7 @@ fn system_hint(btn: Btn) -> bool {
 /// The order of the actions on the right: ◀ ▶, Y, X, B, then A at the end.
 fn action_rank(btn: Btn) -> u8 {
     match btn {
-        Btn::LeftRight | Btn::Left | Btn::Right => 0,
+        Btn::LeftRight | Btn::Left | Btn::Right | Btn::Select => 0,
         Btn::Y => 1,
         Btn::X => 2,
         Btn::B => 3,
