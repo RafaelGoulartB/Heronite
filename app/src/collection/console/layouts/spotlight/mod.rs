@@ -18,7 +18,8 @@
 //!
 //! `HERONITE_DEBUG_SPOTLIGHT=<zone>[:<n>]` opens the page on a section
 //! (`actions`, `media`, `viewer`, `about`, `sheet`, `achievements`, `links`,
-//! `cards`, `shots`, `related`), on the `n`th game of the row, for screenshots.
+//! `cards`, `shots`, `related`, `hltb`), on the `n`th game of the row (or the
+//! first whose name holds `n`, on the first tab that has it), for screenshots.
 
 mod bar;
 mod page;
@@ -36,8 +37,9 @@ use heronite_data::CollectionGame;
 use heronite_i18n::{tr, trn};
 
 pub(in crate::collection::console) use bar::{spotlight_clock, spotlight_tabs};
-use page::{Link, Mid, MidMove, Shape, Zone, SIDE};
+use page::{HltbCard, Link, Mid, MidMove, Shape, Zone, SIDE};
 
+use super::super::super::focus::{hltb_hours, hltb_marker, hltb_note_text, HLTB_COLOURS};
 use super::super::super::vm::{DetailField, DetailValue};
 use super::super::super::CollectionView;
 use super::super::hero::{fitted_title, logo_element, HeroSize};
@@ -258,13 +260,13 @@ fn detail_text(v: &DetailValue) -> String {
 }
 
 /// The section the debug hook asks for (`HERONITE_DEBUG_SPOTLIGHT`), and the game of the row.
-fn debug_target() -> Option<(String, Option<usize>)> {
+fn debug_target() -> Option<(String, Option<String>)> {
     if DEBUG_DONE.load(Ordering::Relaxed) {
         return None;
     }
     let v = crate::env::value("HERONITE_DEBUG_SPOTLIGHT")?;
-    let (zone, n) = v.split_once(':').map_or((v.as_str(), None), |(z, n)| (z, n.parse().ok()));
-    Some((zone.to_string(), n))
+    let (zone, game) = v.split_once(':').map_or((v.as_str(), None), |(z, g)| (z, Some(g.to_string())));
+    Some((zone.to_string(), game))
 }
 
 impl CollectionView {
@@ -321,6 +323,11 @@ impl CollectionView {
         if sections.details {
             s.details = self.spotlight_details(g).len();
             s.links = self.spotlight_links(g);
+            s.hltb = match focus.as_ref().map(|f| (&f.hltb, f.hltb_checked)) {
+                Some((Some(h), _)) => HltbCard::Times { note: hltb_note_text(h).is_some(), link: h.link.as_ref().map(|l| l.to_string()) },
+                Some((None, true)) => HltbCard::Missing,
+                _ => HltbCard::None,
+            };
         }
         if theme.layouts.spotlight_cards {
             s.cards = self.spotlight_cards(g).len();
@@ -378,18 +385,11 @@ impl CollectionView {
             let from = f.score_source.as_ref().map_or(String::new(), |s| format!(" \u{b7} {s}"));
             rows.push((Icon::Star, tr!("Critic score").into(), format!("{score:.0}/100{from}")));
         }
-        if let Some(main) = f.hltb.as_ref().and_then(|h| h.main).filter(|h| *h > 0.) {
-            rows.push((
-                Icon::Flag,
-                tr!("Time to beat").into(),
-                tr!("Main story {hours}", hours = heronite_data::hltb::format_hours(main as f64)),
-            ));
-        }
         rows
     }
 
-    /// The link buttons under Details: the install folder, the store page
-    /// and How Long To Beat, as far as the game has them.
+    /// The link buttons under Details: the install folder and the store
+    /// page, as far as the game has them (How Long To Beat has its card).
     fn spotlight_links(&self, g: &CollectionGame) -> Vec<Link> {
         let mut links = Vec::new();
         if g.installed {
@@ -397,10 +397,6 @@ impl CollectionView {
         }
         if details_url(g).is_some() {
             links.push(Link::Store);
-        }
-        let hltb = self.focus.as_ref().filter(|f| f.key.as_ref() == g.key).and_then(|f| f.hltb.as_ref()?.link.clone());
-        if let Some(url) = hltb {
-            links.push(Link::Url { label: "HowLongToBeat".into(), url: url.to_string() });
         }
         links
     }
@@ -476,13 +472,28 @@ impl CollectionView {
     }
 
     /// Applies `HERONITE_DEBUG_SPOTLIGHT` once the page has the section.
-    fn spotlight_debug(&mut self, tab: usize, found: usize, cx: &mut Context<Self>) {
-        let Some((zone, n)) = debug_target() else { return };
+    fn spotlight_debug(&mut self, tab: usize, found: &[SharedString], cx: &mut Context<Self>) {
+        let Some((zone, game)) = debug_target() else { return };
+        // The game: its place in the row, or a part of its name (waiting
+        // for a tab that has it, LB / RB).
+        let at = game.map(|g| match g.parse::<usize>() {
+            Ok(n) => (n < found.len()).then_some(n),
+            Err(_) => {
+                let g = g.to_lowercase();
+                found.iter().position(|k| self.lib.as_ref().and_then(|l| l.get(k)).is_some_and(|x| x.title_lower.contains(&g)))
+            }
+        });
         let nav = &mut self.tab_nav(tab).spotlight;
-        if let Some(n) = n.filter(|n| *n < found && nav.index != *n && !nav.shown) {
-            nav.index = n;
-            nav.pos.snap(n as f32);
-            return;
+        match at {
+            Some(None) => return,
+            Some(Some(n)) if nav.index != n => {
+                if !nav.shown {
+                    nav.index = n;
+                    nav.pos.snap(n as f32);
+                }
+                return;
+            }
+            _ => {}
         }
         let Some((z, mid)) = Zone::parse(&zone) else {
             DEBUG_DONE.store(true, Ordering::Relaxed);
@@ -496,6 +507,7 @@ impl CollectionView {
                 Mid::About => nav.shape.about_more,
                 Mid::Ach => nav.shape.ach,
                 Mid::Link => !nav.shape.links.is_empty(),
+                Mid::Hltb => nav.shape.mid_has(Mid::Hltb),
             };
             if !has {
                 return;
@@ -521,7 +533,7 @@ impl CollectionView {
         let k = kit::scale();
         let size = crate::ui::content_size(window);
         let (view_w, view_h) = (f32::from(size.width) / k, f32::from(size.height) / k);
-        self.spotlight_debug(tab, n, cx);
+        self.spotlight_debug(tab, &found, cx);
         let nav = &mut self.tab_nav(tab).spotlight;
         nav.index = nav.index.min(n);
         let index = nav.index;
@@ -942,7 +954,6 @@ impl CollectionView {
                 let label: SharedString = match l {
                     Link::Folder => tr!("Open folder").into(),
                     Link::Store => tr!("Store page").into(),
-                    Link::Url { label, .. } => label.clone(),
                 };
                 let focused = f.zone == Zone::Mid && f.mid == Mid::Link && f.link == i;
                 let base = div().relative().flex_none().h(u(page::LINK_H)).min_w(u(120.));
@@ -975,6 +986,12 @@ impl CollectionView {
                     .when(!shape.links.is_empty(), |d| d.child(links)),
             );
         }
+        if shape.hltb != HltbCard::None {
+            let focused = f.zone == Zone::Mid && f.mid == Mid::Hltb;
+            column = column.child(
+                div().flex().flex_col().child(section_title(tr!("How Long To Beat"))).child(self.spotlight_hltb_card(shape, focused)),
+            );
+        }
         div()
             .absolute()
             .top(u(geo.mid))
@@ -985,6 +1002,106 @@ impl CollectionView {
             .child(left)
             .child(column)
             .into_any_element()
+    }
+
+    /// The How Long To Beat card, as the desktop's section draws it: the bar of
+    /// the three times with where the player is along it, the times under
+    /// it and how the game was matched; or that it has no times.
+    fn spotlight_hltb_card(&self, shape: &Shape, focused: bool) -> AnyElement {
+        let h = self.focus.as_ref().filter(|f| f.key == shape.key).and_then(|f| f.hltb.clone());
+        let base = div().relative().w_full().h(u(match (&shape.hltb, &h) {
+            (HltbCard::Times { note, .. }, Some(_)) => page::HLTB_H + if *note { page::HLTB_NOTE_H } else { 0. },
+            _ => page::HLTB_MISSING_H,
+        }));
+        let content = match h {
+            Some(h) => {
+                let seg = |c: u32| div().flex_1().min_w_0().h_full().rounded_full().bg(rgb(c));
+                let marker = hltb_marker(&h).map(|m| {
+                    div()
+                        .absolute()
+                        .top(u(-3.))
+                        .left(relative(m))
+                        .ml(u(-6.))
+                        .w(u(12.))
+                        .h(u(14.))
+                        .rounded(u(5.))
+                        .bg(kit::strong())
+                        .border_2()
+                        .border_color(rgb(0x1a1c20))
+                        .shadow(kit::shadow(0.45, 1., 4.))
+                });
+                let bar = div()
+                    .relative()
+                    .flex()
+                    .gap(u(3.))
+                    .h(u(8.))
+                    .child(seg(HLTB_COLOURS[0]))
+                    .child(seg(HLTB_COLOURS[1]))
+                    .child(seg(HLTB_COLOURS[2]))
+                    .children(marker);
+                let stat = |label: &'static str, v: Option<f32>| {
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap(u(5.))
+                        .child(div().text_size(u(11.)).text_color(theme::text_muted()).whitespace_nowrap().child(label))
+                        .child(
+                            div()
+                                .w_full()
+                                .flex()
+                                .justify_center()
+                                .py(u(5.))
+                                .rounded(u(8.))
+                                .bg(kit::ink(0.1))
+                                .text_size(u(13.))
+                                .font_weight(theme::W_BOLD)
+                                .text_color(kit::strong())
+                                .child(hltb_hours(v)),
+                        )
+                };
+                let note =
+                    hltb_note_text(&h).map(|n| div().mt(u(8.)).text_size(u(11.)).text_color(theme::text_muted()).truncate().child(n));
+                div()
+                    .relative()
+                    .size_full()
+                    .flex()
+                    .flex_col()
+                    .px(u(16.))
+                    .pt(u(16.))
+                    .child(bar)
+                    .child(
+                        div()
+                            .mt(u(14.))
+                            .flex()
+                            .gap(u(8.))
+                            .child(stat(tr!("Main Story"), h.main))
+                            .child(stat(tr!("Main + Extras"), h.extra))
+                            .child(stat(tr!("Completionist"), h.complete)),
+                    )
+                    .children(note)
+            }
+            None => div()
+                .relative()
+                .size_full()
+                .flex()
+                .items_center()
+                .px(u(16.))
+                .text_size(u(12.5))
+                .text_color(theme::text_muted())
+                .child(tr!("HowLongToBeat has no times for this game.")),
+        };
+        let el = motion::spring("spot-hltb", base, motion::SOFT, focused, move |d, k| {
+            let t = k.clamp(0., 1.);
+            d.child(
+                div().absolute().inset_0().rounded(u(14.)).bg(kit::ink(0.06 + 0.06 * t)).border_1().border_color(kit::ink(0.16 + 0.1 * t)),
+            )
+            .child(content)
+            .when(t > 0.01, |d| d.child(ring(14., t)))
+        });
+        div().on_mouse_down(MouseButton::Left, self.spot_click(Spot::Mid(Mid::Hltb, 0))).child(el).into_any_element()
     }
 
     /// The Achievements card: a trophy, unlocked of total, a bar, the latest unlocks.
@@ -1200,7 +1317,11 @@ impl CollectionView {
                     match link {
                         Link::Folder => self.open_install_folder(key, cx),
                         Link::Store => self.open_details(key, cx),
-                        Link::Url { url, .. } => self.open_url(url, cx),
+                    }
+                }
+                Mid::Hltb => {
+                    if let HltbCard::Times { link: Some(url), .. } = nav.shape.hltb.clone() {
+                        self.open_url(url, cx);
                     }
                 }
             },

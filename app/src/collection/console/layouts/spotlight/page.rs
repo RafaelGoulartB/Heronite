@@ -38,6 +38,7 @@ impl Zone {
             "about" | "sheet" => (Zone::Mid, Some(Mid::About)),
             "achievements" | "mid" => (Zone::Mid, Some(Mid::Ach)),
             "links" | "details" => (Zone::Mid, Some(Mid::Link)),
+            "hltb" => (Zone::Mid, Some(Mid::Hltb)),
             "cards" => (Zone::Cards, None),
             "shots" => (Zone::Shots, None),
             "related" => (Zone::Related, None),
@@ -56,6 +57,20 @@ pub(crate) enum Mid {
     Ach,
     /// A link button under Details (`Nav::link`).
     Link,
+    /// The How Long To Beat card.
+    Hltb,
+}
+
+/// What the How Long To Beat card under Details shows.
+#[derive(Clone, Default, Debug, PartialEq)]
+pub(super) enum HltbCard {
+    /// Not asked yet (or the section is off): no card.
+    #[default]
+    None,
+    /// Asked, and HowLongToBeat has no times for the game.
+    Missing,
+    /// The times; `note`: how it was matched shows under them; `link`: its page.
+    Times { note: bool, link: Option<String> },
 }
 
 /// What a link button under Details does.
@@ -63,7 +78,6 @@ pub(crate) enum Mid {
 pub(super) enum Link {
     Folder,
     Store,
-    Url { label: SharedString, url: String },
 }
 
 /// The sizes the page is laid out with, design px.
@@ -84,6 +98,12 @@ pub(super) const LINK_H: f32 = 32.;
 pub(super) const LINE_H: f32 = 21.;
 pub(super) const ABOUT_SIZE: f32 = 13.5;
 pub(super) const MORE_H: f32 = 30.;
+/// The How Long To Beat card with its times (and the note under them), and without.
+pub(super) const HLTB_H: f32 = 96.;
+pub(super) const HLTB_NOTE_H: f32 = 20.;
+pub(super) const HLTB_MISSING_H: f32 = 46.;
+/// Between two blocks of the right column.
+pub(super) const COLUMN_STEP: f32 = 26.;
 const SECTION_GAP: f32 = 46.;
 /// The logo's box by the theme's size.
 pub(super) fn logo_h(size: heronite_data::console_theme::Size3) -> f32 {
@@ -119,6 +139,7 @@ pub(super) struct Shape {
     pub ach: bool,
     pub details: usize,
     pub links: Vec<Link>,
+    pub hltb: HltbCard,
     pub cards: usize,
     pub shots: usize,
     pub related: Vec<SharedString>,
@@ -156,22 +177,23 @@ pub(super) fn about_width(width: f32) -> f32 {
     width - COLUMN_W - COLUMN_GAP
 }
 
-/// The right column's height: Achievements, then Details with its links.
-fn column_h(ach: bool, details: usize, links: usize) -> f32 {
-    let mut h = 0.;
-    if ach {
-        h += TITLE_H + ACH_H;
+/// The right column's height: Achievements, then Details with its links,
+/// then How Long To Beat.
+fn column_h(s: &Shape) -> f32 {
+    let mut blocks = Vec::new();
+    if s.ach {
+        blocks.push(TITLE_H + ACH_H);
     }
-    if details > 0 || links > 0 {
-        if h > 0. {
-            h += 26.;
-        }
-        h += TITLE_H + details as f32 * DETAIL_H;
-        if links > 0 {
-            h += 14. + LINK_H;
-        }
+    if s.details > 0 || !s.links.is_empty() {
+        blocks.push(TITLE_H + s.details as f32 * DETAIL_H + if s.links.is_empty() { 0. } else { 14. + LINK_H });
     }
-    h
+    match &s.hltb {
+        HltbCard::None => {}
+        HltbCard::Missing => blocks.push(TITLE_H + HLTB_MISSING_H),
+        HltbCard::Times { note, .. } => blocks.push(TITLE_H + HLTB_H + if *note { HLTB_NOTE_H } else { 0. }),
+    }
+    let gaps = blocks.len().saturating_sub(1) as f32 * COLUMN_STEP;
+    blocks.into_iter().sum::<f32>() + gaps
 }
 
 impl Shape {
@@ -179,7 +201,7 @@ impl Shape {
     /// `chars` characters on a page `width` wide: at least as tall as the
     /// column beside it.
     pub fn fit_about(&mut self, chars: usize, width: f32) {
-        let column = column_h(self.ach, self.details, self.links.len());
+        let column = column_h(self);
         // Characters a line holds: about this many on average, and at least
         // this many (a line of wide letters).
         let average = (about_width(width) / (ABOUT_SIZE * 0.6)).max(20.);
@@ -200,7 +222,7 @@ impl Shape {
         let mut y = if self.media > 0 { g.media + TILE_H } else { g.chips + CHIPS_H };
         let about_h =
             if self.about { TITLE_H + self.about_lines as f32 * LINE_H + if self.about_more { 12. + MORE_H } else { 0. } } else { 0. };
-        g.mid_h = about_h.max(column_h(self.ach, self.details, self.links.len()));
+        g.mid_h = about_h.max(column_h(self));
         if g.mid_h > 0. {
             y += SECTION_GAP;
             g.mid = y;
@@ -232,6 +254,7 @@ impl Shape {
             Mid::About => self.about && self.about_more,
             Mid::Ach => self.ach,
             Mid::Link => !self.links.is_empty(),
+            Mid::Hltb => matches!(self.hltb, HltbCard::Times { link: Some(_), .. }),
         }
     }
 
@@ -241,7 +264,7 @@ impl Shape {
         if self.media > 0 {
             z.push(Zone::Media);
         }
-        if [Mid::About, Mid::Ach, Mid::Link].into_iter().any(|m| self.mid_has(m)) {
+        if [Mid::About, Mid::Ach, Mid::Link, Mid::Hltb].into_iter().any(|m| self.mid_has(m)) {
             z.push(Zone::Mid);
         }
         if self.cards > 0 {
@@ -314,31 +337,33 @@ pub(super) enum MidMove {
 impl Shape {
     /// Where the focus enters the middle section from above (`down`) or below.
     pub fn mid_entry(&self, down: bool) -> Mid {
-        let order = if down { [Mid::Ach, Mid::About, Mid::Link] } else { [Mid::Link, Mid::Ach, Mid::About] };
+        let order = if down { [Mid::Ach, Mid::About, Mid::Link, Mid::Hltb] } else { [Mid::Hltb, Mid::Link, Mid::Ach, Mid::About] };
         order.into_iter().find(|m| self.mid_has(*m)).unwrap_or_default()
     }
 
     /// The middle section's focus `at` (`link`) moved by `pad`: About on the
-    /// left, Achievements over the links on the right.
+    /// left; on the right, top to bottom, Achievements, the links under
+    /// Details and How Long To Beat.
     pub fn mid_move(&self, at: Mid, link: usize, pad: crate::console::Pad) -> MidMove {
         use crate::console::Pad;
         let n = self.links.len();
+        // The right column, top to bottom.
+        let column: Vec<Mid> = [Mid::Ach, Mid::Link, Mid::Hltb].into_iter().filter(|m| self.mid_has(*m)).collect();
+        let row = column.iter().position(|m| *m == at);
+        let to = |m: Mid| MidMove::To(m, if m == Mid::Link { link.min(n.saturating_sub(1)) } else { 0 });
         match (at, pad) {
-            (Mid::About, Pad::Right) if self.mid_has(Mid::Ach) => MidMove::To(Mid::Ach, 0),
-            (Mid::About, Pad::Right) if n > 0 => MidMove::To(Mid::Link, 0),
-            (Mid::Ach | Mid::Link, Pad::Left) if at == Mid::Ach || link == 0 => {
-                if self.mid_has(Mid::About) {
-                    MidMove::To(Mid::About, 0)
-                } else {
-                    MidMove::Stay
-                }
-            }
-            (Mid::Link, Pad::Left) => MidMove::To(Mid::Link, link - 1),
+            (Mid::About, Pad::Right) => column.first().map_or(MidMove::Stay, |m| MidMove::To(*m, 0)),
+            (Mid::Link, Pad::Left) if link > 0 => MidMove::To(Mid::Link, link - 1),
             (Mid::Link, Pad::Right) if link + 1 < n => MidMove::To(Mid::Link, link + 1),
-            (Mid::Ach, Pad::Down) if n > 0 => MidMove::To(Mid::Link, link.min(n - 1)),
-            (Mid::Link, Pad::Up) if self.mid_has(Mid::Ach) => MidMove::To(Mid::Ach, 0),
-            (_, Pad::Up) => MidMove::Out(-1),
-            (_, Pad::Down) => MidMove::Out(1),
+            (_, Pad::Left) if at != Mid::About && self.mid_has(Mid::About) => MidMove::To(Mid::About, 0),
+            (_, Pad::Up) => match row.filter(|r| *r > 0) {
+                Some(r) => to(column[r - 1]),
+                None => MidMove::Out(-1),
+            },
+            (_, Pad::Down) => match row.map(|r| r + 1).filter(|r| *r < column.len()) {
+                Some(r) => to(column[r]),
+                None => MidMove::Out(1),
+            },
             _ => MidMove::Stay,
         }
     }
@@ -430,6 +455,17 @@ mod tests {
         assert!(matches!(s.mid_move(Mid::Link, 1, Pad::Up), MidMove::To(Mid::Ach, _)));
         assert!(matches!(s.mid_move(Mid::Link, 1, Pad::Down), MidMove::Out(1)));
         assert!(matches!(s.mid_move(Mid::About, 0, Pad::Up), MidMove::Out(-1)));
+        // How Long To Beat under the links, when it has a page to open.
+        let mut h = s.clone();
+        h.hltb = HltbCard::Times { note: false, link: Some("https://howlongtobeat.com/game/1".into()) };
+        assert!(matches!(h.mid_move(Mid::Link, 1, Pad::Down), MidMove::To(Mid::Hltb, _)));
+        assert!(matches!(h.mid_move(Mid::Hltb, 1, Pad::Up), MidMove::To(Mid::Link, 1)));
+        assert!(matches!(h.mid_move(Mid::Hltb, 0, Pad::Down), MidMove::Out(1)));
+        assert!(matches!(h.mid_move(Mid::Hltb, 0, Pad::Left), MidMove::To(Mid::About, _)));
+        assert_eq!(h.mid_entry(false), Mid::Hltb);
+        // Without times it shows but takes no focus.
+        h.hltb = HltbCard::Missing;
+        assert!(matches!(h.mid_move(Mid::Link, 1, Pad::Down), MidMove::Out(1)));
     }
 
     #[test]
