@@ -231,15 +231,14 @@ impl Pic<'_, '_> {
         let cinema = self.t.tabs.get(self.tab).is_some_and(|t| t.layout == Layout::Cinema);
         // A and X as the theme's `nav.aButton` says, as on the console.
         let details_on_a = self.t.nav.a_button == heronite_data::console_theme::AButton::Details;
-        // Cinema: View filters, Y the actions, A / X the page and Play; Spotlight's
-        // row: A opens the actions, X plays; elsewhere A and B.
+        // Cinema: Y the search, A / X the page and Play as the setting says;
+        // Spotlight's row: A opens the actions, X plays; elsewhere A and B.
         let right = if cinema {
             div()
                 .flex()
                 .items_center()
                 .gap(self.u(12.))
-                .child(hint(self.key("View"), tr!("Filter")))
-                .child(hint(self.mono_glyph(north), tr!("Game options")))
+                .child(hint(self.mono_glyph(north), tr!("Search")))
                 .child(hint(self.mono_glyph(west), if details_on_a { tr!("Play") } else { tr!("Details") }))
                 .child(hint(self.mono_glyph(a), if details_on_a { tr!("Details") } else { tr!("Play") }))
         } else if self.spotlight_tab() {

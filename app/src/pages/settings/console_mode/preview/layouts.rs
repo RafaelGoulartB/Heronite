@@ -145,9 +145,9 @@ fn shelves(p: &mut Pic, layer: Div) -> Div {
         ))
 }
 
-/// Cinema (the console's `layouts/cinema.rs`): the game's name large left of
-/// centre with its facts and genres centred under it, its achievements on the
-/// right, one row of large covers along the bottom.
+/// Cinema (the console's `layouts/cinema.rs`): the game's name large at the
+/// left with its facts and genres under it, its achievements on the right,
+/// one row of large covers along the bottom.
 fn cinema(p: &mut Pic, layer: Div) -> Div {
     let h = 104. * p.size().min(1.15);
     let names = if p.t.tiles.titles == TileTitles::Always { 12. } else { 0. };
@@ -170,9 +170,9 @@ fn cinema(p: &mut Pic, layer: Div) -> Div {
         .bottom(p.u(CANVAS_H - row_y + 16.))
         .flex()
         .flex_col()
-        .items_center()
+        .items_start()
         .gap(p.u(7.))
-        .child(p.game_name(0, 22., 250.).text_center())
+        .child(p.game_name(0, 22., 250.))
         .child(facts)
         .child(genres);
     // The achievements, level with the facts.
