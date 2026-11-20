@@ -20,6 +20,7 @@ mod emulation;
 mod epic;
 mod extras;
 mod family_art;
+mod ffmpeg_pill;
 mod focus;
 mod focus_left;
 mod folder_size;

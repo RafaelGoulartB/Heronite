@@ -141,6 +141,7 @@ impl CollectionView {
                 "downloads" => Some(Menu::Downloads),
                 "update" => Some(Menu::Update),
                 "steam" => Some(Menu::Steam),
+                "ffmpeg" => Some(Menu::Ffmpeg),
                 "metadata" => Some(Menu::Metadata),
                 "display" => Some(Menu::Display),
                 "display-covers" => {

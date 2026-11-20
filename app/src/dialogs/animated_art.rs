@@ -19,8 +19,14 @@ pub fn on() -> bool {
 
 /// Turns "Animated backgrounds" on, as its switch in Settings does.
 pub fn turn_on(app: &AppPaths, cx: &mut App) {
+    set(app, true, cx);
+}
+
+/// Turns "Animated backgrounds" on or off and saves it, as its switch in
+/// Settings does.
+pub fn set(app: &AppPaths, on: bool, cx: &mut App) {
     let mut a = theme::appearance();
-    a.animated_backgrounds = true;
+    a.animated_backgrounds = on;
     theme::set_appearance(a);
     let (a, app) = (theme::appearance(), app.clone());
     cx.background_spawn(async move {

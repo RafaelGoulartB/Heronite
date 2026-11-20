@@ -305,7 +305,11 @@ shows) with Motion other than Full, while Heronite is not the active window, a g
 is not drawn, or the window has not drawn for 1.5 s; a file ffmpeg cannot play stays still for the session. Off, or
 without ffmpeg, every video is drawn as its first frame wherever a picture is (`Opts::video_still` =
 `heronite_media::stills::video_still`, also for a WebM downloaded from the web). Under the switch a line says why one
-stays still (Motion not Full, ffmpeg not found). `HERONITE_DEBUG_LIVE_STAGE=1` plays it in an inactive window
+stays still (Motion not Full, ffmpeg not found). While a background that moves is shown and ffmpeg is missing, the
+header has an **ffmpeg missing** pill (`collection/ffmpeg_pill.rs`, the Steam pill's warning wash): hovered, it says the
+setting is why and offers to turn it off or to install ffmpeg (Windows: downloaded here, `ffmpeg_install`, a ring while it
+comes; elsewhere from the system's packages, then "Check again"); `HERONITE_DEBUG_NO_FFMPEG=1|download` and
+`HERONITE_DEBUG_DROPDOWN=ffmpeg` show it (captures). `HERONITE_DEBUG_LIVE_STAGE=1` plays it in an inactive window
 (captures). **Animations**: Full, Reduced (`theme::fades()` only: the stage cross-fade and covers fading
 in) or Off (`theme::animations()` is false; `HERONITE_NO_ANIMATIONS` forces Off). **Open the Collection in** (last
 used, Focus, Grid; applied once at start), **Reset widths** (`PageEvent::ResetPanelWidths`), **Game sections** (order

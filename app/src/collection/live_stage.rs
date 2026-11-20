@@ -49,7 +49,13 @@ pub(super) struct LiveStage {
     /// Files ffmpeg could not play this session: they stay still.
     failed: HashSet<PathBuf>,
     /// Whether ffmpeg is there (asked off the UI thread once).
-    ffmpeg: Option<bool>,
+    pub(super) ffmpeg: Option<bool>,
+    /// A background that moves is shown and ffmpeg is missing: the ffmpeg
+    /// pill says so (`ffmpeg_pill.rs`). Asked again every frame.
+    pub(super) wants_ffmpeg: bool,
+    /// ffmpeg is being downloaded from the pill.
+    pub(super) getting_ffmpeg: bool,
+    pub(super) ffmpeg_error: Option<String>,
     playing: Option<Playing>,
     /// The stage was drawn since the last frame.
     seen: bool,
@@ -85,6 +91,7 @@ impl CollectionView {
     /// no longer draws stops.
     pub(super) fn sync_live_stage(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.live.draw_asked = None;
+        self.live.wants_ffmpeg = false;
         if std::mem::take(&mut self.live.wants_activation) && self.live.activation.is_none() {
             self.live.activation = Some(cx.observe_window_activation(window, |_, _, cx| cx.notify()));
         }
@@ -129,13 +136,15 @@ impl CollectionView {
             self.stop_live_stage();
             return None;
         };
+        let ffmpeg = self.live.ffmpeg.map(|f| f && !super::ffmpeg_pill::debug_no_ffmpeg());
+        // It would move: the header says what is missing.
+        self.live.wants_ffmpeg = ffmpeg == Some(false);
         let active = window.is_window_active() || crate::env::flag("HERONITE_DEBUG_LIVE_STAGE");
         if !active && self.live.activation.is_none() {
             self.live.wants_activation = true;
             cx.notify();
         }
-        if !active || !self.playing.is_empty() || self.media_playing() || self.live.ffmpeg != Some(true) || self.live.failed.contains(&path)
-        {
+        if !active || !self.playing.is_empty() || self.media_playing() || ffmpeg != Some(true) || self.live.failed.contains(&path) {
             self.stop_live_stage();
             return None;
         }
