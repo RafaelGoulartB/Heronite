@@ -68,6 +68,7 @@ pub fn classic() -> ConsoleTheme {
         game_page: GamePage::Classic,
         menu: MenuOptions { style: MenuStyle::Sidebar, side: Side::Left, items: default_menu() },
         layouts: LayoutOptions::default(),
+        launch: LaunchOptions::default(),
         extra: Map::new(),
     }
 }

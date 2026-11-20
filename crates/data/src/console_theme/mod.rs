@@ -229,6 +229,15 @@ str_enum! {
     pub enum WheelItems { Name = "name", Logo = "logo" } default Name
 }
 str_enum! {
+    /// What the screen shown while a game starts holds: its art with the
+    /// logo, the logo alone on black, or nothing (the console stays as it is).
+    pub enum LaunchScreen { ArtLogo = "art-logo", Logo = "logo", Off = "off" } default ArtLogo
+}
+str_enum! {
+    /// How much the launch screen darkens the game's art.
+    pub enum LaunchShade { None = "none", Soft = "soft", Dark = "dark" } default Soft
+}
+str_enum! {
     pub enum AutoConsole { Off = "off", Ask = "ask", On = "on" } default Off
 }
 str_enum! {
@@ -564,6 +573,48 @@ impl Default for DashboardWidgets {
     }
 }
 
+/// Spotlight: the sections of the game's page under the buttons, reached
+/// going down (each one is left out when the game has nothing for it).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct SpotlightSections {
+    /// The store's trailers and screenshots.
+    pub media: bool,
+    /// The screenshots taken while playing.
+    pub screenshots: bool,
+    /// The game's description.
+    pub about: bool,
+    pub achievements: bool,
+    /// Developer, publisher, size, where it is installed, score and links.
+    pub details: bool,
+    /// More like this: the same series, developer or similar games.
+    pub related: bool,
+}
+
+impl Default for SpotlightSections {
+    fn default() -> Self {
+        Self { media: true, screenshots: true, about: true, achievements: true, details: true, related: true }
+    }
+}
+
+/// The screen shown while a game starts and the card shown when it ends.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LaunchOptions {
+    pub screen: LaunchScreen,
+    /// The art drifts slowly closer while the game starts.
+    pub motion: bool,
+    pub shade: LaunchShade,
+    /// "Session ended": the time of the session and the total, when a game closes.
+    pub session_card: bool,
+}
+
+impl Default for LaunchOptions {
+    fn default() -> Self {
+        Self { screen: LaunchScreen::ArtLogo, motion: true, shade: LaunchShade::Soft, session_card: true }
+    }
+}
+
 /// Options of one layout each.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -575,6 +626,7 @@ pub struct LayoutOptions {
     /// Spotlight: playtime, time to beat and journal cards.
     pub spotlight_cards: bool,
     pub spotlight_actions: SpotActions,
+    pub spotlight_sections: SpotlightSections,
     pub carousel_reflect: bool,
     /// Xbox: the shelves under the row of tiles.
     pub xbox_groups: bool,
@@ -589,6 +641,7 @@ impl Default for LayoutOptions {
             wheel_items: WheelItems::Name,
             spotlight_cards: true,
             spotlight_actions: SpotActions::Full,
+            spotlight_sections: SpotlightSections::default(),
             carousel_reflect: false,
             xbox_groups: true,
             dashboard: DashboardWidgets::default(),
@@ -626,6 +679,7 @@ pub struct ConsoleTheme {
     pub game_page: GamePage,
     pub menu: MenuOptions,
     pub layouts: LayoutOptions,
+    pub launch: LaunchOptions,
     /// Keys this app does not know, kept as they are.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
