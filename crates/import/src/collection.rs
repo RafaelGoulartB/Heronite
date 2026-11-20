@@ -128,6 +128,9 @@ pub fn sync(paths: &DataPaths, home: &Path, launcher: Launcher, games: &[Game], 
     let copying: Vec<(String, &Game, &Transfer)> =
         fresh.iter().filter_map(|(i, g)| Some((i.app_name.clone(), *g, g.transfer.as_deref()?))).collect();
     transfer::record_added(paths, &copying);
+    // What they carry goes first: a game is brought over once its entry is
+    // written, and never again (writing it twice changes nothing).
+    transfer::settle(paths, home, &copying);
 
     let statuses = heronite_data::status::load_statuses(paths).unwrap_or_else(|_| heronite_data::status::default_statuses());
     json_store::update_if_changed::<LocalMetaFile, _>(&paths.local_meta(), |file| {
@@ -185,7 +188,6 @@ pub fn sync(paths: &DataPaths, home: &Path, launcher: Launcher, games: &[Game], 
         }
         Ok(())
     })?;
-    transfer::settle(paths, home, &copying);
 
     let played: Vec<_> = games.iter().map(|g| (app_name(launcher, &g.id), g.minutes, g.last_played.clone())).collect();
     // A new entry's play time is part of adding it.

@@ -76,15 +76,19 @@ pub struct Transfer {
 /// The sideload entry of a game brought over: its program and folder.
 pub(crate) fn entry(info: &mut GameInfo, game: &Game, transfer: &Transfer) {
     let program = transfer.start.program();
+    let parent = || Path::new(program).parent().map(|p| p.to_string_lossy().into_owned()).filter(|p| !p.is_empty());
+    // A program's folder stands in for a game with none, so it stays
+    // Playnite's (`launchers::managed_paths`).
+    let folder = game.folder.clone().or_else(|| matches!(transfer.start, Start::Program { .. }).then(parent).flatten());
     info.install = InstallInfo {
         executable: Some(program.to_string()),
         platform: Some("Windows".into()),
-        install_path: game.folder.clone(),
+        install_path: folder.clone(),
         is_dlc: Some(false),
         ..Default::default()
     };
     info.is_linux_native = Some(false);
-    info.folder_name = game.folder.clone().or_else(|| Path::new(program).parent().map(|p| p.to_string_lossy().into_owned()));
+    info.folder_name = folder.or_else(parent);
     if let Start::Program { working_dir: Some(dir), .. } = &transfer.start {
         info.rest.insert(WORKING_DIR_KEY.into(), Value::String(dir.clone()));
     }
@@ -122,9 +126,10 @@ pub(crate) fn set_meta(meta: &mut LocalGameMeta, game: &Game, transfer: &Transfe
     let inferred = heronite_data::status::inferred_status_id(game.minutes as f64, statuses);
     if let Some((id, name)) = &transfer.status {
         meta.playnite_completion_status_id = Some(id.clone());
-        // An entry that asked Playnite got a status from its play time; one
-        // the user picked since stays.
-        if fresh || meta.completion_status_id.as_deref().is_none_or(|s| s == inferred) {
+        // An entry that asked Playnite got a status from its play time then
+        // (played or not); one the user picked since stays.
+        let guessed = |s: &str| [0.0, 1.0].iter().any(|m| heronite_data::status::inferred_status_id(*m, statuses) == s);
+        if fresh || meta.completion_status_id.as_deref().is_none_or(guessed) {
             let incoming = [(id.clone(), name.clone())];
             meta.completion_status_id = Some(heronite_data::status::resolve_playnite_status_id(Some(id), &incoming, statuses));
         }
@@ -202,9 +207,8 @@ pub(crate) fn settle(paths: &DataPaths, home: &Path, games: &[(String, &Game, &T
     }
 
     let service = heronite_metadata::MetadataService::new(paths.clone());
-    for (app, _, t) in games {
-        note("details", service.seed_playnite_metadata(app, "sideload", &t.details, &t.library).map(|_| ()));
-    }
+    let details: Vec<_> = games.iter().map(|(app, _, t)| (app.as_str(), "sideload", &t.details, t.library.as_path())).collect();
+    note("details", service.seed_playnite_games(&details));
 
     for f in failed {
         log::warn!("Bringing Playnite's games over: {f}");
