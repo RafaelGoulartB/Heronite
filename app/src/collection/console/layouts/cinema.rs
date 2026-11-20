@@ -258,7 +258,13 @@ impl CollectionView {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .bg(gold.opacity(0.14))
+                        .bg({
+                            let mut c = theme::console_bg();
+                            c.a = 0.5;
+                            c
+                        })
+                        .border_1()
+                        .border_color(gold.opacity(0.75))
                         .child(crate::ui::icon(Icon::Trophy, u(20.), gold)),
                 )
                 .child(
@@ -272,8 +278,8 @@ impl CollectionView {
                             div()
                                 .text_size(u(10.))
                                 .font_weight(theme::W_BOLD)
-                                .text_color(theme::text_muted())
-                                .child(tr!("Achievements").to_uppercase()),
+                                .text_color(kit::ink(0.72))
+                                .child(kit::spaced_caps(tr!("Achievements"))),
                         )
                         .child(
                             div()
@@ -292,9 +298,9 @@ impl CollectionView {
                                                 .text_color(kit::strong())
                                                 .child(got.to_string()),
                                         )
-                                        .child(div().text_size(u(13.)).text_color(theme::text_muted()).child(format!("/ {all}"))),
+                                        .child(div().text_size(u(13.)).text_color(kit::ink(0.72)).child(format!("/ {all}"))),
                                 )
-                                .child(div().text_size(u(13.)).text_color(theme::text_muted()).child(format!("{:.0}%", share * 100.))),
+                                .child(div().text_size(u(13.)).text_color(kit::ink(0.72)).child(format!("{:.0}%", share * 100.))),
                         )
                         .child(
                             div()
@@ -416,9 +422,12 @@ impl CollectionView {
             if let Some(ach) = self.cinema_achievements(g, cx).filter(|_| vw >= block_w + side * 2. + ACH_W + 40.) {
                 let ach =
                     motion::reveal(SharedString::from(format!("{id}-ach")), ach.relative(), motion::REST_HOLD, motion::REST_FADE, 0., 0.);
-                over = over.child(
-                    div().absolute().right(u(side)).bottom(u(block_bottom + GENRES_H + 14.)).h(u(FACTS_H)).flex().items_center().child(ach),
-                );
+                // A smaller shade of its own, so it reads over bright art too.
+                let (sw, sh) = (ACH_W + 80., FACTS_H + 40.);
+                let at = block_bottom + GENRES_H + 14.;
+                over = over
+                    .child(div().absolute().right(u(side - 40.)).bottom(u(at - 20.)).w(u(sw)).h(u(sh)).child(block_shade(sw, sh)))
+                    .child(div().absolute().right(u(side)).bottom(u(at)).h(u(FACTS_H)).flex().items_center().child(ach));
             }
         }
 

@@ -147,11 +147,17 @@ pub(super) fn section_title(text: &str) -> Div {
             .flex()
             .flex_col()
             .justify_center()
-            .gap(u(6.))
+            .gap(u(5.))
             .child(
-                div().text_size(u(TITLE)).font_weight(theme::W_BOLD).text_color(kit::strong()).whitespace_nowrap().child(text.to_string()),
+                div()
+                    .text_size(u(TITLE))
+                    .line_height(u(TITLE * 1.2))
+                    .font_weight(theme::W_BOLD)
+                    .text_color(kit::strong())
+                    .whitespace_nowrap()
+                    .child(text.to_string()),
             )
-            .child(div().w(u(48.)).h(px(1.)).bg(gold.opacity(0.6)));
+            .child(div().flex_none().w(u(40.)).h(u(2.)).rounded_full().bg(gold.opacity(0.9)));
     }
     div().h(u(TITLE_H)).text_size(u(TITLE)).font_weight(theme::W_BOLD).text_color(kit::strong()).whitespace_nowrap().child(text.to_string())
 }

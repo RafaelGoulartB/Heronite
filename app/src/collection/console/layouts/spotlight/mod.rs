@@ -805,19 +805,22 @@ impl CollectionView {
                     linear_color_stop(kit::dim(0.94), 1.),
                 )))
         });
-        // Cinema's page: the bottom fades into the dark behind the hint bar.
+        // Cinema's page: what reaches the bottom fades into the dark over its
+        // last 60 px and is dark under the hint bar (no hard edge).
         let foot = focus.rules.then(|| {
-            div().absolute().left_0().right_0().bottom_0().h(u(90.)).bg(linear_gradient(
-                0.,
-                linear_color_stop(kit::dim(0.92), 0.),
-                linear_color_stop(kit::dim(0.), 1.),
-            ))
+            let dark = kit::dim(0.94);
+            div()
+                .absolute()
+                .left_0()
+                .right_0()
+                .bottom(u(-HINT_ROOM))
+                .h(u(60. + HINT_ROOM))
+                .flex()
+                .flex_col()
+                .child(div().h(u(60.)).bg(linear_gradient(0., linear_color_stop(dark, 0.), linear_color_stop(kit::dim(0.), 1.))))
+                .child(div().flex_1().bg(dark))
         });
         let mut root = div().relative().size_full().children(dim).child(page).children(veil).children(top_fade).children(foot);
-        // Cinema's page stops above the hint bar, which has its own room under it.
-        if focus.rules {
-            root = root.overflow_hidden();
-        }
         if let (Some(i), false) = (viewer, shape.media_shots) {
             root = root.child(self.spotlight_viewer(&shape.store, i, window));
         } else if let Some(scroll) = &sheet {
@@ -1183,10 +1186,17 @@ impl CollectionView {
                 };
                 let focused = f.zone == Zone::Side && f.mid == Mid::Link && f.link == i;
                 let base = div().relative().flex_none().h(u(page::LINK_H)).min_w(u(120.));
+                // Over the bare art (Cinema's page): a quiet pill, the focus colour when focused.
+                let bare = f.rules;
                 let el = motion::spring(("spot-link", i), base, motion::SOFT, focused, move |d, k| {
                     let t = k.clamp(0., 1.);
-                    let fill: Hsla = motion::mix(parts::glass(0.4), theme::console_focus(), t).into();
-                    d.child(div().absolute().inset_0().rounded(u(9.)).bg(fill).border_1().border_color(kit::ink(0.14 * (1. - t)))).child(
+                    let idle = if bare { Hsla::from(parts::glass(0.4)).opacity(0.) } else { parts::glass(0.4) };
+                    let fill: Hsla = motion::mix(idle, theme::console_focus(), t).into();
+                    let edge = if bare { kit::ink(0.3 * (1. - t)) } else { kit::ink(0.14 * (1. - t)) };
+                    d.child(
+                        div().absolute().inset_0().rounded_full().when(!bare, |d| d.rounded(u(9.))).bg(fill).border_1().border_color(edge),
+                    )
+                    .child(
                         div()
                             .relative()
                             .h_full()
@@ -1235,6 +1245,7 @@ impl CollectionView {
     /// the three times with where the player is along it, the times under
     /// it and how the game was matched; or that it has no times.
     fn spotlight_hltb_card(&self, shape: &Shape, focused: bool) -> AnyElement {
+        let bare = !look::theme().layouts.showcase_glass;
         let h = self.focus.as_ref().filter(|f| f.key == shape.key).and_then(|f| f.hltb.clone());
         let base = div().relative().w_full().h(u(match (&shape.hltb, &h) {
             (HltbCard::Times { note, .. }, Some(_)) => page::HLTB_H + if *note { page::HLTB_NOTE_H } else { 0. },
@@ -1282,7 +1293,7 @@ impl CollectionView {
                                 .justify_center()
                                 .py(u(5.))
                                 .rounded(u(8.))
-                                .bg(kit::ink(0.1))
+                                .when(!bare, |d| d.bg(kit::ink(0.1)))
                                 .text_size(u(13.))
                                 .font_weight(theme::W_BOLD)
                                 .text_color(kit::strong())
@@ -1296,7 +1307,7 @@ impl CollectionView {
                     .size_full()
                     .flex()
                     .flex_col()
-                    .px(u(16.))
+                    .px(u(if bare { 0. } else { 16. }))
                     .pt(u(16.))
                     .child(bar)
                     .child(
@@ -1315,16 +1326,25 @@ impl CollectionView {
                 .size_full()
                 .flex()
                 .items_center()
-                .px(u(16.))
+                .px(u(if bare { 0. } else { 16. }))
                 .text_size(u(12.5))
                 .text_color(theme::text_muted())
                 .child(tr!("HowLongToBeat has no times for this game.")),
         };
         let el = motion::spring("spot-hltb", base, motion::SOFT, focused, move |d, k| {
             let t = k.clamp(0., 1.);
-            d.child(
-                div().absolute().inset_0().rounded(u(14.)).bg(kit::ink(0.06 + 0.06 * t)).border_1().border_color(kit::ink(0.16 + 0.1 * t)),
-            )
+            // Over the bare art (Cinema's page) no card: the focus ring alone.
+            d.when(!bare, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .rounded(u(14.))
+                        .bg(kit::ink(0.06 + 0.06 * t))
+                        .border_1()
+                        .border_color(kit::ink(0.16 + 0.1 * t)),
+                )
+            })
             .child(content)
             .when(t > 0.01, |d| d.child(ring(14., t)))
         });
@@ -1333,6 +1353,7 @@ impl CollectionView {
 
     /// The Achievements card: a trophy, unlocked of total, a bar, the latest unlocks.
     fn spotlight_ach_card(&mut self, g: &CollectionGame, focused: bool, cx: &mut Context<Self>) -> AnyElement {
+        let bare = !look::theme().layouts.showcase_glass;
         let counts = self.spotlight_ach_counts(g, cx);
         let known = counts.is_some();
         let (unlocked, total, complete) = counts.unwrap_or((0, 0, false));
@@ -1364,7 +1385,7 @@ impl CollectionView {
                 .flex()
                 .items_center()
                 .gap(u(14.))
-                .px(u(16.))
+                .px(u(if bare { 0. } else { 16. }))
                 .child(trophy)
                 // Still being read: the card holds its place, empty.
                 .when(known, |d| {
@@ -1405,9 +1426,18 @@ impl CollectionView {
         let base = div().relative().w_full().h(u(page::ACH_H));
         let el = motion::spring("spot-ach", base, motion::SOFT, focused, move |d, k| {
             let t = k.clamp(0., 1.);
-            d.child(
-                div().absolute().inset_0().rounded(u(14.)).bg(kit::ink(0.06 + 0.06 * t)).border_1().border_color(kit::ink(0.16 + 0.1 * t)),
-            )
+            // Over the bare art (Cinema's page) no card: the focus ring alone.
+            d.when(!bare, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .rounded(u(14.))
+                        .bg(kit::ink(0.06 + 0.06 * t))
+                        .border_1()
+                        .border_color(kit::ink(0.16 + 0.1 * t)),
+                )
+            })
             .child(content(t))
             .when(t > 0.01, |d| d.child(ring(14., t)))
         });
