@@ -53,6 +53,17 @@ const BLOCK_GAP: f32 = 46.;
 pub(super) const LOGO: (f32, f32) = (720., 210.);
 /// Between the logo and its facts.
 const LOGO_GAP: f32 = 8.;
+/// The name's quiet line in the logo's place (no logo).
+const NAME_LINE: f32 = 20.;
+/// Between the game's block and the buttons under it on the page.
+const BUTTONS_GAP: f32 = 16.;
+
+/// The height of the game page's head: the logo (`logo_h`, 0: the name's
+/// line), the facts, the genres and the buttons (`button_h`) under them.
+pub(super) fn page_head_h(logo_h: f32, button_h: f32) -> f32 {
+    let name = if logo_h > 0. { logo_h } else { NAME_LINE };
+    name + LOGO_GAP + FACTS_H + 14. + GENRES_H + BUTTONS_GAP + button_h
+}
 /// Heights of the facts and genres lines.
 const FACTS_H: f32 = 44.;
 const GENRES_H: f32 = 24.;
@@ -302,6 +313,9 @@ impl CollectionView {
             Some(src) => Some(logo_element(src, logo_w, logo_h, window)),
             None => Some(
                 div()
+                    .h(u(NAME_LINE))
+                    .flex()
+                    .items_center()
                     .text_size(u(12.5))
                     .font_weight(theme::W_BOLD)
                     .text_color(kit::ink(0.86))

@@ -386,6 +386,10 @@ impl CollectionView {
         // The game page keeps a line under the facts (Showcase's genre
         // chips, Cinema's genres); the console home has none.
         s.chips = host == Host::Game;
+        // Cinema's page: its head is one column of its own, measured from its parts.
+        if host == Host::Game && !theme.layouts.showcase_glass {
+            s.head = cinema::page_head_h(logo_h, parts::BUTTON_H);
+        }
         // The home's peek sits at the bottom of its body.
         if host != Host::Game {
             s.pin = body_h;

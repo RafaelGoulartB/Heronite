@@ -98,6 +98,8 @@ pub(super) enum Link {
 /// On the home, how much of the page's first sections shows above the
 /// body's bottom, and the room between the row and the buttons of a game
 /// without a logo, design px.
+/// Between the head and the first section, design px.
+pub(super) const HEAD_GAP: f32 = 24.;
 pub(super) const PEEK_SHOWS: f32 = 150.;
 const NO_LOGO_GAP: f32 = 48.;
 
@@ -183,6 +185,10 @@ pub(super) struct Shape {
     /// The head has a line under its facts: Showcase's genre chips, Cinema's
     /// genres (the console home has none).
     pub chips: bool,
+    /// A head laid out in one column of its own (Cinema's page: the logo or
+    /// a name line, the facts, the genres, the buttons): its whole height,
+    /// design px; the sections start under it. 0: the parts above.
+    pub head: f32,
     pub geo: Geo,
 }
 
@@ -269,7 +275,15 @@ impl Shape {
         g.buttons = g.logo + if logo_h > 0. { logo_h + 16. } else { 0. };
         g.facts = g.buttons + BUTTON_H + 18.;
         g.chips = g.facts + FACTS_H + 10.;
-        let under_head = if self.chips { g.chips + CHIPS_H + 24. } else { g.facts + FACTS_H + 24. };
+        let under_head = if self.head > 0. {
+            // Its own column, buttons last: the sections start under it.
+            g.buttons = g.logo + self.head - BUTTON_H;
+            g.logo + self.head + HEAD_GAP
+        } else if self.chips {
+            g.chips + CHIPS_H + HEAD_GAP
+        } else {
+            g.facts + FACTS_H + HEAD_GAP
+        };
         // On the home the peek of the page sits at the bottom, just above the
         // hints, whatever the head's height; a short window pushes it down
         // (out of sight) rather than over the buttons.
@@ -640,6 +654,20 @@ mod tests {
         let mut bare = Shape { media: 6, ..Shape::default() };
         bare.layout(172., 0., 1500., 192.);
         assert!(bare.geo.buttons - 172. >= 40.);
+    }
+
+    #[test]
+    fn a_head_of_its_own_pushes_the_sections_below_its_whole_height() {
+        // Cinema's page: a short head (a name line) and a tall one (a logo).
+        for head in [190., 400.] {
+            let mut s = Shape { media: 6, chips: true, head, ..shape() };
+            s.layout(40., 0., 1500., 192.);
+            let g = s.geo;
+            assert_eq!(g.media, g.logo + head + HEAD_GAP, "{head}");
+            assert_eq!(g.side, g.media);
+            // The buttons are the head's last line, above the strip.
+            assert!(g.buttons + BUTTON_H <= g.media - HEAD_GAP + 0.01, "{head}");
+        }
     }
 
     #[test]
