@@ -10,17 +10,17 @@ use std::num::NonZeroIsize;
 
 use windows_sys::Win32::Foundation::{GetLastError, SetLastError, HWND, POINT, RECT};
 use windows_sys::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, HMONITOR, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
+    ClientToScreen, GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, HMONITOR, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
 };
 use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentProcessId, GetCurrentThreadId};
 use windows_sys::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{SetActiveWindow, SetFocus};
 use windows_sys::Win32::UI::Shell::{SHQueryUserNotificationState, QUERY_USER_NOTIFICATION_STATE, QUNS_RUNNING_D3D_FULL_SCREEN};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsWindow, SetForegroundWindow,
-    SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_STYLE, HWND_TOPMOST, LWA_ALPHA,
-    SWP_FRAMECHANGED, SWP_NOACTIVATE, SW_SHOWNOACTIVATE, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-    WS_EX_TRANSPARENT, WS_THICKFRAME,
+    BringWindowToTop, GetClientRect, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsWindow,
+    SetForegroundWindow, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_STYLE, HWND_TOPMOST,
+    LWA_ALPHA, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOZORDER, SW_SHOWNOACTIVATE, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_LAYERED,
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_THICKFRAME,
 };
 
 /// Physical monitor coordinates and its logical-to-physical scale.
@@ -188,6 +188,62 @@ pub fn show(
         activate(hwnd);
         Ok(NonZeroIsize::new(previous as isize).map(|previous| FocusReturn { panel: handle, previous, previous_pid }))
     }
+}
+
+/// Brings a shown window of this process to the foreground with the keyboard
+/// (as a panel takes it, see [`activate`]). Windows gives the foreground
+/// only to the process that got the last input, so a window opened on a
+/// request from outside (the quick launcher through the socket) is
+/// otherwise shown behind the window that keeps the keyboard. Returns
+/// whether it has the foreground. Call on the window's (the UI) thread.
+pub fn take_foreground(handle: NonZeroIsize) -> io::Result<bool> {
+    let hwnd = handle.get() as HWND;
+    // SAFETY: a live HWND of this process only, on its thread (the caller's).
+    unsafe {
+        let mut pid = 0;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+        if IsWindow(hwnd) == 0 || pid != GetCurrentProcessId() {
+            return Err(io::Error::other("window is not owned by this process"));
+        }
+        Ok(GetForegroundWindow() == hwnd || activate(hwnd))
+    }
+}
+
+/// Takes the frame off a shown GPUI pop-up, keeping its client area where it
+/// is. GPUI creates pop-ups with style 0 (`WS_OVERLAPPED`), to which Windows
+/// adds a caption: GPUI hides the title bar, but the frame stays on the sides
+/// and bottom, and Windows 11 rounds and outlines it around a transparent
+/// window's own (rounded) content.
+pub fn drop_frame(handle: NonZeroIsize) -> io::Result<()> {
+    let hwnd = handle.get() as HWND;
+    // SAFETY: style/placement operations on a live HWND of this process only;
+    // the rectangle and point are locals.
+    unsafe {
+        let mut pid = 0;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+        if IsWindow(hwnd) == 0 || pid != GetCurrentProcessId() {
+            return Err(io::Error::other("window is not owned by this process"));
+        }
+        let frame = (WS_CAPTION | WS_THICKFRAME) as isize;
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+        if style & frame == 0 {
+            return Ok(());
+        }
+        let mut client = RECT::default();
+        if GetClientRect(hwnd, &mut client) == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let mut origin = POINT { x: 0, y: 0 };
+        if ClientToScreen(hwnd, &mut origin) == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        set_style(hwnd, GWL_STYLE, style & !frame)?;
+        let flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED;
+        if SetWindowPos(hwnd, std::ptr::null_mut(), origin.x, origin.y, client.right, client.bottom, flags) == 0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    Ok(())
 }
 
 /// Brings `hwnd`, a window of this thread, to the foreground, and logs what

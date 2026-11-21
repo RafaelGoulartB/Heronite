@@ -77,6 +77,12 @@ pub fn overlay_held(cx: &mut App) {
     }
 }
 
+/// Holding LB + RB enters console mode ("Button to enter console mode"): the
+/// desktop leaves the bumpers to it (`collection::desktop_pad`).
+pub fn holds_bumpers(cx: &App) -> bool {
+    cx.try_global::<Global>().is_some_and(|g| g.0.read(cx).button.resolved() == ConsoleButton::Bumpers)
+}
+
 struct Global(Entity<ConsoleSummon>);
 impl gpui_kit::Global for Global {}
 
@@ -123,6 +129,8 @@ pub fn init(cx: &mut App, data_paths: &DataPaths, runtime: Arc<GameRuntime>, inc
     let app = AppPaths::for_data(data_paths);
     // The mirror of console.json, read at every start anyway.
     let ui = ui_state::UiState::load(&app);
+    // How the buttons are drawn and which one confirms, for the overlay too.
+    super::look::set_controls(ui.controller);
     let debug = crate::env::value("HERONITE_DEBUG_SUMMON");
     let entity = cx.new(|_| ConsoleSummon {
         app,
@@ -245,7 +253,7 @@ impl ConsoleSummon {
                     self.hold.clear();
                 }
             }
-            PadMsg::Press(_) => {}
+            PadMsg::Press(_) | PadMsg::Stick { .. } => {}
         }
     }
 

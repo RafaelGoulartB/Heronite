@@ -207,6 +207,8 @@ fn setup() -> Setup {
     let server = mock(vndb.clone());
     let svc = MetadataService::with_endpoints(paths.clone(), endpoints(&server, &["api.vndb.org"]));
     svc.install_extension(&fast_copy(dir.path()), false).unwrap();
+    // These tests count what is asked of each online source: Steam's search by name stays out of them.
+    svc.set_source_option("steam", "byName", heronite_metadata::sources::OptionValue::Switch(false)).unwrap();
     Setup { _dir: dir, paths, server, svc, vndb }
 }
 
@@ -239,7 +241,10 @@ fn vndb_candidate(preview: &MetadataPreview) -> Option<&MetadataCandidate> {
     preview.candidates.iter().find(|c| c.source == "vndb")
 }
 
-fn set_metadata(paths: &DataPaths, v: Value) {
+/// Writes the metadata settings, with Steam's search by name left out: these tests count what is
+/// asked of each online source.
+fn set_metadata(paths: &DataPaths, mut v: Value) {
+    v["sources"]["steam"]["options"]["byName"] = json!(false);
     write(&paths.collection_settings(), json!({ "metadata": v }));
 }
 

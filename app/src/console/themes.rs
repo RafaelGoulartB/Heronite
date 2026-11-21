@@ -4,11 +4,13 @@
 //!
 //! [`update`] is the one way to change the theme in use: it also installs it
 //! in [`super::look`] while console mode is on, so the screen follows at once.
+//! The controller's options (`controller`) are installed in `look` whatever
+//! the mode, and mirrored in `ui-state.json` for the next start.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-use heronite_data::console_theme::{ConsolePrefs, ConsoleTheme, KeptFilters};
+use heronite_data::console_theme::{ConsolePrefs, ConsoleTheme, ControllerPrefs, KeptFilters};
 use heronite_data::paths::AppPaths;
 
 static PREFS: Mutex<Option<ConsolePrefs>> = Mutex::new(None);
@@ -23,7 +25,27 @@ pub fn prefs(app: &AppPaths) -> ConsolePrefs {
 /// `f` over the prefs without copying them (it must be quick: it holds the lock).
 pub fn read<R>(app: &AppPaths, f: impl FnOnce(&ConsolePrefs) -> R) -> R {
     let mut cur = PREFS.lock().unwrap_or_else(|e| e.into_inner());
-    f(cur.get_or_insert_with(|| ConsolePrefs::load(app)))
+    f(cur.get_or_insert_with(|| loaded(app)))
+}
+
+/// The prefs from disk, their controller options installed (they may differ
+/// from the mirror read at start: a file from before them, or edited).
+fn loaded(app: &AppPaths) -> ConsolePrefs {
+    let p = ConsolePrefs::load(app);
+    install_controls(app, p.controller);
+    p
+}
+
+/// Installs the controller's options and mirrors them when they changed.
+fn install_controls(app: &AppPaths, c: ControllerPrefs) {
+    if super::look::set_controls(c) {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = heronite_data::ui_state::set_controller(&app, c) {
+                log::warn!("mirroring the controller options: {e:#}");
+            }
+        });
+    }
 }
 
 /// Keeps `tab` as the one console mode reopens on. Unlike [`update`] it leaves
@@ -31,7 +53,7 @@ pub fn read<R>(app: &AppPaths, f: impl FnOnce(&ConsolePrefs) -> R) -> R {
 pub fn remember_tab(app: &AppPaths, tab: usize) {
     let next = {
         let mut cur = PREFS.lock().unwrap_or_else(|e| e.into_inner());
-        let p = cur.get_or_insert_with(|| ConsolePrefs::load(app));
+        let p = cur.get_or_insert_with(|| loaded(app));
         if p.last_tab == tab {
             return;
         }
@@ -46,7 +68,7 @@ pub fn remember_tab(app: &AppPaths, tab: usize) {
 pub fn remember_filters(app: &AppPaths, filters: KeptFilters) {
     let next = {
         let mut cur = PREFS.lock().unwrap_or_else(|e| e.into_inner());
-        let p = cur.get_or_insert_with(|| ConsolePrefs::load(app));
+        let p = cur.get_or_insert_with(|| loaded(app));
         if p.kept_filters == filters {
             return;
         }
@@ -60,7 +82,7 @@ pub fn remember_filters(app: &AppPaths, filters: KeptFilters) {
 pub fn update(app: &AppPaths, change: impl FnOnce(&mut ConsolePrefs)) -> ConsolePrefs {
     let (before, next) = {
         let mut cur = PREFS.lock().unwrap_or_else(|e| e.into_inner());
-        let p = cur.get_or_insert_with(|| ConsolePrefs::load(app));
+        let p = cur.get_or_insert_with(|| loaded(app));
         let before = p.theme.clone();
         change(p);
         p.theme = std::mem::take(&mut p.theme).normalized();
@@ -71,6 +93,7 @@ pub fn update(app: &AppPaths, change: impl FnOnce(&mut ConsolePrefs)) -> Console
     if super::active() {
         super::look::set(next.theme.clone());
     }
+    install_controls(app, next.controller);
     save(app, next.clone());
     next
 }

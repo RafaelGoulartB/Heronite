@@ -66,6 +66,20 @@ fn sync_on(paths: &DataPaths, games: &[std::sync::Arc<CollectionGame>], today: &
     dates
 }
 
+/// Sets the day each `(game key, YYYY-MM-DD)` was added: a game brought over
+/// from another launcher keeps the day it was added there.
+pub fn set(paths: &DataPaths, dates: &[(String, String)]) -> Result<()> {
+    if dates.is_empty() {
+        return Ok(());
+    }
+    json_store::update::<AddedFile, _>(&paths.added(), |file| {
+        for (key, date) in dates.iter().filter(|(_, d)| day(d) == Some(d.as_str())) {
+            file.added.insert(key.clone(), date.clone());
+        }
+        Ok(())
+    })
+}
+
 fn record(paths: &DataPaths, new: &[(String, String)]) -> Result<()> {
     json_store::update::<AddedFile, _>(&paths.added(), |file| {
         for (key, date) in new {

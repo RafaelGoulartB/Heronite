@@ -150,7 +150,7 @@ impl CollectionView {
         // Textures are keyed by game, not by image: a game whose art changed
         // (custom cover/background, metadata) must load it again.
         let mut stale: Vec<String> = Vec::new();
-        for (key, chain) in &self.cover_chains {
+        for (key, chain) in self.cover_chains.iter() {
             if l.covers.get(key) != Some(chain) {
                 stale.push(format!("c:{key}:"));
             }
@@ -164,7 +164,7 @@ impl CollectionView {
         if !stale.is_empty() {
             self.images.invalidate(&stale);
         }
-        self.cover_chains = l.covers;
+        self.cover_chains = std::rc::Rc::new(l.covers);
         self.stage_chains = l.stages;
         self.family_chains = l.families;
         self.wiki = Arc::new(l.wiki);
@@ -188,7 +188,8 @@ impl CollectionView {
         crate::services::sunshine::library_loaded(&lib, cx);
         self.lib = Some(lib);
         if first {
-            if let Some((text, error)) = crate::services::upkeep::take_restore_notice() {
+            let notice = crate::services::upkeep::take_restore_notice().or_else(crate::system::interface_gpu::take_notice);
+            if let Some((text, error)) = notice {
                 self.show_toast(text, error, cx);
             }
         }

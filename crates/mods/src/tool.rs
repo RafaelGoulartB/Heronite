@@ -70,6 +70,12 @@ pub struct Support {
     pub dev_fuse: bool,
     /// Windows: the files go into the game folder, nothing else is needed.
     pub windows: Option<WindowsSupport>,
+    /// Kinds of mod archives (`7z`, `rar`, `zip`) no program here unpacks:
+    /// installing one of them fails until 7-Zip is installed.
+    pub unpack_missing: Vec<&'static str>,
+    /// What installs 7-Zip here, when something is missing and the
+    /// distribution is known.
+    pub seven_zip_command: Option<&'static str>,
 }
 
 /// What Windows offers beyond hard links and copies. Neither is used to
@@ -86,11 +92,75 @@ pub fn support(tools_bin: &Path) -> Support {
     #[cfg(windows)]
     {
         let _ = tools_bin;
-        Support { overlay: None, fusermount: None, dev_fuse: false, windows: Some(windows_support()) }
+        Support {
+            overlay: None,
+            fusermount: None,
+            dev_fuse: false,
+            windows: Some(windows_support()),
+            unpack_missing: Vec::new(),
+            seven_zip_command: None,
+        }
     }
     #[cfg(not(windows))]
     {
-        Support { overlay: find(tools_bin), fusermount: fusermount(), dev_fuse: Path::new("/dev/fuse").exists(), windows: None }
+        let unpack_missing = unpack_missing();
+        let seven_zip_command = if unpack_missing.is_empty() { None } else { seven_zip_install_command() };
+        Support {
+            overlay: find(tools_bin),
+            fusermount: fusermount(),
+            dev_fuse: Path::new("/dev/fuse").exists(),
+            windows: None,
+            unpack_missing,
+            seven_zip_command,
+        }
+    }
+}
+
+/// The archive kinds of mods, as the extractor knows them, and their names.
+#[cfg(not(windows))]
+const MOD_ARCHIVES: [(heronite_installer::archive::Format, &str); 3] = {
+    use heronite_installer::archive::Format;
+    [(Format::SevenZip, "7z"), (Format::Rar, "rar"), (Format::Zip, "zip")]
+};
+
+/// The mod archive kinds none of the programs the extractor runs is
+/// installed for. 7-Zip alone unpacks them all.
+#[cfg(not(windows))]
+fn unpack_missing() -> Vec<&'static str> {
+    use heronite_installer::exec::which_any;
+    MOD_ARCHIVES.iter().filter(|(format, _)| format.tools().iter().any(|names| which_any(names).is_none())).map(|(_, name)| *name).collect()
+}
+
+/// The command that installs 7-Zip on this distribution (`/etc/os-release`),
+/// `None` when it is not one Heronite knows.
+pub fn seven_zip_install_command() -> Option<&'static str> {
+    std::fs::read_to_string("/etc/os-release").ok().and_then(|text| install_command_for(&text))
+}
+
+fn install_command_for(os_release: &str) -> Option<&'static str> {
+    let value = |key: &str| {
+        os_release
+            .lines()
+            .find_map(|l| l.trim().strip_prefix(key)?.strip_prefix('='))
+            .map(|v| v.trim().trim_matches(['"', '\'']).to_ascii_lowercase())
+    };
+    let ids: Vec<String> = [value("ID"), value("ID_LIKE")]
+        .into_iter()
+        .flatten()
+        .flat_map(|v| v.split_whitespace().map(str::to_string).collect::<Vec<_>>())
+        .collect();
+    let is = |names: &[&str]| ids.iter().any(|id| names.contains(&id.as_str()));
+    // Its own family first: Ubuntu says `ID_LIKE=debian`, Nobara `ID_LIKE=fedora`.
+    if is(&["arch"]) {
+        Some("sudo pacman -S 7zip")
+    } else if is(&["fedora", "rhel", "centos"]) {
+        Some("sudo dnf install 7zip")
+    } else if is(&["debian", "ubuntu"]) {
+        Some("sudo apt install p7zip-full")
+    } else if is(&["suse", "opensuse", "opensuse-tumbleweed", "opensuse-leap"]) {
+        Some("sudo zypper install 7zip")
+    } else {
+        None
     }
 }
 
@@ -254,7 +324,14 @@ mod tests {
 
     #[test]
     fn says_what_is_missing() {
-        let all = Support { overlay: Some("/x".into()), fusermount: Some("/y".into()), dev_fuse: true, windows: None };
+        let all = Support {
+            overlay: Some("/x".into()),
+            fusermount: Some("/y".into()),
+            dev_fuse: true,
+            windows: None,
+            unpack_missing: Vec::new(),
+            seven_zip_command: None,
+        };
         assert!(all.ready() && all.problem().is_none());
         let no_fuse = Support { fusermount: None, ..all.clone() };
         assert!(!no_fuse.ready());
@@ -263,7 +340,14 @@ mod tests {
         // Downloaded at the first modded launch where a release build exists.
         assert_eq!(Support { overlay: None, ..all.clone() }.problem().is_some(), !downloadable());
         // Windows needs none of it.
-        let windows = Support { overlay: None, fusermount: None, dev_fuse: false, windows: Some(WindowsSupport::default()) };
+        let windows = Support {
+            overlay: None,
+            fusermount: None,
+            dev_fuse: false,
+            windows: Some(WindowsSupport::default()),
+            unpack_missing: Vec::new(),
+            seven_zip_command: None,
+        };
         assert!(windows.ready() && windows.problem().is_none());
     }
 
@@ -273,5 +357,21 @@ mod tests {
             assert_eq!(h.len(), 64);
             assert!(h.bytes().all(|b| b.is_ascii_hexdigit()));
         }
+    }
+
+    #[test]
+    fn seven_zip_is_installed_with_the_distributions_own_command() {
+        let cmd = |text: &str| install_command_for(text);
+        assert_eq!(cmd("NAME=\"Fedora Linux\"\nID=fedora\nVERSION_ID=45\n"), Some("sudo dnf install 7zip"));
+        assert_eq!(cmd("ID=nobara\nID_LIKE=\"rhel centos fedora\"\n"), Some("sudo dnf install 7zip"));
+        assert_eq!(cmd("ID=arch\n"), Some("sudo pacman -S 7zip"));
+        assert_eq!(cmd("ID=cachyos\nID_LIKE=arch\n"), Some("sudo pacman -S 7zip"));
+        assert_eq!(cmd("ID=ubuntu\nID_LIKE=debian\n"), Some("sudo apt install p7zip-full"));
+        assert_eq!(cmd("ID=linuxmint\nID_LIKE=\"ubuntu debian\"\n"), Some("sudo apt install p7zip-full"));
+        assert_eq!(cmd("ID=\"opensuse-tumbleweed\"\nID_LIKE=\"opensuse suse\"\n"), Some("sudo zypper install 7zip"));
+        assert_eq!(cmd("ID=nixos\n"), None);
+        assert_eq!(cmd(""), None);
+        // `ID_LIKE` is not read as `ID`.
+        assert_eq!(cmd("ID_LIKE=arch\nID=gentoo\n"), Some("sudo pacman -S 7zip"));
     }
 }

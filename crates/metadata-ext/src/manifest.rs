@@ -23,7 +23,7 @@ use crate::ExtensionError;
 pub const API_VERSION: u32 = 1;
 
 /// The picture fields: a pictures source provides only these.
-const PICTURE_FIELDS: [&str; 4] = ["cover", "hero", "coverSquare", "coverWide"];
+const PICTURE_FIELDS: [&str; 5] = ["cover", "hero", "coverSquare", "coverWide", "logo"];
 const MAX_HOSTS: usize = 16;
 const MAX_SETTINGS: usize = 16;
 const MAX_CHOICES: usize = 50;
@@ -390,6 +390,7 @@ impl Manifest {
             // or a place ahead of the sources already in a field's order.
             download: None,
             also_for: None,
+            link_for: None,
             leads_for: None,
             extension: Some(ExtensionInfo {
                 version: self.version.to_string(),

@@ -383,7 +383,8 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
             INTERVALS.iter().position(|(m, _)| *m == l.interval_minutes).unwrap_or(0),
         )
         .enabled(l.enabled)
-        .desc(tr(INTERVAL_HELP)),
+        .desc(tr(INTERVAL_HELP))
+        .child_of("lu-enabled"),
         Row::toggle("lu-config", tr!("Use Ludusavi's own settings"), l.use_installed_config)
             .enabled(config_known)
             .desc(tr!("Path, zip and compression come from Ludusavi's configuration")),
@@ -396,7 +397,8 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
         let ci = COMPRESSIONS.iter().position(|(k, _)| *k == l.compression).unwrap_or(0);
         rows.push(
             Row::choice("lu-compression", tr!("Compression"), COMPRESSIONS.iter().map(|(_, x)| SharedString::from(tr(x))).collect(), ci)
-                .enabled(l.format == "zip"),
+                .enabled(l.format == "zip")
+                .child_of("lu-format"),
         );
     }
     if d.saves.missing() {

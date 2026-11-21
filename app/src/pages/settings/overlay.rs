@@ -13,12 +13,13 @@ use heronite_i18n::{tr, trn};
 use heronite_overlay::input::Controller;
 use heronite_platform::{supported, Feature};
 
+use super::shortcuts::{self, Shortcut};
 use super::SettingsPage;
 use crate::overlay::{labels, HotkeyState};
 use crate::pages::PageCtx;
 use crate::theme;
 use crate::ui::controls::{caption, card, row, tabs, toggle_row, with_sub_rows};
-use crate::ui::fields::{accelerator_from_key, hotkey_box, labeled, meta_text, select_field};
+use crate::ui::fields::{hotkey_box, hotkey_press, labeled, meta_text, needs_modifier_text, select_field, HotkeyPress};
 
 pub struct State {
     pub(super) prefs: OverlayPrefs,
@@ -26,6 +27,8 @@ pub struct State {
     controllers: Option<Vec<Controller>>,
     /// The keyboard shortcut field.
     hotkey: FocusHandle,
+    /// Why the combination last pressed in it was refused.
+    hotkey_refused: Option<String>,
     /// The menu of the screenshot button is open.
     button_open: bool,
 }
@@ -37,7 +40,7 @@ impl State {
             cx.observe(&service, |_, _, cx| cx.notify()).detach();
         }
         // A tiny file in the app's config folder.
-        Self { prefs: OverlayPrefs::load(&ctx.app), controllers: None, hotkey: cx.focus_handle(), button_open: false }
+        Self { prefs: OverlayPrefs::load(&ctx.app), controllers: None, hotkey: cx.focus_handle(), hotkey_refused: None, button_open: false }
     }
 }
 
@@ -46,6 +49,7 @@ pub fn shown(cx: &mut Context<SettingsPage>) {
     cx.spawn(async move |this, cx| {
         let list = cx.background_spawn(async { heronite_overlay::input::list_controllers() }).await;
         this.update(cx, |d, cx| {
+            crate::console::look::controllers_found(&list);
             d.overlay.controllers = Some(list);
             cx.notify();
         })
@@ -63,7 +67,7 @@ impl SettingsPage {
 
 /// Changes the options, saves them (off the UI thread) and hands them to the
 /// overlay.
-fn update(d: &mut SettingsPage, cx: &mut Context<SettingsPage>, change: impl FnOnce(&mut OverlayPrefs)) {
+pub(super) fn update(d: &mut SettingsPage, cx: &mut Context<SettingsPage>, change: impl FnOnce(&mut OverlayPrefs)) {
     change(&mut d.overlay.prefs);
     let prefs = d.overlay.prefs.clone();
     let app = d.ctx.app.clone();
@@ -80,6 +84,21 @@ fn update(d: &mut SettingsPage, cx: &mut Context<SettingsPage>, change: impl FnO
     cx.notify();
 }
 
+/// Turns the overlay on (Settings → Controller, while its shortcuts wait for it).
+pub(super) fn turn_on(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
+    update(d, cx, |p| p.enabled = true);
+}
+
+/// The controllers found; `None` while they are looked for.
+pub(super) fn controllers(d: &SettingsPage) -> Option<&[Controller]> {
+    d.overlay.controllers.as_deref()
+}
+
+/// The controllers found again (Settings → Controller looks every few seconds).
+pub(super) fn set_controllers(d: &mut SettingsPage, list: Vec<Controller>) {
+    d.overlay.controllers = Some(list);
+}
+
 fn controllers_text(list: Option<&Vec<Controller>>) -> String {
     match list {
         None => tr!("Looking for controllers…").into(),
@@ -88,7 +107,7 @@ fn controllers_text(list: Option<&Vec<Controller>>) -> String {
     }
 }
 
-fn step_label(step: u8) -> &'static str {
+pub(super) fn step_label(step: u8) -> &'static str {
     match step {
         2 => "2%",
         10 => "10%",
@@ -97,7 +116,7 @@ fn step_label(step: u8) -> &'static str {
 }
 
 /// The button as written after "Guide +".
-fn button_short(b: ChordButton) -> String {
+pub(super) fn button_short(b: ChordButton) -> String {
     match b {
         ChordButton::Left => "←".into(),
         ChordButton::Right => "→".into(),
@@ -108,7 +127,7 @@ fn button_short(b: ChordButton) -> String {
 }
 
 /// The button in the menu.
-fn button_label(b: ChordButton) -> String {
+pub(super) fn button_label(b: ChordButton) -> String {
     match b {
         ChordButton::Left => tr!("D-pad left").into(),
         ChordButton::Right => tr!("D-pad right").into(),
@@ -118,7 +137,7 @@ fn button_label(b: ChordButton) -> String {
     }
 }
 
-fn shot_title(p: &OverlayPrefs) -> String {
+pub(super) fn shot_title(p: &OverlayPrefs) -> String {
     labels::screenshot(&button_short(screenshot_button(p)))
 }
 
@@ -128,11 +147,11 @@ fn stands_for_guide(b: ChordButton) -> bool {
 }
 
 /// The buttons the screenshot can use here.
-fn screenshot_buttons() -> Vec<ChordButton> {
+pub(super) fn screenshot_buttons() -> Vec<ChordButton> {
     ChordButton::ALL.into_iter().filter(|b| !stands_for_guide(*b)).collect()
 }
 
-fn screenshot_button(p: &OverlayPrefs) -> ChordButton {
+pub(super) fn screenshot_button(p: &OverlayPrefs) -> ChordButton {
     if screenshot_buttons().contains(&p.screenshot_button) {
         p.screenshot_button
     } else {
@@ -251,6 +270,9 @@ pub(super) fn console_apply_replay(d: &mut SettingsPage, outcome: &crate::consol
 }
 
 fn hotkey_status(d: &SettingsPage, cx: &App) -> Option<(String, bool)> {
+    if let Some(why) = &d.overlay.hotkey_refused {
+        return Some((why.clone(), true));
+    }
     let p = &d.overlay.prefs;
     if !p.enabled || !p.keyboard_shortcut {
         return None;
@@ -298,11 +320,25 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let focused = d.overlay.hotkey.is_focused(window);
     let hotkey = hotkey_box(
         div().id("overlay-hotkey").track_focus(&d.overlay.hotkey).cursor_pointer().on_key_down(cx.listener(
-            |d, ev: &KeyDownEvent, _, cx| {
+            |d, ev: &KeyDownEvent, window, cx| {
                 cx.stop_propagation();
-                if let Some(a) = accelerator_from_key(ev) {
+                let a = match hotkey_press(&ev.keystroke, false) {
+                    HotkeyPress::Set(a) => a,
+                    HotkeyPress::Leave => {
+                        d.overlay.hotkey_refused = None;
+                        return d.leave_hotkey_field(window, cx);
+                    }
+                    HotkeyPress::NeedsModifier(a) => {
+                        d.overlay.hotkey_refused = Some(needs_modifier_text(&a.replace("CommandOrControl", "Ctrl")));
+                        return cx.notify();
+                    }
+                    HotkeyPress::Clear | HotkeyPress::Ignore => return,
+                };
+                d.overlay.hotkey_refused = shortcuts::taken_by(d, Shortcut::Overlay, &a, cx);
+                if d.overlay.hotkey_refused.is_none() {
                     update(d, cx, |p| p.keyboard_accelerator = a);
                 }
+                cx.notify();
             },
         )),
         p.keyboard_accelerator.clone(),
@@ -473,22 +509,27 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     };
     let mut rows = vec![
         Row::toggle("enabled", tr!("Turn on the overlay"), p.enabled).desc(labels::turn_on_short()),
-        Row::toggle("without-game", tr!("Open it without a game too"), p.without_game).desc(labels::without_game_short()),
+        Row::toggle("without-game", tr!("Open it without a game too"), p.without_game)
+            .desc(labels::without_game_short())
+            .child_of("enabled"),
         Row::header(tr!("Keyboard")),
         Row::toggle("keyboard", tr!("Open it with a keyboard shortcut"), p.keyboard_shortcut)
             .desc(tr!("The keyboard drives it while open: arrows, Enter, Esc, Q / E")),
         Row::choice("accelerator", tr!("Keyboard shortcut"), accelerators.into_iter().map(SharedString::from).collect(), accel_index)
-            .desc(hotkey_status(d, cx).map(|(text, _)| text).unwrap_or_default()),
+            .desc(hotkey_status(d, cx).map(|(text, _)| text).unwrap_or_default())
+            .child_of("keyboard"),
         Row::header(tr!("Shortcuts without opening it")),
     ];
     rows.extend(console_pad_shot_rows(d));
     rows.extend([
         Row::toggle("volume", labels::volume(), p.volume_shortcut),
+        // How much a press changes belongs to the volume shortcut.
+        Row::choice("step", tr!("Volume step"), VOLUME_STEPS.iter().map(|s| SharedString::from(step_label(*s))).collect(), step_index)
+            .child_of("volume"),
         Row::toggle("moment", labels::moment(), p.moment_shortcut).desc(moment_desc(p)),
     ]);
     rows.extend(console_replay_rows(d));
     rows.extend([
-        Row::choice("step", tr!("Volume step"), VOLUME_STEPS.iter().map(|s| SharedString::from(step_label(*s))).collect(), step_index),
         Row::header(tr!("Position")),
         Row::choice("side", tr!("Side of the screen"), vec![tr!("Left").into(), tr!("Right").into()], usize::from(p.side == Side::Right)),
         Row::header(tr!("Status")),

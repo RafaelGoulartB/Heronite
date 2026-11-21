@@ -5,7 +5,7 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::console_theme::{
-    FactStyle, GridPanel, Headings, HeroAlign, HeroTitle, Layout, Size3, SpotActions, TileShape, TileSize, TileTitles, WheelItems,
+    FactStyle, GridPanel, Headings, HeroTitle, Layout, Size3, SpotActions, TileShape, TileSize, TileTitles, WheelItems,
 };
 use heronite_i18n::tr;
 
@@ -145,87 +145,196 @@ fn shelves(p: &mut Pic, layer: Div) -> Div {
         ))
 }
 
+/// Cinema (the console's `layouts/cinema.rs`): the game's name large at the
+/// left with its facts and genres under it, its achievements on the right,
+/// one row of large covers along the bottom, the first shelf's title under it.
 fn cinema(p: &mut Pic, layer: Div) -> Div {
-    let h = 82. * p.size();
-    let row_y = p.bottom() - h - if p.t.tiles.titles == TileTitles::Always { 22. } else { 10. };
-    let centred = p.t.hero.align == HeroAlign::Center;
-    // The real Cinema never shows the description; its stats panel sits at
-    // the right edge, centred in the room above the covers.
-    let hero = p.hero(300., 22., false);
-    let stats = p.t.hero.stats.then(|| {
-        let (from, to) = (p.top(), row_y - 22.);
-        div().absolute().right_0().top(p.u(from)).h(p.u(to - from)).flex().items_center().child(p.stats())
-    });
-    let hero = if centred {
-        div().absolute().left_0().right_0().top(p.u(p.top() + 24.)).flex().justify_center().child(hero.items_center())
-    } else {
-        p.at(26., p.top() + 30., hero)
-    };
-    let row = p.tile_row(0, h, 10., 8, true);
-    let heading = p.at(26., row_y - 16., p.shelf_heading(0));
-    layer.child(p.scrim_left(0.55)).child(p.scrim_bottom(0.65)).child(hero).children(stats).child(heading).child(p.at(26., row_y, row))
+    let h = 104. * p.size().min(1.15);
+    let names = if p.t.tiles.titles == TileTitles::Always { 12. } else { 0. };
+    // Room under the row for the first shelf's title, peeking in.
+    let row_y = p.bottom() - h - names - 22.;
+    let gap = p.u(3.);
+    // The facts: small labels over values, between thin rules.
+    let rule = || div().flex_none().w(px(1.)).h(p.u(9.)).bg(Rgba { a: 0.25, ..p.text });
+    let mut facts = div().flex().items_center().gap(p.u(6.));
+    for (i, w) in [14., 16., 18., 12., 14.].into_iter().enumerate() {
+        if i > 0 {
+            facts = facts.child(rule());
+        }
+        facts = facts.child(div().flex().flex_col().items_center().gap(gap).child(p.line(w * 0.7, 2., 0.4)).child(p.line(w, 3.5, 0.9)));
+    }
+    let genres = div().flex().gap(p.u(5.)).child(p.line(12., 2.5, 0.45)).child(p.line(14., 2.5, 0.45)).child(p.line(10., 2.5, 0.45));
+    let block = div()
+        .absolute()
+        .left(p.u(26.))
+        .max_w(p.u(250.))
+        .bottom(p.u(CANVAS_H - row_y + 16.))
+        .flex()
+        .flex_col()
+        .items_start()
+        .gap(p.u(7.))
+        .child(p.game_name(0, 22., 250.))
+        .child(facts)
+        .child(genres);
+    // The achievements, level with the facts.
+    let ach = div()
+        .absolute()
+        .right(p.u(30.))
+        .bottom(p.u(CANVAS_H - row_y + 30.))
+        .flex()
+        .items_center()
+        .gap(p.u(5.))
+        .child(div().size(p.u(11.)).rounded_full().bg(Rgba { a: 0.25, ..p.accent }))
+        .child(div().flex().flex_col().gap(gap).child(p.line(26., 2., 0.45)).child(p.line(18., 3.5, 0.9)).child(
+            div().w(p.u(56.)).h(p.u(1.5)).rounded_full().bg(Rgba { a: 0.2, ..p.text }).child(div().w(p.u(14.)).h_full().bg(p.accent)),
+        ));
+    let row = p.tile_row(0, h, 8., 9, true);
+    // The first shelf's title under the row: its name and a short champagne rule.
+    let peek = div()
+        .flex()
+        .flex_col()
+        .gap(p.u(2.))
+        .child(p.shelf_heading(0))
+        .child(div().w(p.u(10.)).h(p.u(1.)).rounded_full().bg(Rgba { a: 0.9, ..p.accent }));
+    layer.child(p.scrim_left(0.6)).child(p.scrim_bottom(0.75)).child(block).child(ach).child(p.at(26., row_y, row)).child(p.at(
+        26.,
+        row_y + h + names + 8.,
+        peek,
+    ))
 }
 
+/// Spotlight (the console's `layouts/spotlight/`): a row of square icons
+/// under the tab pills, the focused one larger and ringed with its name
+/// beside it; under it the logo (or the name), the pill buttons, the facts,
+/// the genre chips and a strip of screenshots fading into the dark.
 fn spotlight(p: &mut Pic, layer: Div) -> Div {
-    let top = p.top() + 4.;
+    const SIDE: f32 = 21.;
+    let top = p.top() - 10.;
     // The icons keep the cover's shape: a portrait one is taller than a
     // square one, a wide one shorter; the size choice scales them.
     let (shape, k) = match p.t.tiles.shape {
-        TileShape::Portrait => (TileShape::Portrait, 1.2),
-        TileShape::Landscape => (TileShape::Landscape, 0.9),
+        TileShape::Portrait => (TileShape::Portrait, 1.15),
+        TileShape::Landscape => (TileShape::Landscape, 0.8),
         TileShape::Square => (TileShape::Square, 1.),
     };
     let size = match p.t.tiles.size {
         TileSize::Small => 0.85,
         TileSize::Medium => 1.,
-        TileSize::Large => 1.2,
-        TileSize::Huge => 1.4,
+        TileSize::Large => 1.15,
+        TileSize::Huge => 1.3,
     };
     let k = k * size * p.s;
-    let (big, small) = ((54. * k).min(100.), (38. * k).min(70.));
+    let (big, small) = ((69. * k).min(104.), (54. * k).min(82.));
     let shape = Some(shape);
-    let mut icons = div().flex().items_center().gap(p.u(9.));
-    icons = icons.child(p.tile_as(Dress::SPOT, 0, big, shape, true));
-    icons = icons.child(div().w(p.u(96.)).child(p.game_name(0, 10., 96.)));
-    for i in 1..8 {
-        icons = icons.child(p.tile_as(Dress::SPOT, i, small, shape, false));
+    let mut others = div().flex().items_start().gap(p.u(7.5));
+    for i in 1..12 {
+        others = others.child(p.tile_as(Dress::SPOT, i, small, shape, false));
     }
-    let mut buttons = div().flex().items_center().gap(p.u(7.)).child(
+    let name = p.title(0).map(|t| p.label(t, 8., p.text).max_w(p.u(150.)));
+    let icons = div()
+        .flex()
+        .items_start()
+        .gap(p.u(7.5))
+        .child(p.tile_as(Dress::SPOT, 0, big, shape, true))
+        .child(div().flex().flex_col().gap(p.u(4.)).child(others).children(name));
+    let below = top + big;
+
+    // The logo (a heavier name: the picture has no logos) or the name, its
+    // foot where the console puts it.
+    let logo = p.t.hero.title == HeroTitle::Logo;
+    let name = p.game_name(0, if logo { 25. } else { 22. }, 330.).when(logo, |d| d.font_weight(W_BOLD));
+    let title = p.at(SIDE, below + 34., div().h(p.u(40.)).flex().items_end().child(name));
+
+    // Play, Options (Status with every action) and the heart, as pills.
+    let pill = |p: &Pic, w: Option<f32>, ic: Icon, text: Option<SharedString>| {
+        let h = 18. * p.s;
+        let fg = p.text;
         div()
-            .w(p.u(104. * p.s))
-            .h(p.u(24. * p.s))
+            .flex_none()
+            .h(p.u(h))
+            .when_some(w, |d, w| d.w(p.u(w * p.s)))
+            .when(w.is_none(), |d| d.w(p.u(h)))
             .flex()
             .items_center()
             .justify_center()
-            .rounded(p.u(12.))
-            .bg(p.text)
-            .child(p.label(tr!("Play"), 9., p.bg).font_weight(W_BOLD)),
-    );
-    let more = if p.t.layouts.spotlight_actions == SpotActions::Full { 3 } else { 1 };
-    for _ in 0..more {
-        buttons = buttons.child(div().size(p.u(24. * p.s)).rounded_full().bg(Rgba { a: 0.18, ..p.text }));
+            .gap(p.u(3.))
+            .rounded_full()
+            .bg(p.shade(0.42))
+            .border(p.u(0.6))
+            .border_color(Rgba { a: 0.16, ..p.text })
+            .child(crate::ui::icon(ic, p.u(7. * p.s), fg))
+            .children(text.map(|t| p.label(t, 7., fg)))
+    };
+    let mut buttons = div()
+        .flex()
+        .items_center()
+        .gap(p.u(5.5))
+        .child(pill(p, Some(86.), Icon::PlayArrow, Some(tr!("Play").into())))
+        .child(pill(p, Some(60.), Icon::MoreHoriz, Some(tr!("Options").into())));
+    if p.t.layouts.spotlight_actions == SpotActions::Full {
+        buttons = buttons.child(pill(p, Some(58.), Icon::Flag, Some(tr!("Status").into())));
     }
-    let game = div().flex().flex_col().gap(p.u(10.)).child(p.game_name(0, 24., 260.)).child(buttons).child(p.line(70., 4., 0.5));
-    let cards = p.t.layouts.spotlight_cards.then(|| {
-        let mut row = div().flex().gap(p.u(10.));
+    buttons = buttons.child(pill(p, None, Icon::FavoriteBorder, None));
+
+    // The facts: a small caption over each value, thin rules between.
+    let mut facts = div().flex().items_center().gap(p.u(6.));
+    for (n, (cap, w)) in
+        [(tr!("Playtime"), 24.), (tr!("Last played"), 30.), (tr!("Platform"), 26.), (tr!("Released"), 16.)].into_iter().enumerate()
+    {
+        if n > 0 {
+            facts = facts.child(div().w(p.u(0.6)).h(p.u(14.)).bg(Rgba { a: 0.2, ..p.text }));
+        }
+        facts =
+            facts.child(div().flex().flex_col().gap(p.u(2.5)).child(p.label(cap.to_uppercase(), 4.2, p.muted)).child(p.line(w, 4.5, 0.85)));
+    }
+    let mut chips = div().flex().gap(p.u(3.));
+    for w in [16., 26.] {
+        chips = chips.child(div().px(p.u(4.5)).py(p.u(2.5)).rounded_full().bg(Rgba { a: 0.14, ..p.text }).child(p.line(w, 3., 0.7)));
+    }
+    let rest = div().flex().flex_col().child(buttons).child(div().mt(p.u(9.)).child(facts)).child(div().mt(p.u(6.)).child(chips));
+    let strip_y = below + 149.;
+    let mut out = layer.child(p.scrim_left(0.55)).child(p.at(SIDE, top, icons)).child(title).child(p.at(SIDE, below + 80., rest));
+
+    // Under the head: the strip of screenshots (the store's or the user's),
+    // else the cards, else a glimpse of the first section of the page.
+    let sections = &p.t.layouts.spotlight_sections;
+    let page = sections.about || sections.achievements || sections.details || sections.related;
+    if sections.media || sections.screenshots {
+        let mut strip = div().flex().gap(p.u(7.5));
+        for i in 0..5 {
+            strip = strip.child(p.picture_box(i + 3, true, 135., 76., 5.));
+        }
+        out = out.child(p.at(SIDE, strip_y, strip));
+    } else if p.t.layouts.spotlight_cards {
+        let mut row = div().flex().gap(p.u(8.));
         for _ in 0..3 {
             row = row.child(
                 div()
-                    .w(p.u(160.))
-                    .h(p.u(70.))
-                    .p(p.u(9.))
+                    .w(p.u(150.))
+                    .h(p.u(62.))
+                    .p(p.u(8.))
                     .flex()
                     .flex_col()
                     .gap(p.u(5.))
-                    .rounded(p.u(10.))
+                    .rounded(p.u(8.))
                     .bg(p.panel)
-                    .child(p.line(50., 4., 0.8))
-                    .child(p.line(80., 4., 0.45)),
+                    .child(p.line(40., 4., 0.8))
+                    .child(p.line(70., 4., 0.45)),
             );
         }
-        p.at(26., CANVAS_H - 44., row)
-    });
-    layer.child(p.scrim_left(0.55)).child(p.scrim_bottom(0.55)).child(p.at(26., top, icons)).child(p.at(26., 176., game)).children(cards)
+        out = out.child(p.at(SIDE, strip_y, row));
+    } else if page {
+        let peek =
+            div().flex().flex_col().gap(p.u(6.)).child(p.line(46., 5., 0.8)).child(p.line(300., 3.5, 0.4)).child(p.line(240., 3.5, 0.4));
+        out = out.child(p.at(SIDE, strip_y + 6., peek));
+    }
+    // The bottom fades into the dark, under the hints.
+    let fade = div().absolute().left_0().right_0().bottom_0().h(p.u(CANVAS_H - strip_y - 8.)).bg(linear_gradient(
+        180.,
+        linear_color_stop(Rgba { a: 0., ..p.bg }, 0.),
+        linear_color_stop(Rgba { a: 0.97, ..p.bg }, 1.),
+    ));
+    out.child(fade)
 }
 
 fn carousel(p: &mut Pic, layer: Div) -> Div {

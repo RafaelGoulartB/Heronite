@@ -228,10 +228,12 @@ fn editor(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
                 })),
         );
     }
+    // Under the list when the window is too narrow for both.
     let mut pane = div()
         .flex()
         .flex_col()
-        .flex_1()
+        .flex_grow(1.)
+        .flex_basis(px(300.))
         .min_w_0()
         .gap(px(12.))
         .child(
@@ -274,7 +276,7 @@ fn editor(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
         .gap(px(14.))
         .py(px(14.))
         .child(row(tr!("Custom theme"), Some(tr!("Pick each colour, or start again from the light or the dark theme's.")), start).py_0())
-        .child(div().flex().gap(px(20.)).child(list).child(pane))
+        .child(div().flex().flex_wrap().gap(px(20.)).child(list).child(pane))
         .into_any_element()
 }
 

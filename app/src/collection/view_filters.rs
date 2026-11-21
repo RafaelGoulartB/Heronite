@@ -14,7 +14,7 @@ use crate::services::downloads::Downloads;
 
 /// One of the View menu's "Only" switches.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Only {
+pub(crate) enum Only {
     Favourites,
     Updates,
     Offline,

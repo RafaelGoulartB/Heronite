@@ -22,6 +22,8 @@ use heronite_data::console_theme::{Glyphs, Headings, Layout};
 use heronite_i18n::tr;
 
 static SCALE: AtomicU32 = AtomicU32::new(0x3f80_0000); // 1.0
+/// The window's width in design px (see [`vw`]).
+static VW: AtomicU32 = AtomicU32::new(0x44a0_0000); // 1280.0
 
 thread_local! {
     /// Focus pills drawn this frame (keeps their animation ids apart).
@@ -31,9 +33,52 @@ thread_local! {
 /// Scales the design to the window: `height / 800`, between 1 and 2. Runs
 /// once at the start of every console frame.
 pub fn set_scale(window: &Window) {
-    let h = f32::from(crate::ui::content_size(window).height);
-    SCALE.store(((h / 800.).clamp(1., 2.) * look::scale()).to_bits(), Ordering::Relaxed);
+    let size = crate::ui::content_size(window);
+    let scale = (f32::from(size.height) / 800.).clamp(1., 2.) * look::scale();
+    SCALE.store(scale.to_bits(), Ordering::Relaxed);
+    VW.store((f32::from(size.width) / scale).to_bits(), Ordering::Relaxed);
     PILLS.with(|c| c.set(0));
+}
+
+/// The window's width in design px this frame. [`u`] follows the window's
+/// height, so a narrow or 4:3 window has fewer design px across than the
+/// 1280 of the design (1730×1280: about 1080): what sits side by side must
+/// check it, not assume the design's width.
+pub fn vw() -> f32 {
+    f32::from_bits(VW.load(Ordering::Relaxed))
+}
+
+/// About how wide a line of `chars` characters of text `size` is, design px
+/// (an average glyph; for fitting rows before they are laid out).
+pub fn text_w(chars: usize, size: f32) -> f32 {
+    chars as f32 * size * 0.56
+}
+
+/// The items `first..last` of a row of items `widths` wide (with `gap`
+/// between them) that fit in `room`, always holding `active`: from the start
+/// while it shows, else ending a little after `active`.
+pub fn fit_row(widths: &[f32], gap: f32, active: usize, room: f32) -> (usize, usize) {
+    let n = widths.len();
+    if n == 0 {
+        return (0, 0);
+    }
+    let active = active.min(n - 1);
+    let span = |a: usize, b: usize| widths[a..b].iter().sum::<f32>() + gap * (b - a).saturating_sub(1) as f32;
+    // From the start as far as it goes.
+    let mut last = 0;
+    while last < n && span(0, last + 1) <= room {
+        last += 1;
+    }
+    if active < last {
+        return (0, last.max(1));
+    }
+    // Else the active one and the next (when it fits), as many before as fit.
+    let end = if active + 2 <= n && span(active, active + 2) <= room { active + 2 } else { active + 1 };
+    let mut first = active;
+    while first > 0 && span(first - 1, end) <= room {
+        first -= 1;
+    }
+    (first, end)
 }
 
 /// Sets the scale directly, for windows whose height is not the display's
@@ -207,16 +252,18 @@ pub(crate) enum Mark {
     Letter(&'static str, Face),
     /// A PlayStation symbol (cross, circle, square, triangle) on a round button.
     Shape(Face),
-    /// A dark keycap with a label.
+    /// A keycap with a label.
     Cap(&'static str),
     /// A keycap with the menu icon.
     Menu,
     Pair(&'static str, &'static str),
     Arrows,
+    /// One arrow: ◀ (`false`) or ▶ (`true`).
+    Arrow(bool),
 }
 
 /// The button a hint stands for, by position: A confirms (south, or east when
-/// the theme swaps A and B), B goes back.
+/// the controller confirms with it), B goes back.
 pub(crate) fn face(btn: Btn, swap_ab: bool) -> Option<Face> {
     Some(match (btn, swap_ab) {
         (Btn::A, false) | (Btn::B, true) => Face::South,
@@ -253,62 +300,65 @@ pub(crate) fn mark(style: Glyphs, btn: Btn, swap_ab: bool) -> Mark {
         Btn::Start => match style {
             Glyphs::PlayStation => Mark::Cap("Options"),
             Glyphs::Nintendo => Mark::Cap("+"),
-            Glyphs::Deck => Mark::Menu,
-            _ => Mark::Cap("\u{2630}"),
+            _ => Mark::Menu,
         },
         Btn::LeftRight => Mark::Arrows,
+        Btn::Left => Mark::Arrow(false),
+        Btn::Right => Mark::Arrow(true),
         _ => unreachable!("face buttons are handled above"),
     }
 }
 
-/// Controller glyph in the style the console theme asks for (`Auto` follows
-/// the connected controller): Xbox coloured letters, PlayStation symbols,
+/// Controller glyph in the style the controller's options ask for (`Auto`
+/// follows the connected controller): Xbox coloured letters, PlayStation symbols,
 /// Nintendo and Steam Deck letters, or the keyboard keys.
 pub fn glyph(btn: Btn) -> Div {
     let style = look::glyphs();
     if style == Glyphs::Keyboard {
         return key_glyph(btn);
     }
-    draw(mark(style, btn, look::theme().controls.swap_ab), style)
+    draw(mark(style, btn, look::confirm_east()))
 }
 
-fn draw(m: Mark, style: Glyphs) -> Div {
+fn draw(m: Mark) -> Div {
     match m {
-        Mark::Letter(text, f) => letter_button(text, f, style),
+        Mark::Letter(text, _) => letter_button(text),
         Mark::Shape(f) => shape_button(f),
         Mark::Cap(label) => key_cap(label),
-        Mark::Menu => arrow_cap(Icon::Menu),
+        Mark::Menu => icon_disc(Icon::Menu),
         Mark::Pair(a, b) => div().flex().gap(u(4.)).child(key_cap(a)).child(key_cap(b)),
         // Icons: the fonts have no ◀ ▶, and the fallback draws them as emoji.
-        Mark::Arrows => div().flex().gap(u(4.)).child(arrow_cap(Icon::ChevronLeft)).child(arrow_cap(Icon::ChevronRight)),
+        Mark::Arrows => div().flex().gap(u(4.)).child(icon_disc(Icon::ChevronLeft)).child(icon_disc(Icon::ChevronRight)),
+        Mark::Arrow(right) => icon_disc(if right { Icon::ChevronRight } else { Icon::ChevronLeft }),
     }
+}
+
+/// The glyphs are monochrome: a disc of the strong ink with its mark cut
+/// out in the opposite one (light on a dark console, dark on a light one).
+fn glyph_ink() -> (Hsla, Hsla) {
+    let mark: Hsla = if light() { white() } else { rgb(0x121419).into() };
+    (strong(), mark)
 }
 
 /// The round base of a face button.
 fn round_button() -> Div {
-    div().relative().flex().flex_none().items_center().justify_center().size(u(22.)).rounded_full()
+    div().relative().flex().flex_none().items_center().justify_center().size(u(20.)).rounded_full()
 }
 
-fn letter_button(text: &str, f: Face, style: Glyphs) -> Div {
-    let (bg, fg): (Hsla, Hsla) = match style {
-        Glyphs::Nintendo => (rgb(0xe3e6ea).into(), rgb(0x1a1d23).into()),
-        Glyphs::Deck => (ink(0.2), theme::text_primary().into()),
-        _ => (
-            match f {
-                Face::South => theme::console_btn_a(),
-                Face::East => theme::console_btn_b(),
-                Face::West => theme::console_btn_x(),
-                Face::North => theme::console_btn_y(),
-            }
-            .into(),
-            theme::console_on_focus().into(),
-        ),
-    };
-    round_button().bg(bg).text_size(u(11.)).font_weight(theme::W_BOLD).text_color(fg).child(text.to_string())
+/// A face button by its letter (Xbox, Nintendo, Steam Deck).
+fn letter_button(text: &str) -> Div {
+    let (fill, mark) = glyph_ink();
+    round_button().bg(fill).text_size(u(11.)).font_weight(theme::W_BOLD).text_color(mark).child(text.to_string())
+}
+
+/// A disc holding an icon (Menu, ◀ ▶).
+fn icon_disc(ic: Icon) -> Div {
+    let (fill, mark) = glyph_ink();
+    round_button().bg(fill).child(icon(ic, u(14.), mark))
 }
 
 /// PlayStation colours of the symbols.
-fn shape_color(f: Face) -> Rgba {
+pub(crate) fn shape_color(f: Face) -> Rgba {
     match f {
         Face::South => rgb(0x7aa8ff),
         Face::East => rgb(0xff6f7d),
@@ -320,14 +370,13 @@ fn shape_color(f: Face) -> Rgba {
 /// A PlayStation button. The symbols are drawn: the fonts have no ✕ ○ □ △,
 /// and the fallback draws emoji.
 fn shape_button(f: Face) -> Div {
-    let color: Hsla = shape_color(f).into();
-    // The symbols are light: on a dark disc when the console is light.
+    let (fill, color) = glyph_ink();
     round_button()
-        .bg(if light() { ink(0.82) } else { theme::white_a(0.16) })
+        .bg(fill)
         .child(canvas(|_, _, _| (), move |bounds, _, window, _| paint_shape(bounds, f, color, window)).absolute().inset_0())
 }
 
-fn paint_shape(bounds: Bounds<Pixels>, f: Face, color: Hsla, window: &mut Window) {
+pub(crate) fn paint_shape(bounds: Bounds<Pixels>, f: Face, color: Hsla, window: &mut Window) {
     let w = f32::from(bounds.size.width);
     let c = bounds.center();
     let at = |dx: f32, dy: f32| point(c.x + px(dx * w), c.y + px(dy * w));
@@ -376,38 +425,31 @@ pub fn key_glyph(btn: Btn) -> Div {
         Btn::Y => key_cap("Y"),
         Btn::LB => key_cap("Q"),
         Btn::RB => key_cap("E"),
-        Btn::Bumpers => draw(Mark::Pair("Q", "E"), Glyphs::Keyboard),
+        Btn::Bumpers => draw(Mark::Pair("Q", "E")),
         Btn::Start => key_cap("M"),
         // No key for these: the pad's own look.
-        Btn::LT | Btn::LeftRight => draw(mark(Glyphs::Xbox, btn, false), Glyphs::Xbox),
+        Btn::LT | Btn::LeftRight | Btn::Left | Btn::Right => draw(mark(Glyphs::Xbox, btn, false)),
     }
 }
 
-/// A dark keycap with a label.
+/// A keycap with a label: a thin outline of the strong ink.
 fn key_cap(label: &str) -> Div {
+    let ink = strong();
     div()
         .flex()
         .flex_none()
         .items_center()
         .justify_center()
-        .h(u(22.))
+        .h(u(20.))
         .min_w(u(26.))
         .px(u(5.))
-        .rounded(u(5.))
-        .bg(ink(0.16))
-        .text_size(u(10.))
+        .rounded(u(6.))
+        .border(px(1.5))
+        .border_color(Hsla { a: 0.75, ..ink })
+        .text_size(u(9.5))
         .font_weight(theme::W_BOLD)
-        .text_color(theme::text_primary())
+        .text_color(ink)
         .child(label.to_string())
-}
-
-/// A dark keycap holding an icon.
-fn arrow_cap(ic: Icon) -> Div {
-    div().flex().flex_none().items_center().justify_center().h(u(22.)).min_w(u(26.)).rounded(u(5.)).bg(ink(0.16)).child(icon(
-        ic,
-        u(16.),
-        theme::text_primary(),
-    ))
 }
 
 /// The press a click on a hint for `btn` makes (a pair: the second one).
@@ -421,7 +463,8 @@ pub fn btn_pad(btn: Btn) -> Pad {
         Btn::RB | Btn::Bumpers => Pad::RB,
         Btn::LT => Pad::LT,
         Btn::Start => Pad::Start,
-        Btn::LeftRight => Pad::Right,
+        Btn::LeftRight | Btn::Right => Pad::Right,
+        Btn::Left => Pad::Left,
     }
 }
 
@@ -434,8 +477,8 @@ pub fn clickable_glyph(btn: Btn, keys: bool) -> Div {
         Btn::LeftRight => div()
             .flex()
             .gap(u(4.))
-            .child(arrow_cap(Icon::ChevronLeft).on_pads([Pad::Left]))
-            .child(arrow_cap(Icon::ChevronRight).on_pads([Pad::Right])),
+            .child(icon_disc(Icon::ChevronLeft).on_pads([Pad::Left]))
+            .child(icon_disc(Icon::ChevronRight).on_pads([Pad::Right])),
         b => one(b),
     }
 }
@@ -447,27 +490,69 @@ pub fn hint_item(h: &Hint, keys: bool, size: f32, gap: f32) -> Div {
 
 /// [`hint_item`]; `live` false draws it without taking clicks.
 fn hint_row(h: &Hint, keys: bool, size: f32, gap: f32, live: bool) -> Div {
-    let row = div().flex().items_center().gap(u(gap)).text_size(u(size)).text_color(theme::text_muted());
+    let row = div().flex().items_center().gap(u(gap)).text_size(u(size)).text_color(theme::text_primary());
+    // The label, with its second line under it when it has one.
+    let label = match &h.sub {
+        None => div().child(h.label.clone()),
+        Some(sub) => div()
+            .flex()
+            .flex_col()
+            .child(div().line_height(u(size * 1.15)).child(h.label.clone()))
+            .child(div().text_size(u(size * 0.72)).line_height(u(size * 0.9)).text_color(theme::text_dim()).child(sub.clone())),
+    };
     if !live {
-        return row.child(if keys { key_glyph(h.btn) } else { glyph(h.btn) }).child(h.label.clone());
+        return row.child(if keys { key_glyph(h.btn) } else { glyph(h.btn) }).child(label);
     }
-    row.child(clickable_glyph(h.btn, keys)).child(h.label.clone()).on_pads([btn_pad(h.btn)])
+    row.child(clickable_glyph(h.btn, keys)).child(label).on_pads([btn_pad(h.btn)])
 }
 
 /// Footer with the button hints of the current screen (a click on one
 /// presses its button). It takes the clicks it gets, so nothing under it
-/// sees them.
+/// sees them. No surface of its own: it sits on what is under it (the
+/// caller shades that, [`hint_shade`]), the system hints (menu, tabs) on the
+/// left and the actions on the right, the confirm button last.
 pub fn hint_bar(hints: &[Hint]) -> Div {
     hint_bar_with(hints, true)
+}
+
+/// Whether a hint is a system one (the left of the bar): the menu and the tabs.
+fn system_hint(btn: Btn) -> bool {
+    matches!(btn, Btn::Start | Btn::Bumpers | Btn::LB | Btn::RB | Btn::LT)
+}
+
+/// The order of the actions on the right: ◀ ▶, Y, X, B, then A at the end.
+fn action_rank(btn: Btn) -> u8 {
+    match btn {
+        Btn::LeftRight | Btn::Left | Btn::Right => 0,
+        Btn::Y => 1,
+        Btn::X => 2,
+        Btn::B => 3,
+        Btn::A => 4,
+        _ => 5,
+    }
 }
 
 /// [`hint_bar`]; `live` false draws it without taking any click (a bar
 /// faded out over the screen).
 pub fn hint_bar_with(hints: &[Hint], live: bool) -> Div {
+    hint_bar_at(hints, live, 46.)
+}
+
+/// [`hint_bar_with`] `side` design px from the window's edges (a layout
+/// lining it up with its own edge).
+pub fn hint_bar_at(hints: &[Hint], live: bool, side: f32) -> Div {
     let keys = look::glyphs() == Glyphs::Keyboard;
-    let bar = div().flex().flex_none().items_center().gap(u(26.)).h(u(60.)).px(u(46.)).border_t_1().border_color(ink(0.08)).bg(shade(0.35));
+    let row = |h: &Hint| hint_row(h, keys, 13.5, 9., live);
+    let mut actions: Vec<&Hint> = hints.iter().filter(|h| !system_hint(h.btn)).collect();
+    actions.sort_by_key(|h| action_rank(h.btn));
+    let bar = div().flex().flex_none().items_center().gap(u(30.)).h(u(60.)).px(u(side));
     let bar = if live { bar.eats_clicks() } else { bar };
-    bar.children(hints.iter().map(|h| hint_row(h, keys, 14., 8., live)))
+    bar.children(hints.iter().filter(|h| system_hint(h.btn)).map(row)).child(div().flex_1()).children(actions.into_iter().map(row))
+}
+
+/// What a hint bar sits on: the bottom of the screen fading into the dark.
+pub fn hint_shade() -> Background {
+    linear_gradient(0., linear_color_stop(dim(0.62), 0.), linear_color_stop(dim(0.), 1.))
 }
 
 /// The light focus pill behind a row. It pops in (grows from a little
@@ -602,6 +687,158 @@ pub fn choice_clickable(
         .child(arrow(Icon::ChevronRight, can_right, right))
 }
 
+/// Headings inside a list of cards and the text of their actions ("Change",
+/// "Open"): the theme's focus colour when it has a hue, else the app's
+/// accent; darkened on a light console so it stays readable.
+pub fn accent_ink() -> Rgba {
+    let focus = theme::console_focus();
+    let hsla: Hsla = focus.into();
+    let base = if hsla.s > 0.3 && hsla.l > 0.25 && hsla.l < 0.85 { focus } else { theme::accent() };
+    tint(base)
+}
+
+/// The fill of a card row (a settings row, a result): the theme's panel,
+/// a little see-through so the background shows.
+pub fn card_fill() -> Hsla {
+    let mut c = theme::console_sidebar();
+    c.a = if light() { 0.82 } else { 0.72 };
+    c.into()
+}
+
+/// A thin bright ring around the focused card. It pops in (from a little
+/// inset, fading up) when the focus arrives and on every press.
+pub fn focus_ring(radius: f32) -> AnyElement {
+    let n = PILLS.with(|c| {
+        let n = c.get();
+        c.set(n + 1);
+        n
+    });
+    let edge = -1.;
+    let mut glow: Hsla = theme::console_focus().into();
+    glow.a = 0.16;
+    let ring = div()
+        .absolute()
+        .top(px(edge))
+        .bottom(px(edge))
+        .left(px(edge))
+        .right(px(edge))
+        .rounded(u(radius))
+        .border_2()
+        .border_color(theme::console_focus())
+        .shadow(vec![BoxShadow { color: glow, offset: point(px(0.), px(0.)), blur_radius: u(14.), spread_radius: px(0.), inset: false }]);
+    if !motion::on() {
+        return ring.into_any_element();
+    }
+    let id = SharedString::from(format!("ring-{n}-{}", motion::press_epoch()));
+    ring.with_animation(id, Animation::new(std::time::Duration::from_millis(180)).with_easing(ease_out_quint()), move |d, t| {
+        let inset = px(edge) + u(3.) * (1. - t);
+        d.opacity(0.4 + 0.6 * t).top(inset).bottom(inset).left(inset).right(inset)
+    })
+    .into_any_element()
+}
+
+/// Base of a card row: a rounded panel, the thin [`focus_ring`] around it
+/// when focused (the text keeps its colour).
+pub fn card_base(focused: bool) -> Div {
+    let d = div()
+        .relative()
+        .flex()
+        .items_center()
+        .gap(u(16.))
+        .min_h(u(56.))
+        .pl(u(20.))
+        .pr(u(18.))
+        .py(u(9.))
+        .rounded(u(14.))
+        .bg(card_fill())
+        .text_color(theme::text_primary());
+    if focused {
+        d.child(focus_ring(14.))
+    } else {
+        d
+    }
+}
+
+/// A sliding switch: the focus colour with its knob on the right when on,
+/// a faint track with the knob on the left when off. `id` keeps its slide
+/// apart from the other switches.
+pub fn switch(id: impl Into<ElementId>, on: bool) -> AnyElement {
+    let (w, h, knob, inset) = (44., 24., 18., 3.);
+    let travel = w - knob - 2. * inset;
+    let track = div().relative().flex_none().w(u(w)).h(u(h)).rounded_full();
+    motion::spring(id, track, motion::SOFT, on, move |d, k| {
+        let k = k.clamp(0., 1.);
+        let off_fill: Rgba = ink(0.16).into();
+        let fill = motion::mix(off_fill, theme::console_focus(), k);
+        let knob_c = motion::mix(theme::text_primary(), theme::console_on_focus(), k);
+        d.bg(fill).child(div().absolute().top(u(inset)).left(u(inset + travel * k)).size(u(knob)).rounded_full().bg(knob_c))
+    })
+}
+
+/// A value in a soft rounded chip (a choice's current value, a number).
+pub fn value_chip(text: impl Into<SharedString>) -> Div {
+    div()
+        .flex_none()
+        .max_w(u(340.))
+        .truncate()
+        .px(u(12.))
+        .py(u(3.))
+        .rounded(u(12.))
+        .bg(ink(0.12))
+        .text_size(u(14.))
+        .font_weight(theme::W_BOLD)
+        .text_color(theme::text_primary())
+        .child(text.into())
+}
+
+/// `‹ chip ›`: a choice of a card row. The arrows dim at the ends and send
+/// `left` / `right` when clicked (nothing when empty).
+pub fn choice_chip(value: impl Into<SharedString>, can_left: bool, can_right: bool, left: Vec<Pad>, right: Vec<Pad>) -> Div {
+    let color: Hsla = theme::text_muted().into();
+    let arrow = |ic: Icon, on: bool, pads: Vec<Pad>| {
+        div().p(u(4.)).m(u(-4.)).child(icon(ic, u(18.), if on { color } else { Hsla { a: color.a * 0.3, ..color } })).on_pads(pads)
+    };
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(u(8.))
+        .child(arrow(Icon::ChevronLeft, can_left, left))
+        .child(value_chip(value))
+        .child(arrow(Icon::ChevronRight, can_right, right))
+}
+
+/// A text action at the end of a card row ("Change", "Open"), in [`accent_ink`].
+pub fn text_action(text: impl Into<SharedString>) -> Div {
+    div().flex_none().text_size(u(14.)).font_weight(theme::W_BOLD).text_color(accent_ink()).child(text.into())
+}
+
+/// Width of a column of settings cards (Settings' content, the console
+/// config screens).
+pub const SETTINGS_W: f32 = 1180.;
+
+/// A column of settings cards: comfortably wide, filling the height it is
+/// given, its rows fading out at the bottom instead of stopping on a cut.
+/// Every full-screen console config screen draws its rows in one.
+pub fn settings_column(body: impl IntoElement) -> Div {
+    div().relative().w(u(SETTINGS_W)).max_w_full().flex().flex_col().flex_1().min_h_0().child(body).child(fade_bottom())
+}
+
+/// The fade at the bottom of a scrolling column, in the console's background.
+pub fn fade_bottom() -> Div {
+    let bg = theme::console_bg();
+    div().absolute().left_0().right_0().bottom_0().h(u(28.)).bg(linear_gradient(
+        0.,
+        linear_color_stop(bg, 0.),
+        linear_color_stop(Rgba { a: 0., ..bg }, 1.),
+    ))
+}
+
+/// A heading between card rows, in [`accent_ink`].
+pub fn card_heading(text: impl Into<SharedString>) -> Div {
+    div().pt(u(22.)).pb(u(4.)).px(u(4.)).text_size(u(16.)).font_weight(theme::W_BOLD).text_color(accent_ink()).child(text.into())
+}
+
 /// The name of a tab, `color` and bold or regular.
 fn tab_label(text: impl Into<SharedString>, size: f32, color: impl Into<Hsla>, bold: bool) -> Div {
     div()
@@ -619,13 +856,22 @@ fn tab_label_at(text: impl Into<SharedString>, size: f32, k: f32, on: bool) -> D
 
 /// Tabs switched with LB / RB; the active one is white and underlined
 /// (the underline grows in from the centre while the old one shrinks).
+/// When they do not fit across the window (with room for a title and the
+/// clock beside them), only those around the active one show.
 pub fn tabs(items: &[SharedString], active: usize) -> Div {
+    tabs_within(items, active, vw() - 420.)
+}
+
+/// [`tabs`] in `room` design px.
+pub fn tabs_within(items: &[SharedString], active: usize, room: f32) -> Div {
+    let widths: Vec<f32> = items.iter().map(|t| text_w(t.chars().count(), 17.)).collect();
+    let (first, last) = fit_row(&widths, 26., active, room - 80.);
     div()
         .flex()
         .items_center()
         .gap(u(26.))
         .child(glyph(Btn::LB).on_pads([Pad::LB]))
-        .children(items.iter().enumerate().map(|(i, t)| {
+        .children(items.iter().enumerate().skip(first).take(last - first).map(|(i, t)| {
             let on = i == active;
             let label = t.clone();
             let id = SharedString::from(format!("tab-{label}"));
@@ -843,9 +1089,25 @@ pub fn window_layer(window: &Window, child: impl IntoElement) -> AnyElement {
 #[cfg(test)]
 mod tests {
     // Explicit imports: `use super::*` would bring in gpui's `test` macro and shadow `#[test]`.
-    use super::{mark, Face, Mark};
+    use super::{fit_row, mark, Face, Mark};
     use crate::console::Btn;
     use heronite_data::console_theme::Glyphs;
+
+    #[test]
+    fn a_row_that_fits_shows_whole_and_a_long_one_keeps_the_active_item() {
+        let w = [100.; 8];
+        // 8 × 100 + 7 × 10 = 870: all of it in 900.
+        assert_eq!(fit_row(&w, 10., 7, 900.), (0, 8));
+        // In 330: three from the start while the active one is among them.
+        assert_eq!(fit_row(&w, 10., 1, 330.), (0, 3));
+        // Further on: the active one, the next, and one before.
+        assert_eq!(fit_row(&w, 10., 5, 330.), (4, 7));
+        // The last one: as many before it as fit.
+        assert_eq!(fit_row(&w, 10., 7, 330.), (5, 8));
+        // Too narrow for even one: the active one alone.
+        assert_eq!(fit_row(&w, 10., 4, 50.), (4, 5));
+        assert_eq!(fit_row(&[], 10., 0, 50.), (0, 0));
+    }
 
     #[test]
     fn xbox_and_deck_name_the_buttons_by_letter() {

@@ -11,6 +11,7 @@ use heronite_data::{FacetKind, GroupBy, InstallFilter, SortMode};
 use heronite_i18n::{tr, trn};
 
 use super::matching::{fold, Haystack};
+use super::random::RandomScope;
 use crate::collection::game_actions::{GameAction, GameActionItem};
 use crate::collection::view_filters::{category_label, Only};
 use crate::icons::Icon;
@@ -27,7 +28,7 @@ pub enum Kind {
 
 /// What choosing an entry does (the Collection runs it, see `palette/mod.rs`).
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub(super) enum Act {
+pub(crate) enum Act {
     Go(Page),
     /// Settings, opened on this section.
     Section(Section),
@@ -67,15 +68,27 @@ pub(super) enum Act {
         navigate: bool,
     },
     SelectGame(String),
+    /// Picks a game at random among these and lists it (`random.rs`).
+    Random(RandomScope),
     /// An action of the game under the key (`game_actions.rs`).
     Game(String, GameAction),
     /// Lists every action of the game (the palette's second level).
     GameActions(String),
 }
 
+impl Act {
+    /// The game it is about (a game or one of its actions).
+    pub(crate) fn game(&self) -> Option<&str> {
+        match self {
+            Act::SelectGame(k) | Act::Game(k, _) | Act::GameActions(k) => Some(k),
+            _ => None,
+        }
+    }
+}
+
 /// The Collection's View menu, as commands.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub(super) enum ViewCmd {
+pub(crate) enum ViewCmd {
     Sort(SortMode),
     Show(InstallFilter),
     Group(GroupBy),
@@ -98,9 +111,23 @@ pub(super) enum ViewCmd {
     NewSmartCategory,
 }
 
+/// What the preview pane shows of a game, besides [`GameBits`].
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct GameCard {
+    pub title: SharedString,
+    /// The store or source ("Steam", "GOG").
+    pub source: SharedString,
+    /// "84h", or "Not Played".
+    pub playtime: SharedString,
+    /// "3 days ago"; `None` = never played.
+    pub last_played: Option<SharedString>,
+    /// The status shown (its name) and its slug (its colour).
+    pub status: Option<(SharedString, String)>,
+}
+
 /// What a game entry can do besides being selected.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(super) struct GameBits {
+pub(crate) struct GameBits {
     pub key: String,
     pub installed: bool,
     pub has_folder: bool,
@@ -110,10 +137,17 @@ pub(super) struct GameBits {
     pub hidden: bool,
     /// ISO timestamp (sorts as text); `None` = never played.
     pub last_played: Option<String>,
+    /// It has a store page (`details_url`): the quick launcher offers it.
+    pub store_page: bool,
+    /// Its status (`CompletionStatus::id`), which the quick launcher's
+    /// status choices leave out.
+    pub status_id: String,
+    /// The preview pane's facts (`None` in tests).
+    pub card: Option<std::rc::Rc<GameCard>>,
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct Entry {
+pub(crate) struct Entry {
     pub kind: Kind,
     pub act: Act,
     /// Stable id, kept in the palette's history.
@@ -144,7 +178,7 @@ impl Entry {
         Haystack { title: &self.f_title, alt: &self.f_alt, keywords: &self.f_keywords }
     }
 
-    fn new(kind: Kind, act: Act, id: impl Into<SharedString>, title: &str, subtitle: &str, icon: Icon, keywords: &str) -> Entry {
+    pub(super) fn new(kind: Kind, act: Act, id: impl Into<SharedString>, title: &str, subtitle: &str, icon: Icon, keywords: &str) -> Entry {
         Entry {
             kind,
             act,
@@ -174,11 +208,8 @@ impl Entry {
     }
 
     /// The game this entry is about (a game or one of its actions).
-    pub(super) fn game_key(&self) -> Option<&str> {
-        match &self.act {
-            Act::SelectGame(k) | Act::Game(k, _) | Act::GameActions(k) => Some(k),
-            _ => None,
-        }
+    pub(crate) fn game_key(&self) -> Option<&str> {
+        self.act.game()
     }
 }
 
@@ -187,6 +218,7 @@ fn section_help(s: Section) -> &'static str {
     match s {
         Section::General => tr!("Folders, tray, Wine and Proton lookup"),
         Section::Appearance => tr!("Page background, blur, covers"),
+        Section::QuickLauncher => tr!("Shortcut that opens the launcher from anywhere"),
         Section::ConsoleMode => tr!("Themes, tabs, covers and controls of the TV mode"),
         Section::Advanced => tr!("Folders, cache, copy settings"),
         Section::GameDefaults => tr!("Values new games start with"),
@@ -200,6 +232,7 @@ fn section_help(s: Section) -> &'static str {
         }
         Section::Storage => tr!("Disk space of games, prefixes, Proton, caches"),
         Section::Mods => tr!("Nexus Mods account, mod links, applying mods"),
+        Section::Controls => tr!("What every controller button does, and changing them"),
         Section::Overlay => crate::overlay::labels::palette_help(),
         Section::Replay => tr!("Last seconds of a game, saved with Guide + X"),
         Section::Metadata => tr!("Sources of details and pictures, their order and keys"),
@@ -754,6 +787,7 @@ pub(super) fn game_entry(g: &GameRow) -> Entry {
         favourite: g.favourite,
         hidden: g.hidden,
         last_played: g.last_played.map(str::to_string),
+        ..Default::default()
     });
     e
 }
@@ -810,6 +844,20 @@ pub(super) fn game_verbs(title: &str, bits: &GameBits) -> Vec<Entry> {
     all.game = Some(bits.clone());
     v.push(all);
     v
+}
+
+/// "Show X in Heronite": the game selected in the Collection (the quick
+/// launcher's Shift Enter). Without the game's bits, so it is never played.
+pub(super) fn show_in_app_entry(title: &str, bits: &GameBits) -> Entry {
+    Entry::new(
+        Kind::Game,
+        Act::SelectGame(bits.key.clone()),
+        format!("game:{}:show", bits.key),
+        &tr!("Show {title} in Heronite", title),
+        tr!("Select it in the Collection"),
+        Icon::OpenInNew,
+        "",
+    )
 }
 
 /// The verbs listed under the best game match (the rest are reached by

@@ -31,7 +31,9 @@ fn s<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
 pub fn map_lutris_detail(app_name: &str, runner: &str, slug: &str, game: &Value) -> Option<CollectionGameMetadata> {
     let name = s(game, "name")?;
     let cover = s(game, "coverart").or_else(|| s(game, "cover_url"));
-    let hero = s(game, "banner_url").or_else(|| s(game, "background_url"));
+    // Not `banner_url`: Lutris' banners are 184×69, blurred when stretched
+    // over a background. Without a background another source fills it.
+    let hero = s(game, "background_url");
     // `game.year ? String(game.year) : undefined`
     let year = match game.get("year") {
         Some(Value::Number(n)) if n.as_f64().is_some_and(|y| y != 0.0) => Some(n.to_string()),
@@ -156,8 +158,17 @@ mod tests {
         assert!(md.platforms.contains(&"Linux".to_string()));
         assert!(md.platforms.contains(&"Mac".to_string()) && !md.platforms.contains(&"Macintosh".to_string()));
         assert!(md.cover_url.unwrap().starts_with("https://"));
-        assert!(md.hero_url.unwrap().starts_with("https://"));
+        // The fixture has only a banner (184×69): never a background.
+        assert!(md.hero_url.is_none());
         assert!(md.description.is_some());
+    }
+
+    #[test]
+    fn background_is_lutris_background_never_its_banner() {
+        let mut detail = fixture("lutris_detail_portal.json");
+        detail["background_url"] = "https://lutris.net/media/games/backgrounds/portal.jpg".into();
+        let md = map_lutris_detail("steam_400", "sideload", "portal", &detail).unwrap();
+        assert_eq!(md.hero_url.as_deref(), Some("https://lutris.net/media/games/backgrounds/portal.jpg"));
     }
 
     #[test]

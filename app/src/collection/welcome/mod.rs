@@ -7,7 +7,7 @@
 //! loaded.
 //!
 //! `HERONITE_DEBUG_WELCOME=<steam>[:<emulation>]` shows a state for
-//! screenshots (with `HERONITE_DISABLE_IDLE_JOBS`): `checking`, `missing`,
+//! screenshots (with `HERONITE_DISABLE_IDLE_JOBS`): `checking`, `off`, `missing`,
 //! `closed`, `opening`, `restarting`, `restart`, `blocked`, `failed`,
 //! `reading` or `connected`; `looking`, `none`, `ready` or `unplayable`.
 
@@ -57,6 +57,7 @@ fn debug_welcome() -> Option<(String, String)> {
 
 fn debug_steam(name: &str) -> SteamState {
     match name {
+        "off" => SteamState::Off,
         "missing" => SteamState::NotInstalled,
         "closed" => SteamState::Closed,
         "opening" => SteamState::Opening,
@@ -181,6 +182,11 @@ impl CollectionView {
     fn steam_status(&self, cx: &App) -> Status {
         let busy = theme::accent();
         match Self::steam_state(cx) {
+            SteamState::Off => status(
+                tr!("Off"),
+                theme::text_dim(),
+                tr!("Reading your Steam library is off. Turn it on in the Stores, on the Steam page."),
+            ),
             SteamState::Checking => status(tr!("Checking"), busy, tr!("Looking for Steam on this PC\u{2026}")),
             SteamState::NotInstalled => status(
                 tr!("Not found"),

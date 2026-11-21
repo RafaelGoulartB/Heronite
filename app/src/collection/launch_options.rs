@@ -127,7 +127,8 @@ impl CollectionView {
     }
 
     /// Next to Stop: back to the game's window (the in-game overlay's "Back
-    /// to game"). Only where that window can be found (Hyprland).
+    /// to game"). Only where that window can be looked for (Hyprland,
+    /// Sway, X11, Windows: `heronite_overlay::game_window`).
     pub(super) fn back_to_game_button(&self, key: &str, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
         if !heronite_overlay::game_window::supported() {
             return None;

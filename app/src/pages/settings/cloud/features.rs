@@ -240,7 +240,8 @@ fn line_row(d: &SettingsPage, p: &SyncPrefs, line: Line, cx: &mut Context<Settin
             .text_color(if mode.is_on() { theme::text_muted() } else { theme::text_dim() })
             .child(human_size(b))
     });
-    let controls = div().flex().flex_none().items_center().gap(px(8.)).children(size).children(send).child(modes);
+    // Under the text (on the right) when the window is too narrow for both.
+    let controls = div().flex().flex_none().ml_auto().items_center().gap(px(8.)).children(size).children(send).child(modes);
     let dot = mode.is_on().then(|| status_of(d, line)).flatten().map(|(color, _)| color);
     let status = status_text(d, p, line, cx).map(|text| {
         div()
@@ -248,13 +249,14 @@ fn line_row(d: &SettingsPage, p: &SyncPrefs, line: Line, cx: &mut Context<Settin
             .items_start()
             .gap(px(6.))
             .children(dot.map(|c| div().flex_none().mt(px(4.)).size(px(8.)).rounded_full().bg(c)))
-            .child(div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_muted()).child(text))
+            .child(div().flex_1().min_w_0().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_muted()).child(text))
     });
     let color = space::kind_color(line.kind());
     let text = div()
         .flex()
         .flex_col()
-        .flex_1()
+        .flex_grow(1.)
+        .flex_basis(px(200.))
         .min_w_0()
         .gap(px(1.))
         .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(line.label()))
@@ -267,8 +269,18 @@ fn line_row(d: &SettingsPage, p: &SyncPrefs, line: Line, cx: &mut Context<Settin
         .items_center()
         .gap(px(12.))
         .py(px(11.))
-        .child(tile(line.icon(), color.opacity(0.16), theme::readable(color)).when(!mode.is_on(), |t| t.opacity(0.5)))
-        .child(text)
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(12.))
+                .flex_grow(1.)
+                .flex_basis(px(240.))
+                .min_w_0()
+                .child(tile(line.icon(), color.opacity(0.16), theme::readable(color)).when(!mode.is_on(), |t| t.opacity(0.5)))
+                .child(text),
+        )
+        .flex_wrap()
         .child(controls)
         .into_any_element()
 }

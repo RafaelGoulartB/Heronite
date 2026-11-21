@@ -151,6 +151,15 @@ impl Glide {
         };
         let first = self.handle.bounds_for_item(0)?;
         let item = self.handle.bounds_for_item(ix)?;
+        // A child with no size along the axis was not drawn last frame (a
+        // row of a group that just opened): wait for its layout.
+        let size = match self.axis {
+            Axis::X => item.size.width,
+            Axis::Y => item.size.height,
+        };
+        if size <= px(0.) {
+            return None;
+        }
         let (start, end, view) = match self.axis {
             Axis::X => (item.left() - first.left(), item.right() - first.left(), self.handle.bounds().size.width),
             Axis::Y => (item.top() - first.top(), item.bottom() - first.top(), self.handle.bounds().size.height),
@@ -336,6 +345,40 @@ pub fn layer_in(id: impl Into<ElementId>, child: impl IntoElement, ms: u64, dy: 
             el.opacity(t).top(off).bottom(-off)
         })
         .into_any_element()
+}
+
+/// A new game's name (or logo) and the rest under it, as the console's homes
+/// bring them in: the name hidden, held, then fading in while it slides from
+/// the side; the rest after it (ms).
+pub const NAME_HOLD: u64 = 300;
+pub const NAME_FADE: u64 = 450;
+pub const REST_HOLD: u64 = NAME_HOLD + 150;
+pub const REST_FADE: u64 = 300;
+/// How long [`reveal`]'s slide takes.
+pub const REVEAL_SLIDE_MS: u64 = 550;
+
+/// `el` (`relative`) coming in for a new game (`id` names it: the same id
+/// never plays it again): hidden, then after `hold` ms it fades in over
+/// `fade` ms from `from` opacity (ease-out), sliding `dx` design px into
+/// place over [`REVEAL_SLIDE_MS`] with a cubic ease-out. Reduced motion keeps
+/// the fade; no motion shows it at once.
+pub fn reveal(id: impl Into<ElementId>, el: Div, hold: u64, fade: u64, dx: f32, from: f32) -> AnyElement {
+    if !on() {
+        return el.into_any_element();
+    }
+    let dx = if reduced() { 0. } else { dx };
+    let total = hold + fade.max(if dx != 0. { REVEAL_SLIDE_MS } else { 0 });
+    el.with_animation(id, Animation::new(Duration::from_millis(total)), move |el, t| {
+        let ms = t * total as f32 - hold as f32;
+        let f = (ms / fade as f32).clamp(0., 1.);
+        let el = el.opacity(from + (1. - from) * (1. - (1. - f) * (1. - f)));
+        if dx == 0. {
+            return el;
+        }
+        let k = (ms / REVEAL_SLIDE_MS as f32).clamp(0., 1.);
+        el.left(u(dx * (1. - k).powi(3)))
+    })
+    .into_any_element()
 }
 
 /// Fade only.

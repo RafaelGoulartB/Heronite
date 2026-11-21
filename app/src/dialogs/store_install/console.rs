@@ -126,7 +126,7 @@ impl StoreInstallDialog {
     pub(super) fn render_console(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let rows = self.console_rows(cx);
         let kicker = if self.importing() { tr!("Import game") } else { tr!("Install") };
-        let list = self.console_list.render("console-store-install", &rows, !self.layer.is_open());
+        let list = self.console_list.render_cards("console-store-install", &rows, !self.layer.is_open());
         div()
             .absolute()
             .inset_0()
@@ -154,16 +154,7 @@ impl StoreInstallDialog {
                     .child(kit::kicker(kicker))
                     .child(kit::title(self.title.clone(), 40.)),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h_0()
-                    .px(u(46.))
-                    .pb(u(76.))
-                    .child(div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(list.flex_1().min_h_0())),
-            )
+            .child(div().flex().flex_col().flex_1().min_h_0().px(u(46.)).pb(u(76.)).child(list))
             .children(self.layer.view())
             .into_any_element()
     }

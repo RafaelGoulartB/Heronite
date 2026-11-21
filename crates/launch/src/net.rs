@@ -22,6 +22,12 @@ pub trait Net: Send + Sync {
     /// Streams `url` into `dest` (created, replaced). `Err("cancelled")` when
     /// `cancel` fires.
     fn download(&self, url: &str, dest: &Path, cancel: Cancel) -> Result<(), String>;
+    /// [`download`](Net::download) that gives up once it took `limit`: a
+    /// connection that stalls never hangs it for longer.
+    fn download_within(&self, url: &str, dest: &Path, cancel: Cancel, limit: Duration) -> Result<(), String> {
+        let _ = limit;
+        self.download(url, dest, cancel)
+    }
 }
 
 pub const CANCELLED: &str = "cancelled";
@@ -83,32 +89,41 @@ impl Net for SystemNet {
     }
 
     fn download(&self, url: &str, dest: &Path, cancel: Cancel) -> Result<(), String> {
-        let mut resp = agent().get(url).call().map_err(http_error)?;
-        let total = resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
-        let mut body = resp.body_mut().with_config().limit(u64::MAX).reader();
-        if let Some(dir) = dest.parent() {
-            fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
-        }
-        let mut file = fs::File::create(dest).map_err(|e| format!("creating {}: {e}", dest.display()))?;
-        let mut buf = vec![0u8; 256 * 1024];
-        let mut got = 0u64;
-        loop {
-            if cancel() {
-                return Err(CANCELLED.into());
-            }
-            let n = body.read(&mut buf).map_err(|e| e.to_string())?;
-            if n == 0 {
-                break;
-            }
-            file.write_all(&buf[..n]).map_err(|e| format!("writing {}: {e}", dest.display()))?;
-            got += n as u64;
-        }
-        file.flush().map_err(|e| e.to_string())?;
-        if total > 0 && got < total {
-            return Err(format!("connection closed after {got} of {total} bytes"));
-        }
-        Ok(())
+        download(url, dest, cancel, None)
     }
+
+    fn download_within(&self, url: &str, dest: &Path, cancel: Cancel, limit: Duration) -> Result<(), String> {
+        download(url, dest, cancel, Some(limit))
+    }
+}
+
+/// [`SystemNet`]'s downloads, within `limit` when there is one.
+fn download(url: &str, dest: &Path, cancel: Cancel, limit: Option<Duration>) -> Result<(), String> {
+    let mut resp = agent().get(url).config().timeout_global(limit).build().call().map_err(http_error)?;
+    let total = resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+    let mut body = resp.body_mut().with_config().limit(u64::MAX).reader();
+    if let Some(dir) = dest.parent() {
+        fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
+    }
+    let mut file = fs::File::create(dest).map_err(|e| format!("creating {}: {e}", dest.display()))?;
+    let mut buf = vec![0u8; 256 * 1024];
+    let mut got = 0u64;
+    loop {
+        if cancel() {
+            return Err(CANCELLED.into());
+        }
+        let n = body.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        file.write_all(&buf[..n]).map_err(|e| format!("writing {}: {e}", dest.display()))?;
+        got += n as u64;
+    }
+    file.flush().map_err(|e| e.to_string())?;
+    if total > 0 && got < total {
+        return Err(format!("connection closed after {got} of {total} bytes"));
+    }
+    Ok(())
 }
 
 /// Extracts `archive` (any format the system `tar` knows) into `dest`,

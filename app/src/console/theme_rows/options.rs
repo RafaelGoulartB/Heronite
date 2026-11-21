@@ -270,18 +270,61 @@ pub(super) static OPTS: &[Opt] = &[
     colour!("colors.muted", n_!("Secondary text"), theme.colors.muted),
     colour!("colors.focus_text", n_!("Text on the focus colour"), theme.colors.focus_text),
     colour!("colors.on", n_!("“On” switches"), theme.colors.on),
-    sel!("controls.glyphs", Controls, n_!("Buttons drawn as"), "", &[], Glyphs, glyphs_name, theme.controls.glyphs),
-    sel!("controls.hints", Controls, n_!("Hint bar"), "", &[], Hints, hints_name, theme.controls.hints),
-    tgl!(
-        "controls.swap_ab",
+    // The controller's, not the theme's: the overlay and Settings follow them too.
+    sel!(
+        "controls.glyphs",
         Controls,
-        n_!("Confirm with the east button"),
-        n_!("The Nintendo way: east confirms, south goes back."),
+        n_!("Buttons drawn as"),
+        n_!("Everywhere: console mode, the overlay and Settings."),
         &[],
-        theme.controls.swap_ab
+        Glyphs,
+        glyphs_name,
+        controller.glyphs
     ),
+    sel!(
+        "controls.confirm",
+        Controls,
+        n_!("Confirm button"),
+        n_!("Automatic: east on Nintendo controllers (their A), south on the others."),
+        &[],
+        ConfirmButton,
+        confirm_name,
+        controller.confirm
+    ),
+    sel!("controls.hints", Controls, n_!("Hint bar"), "", &[], Hints, hints_name, theme.controls.hints),
     tgl!("controls.sounds", Controls, n_!("Navigation sounds"), "", &[], theme.controls.sounds),
+    sel!(
+        "controls.sound_style",
+        Controls,
+        n_!("Sound style"),
+        n_!("Soft is low and round. Classic is the first, higher one."),
+        &[],
+        SoundStyle,
+        sound_style_name,
+        theme.controls.sound_style
+    ),
+    num!("controls.sound_volume", Controls, n_!("Sound volume"), "", 10, 100, 10, "%", u8, theme.controls.sound_volume),
     sel!("game_page", GamePage, n_!("Game page"), "", &[], GamePage, game_page_name, theme.game_page),
+    sel!(
+        "launch.screen",
+        GamePage,
+        n_!("Launch screen"),
+        n_!("Shown while a game starts, instead of the desktop."),
+        &[],
+        LaunchScreen,
+        launch_screen_name,
+        theme.launch.screen
+    ),
+    tgl!("launch.motion", GamePage, n_!("Launch screen motion"), n_!("The logo rises in as the game starts."), &[], theme.launch.motion),
+    sel!("launch.shade", GamePage, n_!("Launch screen shade"), "", &[], LaunchShade, launch_shade_name, theme.launch.shade),
+    tgl!(
+        "launch.session_card",
+        GamePage,
+        n_!("Session card"),
+        n_!("When a game closes: the time of the session and the total."),
+        &[],
+        theme.launch.session_card
+    ),
     sel!("menu.style", GamePage, n_!("Menu"), "", &[], MenuStyle, menu_style_name, theme.menu.style),
     sel!("menu.side", GamePage, n_!("Side of the menu"), "", &[], Side, side_name, theme.menu.side),
     sel!(
@@ -319,6 +362,54 @@ pub(super) static OPTS: &[Opt] = &[
         n_!("Time played, time to beat and the journal."),
         &[Layout::Spotlight],
         theme.layouts.spotlight_cards
+    ),
+    tgl!(
+        "layouts.spotlight_sections.media",
+        Layouts,
+        n_!("Spotlight: media"),
+        n_!("The store's trailers and screenshots."),
+        &[Layout::Spotlight],
+        theme.layouts.spotlight_sections.media
+    ),
+    tgl!(
+        "layouts.spotlight_sections.screenshots",
+        Layouts,
+        n_!("Spotlight: your screenshots"),
+        "",
+        &[Layout::Spotlight],
+        theme.layouts.spotlight_sections.screenshots
+    ),
+    tgl!(
+        "layouts.spotlight_sections.about",
+        Layouts,
+        n_!("Spotlight: about the game"),
+        "",
+        &[Layout::Spotlight],
+        theme.layouts.spotlight_sections.about
+    ),
+    tgl!(
+        "layouts.spotlight_sections.achievements",
+        Layouts,
+        n_!("Spotlight: achievements"),
+        "",
+        &[Layout::Spotlight],
+        theme.layouts.spotlight_sections.achievements
+    ),
+    tgl!(
+        "layouts.spotlight_sections.details",
+        Layouts,
+        n_!("Spotlight: details"),
+        n_!("Developer, size, score and the store pages."),
+        &[Layout::Spotlight],
+        theme.layouts.spotlight_sections.details
+    ),
+    tgl!(
+        "layouts.spotlight_sections.related",
+        Layouts,
+        n_!("Spotlight: more like this"),
+        "",
+        &[Layout::Spotlight],
+        theme.layouts.spotlight_sections.related
     ),
     sel!(
         "layouts.spotlight_actions",

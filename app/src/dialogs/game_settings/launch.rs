@@ -536,6 +536,12 @@ fn write_launch_options(paths: &DataPaths, game: &heronite_data::CollectionGame,
                 obj.shift_remove(heronite_data::sideload::COMMAND_KEY);
             }
             if !exe.is_empty() {
+                // Another program does not start in the old one's working folder.
+                if g["install"]["executable"].as_str() != Some(exe.as_str()) {
+                    if let Some(obj) = g.as_object_mut() {
+                        obj.shift_remove(heronite_data::sideload::WORKING_DIR_KEY);
+                    }
+                }
                 if let Some(dir) = Path::new(&exe).parent() {
                     g["folder_name"] = serde_json::Value::String(dir.to_string_lossy().into_owned());
                 }

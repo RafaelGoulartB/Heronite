@@ -130,5 +130,6 @@
   "Write about it in Notes.": "Schreibe in den Notizen darüber.",
   "Adds the time and a screenshot to the game's journal, to write about later in the overlay's Notes tab or the game's Journal.": "Fügt dem Tagebuch des Spiels die Uhrzeit und einen Screenshot hinzu, damit du später im Notizen-Tab des Overlays oder im Tagebuch des Spiels darüber schreiben kannst.",
   "Guide + Y: mark a moment": "Guide + Y: Moment markieren",
-  "Off while Guide + Y takes the screenshot: pick another button for it above.": "Aus, solange Guide + Y den Screenshot aufnimmt: Wähle oben eine andere Taste dafür."
+  "Off while Guide + Y takes the screenshot: pick another button for it above.": "Aus, solange Guide + Y den Screenshot aufnimmt: Wähle oben eine andere Taste dafür.",
+  "Hidden until you show it again or the game ends": "Ausgeblendet, bis du es wieder einblendest oder das Spiel endet"
 }

@@ -10,7 +10,9 @@
 //! The desktop screen is untouched: nothing here runs while console mode is
 //! off (the controller thread, the theme and its file only live while it is on).
 
+mod achievements;
 mod actions;
+mod activity;
 mod art;
 mod backdrop;
 mod controls;
@@ -18,8 +20,11 @@ mod customize;
 mod filters;
 mod game;
 mod hero;
+pub(super) mod launch_screen;
 mod layouts;
+pub(super) mod now_playing;
 mod power;
+pub(super) mod session_card;
 mod sidebar;
 mod sources;
 mod tile;
@@ -93,11 +98,10 @@ pub(super) struct ConsoleUi {
     /// Where the art is heading (set at once; `art_key` follows it).
     art_want: Option<SharedString>,
     art_task: Option<Task<()>>,
-    /// The art on screen and the one it fades from (dropped once the fade
-    /// is over).
+    /// The art on screen: the game's (its key and still), and the layers of
+    /// the cross-fade between games (`backdrop::ArtLayers`).
     art_cur: Option<(SharedString, std::sync::Arc<RenderImage>)>,
-    art_prev: Option<std::sync::Arc<RenderImage>>,
-    art_fade: Option<Task<()>>,
+    art_layers: backdrop::ArtLayers,
     /// Colour of the focused game's cover (the `game` focus colour and the
     /// game-colour background).
     pub game_colour: Option<(u8, u8, u8)>,
@@ -116,22 +120,24 @@ pub(super) struct ConsoleUi {
     logos: art::LogoCache,
     controls: controls::ControlsState,
     customize: Option<customize::CustomizeNav>,
+    /// The Achievements screen of a game, over the current screen.
+    achievements: Option<achievements::AchNav>,
     /// This view, for the clicks of what it draws (`console_click`).
     me: Option<WeakEntity<CollectionView>>,
+    /// The screen over everything while a game starts.
+    launch: launch_screen::LaunchUi,
+    /// "Session ended" after a game.
+    session: session_card::SessionUi,
+    /// What runs in the background (`activity.rs`).
+    activity: activity::ActivityUi,
 }
 
 /// The hint bar over the bottom of the screen, on a fade of the background
 /// colour; it fades in and rises a little while `shown`, and back out.
-fn floating_hints(hints: &[Hint], shown: bool) -> AnyElement {
-    let (mut top, mut bottom) = (theme::console_bg(), theme::console_bg());
-    top.a = 0.;
-    bottom.a = 0.9;
+/// `side`: its distance from the window's edges, design px.
+fn floating_hints(hints: &[Hint], shown: bool, side: f32) -> AnyElement {
     // Hidden, it is only faded out: it must not take clicks meant for what is under it.
-    let bar = kit::hint_bar_with(hints, shown).border_color(transparent_black()).bg(linear_gradient(
-        0.,
-        linear_color_stop(bottom, 0.),
-        linear_color_stop(top, 1.),
-    ));
+    let bar = kit::hint_bar_at(hints, shown, side).bg(kit::hint_shade());
     let layer = div().absolute().left_0().right_0().bottom_0();
     motion::spring("console-hints-float", layer.child(bar), motion::SOFT, shown, |d, k| {
         let k = k.clamp(0., 1.);
@@ -169,6 +175,7 @@ impl CollectionView {
         if let Some(key) = debug.as_deref().and_then(|d| d.strip_prefix("game:")) {
             self.open_game_page(key.to_string().into());
         }
+        self.debug_console_achievements(cx);
         if debug.as_deref() == Some("menu") {
             self.open_sidebar();
         }
@@ -328,7 +335,7 @@ impl CollectionView {
                                 pointer::hide_cursor();
                                 this.console_pad(pad, window, cx)
                             }
-                            PadMsg::Press(_) | PadMsg::Button(..) => {}
+                            PadMsg::Press(_) | PadMsg::Button(..) | PadMsg::Stick { .. } => {}
                             PadMsg::Connected(name, plugged) => {
                                 if plugged {
                                     this.show_toast(tr!("Controller connected: {name}", name), false, cx);
@@ -532,6 +539,10 @@ impl CollectionView {
     /// Routes one press.
     pub(super) fn console_pad(&mut self, pad: Pad, window: &mut Window, cx: &mut Context<Self>) {
         cx.notify();
+        // The launch screen takes every press (B puts it away).
+        if self.launch_screen_pad(pad, cx) {
+            return;
+        }
         // A press that only woke the idle screen goes no further.
         if self.console_controls_press(pad, cx) {
             return;
@@ -541,9 +552,25 @@ impl CollectionView {
         }
         self.show_console_hints(cx);
         if self.dialog.is_some() {
-            let used = self.dialog_hook.clone().is_some_and(|h| h.pad(pad, window, cx));
-            if !used && pad == Pad::B {
-                self.close_console_dialog();
+            // The dialog gets the press once this update is over: what it does
+            // may call back into the Collection (Choose disc and "How do you
+            // want to play?" launch through it), which cannot be updated
+            // while it is still handling the press.
+            match self.dialog_hook.clone() {
+                Some(hook) => {
+                    let me = cx.entity().downgrade();
+                    window.defer(cx, move |window, cx| {
+                        if !hook.pad(pad, window, cx) && pad == Pad::B {
+                            me.update(cx, |this, cx| {
+                                this.close_console_dialog();
+                                cx.notify();
+                            })
+                            .ok();
+                        }
+                    });
+                }
+                None if pad == Pad::B => self.close_console_dialog(),
+                None => {}
             }
             return;
         }
@@ -584,6 +611,12 @@ impl CollectionView {
             }
             return;
         }
+        if self.console.achievements.is_some() {
+            if !self.achievements_pad(pad, window, cx) && pad == Pad::B {
+                self.close_console_achievements();
+            }
+            return;
+        }
         if let Screen::Game(key) = self.console.screen.clone() {
             if !self.game_pad(&key, pad, window, cx) && pad == Pad::B {
                 self.close_game_page();
@@ -615,9 +648,6 @@ impl CollectionView {
     }
 
     fn hints_visible(&self) -> bool {
-        if self.cinema_in_focus() {
-            return false;
-        }
         match look::theme().controls.hints {
             Hints::Always => true,
             Hints::Off => false,
@@ -625,16 +655,13 @@ impl CollectionView {
         }
     }
 
-    /// Cinema keeps the whole screen to itself: no hint bar while its covers
-    /// have the focus (a dialog, menu or page over it still shows its own).
-    fn cinema_in_focus(&self) -> bool {
-        self.tabs_in_focus() && self.console_shown_tab().1.layout == Layout::Cinema
-    }
-
     /// The tab's layout takes the presses: no page, game page, dialog, menu
     /// or panel over it.
     fn tabs_in_focus(&self) -> bool {
-        self.page == Page::Collection && matches!(self.console.screen, Screen::Tabs) && self.body_in_focus()
+        self.page == Page::Collection
+            && matches!(self.console.screen, Screen::Tabs)
+            && self.console.achievements.is_none()
+            && self.body_in_focus()
     }
 
     /// The screen under the layers (tab, page or game page) takes the
@@ -648,14 +675,17 @@ impl CollectionView {
     }
 
     /// The wheel moves along the row of covers of the layouts that are one
-    /// row (Carousel, Spotlight), else up and down.
+    /// row (Carousel; Spotlight and Cinema while their row has the focus),
+    /// else up and down.
     /// On a game page with long text, the wheel scrolls it.
     fn wheel_axis(&self) -> WheelAxis {
-        let row = matches!(self.console_shown_tab().1.layout, Layout::Carousel | Layout::Spotlight);
-        let game_page = self.page == Page::Collection && matches!(self.console.screen, Screen::Game(_)) && self.body_in_focus();
+        let row = self.layout_wheel_row();
+        let game_page = self.page == Page::Collection
+            && (matches!(self.console.screen, Screen::Game(_)) || self.console.achievements.is_some())
+            && self.body_in_focus();
         if row && self.tabs_in_focus() {
             WheelAxis::Horizontal
-        } else if game_page && self.game_page_scrolls_text() {
+        } else if game_page && (self.console.achievements.is_some() || self.game_page_scrolls_text()) {
             WheelAxis::Text
         } else {
             WheelAxis::Vertical
@@ -751,6 +781,9 @@ impl CollectionView {
             h.push(hint(Btn::Start, tr!("Menu")));
             return h;
         }
+        if self.console.achievements.is_some() {
+            return self.achievements_hints();
+        }
         match &self.console.screen {
             Screen::Game(key) => self.game_hints(key),
             Screen::Tabs => {
@@ -781,7 +814,7 @@ impl CollectionView {
         }
         let wanted = key.clone();
         self.console.art_task = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_millis(220)).await;
+            cx.background_executor().timer(backdrop::ART_SETTLE).await;
             this.update(cx, |this, cx| {
                 this.console.art_key = wanted;
                 cx.notify();
@@ -827,7 +860,9 @@ impl CollectionView {
     /// the current one's name, centred (`Title`) or nothing (`Bottom`: the
     /// tabs go along the bottom, see `console_bottom_tabs`); status icons,
     /// clock.
-    fn console_top_bar(&self) -> Div {
+    /// `right`: the bar's right edge, design px from the window's (Cinema's
+    /// lines up with its row), else the usual.
+    fn console_top_bar(&self, right: Option<f32>) -> Div {
         let theme = look::theme();
         let names: Vec<SharedString> = theme.tabs.iter().map(tab_label).collect();
         let label = theme.interface.label.trim().to_string();
@@ -841,20 +876,23 @@ impl CollectionView {
             .gap(u(36.))
             .h(u(76.))
             .px(u(46.))
+            .when_some(right, |d, r| d.pr(u(r)))
             .when(!label.is_empty(), |d| d.child(kit::wordmark(&label)))
-            .when(names.len() > 1 && tab_bar == TabBar::Top, |d| d.child(kit::tabs(&names, tab)))
+            .when(names.len() > 1 && tab_bar == TabBar::Top, |d| d.child(self.layout_tabs(&names, tab)))
             .when(names.len() > 1 && tab_bar == TabBar::Names, |d| d.child(kit::tab_names(&names, tab)))
+            .children(self.layout_top_filters())
             .when_some(theme.tabs.get(tab).filter(|_| tab_bar == TabBar::Title), |d, t| {
                 let title = kit::tab_title(&tab_label(t), kit::tab_icon(&t.source, t.layout), names.len() > 1);
                 d.child(div().absolute().top_0().bottom_0().left_0().right_0().flex().items_center().justify_center().child(title))
             })
             .child(div().flex_1())
+            .children(self.activity_in_bar())
             .when(theme.interface.status_icons, |d| {
                 d.when(self.console.controller.is_some(), |d| {
                     d.child(crate::ui::icon(crate::icons::Icon::SportsEsports, u(20.), theme::text_muted()))
                 })
             })
-            .child(kit::clock())
+            .child(self.layout_clock())
     }
 
     /// The tabs along the bottom (`tab_bar: bottom`), when there are several.
@@ -881,6 +919,8 @@ impl CollectionView {
             Screen::Game(k) if !on_page => Some(k.clone()),
             _ => None,
         };
+        // The Achievements screen of a game, full screen over the rest.
+        let ach = !on_page && self.console.achievements.is_some();
         let body: AnyElement = if on_page {
             match self.render_page_view() {
                 // Pages rise in.
@@ -893,6 +933,8 @@ impl CollectionView {
                 ),
                 None => div().into_any_element(),
             }
+        } else if ach {
+            self.render_console_achievements(window, cx)
         } else if let Some(key) = &game_key {
             self.render_console_game(key, window, cx)
         } else {
@@ -907,14 +949,17 @@ impl CollectionView {
             )
         };
         self.sync_console_colour();
-        let keeps_tabs = !on_page && (game_key.is_none() || self.game_page_keeps_tabs());
+        let keeps_tabs = !on_page && !ach && (game_key.is_none() || self.game_page_keeps_tabs());
         // The tabs take clicks only while LB / RB switch them.
         let tabs_input = self.tabs_in_focus() && !self.console.results;
         let blocked = |d: Div| if tabs_input { d } else { d.child(div().absolute().inset_0().occlude()) };
-        let top_bar = keeps_tabs.then(|| blocked(self.console_top_bar()));
+        let bar_right = self.layout_hint_side(window);
+        let top_bar = keeps_tabs.then(|| blocked(self.console_top_bar(bar_right)));
         let bottom_tabs = if keeps_tabs { self.console_bottom_tabs().map(|d| blocked(d.relative())) } else { None };
         let scrim = if on_page {
             Scrim::Page
+        } else if ach {
+            Scrim::Classic
         } else if game_key.is_some() {
             self.game_scrim(&spec)
         } else {
@@ -922,7 +967,8 @@ impl CollectionView {
         };
         let backdrop = self.render_console_backdrop(scrim, window, cx);
         let hints_on = self.hints_visible();
-        let float = !on_page && game_key.is_none() && layouts::hints_float(spec.layout);
+        let float = ach || (!on_page && game_key.is_none() && layouts::hints_float(spec.layout));
+        let hint_side = if !on_page && game_key.is_none() && !ach { self.layout_hint_side(window).unwrap_or(46.) } else { 46. };
         let hints = if hints_on || float { self.console_hints(cx) } else { Vec::new() };
         let idle = self.render_idle(window, cx);
         let customize = self.render_console_customize();
@@ -930,6 +976,7 @@ impl CollectionView {
         // Over the whole window but the hint bar (the Sheet game page floats).
         let game_layer = game_key
             .as_ref()
+            .filter(|_| !ach)
             .and_then(|k| self.render_console_game_layer(k, window, cx))
             .map(|layer| div().absolute().top_0().left_0().right_0().bottom(if hints_on { u(60.) } else { px(0.) }).child(layer));
         let (_, body_font) = look::fonts();
@@ -985,10 +1032,11 @@ impl CollectionView {
             .children(self.render_toast(cx))
             // Above the overlays: the hints of whatever has the focus.
             .when(hints_on && !float, |d| {
-                d.child(div().absolute().left_0().right_0().bottom_0().child(kit::hint_bar(&hints).bg(theme::console_bg())))
+                d.child(div().absolute().left_0().right_0().bottom_0().child(kit::hint_bar(&hints).bg(kit::hint_shade())))
             })
-            .when(float, |d| d.child(floating_hints(&hints, hints_on)))
+            .when(float, |d| d.child(floating_hints(&hints, hints_on, hint_side)))
             .children(idle)
+            .children(self.render_launch_layers(keeps_tabs, window, cx))
             .into_any_element()
     }
 }

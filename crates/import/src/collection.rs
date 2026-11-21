@@ -2,8 +2,11 @@
 //! entry (`sideload_apps/library.json`) and its Collection metadata
 //! (`local_library/library.json`) with the launcher's command line
 //! ([`LAUNCH_KIND`]), plus the launcher's play time when it is ahead.
+//! Playnite's games that can start without it are brought over as this
+//! app's own instead ([`crate::transfer`]).
 
 use std::collections::{BTreeSet, HashSet};
+use std::path::Path;
 
 use anyhow::Result;
 use heronite_data::launchers::{Launcher, LAUNCH_KIND, PREFIX_KEY, RUNS_FROM_KEY};
@@ -11,6 +14,7 @@ use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta, LocalMetaFile,
 use heronite_data::{json_store, DataPaths};
 use serde_json::{json, Map, Value};
 
+use crate::transfer::{self, Transfer};
 use crate::{Game, Report};
 
 /// The Collection's name for `game` of `launcher`: `lutris_12`.
@@ -38,6 +42,9 @@ fn entry(launcher: Launcher, game: &Game) -> GameInfo {
         ..Default::default()
     };
     info.rest.insert("canRunOffline".into(), Value::Bool(true));
+    if let Some(t) = &game.transfer {
+        transfer::entry(&mut info, game, t);
+    }
     info
 }
 
@@ -88,29 +95,59 @@ fn refresh(entry: &mut Map<String, Value>, fresh: &GameInfo) -> bool {
     *entry != before
 }
 
+/// Turns an entry that asked Playnite to start the game into the game's own
+/// (`fresh`); its pictures stay when it has none of Playnite's.
+fn take_over(entry: &mut Map<String, Value>, fresh: &GameInfo) -> Result<bool> {
+    let before = entry.clone();
+    let Value::Object(fresh) = serde_json::to_value(fresh)? else { return Ok(false) };
+    for (k, v) in fresh.into_iter().filter(|(_, v)| !v.is_null()) {
+        entry.insert(k, v);
+    }
+    Ok(*entry != before)
+}
+
 /// Brings `games` of `launcher` into the Collection: new ones are added,
 /// known ones refreshed, the ones the launcher no longer has stay as not
 /// installed. The ones in `removed` (app names: the user took them out) are
-/// left out.
-pub fn sync(paths: &DataPaths, launcher: Launcher, games: &[Game], removed: &BTreeSet<String>) -> Result<Report> {
+/// left out. A Playnite game brought over before is the user's: only its
+/// play time moves. `home` is the user's home folder.
+pub fn sync(paths: &DataPaths, home: &Path, launcher: Launcher, games: &[Game], removed: &BTreeSet<String>) -> Result<Report> {
     let mut report = Report::default();
     let games: Vec<&Game> = games.iter().filter(|g| !removed.contains(&app_name(launcher, &g.id))).collect();
     let metas: LocalMetaFile = json_store::read(&paths.local_meta())?;
     let ours: HashSet<String> = metas.games.values().filter(|m| m.source == launcher.id()).map(|m| m.app_name.clone()).collect();
-    let fresh: Vec<(GameInfo, &Game)> = games.iter().map(|g| (entry(launcher, g), *g)).collect();
+    let own: HashSet<String> = metas
+        .games
+        .values()
+        .filter(|m| launcher == Launcher::Playnite && m.source == launcher.id() && m.launch_kind != LAUNCH_KIND)
+        .map(|m| m.app_name.clone())
+        .collect();
+    let fresh: Vec<(GameInfo, &Game)> =
+        games.iter().filter(|g| !own.contains(&app_name(launcher, &g.id))).map(|g| (entry(launcher, g), *g)).collect();
     let wanted: HashSet<&str> = fresh.iter().map(|(i, _)| i.app_name.as_str()).collect();
+    let copying: Vec<(String, &Game, &Transfer)> =
+        fresh.iter().filter_map(|(i, g)| Some((i.app_name.clone(), *g, g.transfer.as_deref()?))).collect();
+    transfer::record_added(paths, &copying);
+    // What they carry goes first: a game is brought over once its entry is
+    // written, and never again (writing it twice changes nothing).
+    transfer::settle(paths, home, &copying);
 
     let statuses = heronite_data::status::load_statuses(paths).unwrap_or_else(|_| heronite_data::status::default_statuses());
     json_store::update_if_changed::<LocalMetaFile, _>(&paths.local_meta(), |file| {
         for (info, game) in &fresh {
-            match file.games.get_mut(&info.app_name) {
-                Some(m) => {
+            match (file.games.get_mut(&info.app_name), game.transfer.as_deref()) {
+                (Some(m), Some(t)) => transfer::set_meta(m, game, t, &statuses, false),
+                (Some(m), None) => {
                     m.launcher_args = Some(game.command.clone());
                     set_paths(m, game);
                 }
-                None => {
+                (None, t) => {
                     let status = heronite_data::status::inferred_status_id(game.minutes as f64, &statuses);
-                    file.games.insert(info.app_name.clone(), meta(launcher, game, &status));
+                    let mut m = meta(launcher, game, &status);
+                    if let Some(t) = t {
+                        transfer::set_meta(&mut m, game, t, &statuses, true);
+                    }
+                    file.games.insert(info.app_name.clone(), m);
                 }
             }
         }
@@ -130,12 +167,17 @@ pub fn sync(paths: &DataPaths, launcher: Launcher, games: &[Game], removed: &BTr
         for item in list.iter_mut() {
             let Some(obj) = item.as_object_mut() else { continue };
             let Some(app) = obj.get("app_name").and_then(Value::as_str).map(str::to_owned) else { continue };
-            if let Some((info, _)) = fresh.iter().find(|(i, _)| i.app_name == app) {
+            if let Some((info, game)) = fresh.iter().find(|(i, _)| i.app_name == app) {
                 seen.insert(app);
-                if refresh(obj, info) {
+                let changed = if game.transfer.is_some() { take_over(obj, info)? } else { refresh(obj, info) };
+                if changed {
                     report.updated += 1;
                 }
-            } else if ours.contains(&app) && !wanted.contains(app.as_str()) && obj.get("is_installed") != Some(&json!(false)) {
+            } else if ours.contains(&app)
+                && !own.contains(&app)
+                && !wanted.contains(app.as_str())
+                && obj.get("is_installed") != Some(&json!(false))
+            {
                 obj.insert("is_installed".into(), json!(false));
                 report.updated += 1;
             }
@@ -147,11 +189,14 @@ pub fn sync(paths: &DataPaths, launcher: Launcher, games: &[Game], removed: &BTr
         Ok(())
     })?;
 
-    let played: Vec<_> = fresh.iter().map(|(i, g)| (i.app_name.clone(), g.minutes, g.last_played.clone())).collect();
+    let played: Vec<_> = games.iter().map(|g| (app_name(launcher, &g.id), g.minutes, g.last_played.clone())).collect();
     // A new entry's play time is part of adding it.
     report.updated += raise_playtime(paths, &played)?.iter().filter(|app| ours.contains(*app)).count();
     if report.added > 0 {
         log::info!("Added {} game(s) from {} to the Collection", report.added, launcher.name());
+    }
+    if !copying.is_empty() {
+        log::info!("Brought {} game(s) over from {}: they start here", copying.len(), launcher.name());
     }
     Ok(report)
 }
@@ -260,7 +305,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
         let first = [game("1", "Celeste", 90), game("2", "Hades", 0)];
-        assert_eq!(sync(&paths, Launcher::Lutris, &first, &BTreeSet::new()).unwrap(), Report { added: 2, updated: 0 });
+        assert_eq!(
+            sync(&paths, Path::new("/home/u"), Launcher::Lutris, &first, &BTreeSet::new()).unwrap(),
+            Report { added: 2, updated: 0 }
+        );
 
         let lib = Library::load(&paths).unwrap();
         let celeste = lib.get("sideload_lutris_1").unwrap();
@@ -276,13 +324,16 @@ mod tests {
         // Again: nothing new, and nothing written (the Collection would reload).
         let (meta_time, list_time) = (json_store::mtime(&paths.local_meta()), json_store::mtime(&paths.sideload_library()));
         std::thread::sleep(std::time::Duration::from_millis(20));
-        assert_eq!(sync(&paths, Launcher::Lutris, &first, &BTreeSet::new()).unwrap(), Report::default());
+        assert_eq!(sync(&paths, Path::new("/home/u"), Launcher::Lutris, &first, &BTreeSet::new()).unwrap(), Report::default());
         assert_eq!((json_store::mtime(&paths.local_meta()), json_store::mtime(&paths.sideload_library())), (meta_time, list_time));
 
         // Hades was removed from Lutris, Celeste renamed and played more.
         let mut renamed = game("1", "Celeste (2018)", 120);
         renamed.last_played = Some("2026-02-01T00:00:00.000Z".into());
-        assert_eq!(sync(&paths, Launcher::Lutris, &[renamed], &BTreeSet::new()).unwrap(), Report { added: 0, updated: 3 });
+        assert_eq!(
+            sync(&paths, Path::new("/home/u"), Launcher::Lutris, &[renamed], &BTreeSet::new()).unwrap(),
+            Report { added: 0, updated: 3 }
+        );
         let lib = Library::load(&paths).unwrap();
         assert_eq!(lib.get("sideload_lutris_1").unwrap().title, "Celeste (2018)");
         assert_eq!(lib.get("sideload_lutris_1").unwrap().playtime_minutes, 120);
@@ -300,7 +351,7 @@ mod tests {
         let paths = DataPaths::at(dir.path());
         let removed: BTreeSet<String> = ["lutris_2".to_string()].into();
         let games = [game("1", "Celeste", 0), game("2", "Hades", 0)];
-        assert_eq!(sync(&paths, Launcher::Lutris, &games, &removed).unwrap(), Report { added: 1, updated: 0 });
+        assert_eq!(sync(&paths, Path::new("/home/u"), Launcher::Lutris, &games, &removed).unwrap(), Report { added: 1, updated: 0 });
         let lib = Library::load(&paths).unwrap();
         assert!(lib.get("sideload_lutris_1").is_some() && lib.get("sideload_lutris_2").is_none());
     }
@@ -314,12 +365,152 @@ mod tests {
         let mut castlevania = game("71581114-f5b5-44e2-b5c9-d2ff835b199e", "Castlevania", 129);
         castlevania.prefix = None;
         castlevania.runs_from = Some("/emulators/duckstation".into());
-        assert_eq!(sync(&paths, Launcher::Playnite, &[castlevania], &BTreeSet::new()).unwrap(), Report { added: 1, updated: 0 });
+        assert_eq!(
+            sync(&paths, Path::new("/home/u"), Launcher::Playnite, &[castlevania], &BTreeSet::new()).unwrap(),
+            Report { added: 1, updated: 0 }
+        );
         let lib = Library::load(&paths).unwrap();
         let g = lib.get("sideload_playnite_71581114-f5b5-44e2-b5c9-d2ff835b199e").unwrap();
         assert_eq!(g.source_label, "Playnite");
         let m = g.meta.as_ref().unwrap();
         assert_eq!((m.extra.get(RUNS_FROM_KEY), m.extra.get(PREFIX_KEY)), (Some(&json!("/emulators/duckstation")), None));
+    }
+
+    fn copied(id: &str, title: &str, start: transfer::Start) -> Game {
+        use heronite_data::game_actions::{Action, ActionKind};
+        let mut g = game(id, title, 129);
+        g.prefix = None;
+        g.command = format!("explorer.exe playnite://playnite/start/{id}");
+        g.transfer = Some(Box::new(Transfer {
+            start,
+            details: heronite_metadata::providers::PlayniteGame {
+                id: id.into(),
+                name: title.into(),
+                description: Some("<p>A <b>gothic</b> castle.</p>".into()),
+                release_date: Some("1997-03-20".into()),
+                developers: vec!["Konami".into()],
+                genres: vec!["Metroidvania".into()],
+                critic_score: Some(93),
+                links: vec!["https://example.com/sotn".into()],
+                ..Default::default()
+            },
+            library: "/playnite/library".into(),
+            favourite: true,
+            hidden: false,
+            stars: Some(5),
+            status: Some(("3c0b5e1f-0000-0000-0000-000000000001".into(), "Beaten".into())),
+            notes: Some("Inverted castle next".into()),
+            added: Some("2021-06-01".into()),
+            categories: vec!["Couch".into()],
+            actions: transfer::with_ids(vec![Action {
+                name: "Manual".into(),
+                kind: ActionKind::Open,
+                target: "https://example.com/manual".into(),
+                ..Default::default()
+            }]),
+        }));
+        g
+    }
+
+    fn program(path: &str, args: &str, working_dir: Option<&str>) -> transfer::Start {
+        transfer::Start::Program { path: path.into(), args: args.into(), working_dir: working_dir.map(str::to_string) }
+    }
+
+    /// A Playnite game that can start without Playnite comes over as this
+    /// app's own, with what Playnite knew of it; from then on it is the
+    /// user's.
+    #[test]
+    fn playnites_games_come_over_as_this_apps_own() {
+        use heronite_data::sideload::WORKING_DIR_KEY;
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let home = Path::new("/home/u");
+        let id = "71581114-f5b5-44e2-b5c9-d2ff835b199e";
+        let app = format!("playnite_{id}");
+        let sotn = copied(id, "Castlevania", program("/games/sotn/bin/sotn.exe", "-windowed -lang en", Some("/games/sotn")));
+        assert_eq!(sync(&paths, home, Launcher::Playnite, std::slice::from_ref(&sotn), &BTreeSet::new()).unwrap().added, 1);
+
+        let lib = Library::load(&paths).unwrap();
+        let g = lib.get(&format!("sideload_{app}")).unwrap();
+        assert_eq!(g.source_label, "Playnite");
+        assert_eq!(g.launch_kind.as_deref(), Some("executable"));
+        assert!(g.installed && g.favourite && !g.hidden);
+        assert_eq!(g.playtime_minutes, 129);
+        assert_eq!(g.status_id, "beaten");
+        let m = g.meta.as_ref().unwrap();
+        assert_eq!(m.remapped_executable.as_deref(), Some("/games/sotn/bin/sotn.exe"));
+        assert_eq!((m.launcher_args.as_deref(), m.playnite_id.as_str()), (None, id));
+        assert_eq!(m.notes.as_deref(), Some("Inverted castle next"));
+        let info = &g.game;
+        assert_eq!(info.install.executable.as_deref(), Some("/games/sotn/bin/sotn.exe"));
+        assert_eq!(heronite_data::sideload::working_dir_of(info), Some("/games/sotn"));
+        assert_eq!(info.rest.get(WORKING_DIR_KEY), Some(&json!("/games/sotn")));
+
+        let key = format!("sideload_{app}");
+        assert_eq!(heronite_data::game_config::game_overrides(&paths, &app).get("launcherArgs"), Some(&json!("-windowed -lang en")));
+        assert_eq!(heronite_data::ratings::load(&paths).get(&key), Some(&5));
+        assert_eq!(heronite_data::added::load(&paths).get(&key).map(String::as_str), Some("2021-06-01"));
+        assert_eq!(heronite_data::game_actions::load(&paths)[&key][0].target, "https://example.com/manual");
+        let store: Value = json_store::read_value(&paths.store_config()).unwrap();
+        let couch = &store["games"]["customCategories"]["Couch"];
+        assert_eq!(couch, &json!([heronite_data::categories::game_ref("sideload", &app)]));
+        let md = heronite_metadata::store::get_game_metadata(&paths, "sideload", &app).unwrap().unwrap();
+        assert_eq!(md.description.as_deref(), Some("A gothic castle."));
+        assert_eq!((md.release_date.as_deref(), md.developers.as_slice()), (Some("1997-03-20"), &["Konami".to_string()][..]));
+        assert_eq!(md.critic_score.map(|s| s.get()), Some(93.0));
+        assert_eq!(md.websites, ["https://example.com/sotn"]);
+
+        // The user changes it here; Playnite renames it and drops it later:
+        // it stays as the user has it, only its play time follows Playnite.
+        heronite_data::status::set_game_status(&paths, &app, "completed", &Default::default()).unwrap();
+        let mut renamed = copied(id, "Castlevania: SOTN", program("/elsewhere/sotn.exe", "", None));
+        renamed.minutes = 300;
+        assert_eq!(sync(&paths, home, Launcher::Playnite, &[renamed], &BTreeSet::new()).unwrap(), Report { added: 0, updated: 1 });
+        assert_eq!(sync(&paths, home, Launcher::Playnite, &[], &BTreeSet::new()).unwrap(), Report::default());
+        let lib = Library::load(&paths).unwrap();
+        let g = lib.get(&format!("sideload_{app}")).unwrap();
+        assert_eq!((g.title.as_str(), g.installed, g.playtime_minutes), ("Castlevania", true, 300));
+        assert_eq!(g.status_id, "completed");
+        assert_eq!(g.meta.as_ref().unwrap().remapped_executable.as_deref(), Some("/games/sotn/bin/sotn.exe"));
+    }
+
+    /// An emulated game comes with its emulator's command line and ROMs; a
+    /// game Playnite started before is brought over, keeping the status the
+    /// user gave it.
+    #[test]
+    fn a_game_playnite_started_is_brought_over() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let home = Path::new("/home/u");
+        let id = "00000002-0000-0000-0000-000000000002";
+        let app = format!("playnite_{id}");
+        let mut linked = copied(id, "Okami", program("/x.exe", "", None));
+        linked.transfer = None;
+        sync(&paths, home, Launcher::Playnite, &[linked], &BTreeSet::new()).unwrap();
+        heronite_data::status::set_game_status(&paths, &app, "playing", &Default::default()).unwrap();
+        assert_eq!(Library::load(&paths).unwrap().get(&format!("sideload_{app}")).unwrap().launch_kind.as_deref(), Some(LAUNCH_KIND));
+
+        let rom = transfer::Rom { name: Some("Disc".into()), path: "/roms/okami.iso".into() };
+        let start = transfer::Start::Emulator {
+            name: "PCSX2".into(),
+            program: "/emu/pcsx2/pcsx2-qt.exe".into(),
+            args: r#"-batch -fullscreen "{ImagePath}""#.into(),
+            roms: vec![rom],
+        };
+        let report = sync(&paths, home, Launcher::Playnite, &[copied(id, "Okami", start)], &BTreeSet::new()).unwrap();
+        assert_eq!(report, Report { added: 0, updated: 1 });
+        let lib = Library::load(&paths).unwrap();
+        let g = lib.get(&format!("sideload_{app}")).unwrap();
+        assert_eq!((g.launch_kind.as_deref(), g.status_id.as_str()), (Some("emulator"), "playing"));
+        let m = g.meta.as_ref().unwrap();
+        assert_eq!(m.remapped_executable.as_deref(), Some("/emu/pcsx2/pcsx2-qt.exe"));
+        assert_eq!(m.launcher_args.as_deref(), Some(r#"-batch -fullscreen "{ImagePath}""#));
+        assert_eq!(m.roms.as_ref().unwrap()[0].path, "/roms/okami.iso");
+        assert_eq!(m.emulator_name.as_deref(), Some("PCSX2"));
+        assert_eq!(m.extra.get(RUNS_FROM_KEY), None);
+        assert_eq!(g.game.install.executable.as_deref(), Some("/emu/pcsx2/pcsx2-qt.exe"));
+        // The day it was added to Playnite.
+        assert_eq!(heronite_data::added::load(&paths).get(&format!("sideload_{app}")).map(String::as_str), Some("2021-06-01"));
     }
 
     #[test]

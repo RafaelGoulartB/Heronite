@@ -21,8 +21,9 @@ use crate::theme;
 pub(super) const IDLE_AFTER: Duration = Duration::from_secs(5 * 60);
 /// Seconds each picture stays.
 const SLIDE_SECS: u64 = 14;
-/// The slideshow is slow: a low frame rate is enough.
-const SLIDE_FPS: f32 = 24.;
+/// The slow growth of a picture moves it by less than a pixel a frame: at a
+/// low frame rate it steps and the picture seems to shake, so it runs smooth.
+const SLIDE_FPS: f32 = 60.;
 /// Pictures in one round.
 const MAX_SLIDES: usize = 60;
 

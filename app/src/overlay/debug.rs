@@ -153,6 +153,7 @@ fn debug_live_fps(v: &str) -> Option<heronite_launch::live_fps::LiveFps> {
             smooth: false,
             limit,
             hud: kind == "mangohud",
+            limits: true,
         }),
         _ => None,
     }

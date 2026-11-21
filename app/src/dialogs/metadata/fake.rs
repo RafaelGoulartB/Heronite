@@ -12,7 +12,9 @@
 //! game; `offline`: none could be reached; `nokey`: as `fake`, without an
 //! IGDB key; `covers`: as `fake`, scrolled to the cover rows. SteamGridDB
 //! gives a cover of each shape. The pictures are covers the Collection
-//! already has.
+//! already has. `link` (and `link-change`, with "Change" open on Steam):
+//! a game that is not on Steam, which Steam can be linked to ("Not linked");
+//! `linked`: the same game, linked to a Steam page by the user.
 
 use heronite_data::collection::Game;
 use heronite_data::models::CollectionGameMetadata;
@@ -131,7 +133,7 @@ impl FakePreview {
         }
         let found = |c: &MetadataCandidate, used: bool| SourceAnswer::Found {
             hit: c.hit(),
-            pinned: pins.get(&c.source).map_or(c.source == "igdb", Option::is_some),
+            pinned: pins.get(&c.source).map_or(c.source == "igdb" || (self.state == "linked" && c.source == "steam"), Option::is_some),
             used,
         };
         let sources = if nothing {
@@ -177,6 +179,13 @@ impl FakePreview {
             }
             candidates.retain(|c| c.source != "steam");
         }
+        let unlinked = matches!(self.state.as_str(), "link" | "link-change") && pins.get("steam").is_none_or(Option::is_none);
+        if unlinked {
+            if let Some(steam) = sources.iter_mut().find(|s| s.source == "steam") {
+                steam.answer = SourceAnswer::NotAsked { why: NotAsked::NotLinked };
+            }
+            candidates.retain(|c| c.source != "steam");
+        }
         let mut proposed = current.clone();
         if let Some(igdb) = candidates.first() {
             let m = &igdb.metadata;
@@ -215,13 +224,16 @@ impl FakePreview {
     /// The picks the made-up state shows: the release date from Steam.
     pub(super) fn picks(&self) -> Vec<(&'static str, &'static str)> {
         match self.state.as_str() {
-            "none" | "offline" | "emulated" => Vec::new(),
+            "none" | "offline" | "emulated" | "link" | "link-change" => Vec::new(),
             _ => vec![("releaseDate", "steam")],
         }
     }
 
     /// A search of `source` alone.
     pub(super) fn search(&self, source: &str, query: &str) -> SourceSearch {
+        if source == "steam" {
+            return self.search_steam(query);
+        }
         let hit = |id: &str, title: String, year: i32, platform: &str| SourceHit {
             source: source.into(),
             id: Some(id.into()),
@@ -249,6 +261,35 @@ impl FakePreview {
                 one(hit("1131", format!("{query} HD Collection"), 2011, "PlayStation 3, Xbox 360")),
             ],
             asked: vec![source.into()],
+            ..Default::default()
+        }
+    }
+
+    /// Steam's hits: a cover each, no year (the store search gives none), the first
+    /// named by a typed address or app id.
+    fn search_steam(&self, query: &str) -> SourceSearch {
+        let hit = |i: usize, id: &str, title: String, year: Option<i32>| {
+            let h = SourceHit {
+                source: "steam".into(),
+                id: Some(id.into()),
+                title: Some(title),
+                year,
+                platform: None,
+                thumb_url: self.thumb(i),
+                matched_by: None,
+                alt_title: None,
+                thumb_adult: false,
+            };
+            MatchChoice { title: h.title.clone(), year: h.year, platform: None, alt_title: None, thumb_url: None, hits: vec![h] }
+        };
+        SourceSearch {
+            choices: vec![
+                hit(0, "2131630", query.to_string(), None),
+                hit(1, "2131631", format!("{query}: Subsistence"), None),
+                hit(2, "2131632", format!("{query} Demo"), None),
+                hit(3, "2131633", format!("{query} Remastered"), None),
+            ],
+            asked: vec!["steam".into()],
             ..Default::default()
         }
     }

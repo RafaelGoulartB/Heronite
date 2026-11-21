@@ -96,7 +96,10 @@ impl LogViewer {
         }
         div()
             .id("log-entries")
-            .w(px(240.))
+            // Narrower in a narrow window, so the log keeps most of the width.
+            .w(relative(0.3))
+            .min_w(px(170.))
+            .max_w(px(240.))
             .flex_none()
             .h(px(height))
             .overflow_y_scroll()

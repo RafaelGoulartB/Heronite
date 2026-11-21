@@ -1,7 +1,8 @@
 //! What the dialog asks and saves, and the rules of its picks and locks.
 //! The sources are asked off the UI thread; Apply saves the preview on
 //! screen with the picks, pins and locks (`apply_preview`), or only the
-//! locks when no source answered (`set_field_locks`).
+//! locks and the links taken away when no source answered (`set_field_locks`,
+//! `unlink_sources`).
 
 use heronite_data::settings::METADATA_FIELDS;
 use heronite_metadata::{MetadataApplyArgs, MetadataPreview, SourceAnswer};
@@ -187,8 +188,13 @@ impl MetadataDialog {
         self.preview.as_ref().is_some_and(|p| !p.offline && !p.candidates.is_empty())
     }
 
+    /// The sources whose link to this game was taken away here ("Unlink").
+    fn unlinked(&self) -> Vec<String> {
+        self.pins.iter().filter(|(source, id)| id.is_none() && self.linked_by_hand(source)).map(|(source, _)| source.clone()).collect()
+    }
+
     pub(super) fn can_apply(&self) -> bool {
-        self.busy.is_none() && (self.has_fetch() || !self.locks.is_empty())
+        self.busy.is_none() && (self.has_fetch() || !self.locks.is_empty() || !self.unlinked().is_empty())
     }
 
     /// Saves what is on screen and closes.
@@ -210,6 +216,7 @@ impl MetadataDialog {
         args.locks = (!self.locks.is_empty()).then(|| self.locks.clone());
         let fetched = self.has_fetch();
         let locks: IndexMap<String, bool> = self.locks.clone();
+        let unlinked = self.unlinked();
         // Saves the preview the user is looking at; asking the sources again
         // could answer differently, or not at all.
         cx.spawn(async move |this, cx| {
@@ -218,6 +225,8 @@ impl MetadataDialog {
                     if fetched {
                         service.apply_preview(&preview, &args).map(Some)
                     } else {
+                        // Nothing found to save: only the links taken away and the locks.
+                        service.unlink_sources(&args.runner, &args.app_name, &unlinked)?;
                         service.set_field_locks(&args.runner, &args.app_name, &locks)
                     }
                 })
@@ -240,12 +249,16 @@ impl MetadataDialog {
     }
 
     /// `HERONITE_DEBUG_DIALOG=metadata:<state>` (on the made-up preview):
-    /// `change` opens "Change" on the first source that can be searched.
+    /// `change` opens "Change" on the first source that can be searched,
+    /// `link-change` on Steam.
     pub(super) fn debug_state(&mut self, state: &str, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(fake) = &self.fake {
             for (field, source) in fake.picks() {
                 self.set_pick(field, source);
             }
+        }
+        if state == "link-change" {
+            self.open_change("steam", window, cx);
         }
         if state == "change" {
             let first = self.preview.as_ref().and_then(|p| p.sources.first()).map(|s| s.source.clone());

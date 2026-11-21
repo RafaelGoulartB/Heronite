@@ -1,0 +1,21 @@
+{
+  "Group copies of a game": "Regrouper les copies d’un jeu",
+  "{n} copy is a game of its own again": "{n} copie est à nouveau un jeu distinct",
+  "{n} copies are games of their own again": "{n} copies sont à nouveau des jeux distincts",
+  "Linked as {n} copy of one game": "Associée comme {n} copie d’un même jeu",
+  "Linked as {n} copies of one game": "Associées comme {n} copies d’un même jeu",
+  "Could not save the copies: {err}": "Impossible d’enregistrer les copies : {err}",
+  "Copies": "Copies",
+  "{time} in all": "{time} au total",
+  "Ungroup copies": "Dissocier les copies",
+  "Possible copies": "Copies possibles",
+  "Link": "Associer",
+  "The default copy": "La copie par défaut",
+  "Played first (installed or most played)": "Jouée en priorité (installée ou la plus jouée)",
+  "Make default": "Définir par défaut",
+  "Play this copy": "Jouer à cette copie",
+  "Install this copy": "Installer cette copie",
+  "Play with {store}": "Jouer avec {store}",
+  "Install with {store}": "Installer avec {store}",
+  "Link as copies of one game": "Associer comme copies d’un même jeu"
+}

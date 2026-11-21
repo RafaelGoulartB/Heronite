@@ -181,6 +181,8 @@ impl CollectionView {
     }
 
     pub(super) fn on_launch_event(&mut self, ev: LaunchEvent, cx: &mut Context<Self>) {
+        // Console mode's launch screen and "Session ended" card.
+        self.console_launch_event(&ev, cx);
         match ev {
             LaunchEvent::Launching { app_name } => {
                 self.preparing.insert(app_name.clone(), super::launch_progress::LaunchStep::starting());
@@ -272,6 +274,10 @@ impl CollectionView {
             return self.cancel_launch(&game.app_name, cx);
         }
         if self.playing.contains_key(&game.app_name) {
+            // Console mode: Play on a game that runs is its Now Playing (Stop is there).
+            if crate::console::active() && self.playing.get(&game.app_name) == Some(&true) && self.show_now_playing(game) {
+                return;
+            }
             if !self.runtime.stop(&game.app_name) {
                 self.runtime.force_clear(&game.app_name);
             }

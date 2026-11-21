@@ -144,8 +144,14 @@ enum Probe {
 }
 
 fn picture_url(http: &Http, system: &str, name: &str) -> String {
+    folder_url(http, system, "Named_Boxarts", name)
+}
+
+/// The address of `name` in one of a system's folders (`Named_Boxarts`,
+/// `Named_Logos`).
+fn folder_url(http: &Http, system: &str, folder: &str, name: &str) -> String {
     format!(
-        "{}/{}/Named_Boxarts/{}.png",
+        "{}/{}/{folder}/{}.png",
         http.endpoints.libretro_thumbnails.trim_end_matches('/'),
         encode_uri_component(system),
         encode_uri_component(name)
@@ -271,6 +277,17 @@ impl Libretro {
             }
         }
         Lookup::NotFound
+    }
+
+    /// The logo beside the box art `found` names (`Named_Logos`, which only
+    /// some systems have): one more request.
+    pub fn logo(&self, http: &Http, found: &Found) -> Lookup<String> {
+        let url = folder_url(http, found.system, "Named_Logos", &found.name);
+        match self.probe(http, &url) {
+            Probe::Hit(..) => Lookup::Found(url),
+            Probe::Missing => Lookup::NotFound,
+            Probe::Down => Lookup::Unreachable,
+        }
     }
 }
 

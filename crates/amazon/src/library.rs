@@ -141,6 +141,8 @@ pub(crate) fn to_game_info(entry: &Value, installed: Option<&Installed>) -> Opti
             "about": { "description": description },
             "genres": genres,
             "releaseDate": details("releaseDate"),
+            // The store media's screenshots, as the store lists them.
+            "screenshots": entry.pointer("/product/productDetail/details/screenshots").filter(|s| s.is_array()).cloned().unwrap_or_else(|| json!([])),
         },
     }))
 }
@@ -189,7 +191,7 @@ mod tests {
         "productDetail": {"iconUrl": "https://img/icon-a.png", "details": {
           "shortDescription": "A cool game", "developer": "Dev A", "publisher": "Pub", "genres": ["Action", "RPG"],
           "releaseDate": "2020-01-02T00:00:00Z", "backgroundUrl1": "https://img/bg1.png", "backgroundUrl2": "https://img/bg2.png",
-          "logoUrl": "https://img/logo.png", "screenshots": []}}}},
+          "logoUrl": "https://img/logo.png", "screenshots": ["https://img/shot1.jpg"]}}}},
       {"id": "ent-1b", "product": {"id": "amzn1.adg.product.AAA", "title": "Cool: Game™ 2"}},
       {"id": "ent-2", "product": {"id": "amzn1.adg.product.BBB", "title": "Plain",
         "productDetail": {"iconUrl": "https://img/icon-b.png", "details": {"backgroundUrl2": "", "backgroundUrl1": ""}}}},
@@ -227,6 +229,7 @@ mod tests {
         assert_eq!(a["extra"]["about"]["description"], "A cool game");
         assert_eq!(a["extra"]["genres"], json!(["Action", "RPG"]));
         assert_eq!(a["extra"]["releaseDate"], "2020-01-02T00:00:00Z");
+        assert_eq!(a["extra"]["screenshots"], json!(["https://img/shot1.jpg"]));
         assert_eq!(a["canRunOffline"], true);
         assert_eq!(a["cloud_save_enabled"], false);
         assert_eq!(a["is_linux_native"], false);

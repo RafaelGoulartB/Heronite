@@ -45,6 +45,11 @@ pub(super) struct CardState<'a> {
     pub no_art: bool,
     pub width: f32,
     pub cover_h: f32,
+    /// The cover's box, centred in its `width`×`cover_h` place: the place
+    /// itself, or with "Cover fit" → "Whole cover" the whole picture's
+    /// (`whole_cover::Shelf`). The ring, the shadow, the badges and the play
+    /// bar follow it.
+    pub cover_box: (f32, f32),
     /// The title under the cover (grid).
     pub title: bool,
     pub selected: bool,
@@ -76,6 +81,7 @@ pub fn card(
     let vm = s.vm;
     let look = s.look;
     let r = look.radius;
+    let (box_w, box_h) = s.cover_box;
     // Hover effects stay off while picking games (the tick says it all).
     let lift = s.hovered && s.pick.is_none() && look.hover == CoverHover::Lift;
     let glow = s.hovered && s.pick.is_none() && look.hover == CoverHover::Glow;
@@ -111,7 +117,7 @@ pub fn card(
     // The categories: the circles join the star's row; the corner styles
     // give way to the selection's tick and push the copies badge left.
     let style = look.categories.filter(|_| !s.categories.is_empty());
-    let area = cats::Area { w: s.width, radius: r, scale: s.scale, unit: 1., play_room: true };
+    let area = cats::Area { w: box_w, radius: r, scale: s.scale, unit: 1., play_room: true };
     let circles = if style == Some(CategoryStyle::Circles) { cats::circles(&s.categories, area) } else { Vec::new() };
     let corner_taken = style.is_some_and(cats::takes_top_right);
     // The stores' chip sits at the bottom-left: first in the row of the
@@ -239,63 +245,65 @@ pub fn card(
         .on_click(on_select)
         .on_hover(on_hover)
         .child(
-            div()
-                .relative()
-                .when(lift, |d| d.top(px(-LIFT)))
-                .w(px(s.width))
-                .h(px(s.cover_h))
-                .rounded(px(r))
-                .shadow(vec![shadow])
-                .bg(theme::ink_a(0.03))
-                .child(
-                    div()
-                        .size_full()
-                        .rounded(px(r))
-                        .overflow_hidden()
-                        .when(vm.hidden && !s.hovered, |d| d.opacity(0.62))
-                        .when(left_out, |d| d.opacity(0.55))
-                        .child(cover_img),
-                )
-                .when(glow, |d| d.child(div().absolute().inset_0().rounded(px(r)).bg(theme::white_a(0.07))))
-                .children(s.epic.as_ref().map(|e| super::epic::card_overlay(e, r)))
-                .children((vm.hidden || look.badges && vm.favourite || vm.family.is_some() || copies_left || !circles.is_empty()).then(
-                    || {
-                        top_badges(vm.hidden, look.badges && vm.favourite, vm.family.is_some())
-                            .when(copies_left, |d| d.child(copies_badge(vm.copies).relative().top_0().right_0()))
-                            .children(circles)
-                    },
-                ))
-                .children((copies && !copies_left).then(|| copies_badge(vm.copies)))
-                .children(ring.map(|color| {
-                    div()
-                        .absolute()
-                        .top(px(-2.))
-                        .left(px(-2.))
-                        .right(px(-2.))
-                        .bottom(px(-2.))
-                        .rounded(px(r + 2.))
-                        .border_2()
-                        .border_color(color)
-                }))
-                // The selected card also gets a halo around its ring, to find it
-                // at a glance (keyboard, controller, across the room).
-                .when_some(ring.filter(|_| halo), |d, color| {
-                    d.child(
+            div().flex().items_center().justify_center().w(px(s.width)).h(px(s.cover_h)).child(
+                div()
+                    .relative()
+                    .when(lift, |d| d.top(px(-LIFT)))
+                    .w(px(box_w))
+                    .h(px(box_h))
+                    .rounded(px(r))
+                    .shadow(vec![shadow])
+                    .bg(theme::ink_a(0.03))
+                    .child(
+                        div()
+                            .size_full()
+                            .rounded(px(r))
+                            .overflow_hidden()
+                            .when(vm.hidden && !s.hovered, |d| d.opacity(0.62))
+                            .when(left_out, |d| d.opacity(0.55))
+                            .child(cover_img),
+                    )
+                    .when(glow, |d| d.child(div().absolute().inset_0().rounded(px(r)).bg(theme::white_a(0.07))))
+                    .children(s.epic.as_ref().map(|e| super::epic::card_overlay(e, r)))
+                    .children((vm.hidden || look.badges && vm.favourite || vm.family.is_some() || copies_left || !circles.is_empty()).then(
+                        || {
+                            top_badges(vm.hidden, look.badges && vm.favourite, vm.family.is_some())
+                                .when(copies_left, |d| d.child(copies_badge(vm.copies).relative().top_0().right_0()))
+                                .children(circles)
+                        },
+                    ))
+                    .children((copies && !copies_left).then(|| copies_badge(vm.copies)))
+                    .children(ring.map(|color| {
                         div()
                             .absolute()
-                            .top(px(-5.))
-                            .left(px(-5.))
-                            .right(px(-5.))
-                            .bottom(px(-5.))
-                            .rounded(px(r + 5.))
-                            .border(px(3.))
-                            .border_color(Rgba { a: 0.14, ..color }),
-                    )
-                })
-                .when(show_bar, |d| d.child(div().absolute().inset_0().rounded(px(r)).overflow_hidden().child(bar)))
-                .children(category_overlay)
-                .children(store_overlay)
-                .children(s.pick.map(tick_circle)),
+                            .top(px(-2.))
+                            .left(px(-2.))
+                            .right(px(-2.))
+                            .bottom(px(-2.))
+                            .rounded(px(r + 2.))
+                            .border_2()
+                            .border_color(color)
+                    }))
+                    // The selected card also gets a halo around its ring, to find it
+                    // at a glance (keyboard, controller, across the room).
+                    .when_some(ring.filter(|_| halo), |d, color| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .top(px(-5.))
+                                .left(px(-5.))
+                                .right(px(-5.))
+                                .bottom(px(-5.))
+                                .rounded(px(r + 5.))
+                                .border(px(3.))
+                                .border_color(Rgba { a: 0.14, ..color }),
+                        )
+                    })
+                    .when(show_bar, |d| d.child(div().absolute().inset_0().rounded(px(r)).overflow_hidden().child(bar)))
+                    .children(category_overlay)
+                    .children(store_overlay)
+                    .children(s.pick.map(tick_circle)),
+            ),
         )
         .when(s.title, |d| {
             d.child(

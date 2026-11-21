@@ -51,11 +51,16 @@ pub enum Request {
     Forget(String),
     /// Play was pressed but the game's folder is gone.
     FolderMissing(String),
+    /// Play needs the Epic sign-in, which is gone (or a start just failed
+    /// for it): log in, or play offline.
+    SignedOut(String),
+    /// The Epic Games page, where the user logs in.
+    OpenEpic,
 }
 
 /// The Epic items of a game's actions (context menu and palette).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum EpicAction {
+pub(crate) enum EpicAction {
     ShowInDownloads,
     Import,
     Update,
@@ -241,6 +246,8 @@ impl CollectionView {
         let Some(req) = self.epic.pending.take() else { return };
         match req {
             Request::OpenDownloads => self.navigate(Page::Downloads, window, cx),
+            Request::OpenEpic => self.navigate(Page::Epic, window, cx),
+            Request::SignedOut(key) => self.epic_open_signed_out(&key, window, cx),
             Request::Install { key, import } => self.epic_open_install(&key, import, window, cx),
             Request::Uninstall(key) => self.epic_open_uninstall(&key, window, cx),
             Request::Move(key) => self.epic_open_move(&key, window, cx),
@@ -299,6 +306,9 @@ impl CollectionView {
             Some(b) if b.is_busy() => Request::OpenDownloads,
             None if !game.installed => Request::Install { key: game.key.clone(), import: false },
             Some(Blocker::FolderMissing) => Request::FolderMissing(game.key.clone()),
+            // Before the update prompt: neither updating nor "Play anyway"
+            // works without the sign-in.
+            _ if self.runtime.needs_epic_sign_in(game) => Request::SignedOut(game.key.clone()),
             Some(_) => Request::UpdatePrompt(game.key.clone()),
             None => return false,
         });

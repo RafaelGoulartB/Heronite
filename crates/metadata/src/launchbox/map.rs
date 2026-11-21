@@ -47,6 +47,7 @@ fn region_of(lang: Lang) -> &'static str {
         Lang::PtBr => "Brazil",
         Lang::Es => "Spain",
         Lang::De => "Germany",
+        Lang::Fr => "France",
     }
 }
 
@@ -160,17 +161,20 @@ pub fn record(
     let shaped = |family: CoverFamily| front.filter(|_| box_family == Some(family)).map(url);
     md.cover_square_url = shaped(CoverFamily::Square).or_else(|| pick(&game.images, &[ImageKind::Square], regions).map(url));
     md.cover_wide_url = shaped(CoverFamily::Wide);
+    md.logo_url = pick(&game.images, &[ImageKind::ClearLogo], regions).map(url);
     md
 }
 
 /// The pictures of `game` the Covers dialog offers for a picture of
 /// `kind`: every region's box art for a cover (and LaunchBox's square art
-/// for the square one), the backgrounds for a background.
+/// for the square one), the backgrounds for a background, the logos for a
+/// logo.
 pub fn pictures_for(game: &LbGame, kind: ArtKind) -> Vec<&LbImage> {
     let kinds: &[ImageKind] = match kind {
         ArtKind::Hero => &[ImageKind::Background],
         ArtKind::CoverSquare => &[ImageKind::BoxFront, ImageKind::BoxFrontReconstructed, ImageKind::Square],
         ArtKind::Cover | ArtKind::CoverWide => &[ImageKind::BoxFront, ImageKind::BoxFrontReconstructed],
+        ArtKind::Logo => &[ImageKind::ClearLogo],
     };
     game.images.iter().filter(|i| kinds.contains(&i.kind)).collect()
 }
@@ -193,7 +197,7 @@ pub fn choices(
             let (width, height) = size(img).unwrap_or((0, 0));
             let off_shape = kind.family().is_some_and(|f| width == 0 || family_of(width, height) != f);
             let url = image_url(images_base, &img.file);
-            let image = WebImage { thumb_url: url.clone(), image_url: url, width, height };
+            let image = WebImage { thumb_url: url.clone(), image_url: url, width, height, style: String::new(), animated: false };
             (off_shape, rank(img), img.kind, RegionImage { region: img.region.clone(), image })
         })
         .collect();
@@ -227,6 +231,7 @@ mod tests {
     #[test]
     fn regions_follow_the_choice_then_the_language() {
         assert_eq!(region_order("auto", Lang::En)[..4], ["North America", "United States", "Canada", "World"]);
+        assert_eq!(region_order("auto", Lang::Fr)[..4], ["France", "Europe", "World", ""]);
         assert_eq!(region_order("auto", Lang::De)[..4], ["Germany", "Europe", "World", ""]);
         assert_eq!(region_order("auto", Lang::PtBr)[..4], ["Brazil", "South America", "World", ""]);
         assert_eq!(region_order("Japan", Lang::En)[..4], ["Japan", "Asia", "World", ""]);

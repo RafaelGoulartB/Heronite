@@ -124,9 +124,14 @@ pub struct OverlayPanel {
     me: WeakEntity<Self>,
 }
 
-/// Controller button to console mode's press.
+/// Controller button to console mode's press. The face buttons are read by
+/// position: with the east one confirming (`look::confirm_east`), A (south)
+/// goes back and B (east) confirms, as in console mode.
 pub fn pad_of(b: Button) -> Pad {
+    let east = crate::console::look::confirm_east();
     match b {
+        Button::A if east => Pad::B,
+        Button::B if east => Pad::A,
         Button::A => Pad::A,
         Button::B => Pad::B,
         Button::X => Pad::X,
