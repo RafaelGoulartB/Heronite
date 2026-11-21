@@ -543,7 +543,7 @@ pub fn filter_games_where(games: &[Game], query: &ViewQuery, keep: &dyn Fn(&Coll
 
 /// [`filter_games_where`] with what the sorts kept outside the games read
 /// (ratings, dates added, sizes):
-/// - title: by [`sort_name`](crate::organize::sort_name);
+/// - title: by [`CollectionGame::sort_key`] (the sorting name when set);
 /// - the others: bigger and newer first, games without a value last (never
 ///   played, not rated...), ties by title.
 ///
@@ -795,6 +795,29 @@ mod tests {
         assert_eq!(titles(SortMode::Playtime), ["Beta", "alpha", "Zelda", "Delta"]);
         // recent first, never played last by title
         assert_eq!(titles(SortMode::LastPlayed), ["Beta", "Zelda", "alpha", "Delta"]);
+    }
+
+    #[test]
+    fn a_sorting_name_orders_the_game_in_place_of_its_title() {
+        let games = vec![
+            g("e", "Pokémon Emerald", |s| s.sort_name = Some("Pokémon Gen 3".into())),
+            g("f", "Pokémon FireRed", |s| s.sort_name = Some("Pokémon Gen 1".into())),
+            g("r", "Pokémon Red", |s| s.sort_name = Some("  ".into())),
+            g("t", "The Legend of Zelda", |s| s.sort_name = Some("The Legend of Zelda 1".into())),
+            g("z", "Zelda II", |_| {}),
+        ];
+        let titles = |descending| {
+            let q = ViewQuery { sort: SortMode::Title, descending, ..Default::default() };
+            filter_games(&games, &q).iter().map(|g| g.title.clone()).collect::<Vec<_>>()
+        };
+        // A blank sorting name sorts by the title; the sorting name drops
+        // "The" and reads numbers as the title does.
+        assert_eq!(titles(false), ["The Legend of Zelda", "Pokémon FireRed", "Pokémon Emerald", "Pokémon Red", "Zelda II"]);
+        assert_eq!(titles(true), ["Zelda II", "Pokémon Red", "Pokémon Emerald", "Pokémon FireRed", "The Legend of Zelda"]);
+        assert_eq!(games[0].sort_key, "Pokémon Gen 00000003");
+        let mut v: Vec<&CollectionGame> = games.iter().map(|g| g.as_ref()).collect();
+        v.sort_by(|a, b| crate::organize::title_order(a, b));
+        assert_eq!(v.iter().map(|g| g.app_name.as_str()).collect::<Vec<_>>(), ["t", "f", "e", "r", "z"]);
     }
 
     #[test]

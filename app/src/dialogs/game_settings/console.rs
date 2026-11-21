@@ -28,6 +28,7 @@ const RUN_AS: [(&str, &str); 3] =
 #[derive(Clone, Copy)]
 enum Field {
     Name,
+    SortName,
     Release,
     Score,
     Websites,
@@ -143,6 +144,8 @@ impl GameSettingsDialog {
                         .desc(tr!("Covers and backgrounds, from the web or a file")),
                     Row::header(tr!("Details")),
                     Row::text("f:name", tr!("Name"), d.name.read(cx).value().to_string()),
+                    Row::text("f:sort-name", tr!("Sorting name"), d.sort_name.read(cx).value().to_string())
+                        .desc(tr!("Only orders the games A–Z: the name shown stays the same.")),
                     Row::text("f:release", tr!("Release date"), d.release.read(cx).value().to_string()),
                     Row::text("f:score", tr!("Critic score"), d.score.read(cx).value().to_string()),
                     Row::text("f:websites", tr!("Websites"), d.websites.read(cx).value().to_string()),
@@ -170,6 +173,7 @@ impl GameSettingsDialog {
         let d = &self.details;
         match f {
             Field::Name => d.name.read(cx).value().to_string(),
+            Field::SortName => d.sort_name.read(cx).value().to_string(),
             Field::Release => d.release.read(cx).value().to_string(),
             Field::Score => d.score.read(cx).value().to_string(),
             Field::Websites => d.websites.read(cx).value().to_string(),
@@ -189,6 +193,7 @@ impl GameSettingsDialog {
                 let t = text.clone();
                 match f {
                     Field::Name => d.name.update(cx, |s, cx| s.set_value(t, window, cx)),
+                    Field::SortName => d.sort_name.update(cx, |s, cx| s.set_value(t, window, cx)),
                     Field::Release => d.release.update(cx, |s, cx| s.set_value(t, window, cx)),
                     Field::Score => d.score.update(cx, |s, cx| s.set_value(t, window, cx)),
                     Field::Websites => d.websites.update(cx, |s, cx| s.set_value(t, window, cx)),
@@ -439,6 +444,7 @@ impl PadTarget for GameSettingsDialog {
                 "save-details" => self.save_details(cx),
                 "img-find" => self.console_find_pictures(window, cx),
                 "f:name" => self.edit_field(Field::Name, tr!("Name"), window, cx),
+                "f:sort-name" => self.edit_field(Field::SortName, tr!("Sorting name"), window, cx),
                 "f:release" => self.edit_field(Field::Release, tr!("Release date"), window, cx),
                 "f:score" => self.edit_field(Field::Score, tr!("Critic score"), window, cx),
                 "f:websites" => self.edit_field(Field::Websites, tr!("Websites"), window, cx),
