@@ -1,4 +1,7 @@
 {
+  "A dashboard first: what you play, the week, downloads and a pick; the menu always at hand.": "Primero un panel: lo que juegas, la semana, descargas y una sugerencia; el menú siempre a mano.",
+  "A row of wide tiles over the art, the newest one larger, groups below.": "Una fila de mosaicos anchos sobre el arte, el más reciente más grande, grupos debajo.",
+  "A wheel of games with their covers over the art, in neon colours, like an arcade cabinet.": "Una rueda de juegos con sus portadas sobre el arte, en colores neón, como una máquina recreativa.",
   "All adds favourite, downloading and new games.": "Todos incluye favoritos, descargando y juegos nuevos.",
   "Along the bottom, with icons": "Abajo, con iconos",
   "Along the top": "Arriba",
@@ -6,8 +9,10 @@
   "Centred at the top": "Centrado arriba",
   "Chips and genres": "Etiquetas y géneros",
   "Facts as": "Datos como",
+  "Hub": "Central",
   "In a strip under the cover": "En una franja bajo la portada",
   "Installed games": "Instalados",
+  "Living room": "Salón",
   "Names only, no buttons": "Solo nombres, sin botones",
   "Numbers at the right edge": "Números en el borde derecho",
   "One line": "Una línea",
@@ -24,10 +29,5 @@
   "Spotlight: buttons": "Spotlight: botones",
   "Store above the cover": "Tienda sobre la portada",
   "The game's art full screen with its logo, and a row of large covers below it.": "El arte del juego a pantalla completa con su logo, y una fila de portadas grandes debajo.",
-  "Time played, last played, size on disk and score.": "Tiempo jugado, última vez jugado, tamaño en disco y puntuación.",
-  "A wheel of logos over the art, in neon colours, like an arcade cabinet.": "Una rueda de logos sobre el arte, en colores neón, como una máquina recreativa.",
-  "Hub": "Central",
-  "A dashboard first: what you play, the week, downloads and a pick; the menu always at hand.": "Primero un panel: lo que juegas, la semana, descargas y una sugerencia; el menú siempre a mano.",
-  "Living room": "Salón",
-  "A row of wide tiles over the art, the newest one larger, groups below.": "Una fila de mosaicos anchos sobre el arte, el más reciente más grande, grupos debajo."
+  "Time played, last played, size on disk and score.": "Tiempo jugado, última vez jugado, tamaño en disco y puntuación."
 }

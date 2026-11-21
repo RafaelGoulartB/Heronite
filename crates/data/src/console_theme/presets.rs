@@ -221,28 +221,32 @@ pub fn minimal() -> ConsoleTheme {
     })
 }
 
-/// An arcade cabinet: a wheel of logos over the game's art, deep purple
-/// and pink, square corners and spaced capitals.
+/// An arcade cabinet: a wheel of games (each with its cover) over the
+/// game's art, deep purple and pink, square corners and spaced capitals.
 pub fn arcade() -> ConsoleTheme {
-    from_classic("arcade", n_!("Arcade"), n_!("A wheel of logos over the art, in neon colours, like an arcade cabinet."), |t| {
-        t.tabs = vec![TabSpec::new(n_!("Games"), Layout::Wheel, "all"), TabSpec::new(n_!("Library"), Layout::Grid, "all")];
-        t.layouts.wheel_items = WheelItems::Logo;
-        t.hero.title = HeroTitle::Logo;
-        t.background.dim = 30;
-        t.tiles.corners = Corners::Square;
-        t.tiles.focus = FocusStyle::Glow;
-        t.interface.headings = Headings::Spaced;
-        t.interface.font = ConsoleFont::Rubik;
-        t.interface.accent = "pink".into();
-        t.colors = ColourOptions {
-            background: "#0d0221".into(),
-            panel: "#1a0b3a".into(),
-            text: "#f5f0ff".into(),
-            muted: "#b9a8e0".into(),
-            focus_text: String::new(),
-            on: "#2de2e6".into(),
-        };
-    })
+    from_classic(
+        "arcade",
+        n_!("Arcade"),
+        n_!("A wheel of games with their covers over the art, in neon colours, like an arcade cabinet."),
+        |t| {
+            t.tabs = vec![TabSpec::new(n_!("Games"), Layout::Wheel, "all"), TabSpec::new(n_!("Library"), Layout::Grid, "all")];
+            t.hero.title = HeroTitle::Logo;
+            t.background.dim = 30;
+            t.tiles.corners = Corners::Square;
+            t.tiles.focus = FocusStyle::Glow;
+            t.interface.headings = Headings::Spaced;
+            t.interface.font = ConsoleFont::Rubik;
+            t.interface.accent = "pink".into();
+            t.colors = ColourOptions {
+                background: "#0d0221".into(),
+                panel: "#1a0b3a".into(),
+                text: "#f5f0ff".into(),
+                muted: "#b9a8e0".into(),
+                focus_text: String::new(),
+                on: "#2de2e6".into(),
+            };
+        },
+    )
 }
 
 /// A dashboard of tiles first, the library and the installed games after,

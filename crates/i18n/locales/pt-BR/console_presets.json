@@ -1,4 +1,7 @@
 {
+  "A dashboard first: what you play, the week, downloads and a pick; the menu always at hand.": "Um painel primeiro: o que você joga, a semana, downloads e uma sugestão; o menu sempre à mão.",
+  "A row of wide tiles over the art, the newest one larger, groups below.": "Uma fileira de blocos largos sobre a arte, o mais recente maior, grupos abaixo.",
+  "A wheel of games with their covers over the art, in neon colours, like an arcade cabinet.": "Uma roda de jogos com suas capas sobre a arte, em cores neon, como um fliperama.",
   "All adds favourite, downloading and new games.": "Todos inclui favorito, baixando e jogos novos.",
   "Along the bottom, with icons": "Embaixo, com ícones",
   "Along the top": "No topo",
@@ -6,8 +9,10 @@
   "Centred at the top": "Centralizado no topo",
   "Chips and genres": "Etiquetas e gêneros",
   "Facts as": "Informações como",
+  "Hub": "Central",
   "In a strip under the cover": "Numa faixa embaixo da capa",
   "Installed games": "Instalados",
+  "Living room": "Sala de estar",
   "Names only, no buttons": "Só os nomes, sem botões",
   "Numbers at the right edge": "Números na borda direita",
   "One line": "Uma linha",
@@ -24,10 +29,5 @@
   "Spotlight: buttons": "Spotlight: botões",
   "Store above the cover": "Loja acima da capa",
   "The game's art full screen with its logo, and a row of large covers below it.": "A arte do jogo em tela cheia com o seu logo, e uma fileira de capas grandes abaixo.",
-  "Time played, last played, size on disk and score.": "Tempo jogado, última vez jogado, tamanho em disco e nota.",
-  "A wheel of logos over the art, in neon colours, like an arcade cabinet.": "Uma roda de logos sobre a arte, em cores neon, como um fliperama.",
-  "Hub": "Central",
-  "A dashboard first: what you play, the week, downloads and a pick; the menu always at hand.": "Um painel primeiro: o que você joga, a semana, downloads e uma sugestão; o menu sempre à mão.",
-  "Living room": "Sala de estar",
-  "A row of wide tiles over the art, the newest one larger, groups below.": "Uma fileira de blocos largos sobre a arte, o mais recente maior, grupos abaixo."
+  "Time played, last played, size on disk and score.": "Tempo jogado, última vez jogado, tamanho em disco e nota."
 }

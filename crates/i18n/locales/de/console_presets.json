@@ -1,4 +1,7 @@
 {
+  "A dashboard first: what you play, the week, downloads and a pick; the menu always at hand.": "Zuerst ein Dashboard: was du spielst, die Woche, Downloads und ein Tipp; das Menü immer griffbereit.",
+  "A row of wide tiles over the art, the newest one larger, groups below.": "Eine Reihe breiter Kacheln über dem Bild, die neueste größer, Gruppen darunter.",
+  "A wheel of games with their covers over the art, in neon colours, like an arcade cabinet.": "Ein Rad aus Spielen mit ihren Covern über dem Bild, in Neonfarben, wie ein Spielautomat.",
   "All adds favourite, downloading and new games.": "Alle enthält Favoriten, ladende und neue Spiele.",
   "Along the bottom, with icons": "Unten, mit Icons",
   "Along the top": "Oben",
@@ -6,8 +9,10 @@
   "Centred at the top": "Oben zentriert",
   "Chips and genres": "Chips und Genres",
   "Facts as": "Infos als",
+  "Hub": "Zentrale",
   "In a strip under the cover": "In einem Streifen unter dem Cover",
   "Installed games": "Installiert",
+  "Living room": "Wohnzimmer",
   "Names only, no buttons": "Nur Namen, keine Buttons",
   "Numbers at the right edge": "Zahlen am rechten Rand",
   "One line": "Eine Zeile",
@@ -24,10 +29,5 @@
   "Spotlight: buttons": "Spotlight: Buttons",
   "Store above the cover": "Store über dem Cover",
   "The game's art full screen with its logo, and a row of large covers below it.": "Das Artwork des Spiels im Vollbild mit seinem Logo, darunter eine Reihe großer Cover.",
-  "Time played, last played, size on disk and score.": "Spielzeit, zuletzt gespielt, Größe auf der Festplatte und Wertung.",
-  "A wheel of logos over the art, in neon colours, like an arcade cabinet.": "Ein Rad aus Logos über dem Bild, in Neonfarben, wie ein Spielautomat.",
-  "Hub": "Zentrale",
-  "A dashboard first: what you play, the week, downloads and a pick; the menu always at hand.": "Zuerst ein Dashboard: was du spielst, die Woche, Downloads und ein Tipp; das Menü immer griffbereit.",
-  "Living room": "Wohnzimmer",
-  "A row of wide tiles over the art, the newest one larger, groups below.": "Eine Reihe breiter Kacheln über dem Bild, die neueste größer, Gruppen darunter."
+  "Time played, last played, size on disk and score.": "Spielzeit, zuletzt gespielt, Größe auf der Festplatte und Wertung."
 }

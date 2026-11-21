@@ -382,3 +382,14 @@ fn a_saved_five_tab_cinema_that_set_a_to_play_moves_on_with_the_default_buttons(
     assert_eq!(p.theme.nav.a_button, AButton::Details);
     assert!(!p.theme.tabs.iter().any(|t| t.source == "status:not-played"));
 }
+
+#[test]
+fn arcade_shows_covers_beside_the_names_instead_of_logos() {
+    assert_eq!(presets::arcade().layouts.wheel_items, WheelItems::Name);
+    let dir = tempfile::tempdir().unwrap();
+    let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+    let mut old = presets::arcade();
+    old.layouts.wheel_items = WheelItems::Logo;
+    ConsolePrefs { theme: old, ..ConsolePrefs::default() }.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).theme.layouts.wheel_items, WheelItems::Name);
+}

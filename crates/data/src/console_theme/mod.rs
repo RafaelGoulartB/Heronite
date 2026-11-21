@@ -880,6 +880,7 @@ impl ConsolePrefs {
                 upgrade_pulse(&mut p);
                 upgrade_minimal(&mut p);
                 upgrade_cinema(&mut p);
+                upgrade_arcade(&mut p);
                 if let Some(old) = old {
                     p.controller = old;
                 }
@@ -952,6 +953,19 @@ fn upgrade_cinema(p: &mut ConsolePrefs) {
 fn upgrade_minimal(p: &mut ConsolePrefs) {
     if p.theme.id == "minimal" && p.theme.game_page == GamePage::Sheet {
         p.theme.game_page = presets::minimal().game_page;
+    }
+}
+
+/// Arcade as it shipped drew the wheel's games as logos, which come in
+/// every shape and overlapped; the preset now shows each one's cover beside
+/// its name. Only the built-in Arcade is moved (a theme of the user's keeps
+/// what it chose).
+fn upgrade_arcade(p: &mut ConsolePrefs) {
+    if p.theme.id == "arcade" && p.theme.layouts.wheel_items == WheelItems::Logo {
+        p.theme.layouts.wheel_items = presets::arcade().layouts.wheel_items;
+        if p.theme.description == "A wheel of logos over the art, in neon colours, like an arcade cabinet." {
+            p.theme.description = presets::arcade().description;
+        }
     }
 }
 

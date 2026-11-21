@@ -209,13 +209,22 @@ impl CollectionView {
         let logo =
             (look::theme().layouts.wheel_items == WheelItems::Logo).then(|| self.console_logo(key, 200., 34., focused, window)).flatten();
         let what = match logo {
+            // Kept to its box: logos come in every shape.
             Some(src) => div()
                 .flex_1()
                 .min_w_0()
                 .h(u(34.))
                 .flex()
                 .items_center()
-                .child(div().w(u(200.)).h(u(34.)).child(img(src).size_full().object_fit(ObjectFit::Contain)))
+                .overflow_hidden()
+                .child(
+                    div()
+                        .flex_none()
+                        .w(u(200.))
+                        .h(u(34.))
+                        .overflow_hidden()
+                        .child(img(src).w(u(200.)).h(u(34.)).object_fit(ObjectFit::Contain)),
+                )
                 .into_any_element(),
             None => {
                 let cover = self.cover(key, 30. * kit::scale(), 42. * kit::scale(), window.scale_factor(), if focused { 120 } else { 40 });
