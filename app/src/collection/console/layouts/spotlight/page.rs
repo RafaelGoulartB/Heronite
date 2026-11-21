@@ -143,6 +143,13 @@ pub(super) fn logo_h(size: heronite_data::console_theme::Size3) -> f32 {
         Size3::Large => 150.,
     }
 }
+
+/// On the home, the box of a game without a logo: its name, small, on one
+/// line (so the head isn't empty), in its middle, with room above and under
+/// it like a logo's.
+pub(super) const NAME_H: f32 = 80.;
+/// The size of that name.
+pub(super) const NAME_SIZE: f32 = 30.;
 /// Under the top bar (the window's top) for a focused section's title, and
 /// above the bottom edge for the page's end, design px.
 const TOP_LINE: f32 = 86.;
