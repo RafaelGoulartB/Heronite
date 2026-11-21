@@ -260,7 +260,8 @@ impl StoreTool {
             .ok_or_else(|| format!("{} has no build for {} {}", self.name, std::env::consts::OS, std::env::consts::ARCH))?;
         if !net.is_online() {
             // A tool on `PATH` is the user's: it works without the internet.
-            if let Some(on_path) = stale.then(|| if self.on_path { probe.which(self.name) } else { None }).flatten() {
+            let on_path = stale.then(|| if self.on_path { probe.which(self.name) } else { None }).flatten();
+            if let Some(on_path) = on_path.filter(|p| Path::new(p) != target) {
                 if let Some(why) = missing_runtime(self.name, &on_path, probe) {
                     return Err(why);
                 }
@@ -467,7 +468,19 @@ pub(crate) mod tests {
         let with_path = probe.clone().with_bin("nile", "/usr/bin/nile");
         assert_eq!(tool.ensure(&paths, &with_path, &FakeNet::offline(), &|| false).unwrap(), PathBuf::from("/usr/bin/nile"));
 
-        let net = FakeNet::online().with_file(&tool.download_url(tool.asset_name().unwrap()), fake_bin(true));
+        // Not on `PATH` when that `PATH` holds the data folder.
+        let through_path = probe.clone().with_bin("nile", data.to_str().unwrap());
+        let err = tool.ensure(&paths, &through_path, &FakeNet::offline(), &|| false).unwrap_err();
+        assert!(err.contains("not the release Heronite expects"), "{err}");
+
+        // A download that is not the pin either: the old copy stays, unused.
+        let url = tool.download_url(tool.asset_name().unwrap());
+        let net = FakeNet::online().with_file(&url, b"not nile either".to_vec());
+        let err = tool.ensure(&paths, &probe, &net, &|| false).unwrap_err();
+        assert!(err.contains("not the expected file"), "{err}");
+        assert_eq!(std::fs::read(&data).unwrap(), b"an older or changed nile");
+
+        let net = FakeNet::online().with_file(&url, fake_bin(true));
         assert_eq!(tool.ensure(&paths, &probe, &net, &|| false).unwrap(), data);
         assert_eq!(std::fs::read(&data).unwrap(), fake_bin(true));
         assert_eq!(net.requests().len(), 1);

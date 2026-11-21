@@ -60,10 +60,13 @@ sc create GalaxyCommunication binPath= \"\\\"%target%\\GalaxyCommunication.exe\\
 ";
 const REGISTER_SCRIPT_NAME: &str = "register-galaxy-service.bat";
 const DUMMY_ASSET: &str = "dummy-service.zip";
-/// SHA-256 of each of the [`DUMMY_FILES`] in [`COMET`]'s release archive
-/// (`e89e837f...`, the one GitHub shows for it): a file that does not match
-/// is never unpacked, and an unpacked one that no longer matches is
-/// unpacked again (the service is registered as administrator on Windows).
+/// SHA-256 of [`DUMMY_ASSET`] in [`COMET`]'s release (the one GitHub shows):
+/// an archive that does not match is never opened.
+const DUMMY_ZIP_SHA256: &str = "e89e837fb33d11e4757fe4ff46255ea35d95e1ed32750ef804a28bee8ef7de53";
+/// SHA-256 of each of the [`DUMMY_FILES`] in that archive: a file that does
+/// not match is never unpacked, and an unpacked one that no longer matches
+/// is unpacked again (the service is registered as administrator on
+/// Windows).
 const DUMMY_SHA256: [&str; 2] = [
     "9c834cfbc106bbab314c78ce3ca8b66807fa3e2f59efee62c2a5b0728ea8d1e3",
     "431d952ebb1d082dcf5dcb8b1db6e117d6bbf8ad0755fb4d448952c5edd45921",
@@ -153,11 +156,18 @@ pub fn dummy_service_dir(paths: &DataPaths) -> PathBuf {
 /// The folder with Comet's dummy service, downloaded the first time (and
 /// again when its files are not the pinned ones). Blocking, network.
 pub fn ensure_dummy_service(paths: &DataPaths, net: &dyn Net, cancel: Cancel) -> Result<PathBuf, String> {
-    ensure_dummy_service_pinned(paths, net, cancel, &DUMMY_SHA256)
+    ensure_dummy_service_pinned(paths, net, cancel, DUMMY_ZIP_SHA256, &DUMMY_SHA256)
 }
 
-/// [`ensure_dummy_service`], with the [`DUMMY_FILES`] pinned to `pins`.
-fn ensure_dummy_service_pinned(paths: &DataPaths, net: &dyn Net, cancel: Cancel, pins: &[&str; 2]) -> Result<PathBuf, String> {
+/// [`ensure_dummy_service`], with the archive pinned to `zip_pin` and the
+/// [`DUMMY_FILES`] to `pins`.
+fn ensure_dummy_service_pinned(
+    paths: &DataPaths,
+    net: &dyn Net,
+    cancel: Cancel,
+    zip_pin: &str,
+    pins: &[&str; 2],
+) -> Result<PathBuf, String> {
     static BUSY: Mutex<()> = Mutex::new(());
     let _guard = BUSY.lock().unwrap_or_else(|e| e.into_inner());
     let dir = dummy_service_dir(paths);
@@ -173,7 +183,13 @@ fn ensure_dummy_service_pinned(paths: &DataPaths, net: &dyn Net, cancel: Cancel,
     }
     std::fs::create_dir_all(&dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
     let zip = dir.join(format!("{DUMMY_ASSET}.part"));
-    let result = net.download(&COMET.download_url(DUMMY_ASSET), &zip, cancel).and_then(|()| extract(&zip, &dir, pins));
+    let result = net.download(&COMET.download_url(DUMMY_ASSET), &zip, cancel).and_then(|()| {
+        let sum = crate::legendary_install::sha256_of(&zip).map_err(|e| format!("{}: {e}", zip.display()))?;
+        if sum != zip_pin {
+            return Err(format!("{DUMMY_ASSET} is not the expected file (SHA-256 {sum})"));
+        }
+        extract(&zip, &dir, pins)
+    });
     let _ = std::fs::remove_file(&zip);
     result.map(|()| dir).map_err(|e| format!("getting Comet's dummy service: {e}"))
 }
@@ -188,7 +204,7 @@ fn extract(zip: &Path, dir: &Path, pins: &[&str; 2]) -> Result<(), String> {
     let mut files = Vec::with_capacity(DUMMY_FILES.len());
     for (name, pin) in DUMMY_FILES.iter().zip(pins) {
         let mut entry = archive.by_name(name).map_err(|e| format!("{name} in {}: {e}", zip.display()))?;
-        let mut bytes = Vec::with_capacity(entry.size() as usize);
+        let mut bytes = Vec::new();
         entry.read_to_end(&mut bytes).map_err(|e| format!("{name}: {e}"))?;
         let sum: String = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
         if sum != *pin {
@@ -359,14 +375,20 @@ mod tests {
         assert!(DUMMY_FILES.iter().all(|f| !dummy_service_dir(&paths).join(f).exists()));
         assert!(!dummy_service_dir(&paths).join("dummy-service.zip.part").exists());
 
+        let zip_pin = sha(&dummy_zip());
         let pins = DUMMY_FILES.map(|f| sha(f.as_bytes()));
         let pins = [pins[0].as_str(), pins[1].as_str()];
+        // The archive matches but its second file does not: nothing is written.
+        let err = ensure_dummy_service_pinned(&paths, &net, &|| false, &zip_pin, &[pins[0], DUMMY_SHA256[1]]).unwrap_err();
+        assert!(err.contains("update-permissions.exe in dummy-service.zip is not the expected file"), "{err}");
+        assert!(DUMMY_FILES.iter().all(|f| !dummy_service_dir(&paths).join(f).exists()));
+
         let net = FakeNet::online().with_file(&url, dummy_zip());
-        let got = ensure_dummy_service_pinned(&paths, &net, &|| false, &pins).unwrap();
+        let got = ensure_dummy_service_pinned(&paths, &net, &|| false, &zip_pin, &pins).unwrap();
         assert_eq!(got, dummy_service_dir(&paths));
         assert_eq!(std::fs::read(got.join("GalaxyCommunication.exe")).unwrap(), b"GalaxyCommunication.exe");
         assert!(!got.join("dummy-service.zip.part").exists());
-        ensure_dummy_service_pinned(&paths, &FakeNet::offline(), &|| false, &pins).unwrap();
+        ensure_dummy_service_pinned(&paths, &FakeNet::offline(), &|| false, &zip_pin, &pins).unwrap();
         assert_eq!(net.requests().len(), 1);
 
         // Unpacked files that are not the pinned ones (changed since, or
@@ -374,7 +396,7 @@ mod tests {
         let err = ensure_dummy_service(&paths, &FakeNet::offline(), &|| false).unwrap_err();
         assert!(err.contains("not the release Heronite expects") && err.contains("no internet"), "{err}");
         std::fs::write(got.join("update-permissions.exe"), b"changed").unwrap();
-        ensure_dummy_service_pinned(&paths, &net, &|| false, &pins).unwrap();
+        ensure_dummy_service_pinned(&paths, &net, &|| false, &zip_pin, &pins).unwrap();
         assert_eq!(net.requests().len(), 2);
         assert_eq!(std::fs::read(got.join("update-permissions.exe")).unwrap(), b"update-permissions.exe");
 
