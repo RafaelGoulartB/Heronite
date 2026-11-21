@@ -222,12 +222,14 @@ impl CollectionView {
     }
 
     /// Whether the wheel moves along a row of covers (Carousel, and
-    /// Spotlight's row while it has the focus) rather than up and down.
+    /// Spotlight's and Cinema's row while it has the focus) rather than up
+    /// and down.
     pub(super) fn layout_wheel_row(&self) -> bool {
         let (tab, spec) = self.console_shown_tab();
         match spec.layout {
             Layout::Carousel => true,
             Layout::Spotlight => self.console.tab_navs.get(tab).is_none_or(|n| n.spotlight.on_row()),
+            Layout::Cinema => self.console.tab_navs.get(tab).is_none_or(|n| n.cinema.on_row()),
             _ => false,
         }
     }

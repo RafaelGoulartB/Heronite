@@ -110,6 +110,11 @@ impl Default for Nav {
 }
 
 impl Nav {
+    /// The main row has the focus (the wheel moves along it).
+    pub(super) fn on_row(&self) -> bool {
+        self.level == 0
+    }
+
     /// Room for `shelves`, the columns inside them ("View all" one past a cut one).
     fn fit(&mut self, shelves: &[Shelf]) {
         self.cols.resize(shelves.len(), 0);

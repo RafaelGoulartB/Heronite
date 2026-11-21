@@ -1153,7 +1153,7 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   bring the focus to what was clicked, then A: a row of a `console::list` is used at once (`ListNav::click`; the ‹ › of
   a value press ◀ ▶), a cover takes the focus on the first click and opens on the second (`pointer::focus_or_activate`).
   Hints, tabs and LB / RB glyphs press their button (`kit::hint_item`, `kit::tabs`). The wheel moves the focus one
-  press per notch (← → on Carousel and Spotlight; on a game page with long text it scrolls the text, as the right
+  press per notch (← → on Carousel, and on Spotlight and Cinema while their row has the focus; on a game page with long text it scrolls the text, as the right
   stick does), the right and back buttons are B (`pointer::layer`, before the scroll areas). A hint bar faded out
   (`Hints::Auto`) takes no clicks (`kit::hint_bar_with`). Row clicks are worked out when clicked, from one pass over
   the rows (`list::Clicks`), so long lists stay cheap. Focus a press cannot reach in a few steps is set directly (`console_click`, `cover_click`: the menu's items,
