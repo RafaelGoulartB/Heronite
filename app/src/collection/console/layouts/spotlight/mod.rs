@@ -293,7 +293,9 @@ impl CollectionView {
     }
 
     /// What the page of `g` has, laid out for a view `view` design px wide.
-    fn spotlight_shape(&mut self, g: &CollectionGame, view: f32, host: Host, cx: &mut Context<Self>) -> Shape {
+    /// `logo`: the game's logo is on screen (else nothing takes its place:
+    /// the head starts with what comes under it).
+    fn spotlight_shape(&mut self, g: &CollectionGame, view: f32, host: Host, logo: bool, cx: &mut Context<Self>) -> Shape {
         let theme = look::theme();
         let sections = theme.layouts.spotlight_sections.clone();
         let key = SharedString::from(g.key.clone());
@@ -377,7 +379,11 @@ impl CollectionView {
         }
         let (_, on) = row::icon_sizes(self.cover_aspect);
         let top = if host == Host::Game { GAME_TOP } else { row::row_height(on) };
-        s.layout(top, page::logo_h(theme.hero.size), width, page::COVER_W * self.cover_aspect);
+        let logo_h = if logo { page::logo_h(theme.hero.size) } else { 0. };
+        // The game page keeps a line under the facts (Showcase's genre
+        // chips, Cinema's genres); the console home has none.
+        s.chips = host == Host::Game;
+        s.layout(top, logo_h, width, page::COVER_W * self.cover_aspect);
         // The game page ends clear of the hint bar under it.
         if host == Host::Game {
             s.geo.end += HINT_ROOM;
@@ -622,7 +628,10 @@ impl CollectionView {
         self.console_focus_game(Some(game_key.clone().unwrap_or_else(|| found[0].clone())), cx);
         let game = game_key.as_ref().and_then(|k| self.lib.as_ref()?.get(k)).cloned();
         let shape = match &game {
-            Some(g) => self.spotlight_shape(g, view_w, host, cx),
+            Some(g) => {
+                let logo = self.spot_has_logo(g, view_w, host, window);
+                self.spotlight_shape(g, view_w, host, logo, cx)
+            }
             None => Shape::default(),
         };
         let (off, on) = row::icon_sizes(self.cover_aspect);
@@ -869,9 +878,14 @@ impl CollectionView {
         let logo = (look::theme().hero.title == HeroTitle::Logo)
             .then(|| self.console_logo(&SharedString::from(g.key.clone()), size.logo.0, size.logo.1, false, window))
             .flatten();
+        // No logo: nothing in its place on the home (its name is beside the
+        // icon) — the name in type only on Showcase's page and with a theme
+        // that asks for text.
+        let text = look::theme().hero.title != HeroTitle::Logo || f.glass;
         let name = match logo {
             Some(src) => logo_element(src, size.logo.0, size.logo.1, window),
-            None => kit::title(g.title.clone(), fitted_title(size.title, g.title.chars().count())).line_clamp(2).into_any_element(),
+            None if text => kit::title(g.title.clone(), fitted_title(size.title, g.title.chars().count())).line_clamp(2).into_any_element(),
+            None => div().into_any_element(),
         };
         let key = &g.key;
         let logo = div().absolute().top(u(geo.logo)).left(u(SIDE)).w(u(760.)).h(u(geo.logo_h)).flex().items_end().child(reveal(
@@ -888,7 +902,7 @@ impl CollectionView {
             .flex_col()
             .child(self.spotlight_actions(g, actions))
             .child(div().mt(u(18.)).child(self.spotlight_facts(g)))
-            .child(div().mt(u(10.)).child(parts::genre_chips(g)));
+            .when(shape.chips, |d| d.child(div().mt(u(10.)).child(parts::genre_chips(g))));
         let rest = placed(geo.buttons, reveal(SharedString::from(format!("spot-rest-{key}")), rest, f.rest_hold, REST_FADE, None));
         let mut out = vec![logo.into_any_element(), rest];
         if shape.media > 0 {
@@ -905,7 +919,8 @@ impl CollectionView {
     fn cinema_page_head(&mut self, g: &CollectionGame, shape: &Shape, f: &Focus, strip_x: f32, window: &Window) -> Vec<AnyElement> {
         let geo = shape.geo;
         let key = &g.key;
-        let block = self.cinema_block(g, &format!("cinema-page-{key}"), LOGO_SLIDE, geo.width.min(760.), geo.logo_h, window);
+        let logo_h = page::logo_h(look::theme().hero.size);
+        let block = self.cinema_block(g, &format!("cinema-page-{key}"), LOGO_SLIDE, geo.width.min(760.), logo_h, window);
         let actions = (f.zone == Zone::Actions).then_some(f.action);
         let buttons = div().relative().flex().child(self.spotlight_actions(g, actions));
         let buttons = reveal(SharedString::from(format!("cinema-page-buttons-{key}")), buttons, f.rest_hold, REST_FADE, None);
@@ -930,6 +945,26 @@ impl CollectionView {
             out.push(self.spotlight_media(shape, f, strip_x, window));
         }
         out
+    }
+
+    /// Whether the page's head has a logo on screen for `g` (the same request
+    /// the head makes), or shows the name in its place; else the head leaves
+    /// its room out. A logo that arrives later comes in then, with its fade.
+    fn spot_has_logo(&mut self, g: &CollectionGame, view: f32, host: Host, window: &Window) -> bool {
+        let theme = look::theme();
+        let glass = host == Host::Game && theme.layouts.showcase_glass;
+        if theme.hero.title != HeroTitle::Logo || glass {
+            return true;
+        }
+        let key = SharedString::from(g.key.clone());
+        let h = page::logo_h(theme.hero.size);
+        if host == Host::Game {
+            // Cinema's page: its block's own request.
+            let w = cinema::LOGO.0.min(page::page_width(view).min(760.));
+            self.console_logo(&key, w, h, true, window).is_some()
+        } else {
+            self.console_logo(&key, 600., h, false, window).is_some()
+        }
     }
 
     /// The media strip: the store's screenshots, else the user's.

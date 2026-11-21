@@ -34,11 +34,10 @@ const RING_ROOM: f32 = 22.;
 const HINTS_ROOM: f32 = 70.;
 /// Between the game's block and the row.
 const BLOCK_GAP: f32 = 46.;
-/// The logo's box, and the name's size without one.
-const LOGO: (f32, f32) = (720., 210.);
+/// The logo's box.
+pub(super) const LOGO: (f32, f32) = (720., 210.);
 /// Between the logo and its facts.
 const LOGO_GAP: f32 = 8.;
-const NAME: f32 = 54.;
 /// Heights of the facts and genres lines.
 const FACTS_H: f32 = 44.;
 const GENRES_H: f32 = 24.;
@@ -113,62 +112,6 @@ pub(super) fn label_caps(label: &str) -> Div {
 fn rule() -> Div {
     let gold: Hsla = theme::console_focus().into();
     div().flex_none().w(px(1.)).h(u(30.)).mx(u(20.)).bg(gold.opacity(0.35))
-}
-
-/// A letter, on average, in shares of the type's size; the space between two words.
-const LETTER_W: f32 = 0.56;
-const WORD_GAP: f32 = 0.28;
-
-/// The game's name as written (no logo), in large title type: each word kept
-/// whole, the words wrapping between them, two lines at most.
-fn title_name(title: &str, width: f32) -> Div {
-    let words: Vec<&str> = title.split_whitespace().collect();
-    let size = name_size(&words, width);
-    div()
-        .flex()
-        .flex_wrap()
-        .gap_x(u(size * WORD_GAP))
-        .font_family(kit::heading_font())
-        .font_weight(theme::W_BOLD)
-        .text_size(u(size))
-        .line_height(u(size * 1.2))
-        .text_color(kit::strong())
-        .children(words.into_iter().map(|w| div().whitespace_nowrap().child(w.to_string())))
-}
-
-/// The lines whole words `widths` wide take in `width`, `gap` between two
-/// words on a line: the words of each line, by index.
-fn wrap_words(widths: &[f32], gap: f32, width: f32) -> Vec<Vec<usize>> {
-    let mut lines: Vec<Vec<usize>> = Vec::new();
-    let mut used = 0.;
-    for (i, &w) in widths.iter().enumerate() {
-        match lines.last_mut() {
-            Some(line) if used + gap + w <= width => {
-                line.push(i);
-                used += gap + w;
-            }
-            _ => {
-                lines.push(vec![i]);
-                used = w;
-            }
-        }
-    }
-    lines
-}
-
-/// The largest size (down to 26) at which the name `words` takes at most two
-/// lines of `width` design px, its longest line of whole words inside it.
-fn name_size(words: &[&str], width: f32) -> f32 {
-    let fits = |size: f32| {
-        let widths: Vec<f32> = words.iter().map(|w| w.chars().count() as f32 * size * LETTER_W).collect();
-        let lines = wrap_words(&widths, size * WORD_GAP, width);
-        lines.len() <= 2 && widths.iter().all(|w| *w <= width)
-    };
-    let mut size = NAME;
-    while size > 26. && !fits(size) {
-        size -= 1.;
-    }
-    size
 }
 
 /// A soft shade with no edges behind the game's block, so it reads over
@@ -315,9 +258,21 @@ impl CollectionView {
     pub(super) fn cinema_block(&mut self, g: &CollectionGame, id: &str, slide: f32, width: f32, logo_h: f32, window: &Window) -> Div {
         let key = SharedString::from(g.key.clone());
         let logo_w = LOGO.0.min(width);
+        // No logo: no title in its place, only the name in a quiet line over
+        // the facts (the block is not left without it).
         let name = match self.console_logo(&key, logo_w, logo_h, true, window) {
-            Some(src) => logo_element(src, logo_w, logo_h, window),
-            None => title_name(&g.title, width).max_w(u(width)).into_any_element(),
+            Some(src) => Some(logo_element(src, logo_w, logo_h, window)),
+            None => Some(
+                div()
+                    .text_size(u(12.5))
+                    .font_weight(theme::W_BOLD)
+                    .text_color(kit::ink(0.86))
+                    .whitespace_nowrap()
+                    .max_w(u(width))
+                    .truncate()
+                    .child(g.title.clone())
+                    .into_any_element(),
+            ),
         };
         let genres = div()
             .h(u(GENRES_H))
@@ -340,14 +295,16 @@ impl CollectionView {
             .flex_col()
             .items_start()
             .gap(u(LOGO_GAP))
-            .child(motion::reveal(
-                SharedString::from(format!("{id}-logo")),
-                div().relative().flex().child(name),
-                motion::NAME_HOLD,
-                motion::NAME_FADE,
-                slide,
-                0.,
-            ))
+            .children(name.map(|name| {
+                motion::reveal(
+                    SharedString::from(format!("{id}-logo")),
+                    div().relative().flex().child(name),
+                    motion::NAME_HOLD,
+                    motion::NAME_FADE,
+                    slide,
+                    0.,
+                )
+            }))
             .child(motion::reveal(SharedString::from(format!("{id}-rest")), rest, motion::REST_HOLD, motion::REST_FADE, 0., 0.))
     }
 
@@ -509,30 +466,6 @@ mod tests {
     use super::*;
     // `gpui_kit::*` above brings gpui's own `test` macro.
     use core::prelude::v1::test;
-
-    #[test]
-    fn words_wrap_whole_between_them() {
-        // 100 + 10 + 100 fits 250; the third goes to a new line.
-        assert_eq!(wrap_words(&[100., 100., 100.], 10., 250.), [vec![0, 1], vec![2]]);
-        // A word wider than the line still gets a line of its own, whole.
-        assert_eq!(wrap_words(&[300., 50.], 10., 250.), [vec![0], vec![1]]);
-        assert!(wrap_words(&[], 10., 250.).is_empty());
-    }
-
-    #[test]
-    fn a_long_name_shrinks_until_its_words_fit_two_lines() {
-        let short = ["Brotato"];
-        assert_eq!(name_size(&short, 600.), NAME);
-        let zelda = ["The", "Legend", "of", "Zelda:", "Ocarina", "of", "Time"];
-        let size = name_size(&zelda, 540.);
-        assert!(size < NAME);
-        let widths: Vec<f32> = zelda.iter().map(|w| w.chars().count() as f32 * size * LETTER_W).collect();
-        let lines = wrap_words(&widths, size * WORD_GAP, 540.);
-        assert!(lines.len() <= 2, "{lines:?}");
-        // "Ocarina" stays whole: no line starts inside a word.
-        assert!(lines.iter().flatten().count() == zelda.len());
-        assert_eq!(name_size(&["Supercalifragilisticexpialidocious"], 300.), 26.);
-    }
 
     #[test]
     fn the_row_scrolls_just_enough_to_show_the_focused_cover_whole() {

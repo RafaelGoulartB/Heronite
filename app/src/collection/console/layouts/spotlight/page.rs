@@ -170,6 +170,9 @@ pub(super) struct Shape {
     pub shots: usize,
     pub shots_shown: usize,
     pub related: Vec<SharedString>,
+    /// The head has a line under its facts: Showcase's genre chips, Cinema's
+    /// genres (the console home has none).
+    pub chips: bool,
     pub geo: Geo,
 }
 
@@ -241,18 +244,19 @@ impl Shape {
         self.about_lines = if self.about_more { ABOUT_LINES } else { ((chars as f32 / least).ceil() as usize).clamp(1, ABOUT_LINES) };
     }
 
-    /// Lays the page out: `row` the row's height, `logo_h` the logo's box,
-    /// `width` the page's, `cover_h` a cover's of More like this.
+    /// Lays the page out: `row` the row's height, `logo_h` the logo's box (0:
+    /// no logo, the buttons start right under the row), `width` the page's,
+    /// `cover_h` a cover's of More like this.
     pub fn layout(&mut self, row: f32, logo_h: f32, width: f32, cover_h: f32) {
         // Without a sidebar the left column takes the whole page (and the
         // sidebar has the left's place when that has nothing).
         let stacked = stacks(width) && self.has_side() && self.first_left().is_some();
         let left = if self.has_side() && self.first_left().is_some() { left_width(width) } else { width };
         let mut g = Geo { logo: row + 2., logo_h, width, left, stacked, ..Geo::default() };
-        g.buttons = g.logo + logo_h + 16.;
+        g.buttons = g.logo + if logo_h > 0. { logo_h + 16. } else { 0. };
         g.facts = g.buttons + BUTTON_H + 18.;
         g.chips = g.facts + FACTS_H + 10.;
-        let top = g.chips + CHIPS_H + 24.;
+        let top = if self.chips { g.chips + CHIPS_H + 24. } else { g.facts + FACTS_H + 24. };
         g.media = top;
         g.side = top;
         self.shots_shown = self.shots.min(shots_room(left));
@@ -608,12 +612,25 @@ mod tests {
         for row in [150., 172., 240.] {
             for size in [Size3::Small, Size3::Medium, Size3::Large] {
                 for media in [0, 6] {
-                    let mut s = Shape { media, ..Shape::default() };
-                    s.layout(row, logo_h(size), 1200., 192.);
-                    let g = s.geo;
-                    assert!(g.logo >= row, "{row} {size:?}");
-                    assert!(g.buttons >= g.logo + g.logo_h && g.facts >= g.buttons + BUTTON_H, "{row} {size:?}");
-                    assert!(g.chips >= g.facts + FACTS_H && g.media >= g.chips + CHIPS_H, "{row} {size:?}");
+                    // With the logo, and without one (nothing in its place);
+                    // with the line of genres (the game page) and without.
+                    for (logo, chips) in [(logo_h(size), false), (0., false), (logo_h(size), true), (0., true)] {
+                        let mut s = Shape { media, chips, ..Shape::default() };
+                        s.layout(row, logo, 1200., 192.);
+                        let g = s.geo;
+                        assert!(g.logo >= row, "{row} {size:?}");
+                        assert!(g.buttons >= g.logo + g.logo_h && g.facts >= g.buttons + BUTTON_H, "{row} {size:?}");
+                        let under_facts = if chips { g.chips + CHIPS_H } else { g.facts + FACTS_H };
+                        assert!(g.chips >= g.facts + FACTS_H && g.media >= under_facts, "{row} {size:?}");
+                        if !chips {
+                            // Nothing between the facts and the strip but the gap.
+                            assert_eq!(g.media, g.facts + FACTS_H + 24., "{row} {size:?}");
+                        }
+                        if logo == 0. {
+                            // No gap where the logo would be.
+                            assert_eq!(g.buttons, g.logo, "{row} {size:?}");
+                        }
+                    }
                 }
             }
         }

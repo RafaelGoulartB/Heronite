@@ -1241,7 +1241,8 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   files; an earlier Cinema that set `nav.aButton: play` is compared without it and goes back to the default, as A and
   X are the user's choice). Cinema (`layouts/cinema.rs`): the focused game's key art full bleed under a soft vignette
   on the left and the bottom and a little at the top (`Scrim::Cinema`); at the left edge of the row of covers its logo
-  large (else its name as written in large title type, words kept whole, two lines at most, shrinking to fit), a line
+  large (no logo: no title in its place, only the name in a quiet line over the facts; a logo that arrives late comes
+  in then, nothing reserved for it), a line
   of facts (spaced small-caps labels over values between thin champagne rules: playtime, last played, platform with the
   store's icon, released, time to beat) and the genres as plain words, each line from the block's left edge, over a
   soft shade of its own; on the right, level with the facts, its achievements (a dark trophy disc ringed in gold, n / N,
@@ -1295,8 +1296,10 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   clock; Pulse's tabs are Installed (first), All games and Favourites as Spotlight filters, then the whole library as a Grid; rows and grids put the game played last first (`KeptFilters` sorts by Last played unless changed). The row: the tab's games, the
   last played first, as square icons, the focused one larger (reaching lower) with a ring a little way out and its
   name just right of it on its bottom edge, under the smaller icons, up to two before it in sight; every place and size come from the row's position gliding on a spring (`motion::Follow`
-  stepped with a `FrameClock`). Below, the logo (or the name) in a fixed box, Play / Options / ♥ as pills, the facts
-  (small labels over Playtime, Last played, Platform with the store's logo, Released) and the genres as chips, then a
+  stepped with a `FrameClock`). Below, the logo in a fixed box (none: nothing in its place, as the name is beside the
+  icon, and the head starts with the buttons, no room kept, `Shape::layout`; a late logo comes in then), Play / Options
+  / ♥ as pills, the facts (small labels over Playtime, Last played, Platform with the store's logo, Released; no genre
+  chips, which only Showcase's page keeps, `Shape::chips`), then a
   strip of the store's screenshots (`store_media_of`, read in console mode only for Spotlight, never played)
   dissolving at the bottom. A new game's logo hides, holds 0.3 s, then fades in (0.45 s) sliding in from 30 px to
   the left (0.55 s, cubic ease-out); the buttons, facts, genres and strip fade in 0.42 s after the change, in place
