@@ -52,6 +52,15 @@ pub(super) struct Control {
 }
 
 impl Control {
+    /// Copies a change of the user's MangoHud config into the game's, while
+    /// it runs (see [`crate::live_fps::follow_user_config`]). Blocking read.
+    pub(super) fn follow_mangohud_config(&self) {
+        let live = self.live_fps.lock().unwrap().clone();
+        if let Some(live) = live {
+            crate::live_fps::follow_user_config(&live);
+        }
+    }
+
     pub(super) fn set_abort(&self) {
         self.abort.store(true, Ordering::SeqCst);
         self.wake.notify();

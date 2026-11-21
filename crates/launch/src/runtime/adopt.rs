@@ -490,6 +490,9 @@ fn follow_group(shared: &Shared, control: &Control, pid: u32, start_ticks: u64) 
             }
         }
         let kill_pending = terminated_at.is_none();
+        if kill_pending {
+            control.follow_mangohud_config();
+        }
         control.wake.wait_while(shared.cfg.poll_interval, || {
             !control.abort.load(Ordering::SeqCst) && !(kill_pending && control.kill.load(Ordering::SeqCst))
         });
