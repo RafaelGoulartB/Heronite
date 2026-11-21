@@ -297,7 +297,7 @@ fn cinema_tab_window(names: &[SharedString], active: usize, vw: f32) -> (usize, 
 
 /// Width of the body, design px: the window's, less the menu's rail when the
 /// theme keeps one on screen (it insets the content).
-fn body_width(window: &Window) -> f32 {
+pub(in crate::collection::console) fn body_width(window: &Window) -> f32 {
     let rail = super::sidebar::rail_inset().map_or(0., |(_, w)| f32::from(w));
     (f32::from(crate::ui::content_size(window).width) - rail) / kit::scale()
 }
