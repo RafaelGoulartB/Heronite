@@ -367,7 +367,10 @@ impl CollectionView {
             return;
         }
         let running = c.running_at.is_some() && c.failed.is_none() && c.playing.is_none();
-        if motion::on() {
+        // Now Playing put away (Back to console): it is not on screen, so it
+        // goes at once instead of coming back to fade out over the console.
+        let hidden = c.playing.as_ref().is_some_and(|np| np.dismissed);
+        if motion::on() && !hidden {
             c.leaving = Some(Instant::now());
         } else {
             self.console.launch.cover = None;
