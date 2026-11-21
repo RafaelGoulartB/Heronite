@@ -289,7 +289,6 @@ pub fn living_room() -> ConsoleTheme {
         t.hero.overview = false;
         t.tiles.shape = TileShape::Landscape;
         t.tiles.corners = Corners::Soft;
-        t.tiles.badges = Badges::All;
         t.interface.accent = "green".into();
         t.interface.font = ConsoleFont::System;
         t.layouts.grid_panel = GridPanel::Right;

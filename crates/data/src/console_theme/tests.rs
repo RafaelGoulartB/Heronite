@@ -393,3 +393,14 @@ fn arcade_shows_covers_beside_the_names_instead_of_logos() {
     ConsolePrefs { theme: old, ..ConsolePrefs::default() }.save(&paths).unwrap();
     assert_eq!(ConsolePrefs::load(&paths).theme.layouts.wheel_items, WheelItems::Name);
 }
+
+#[test]
+fn living_room_drops_the_new_badges() {
+    assert_eq!(presets::living_room().tiles.badges, Badges::Running);
+    let dir = tempfile::tempdir().unwrap();
+    let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+    let mut old = presets::living_room();
+    old.tiles.badges = Badges::All;
+    ConsolePrefs { theme: old, ..ConsolePrefs::default() }.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).theme.tiles.badges, Badges::Running);
+}

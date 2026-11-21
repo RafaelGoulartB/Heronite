@@ -881,6 +881,7 @@ impl ConsolePrefs {
                 upgrade_minimal(&mut p);
                 upgrade_cinema(&mut p);
                 upgrade_arcade(&mut p);
+                upgrade_living_room(&mut p);
                 if let Some(old) = old {
                     p.controller = old;
                 }
@@ -966,6 +967,15 @@ fn upgrade_arcade(p: &mut ConsolePrefs) {
         if p.theme.description == "A wheel of logos over the art, in neon colours, like an arcade cabinet." {
             p.theme.description = presets::arcade().description;
         }
+    }
+}
+
+/// Living room as it shipped wore every badge ("New" on recently added
+/// games, the favourite heart); the preset now keeps only "Playing". Only the
+/// built-in theme moves; a theme of the user's keeps its badges.
+fn upgrade_living_room(p: &mut ConsolePrefs) {
+    if p.theme.id == "living-room" && p.theme.tiles.badges == Badges::All {
+        p.theme.tiles.badges = presets::living_room().tiles.badges;
     }
 }
 
