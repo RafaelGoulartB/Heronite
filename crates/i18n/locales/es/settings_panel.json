@@ -395,6 +395,8 @@
   "Starts hidden: its toggle key (Right Shift + F12 unless changed) or the in-game overlay shows it.": "Empieza oculto: su tecla (Mayús derecha + F12, si no la cambiaste) o el overlay del juego lo muestran.",
   "Fetch metadata": "Obtener metadatos",
   "Fetching metadata again keeps what you edit here.": "Al obtener los metadatos de nuevo se conserva lo que edites aquí.",
+  "Sorting name": "Nombre para ordenar",
+  "Only for sorting A–Z. Empty sorts by the name.": "Solo para ordenar de la A a la Z. Si está vacío, se ordena por el nombre.",
   "Fixes a controller the game misses or buttons that repeat; PlayStation extras (gyro, touchpad) stop working": "Corrige un mando que el juego no detecta o botones que se repiten; los extras de PlayStation (giroscopio, panel táctil) dejan de funcionar",
   "For games that lose the cursor or keep losing focus": "Para juegos que pierden el cursor o el foco constantemente",
   "Game language": "Idioma del juego",

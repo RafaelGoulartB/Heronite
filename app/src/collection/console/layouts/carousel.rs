@@ -505,7 +505,7 @@ impl CollectionView {
 
     /// The letter of `key`'s title (`#` for digits and symbols).
     fn carousel_letter(&self, key: &str) -> char {
-        self.lib.as_ref().and_then(|l| l.get(key)).map_or('#', |g| letter_of(&g.title))
+        self.lib.as_ref().and_then(|l| l.get(key)).map_or('#', |g| letter_of(&g.sort_key))
     }
 
     /// The reflection of `key`'s cover (its wide art when `wide`), `pw`×`ph`

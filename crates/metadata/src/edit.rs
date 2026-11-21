@@ -12,6 +12,9 @@ use crate::store::{as_runner, current_or_blank, upsert_game_metadata};
 use crate::types::{DetailsPatch, DetailsResult};
 use crate::util::{blank_metadata, unique_names};
 
+/// `fieldSources` key of [`CollectionGameMetadata::sort_name`].
+pub const SORT_NAME: &str = "sortName";
+
 /// `setOptionalString`: trimmed value, or removed when blank.
 fn trimmed_or_none(value: &str) -> Option<String> {
     let v = value.trim();
@@ -49,6 +52,11 @@ pub fn update_collection_game_details(paths: &DataPaths, patch: &DetailsPatch) -
     let manual = |next: &mut CollectionGameMetadata, field: &str| {
         next.field_sources.insert(field.to_owned(), "manual".into());
     };
+    // Manual even when cleared: a launcher's sorting name no longer comes back.
+    if let Some(v) = &patch.sort_name {
+        next.sort_name = trimmed_or_none(v);
+        manual(&mut next, SORT_NAME);
+    }
     if let Some(v) = &patch.description {
         next.description = trimmed_or_none(v);
         manual(&mut next, "description");
@@ -325,6 +333,38 @@ mod tests {
         let stored = read_value(&paths.metadata()).unwrap();
         assert_eq!(stored["games"]["sideload:g"]["title"], "New Title");
         assert!(stored["games"]["sideload:g"].get("criticScore").is_none());
+    }
+
+    #[test]
+    fn sorting_name_saves_clears_and_keeps_unknown_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        std::fs::create_dir_all(paths.local_library()).unwrap();
+        std::fs::write(
+            paths.metadata(),
+            r#"{"games":{"sideload:g":{"appName":"g","runner":"sideload","title":"Pokemon Emerald","zzUnknown":[1,2],"fieldSources":{"sortName":"lutris"}}},"zzTop":"kept"}"#,
+        )
+        .unwrap();
+
+        let md = update_collection_game_details(&paths, &patch(|p| p.sort_name = Some("  Pokemon Gen 3 ".into()))).unwrap().metadata;
+        assert_eq!(md.sort_name.as_deref(), Some("Pokemon Gen 3"));
+        assert_eq!(md.field_sources[SORT_NAME], "manual", "a launcher no longer changes it");
+        assert_eq!(md.title.as_deref(), Some("Pokemon Emerald"), "the title stays");
+        let stored = read_value(&paths.metadata()).unwrap();
+        assert_eq!(stored["games"]["sideload:g"]["sortName"], "Pokemon Gen 3");
+        assert_eq!(stored["games"]["sideload:g"]["zzUnknown"], serde_json::json!([1, 2]));
+        assert_eq!(stored["zzTop"], "kept");
+        // Read back as the library does.
+        let back = crate::store::get_game_metadata(&paths, "sideload", "g").unwrap().unwrap();
+        assert_eq!(back.sort_name.as_deref(), Some("Pokemon Gen 3"));
+
+        // Blank clears it (and stays manual); a patch without it leaves it.
+        let md = update_collection_game_details(&paths, &patch(|p| p.sort_name = Some(" ".into()))).unwrap().metadata;
+        assert_eq!((md.sort_name, md.field_sources[SORT_NAME].as_str()), (None, "manual"));
+        assert!(read_value(&paths.metadata()).unwrap()["games"]["sideload:g"].get("sortName").is_none());
+        update_collection_game_details(&paths, &patch(|p| p.sort_name = Some("Z".into()))).unwrap();
+        let md = update_collection_game_details(&paths, &patch(|p| p.notes = Some("n".into()))).unwrap().metadata;
+        assert_eq!(md.sort_name.as_deref(), Some("Z"));
     }
 
     #[test]

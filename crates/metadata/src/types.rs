@@ -474,6 +474,9 @@ pub struct DetailsPatch {
     pub runner: String,
     #[serde(default)]
     pub title: Option<String>,
+    /// The sorting name; blank clears it (the title sorts again).
+    #[serde(default)]
+    pub sort_name: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
     #[serde(default)]

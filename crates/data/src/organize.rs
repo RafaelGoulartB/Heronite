@@ -240,6 +240,22 @@ pub fn sort_name(title: &str) -> String {
             break;
         }
     }
+    numbers_read(rest)
+}
+
+/// What a game is ordered by A-Z: its sorting name when one is set (kept as
+/// typed, but numbers and Roman numerals read as numbers, so "Gen 2" comes
+/// before "Gen 10"), else [`sort_name`] of its title.
+pub fn sort_key(title: &str, sorting_name: Option<&str>) -> String {
+    match sorting_name.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(name) => numbers_read(name),
+        None => sort_name(title),
+    }
+}
+
+/// `text` with its numbers padded and its Roman numerals from II up read as
+/// padded numbers.
+fn numbers_read(rest: &str) -> String {
     let mut out = String::with_capacity(rest.len() + 8);
     let mut word = String::new();
     let flush = |word: &mut String, out: &mut String| {
@@ -455,7 +471,7 @@ pub fn group_games_with(filtered: &[Game], by: GroupBy, o: &Organize, smart: &[S
 
 /// Compares two games for `sort`: by its value (bigger and newer first,
 /// `descending` turns it around; games without one stay last), ties and the
-/// title sort by [`sort_name`].
+/// title sort by [`sort_key`].
 pub(crate) fn compare_keyed(a: &Keyed, b: &Keyed, sort: SortMode, descending: bool) -> Ordering {
     let turn = |o: Ordering| if descending { o.reverse() } else { o };
     let by_name = || locale_cmp(&a.name, &b.name).then_with(|| locale_cmp(&a.title, &b.title));
@@ -479,7 +495,7 @@ pub(crate) struct Keyed {
 
 impl Keyed {
     pub fn of(g: &CollectionGame, sort: SortMode, o: &Organize) -> Self {
-        Self { value: sort_value(g, sort, o), name: sort_name(&g.title), title: g.title.clone() }
+        Self { value: sort_value(g, sort, o), name: g.sort_key.clone(), title: g.title.clone() }
     }
 }
 
@@ -503,6 +519,17 @@ mod tests {
         let mut titles = ["Final Fantasy IX", "Street Fighter 30th Anniversary", "Final Fantasy VII", "THE FINALS", "Street Fighter 6"];
         titles.sort_by(|a, b| locale_cmp(&sort_name(a), &sort_name(b)));
         assert_eq!(titles, ["Final Fantasy VII", "Final Fantasy IX", "THE FINALS", "Street Fighter 6", "Street Fighter 30th Anniversary"]);
+    }
+
+    #[test]
+    fn sorting_names_keep_their_words_and_read_numbers() {
+        assert_eq!(sort_key("The Witcher", None), "Witcher", "no sorting name: the title's rule");
+        assert_eq!(sort_key("The Witcher", Some("")), "Witcher");
+        assert_eq!(sort_key("Pokemon Emerald", Some(" Pokemon Gen III ")), "Pokemon Gen 00000003");
+        assert_eq!(sort_key("Tetris", Some("The Tetris")), "The Tetris", "an article typed stays");
+        let mut names = ["Pokemon Gen 10", "Pokemon Gen 2", "Pokemon Gen 1"];
+        names.sort_by(|a, b| locale_cmp(&sort_key("", Some(a)), &sort_key("", Some(b))));
+        assert_eq!(names, ["Pokemon Gen 1", "Pokemon Gen 2", "Pokemon Gen 10"]);
     }
 
     #[test]

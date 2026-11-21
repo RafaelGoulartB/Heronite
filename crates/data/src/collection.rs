@@ -543,7 +543,8 @@ pub fn filter_games_where(games: &[Game], query: &ViewQuery, keep: &dyn Fn(&Coll
 
 /// [`filter_games_where`] with what the sorts kept outside the games read
 /// (ratings, dates added, sizes):
-/// - title: by [`sort_name`](crate::organize::sort_name);
+/// - title: by the sort key ([`sort_key`](crate::organize::sort_key): the
+///   sorting name, else the title without its article);
 /// - the others: bigger and newer first, games without a value last (never
 ///   played, not rated...), ties by title.
 ///
@@ -689,7 +690,7 @@ pub fn related_games(current: &CollectionGame, series: &[String], developers: &[
         }
     }
     let finish = |mut list: Vec<Game>| {
-        list.sort_by(|a, b| locale_cmp_base(&a.title, &b.title));
+        list.sort_by(|a, b| locale_cmp_base(&a.sort_key, &b.sort_key).then_with(|| locale_cmp_base(&a.title, &b.title)));
         list.truncate(RELATED_MAX_ITEMS);
         list
     };
@@ -701,7 +702,7 @@ pub fn related_games(current: &CollectionGame, series: &[String], developers: &[
         groups.push(RelatedGroup { kind: RelatedKind::Developer, games: finish(developer_items) });
     }
     if !similar_items.is_empty() {
-        similar_items.sort_by(|(na, a), (nb, b)| nb.cmp(na).then_with(|| locale_cmp_base(&a.title, &b.title)));
+        similar_items.sort_by(|(na, a), (nb, b)| nb.cmp(na).then_with(|| locale_cmp_base(&a.sort_key, &b.sort_key)));
         similar_items.truncate(RELATED_MAX_ITEMS);
         groups.push(RelatedGroup { kind: RelatedKind::Similar, games: similar_items.into_iter().map(|(_, g)| g).collect() });
     }
@@ -976,6 +977,56 @@ mod tests {
         assert!(groups[3].is_other());
         assert_eq!(groups[3].name, "Other");
         assert_eq!(groups[0].games[0].app_name, "a");
+    }
+
+    /// A game titled `title`, sorted as `sort_name` when it is set.
+    fn named(app: &str, title: &str, sort_name: Option<&str>, series: Option<&str>) -> Game {
+        crate::library::tests_support::game_with(app, "sideload", |info, _, md, _, _| {
+            info.title = title.into();
+            md.sort_name = sort_name.map(Into::into);
+            md.series = series.map(Into::into);
+        })
+    }
+
+    #[test]
+    fn sorting_names_order_the_title_sort_and_never_show() {
+        let games = vec![
+            named("emerald", "Pokemon Emerald", Some("Pokemon Gen 3"), None),
+            named("firered", "Pokemon FireRed", Some("Pokemon Gen 10"), None),
+            named("red", "Pokemon Red", Some("pokemon gen 1"), None),
+            named("arceus", "Pokemon Legends: Arceus", None, None),
+            named("witcher", "The Witcher", None, None),
+            named("tetris", "Tetris", Some("The Tetris"), None),
+        ];
+        let order = |descending| {
+            let q = ViewQuery { sort: SortMode::Title, descending, ..Default::default() };
+            filter_games(&games, &q).iter().map(|g| g.title.clone()).collect::<Vec<_>>()
+        };
+        // Numbers in a sorting name read as numbers (Gen 3 before Gen 10);
+        // its article stays (sorted under T), the title's is dropped.
+        let az = ["Pokemon Red", "Pokemon Emerald", "Pokemon FireRed", "Pokemon Legends: Arceus", "Tetris", "The Witcher"];
+        assert_eq!(order(false), az);
+        assert_eq!(order(true), az.iter().rev().copied().collect::<Vec<_>>());
+        assert_eq!(games[0].title, "Pokemon Emerald", "the shown title stays");
+        assert_eq!(games[3].sort_key, crate::organize::sort_name("Pokemon Legends: Arceus"), "no sorting name: today's rule");
+        let blank = named("blank", "The Blank", Some("  "), None);
+        assert_eq!(blank.sort_key, "Blank", "a blank sorting name counts as none");
+        // Searching ranks by the match first; the sorting name only orders ties.
+        let q = ViewQuery { search: "emerald".into(), ..Default::default() };
+        assert_eq!(filter_games(&games, &q).iter().map(|g| g.app_name.as_str()).collect::<Vec<_>>(), ["emerald"]);
+    }
+
+    #[test]
+    fn related_games_follow_sorting_names() {
+        let games = vec![
+            named("cur", "Pokemon Black", Some("Pokemon Gen 5"), Some("Pokemon")),
+            named("e", "Pokemon Emerald", Some("Pokemon Gen 3"), Some("Pokemon")),
+            named("f", "Pokemon FireRed", Some("Pokemon Gen 1"), Some("Pokemon")),
+            named("x", "Pokemon X", None, Some("Pokemon")),
+        ];
+        let groups = related_games_for(&games[0], &games);
+        assert_eq!(groups[0].kind, RelatedKind::Series);
+        assert_eq!(groups[0].games.iter().map(|g| g.app_name.as_str()).collect::<Vec<_>>(), ["f", "e", "x"]);
     }
 
     #[test]

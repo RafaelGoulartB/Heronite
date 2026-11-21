@@ -33,6 +33,7 @@ use crate::copies::{CopiesFile, CopyGroups, Totals};
 use crate::focus::Details;
 use crate::json_store;
 use crate::models::*;
+use crate::organize;
 use crate::paths::DataPaths;
 use crate::settings::EffectiveSettings;
 use crate::status::{resolve_status_id, sorted_or_default};
@@ -51,6 +52,9 @@ pub struct CollectionGame {
     /// override, else the store title.
     pub title: String,
     pub title_lower: String,
+    /// What the game is ordered by A-Z ([`organize::sort_key`]): its sorting
+    /// name, else its title without a leading article, numbers padded.
+    pub sort_key: String,
     /// "Library" of the Details panel: Steam, Emulator, Epic, GOG, Amazon,
     /// Xbox, Local, Other.
     pub source_label: &'static str,
@@ -168,6 +172,12 @@ fn source_label(meta: Option<&LocalGameMeta>, runner: &str) -> &'static str {
 }
 
 impl CollectionGame {
+    /// A-Z order of two games, as the Collection's title sort: by
+    /// [`sort_key`](Self::sort_key), then by title.
+    pub fn cmp_by_name(&self, other: &Self) -> std::cmp::Ordering {
+        crate::text::locale_cmp(&self.sort_key, &other.sort_key).then_with(|| crate::text::locale_cmp(&self.title, &other.title))
+    }
+
     pub(crate) fn build(input: BuildInputs<'_>) -> Self {
         let BuildInputs {
             game,
@@ -228,6 +238,7 @@ impl CollectionGame {
             runner: game.runner.clone(),
             app_name: game.app_name.clone(),
             title_lower: title.to_lowercase(),
+            sort_key: organize::sort_key(&title, metadata.as_deref().and_then(|m| m.sort_name.as_deref())),
             title,
             source_label: if family.is_some() { FAMILY_LABEL } else { source_label(meta.as_deref(), &game.runner) },
             installed: game.is_installed || via_steam,

@@ -81,6 +81,7 @@ fn game(g: &Value, data: &Path, flatpak: bool, home: &Path) -> Option<Game> {
     Some(Game {
         command: command(flatpak, &id),
         title,
+        sort_name: None,
         folder,
         windows,
         minutes: (seconds.max(0.0) / 60.0).round() as u64,

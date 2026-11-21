@@ -73,6 +73,9 @@ pub struct Game {
     /// Bottles, Faugus' `gameid`, Playnite's game id).
     pub id: String,
     pub title: String,
+    /// The launcher's sorting name (Lutris' `sortname`), when it has one
+    /// that is not the title.
+    pub sort_name: Option<String>,
     /// Its folder, when known.
     pub folder: Option<String>,
     pub windows: bool,

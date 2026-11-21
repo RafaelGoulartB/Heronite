@@ -377,6 +377,20 @@ mod tests {
     }
 
     #[test]
+    fn a_fetch_keeps_the_sorting_name() {
+        let current = md(|m| {
+            m.sort_name = Some("Pokemon Gen 3".into());
+            m.field_sources.insert("sortName".into(), "manual".into());
+        });
+        let igdb = md(|m| m.title = Some("Pokemon Emerald".into()));
+        let pr = priority();
+        let cands = [MergeCandidate { source: "igdb", metadata: &igdb }];
+        let out = merge(Some(&current), &cands, &pr, true, false, None);
+        assert_eq!(out.sort_name.as_deref(), Some("Pokemon Gen 3"));
+        assert_eq!(out.field_sources["sortName"], "manual");
+    }
+
+    #[test]
     fn existing_values_kept_without_overwrite_and_manual_locked() {
         let current = md(|m| {
             m.description = Some("mine".into());

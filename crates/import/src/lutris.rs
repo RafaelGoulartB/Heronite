@@ -53,10 +53,12 @@ fn read(install: &Install) -> Result<Vec<Game>> {
     let conn = Connection::open_with_flags(&db, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
         .with_context(|| format!("opening {}", db.display()))?;
     conn.busy_timeout(std::time::Duration::from_secs(2))?;
-    let mut stmt = conn.prepare(
-        "SELECT id, name, slug, runner, platform, directory, playtime, lastplayed, configpath
-         FROM games WHERE installed = 1 AND COALESCE(runner, '') <> 'steam' ORDER BY id",
-    )?;
+    // An older library may have no `sortname` column.
+    let sortname = if has_column(&conn, "games", "sortname")? { "sortname" } else { "NULL" };
+    let mut stmt = conn.prepare(&format!(
+        "SELECT id, name, slug, runner, platform, directory, playtime, lastplayed, configpath, {sortname}
+         FROM games WHERE installed = 1 AND COALESCE(runner, '') <> 'steam' ORDER BY id"
+    ))?;
     let rows = stmt.query_map([], |r| {
         Ok((
             r.get::<_, i64>(0)?,
@@ -68,11 +70,12 @@ fn read(install: &Install) -> Result<Vec<Game>> {
             r.get::<_, Option<f64>>(6)?.unwrap_or(0.0),
             r.get::<_, Option<i64>>(7)?.unwrap_or(0),
             r.get::<_, Option<String>>(8)?.unwrap_or_default(),
+            r.get::<_, Option<String>>(9)?.unwrap_or_default(),
         ))
     })?;
     let mut games = Vec::new();
     for row in rows {
-        let (id, name, slug, runner, platform, directory, hours, last, configpath) = row?;
+        let (id, name, slug, runner, platform, directory, hours, last, configpath, sortname) = row?;
         if name.trim().is_empty() {
             continue;
         }
@@ -86,6 +89,7 @@ fn read(install: &Install) -> Result<Vec<Game>> {
         games.push(Game {
             id: id.to_string(),
             title: name.trim().to_string(),
+            sort_name: Some(sortname.trim().to_string()).filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case(name.trim())),
             folder,
             windows: runner == "wine" || platform.to_ascii_lowercase().contains("windows"),
             minutes: (hours.max(0.0) * 60.0).round() as u64,
@@ -99,6 +103,18 @@ fn read(install: &Install) -> Result<Vec<Game>> {
         });
     }
     Ok(games)
+}
+
+/// `table` has a column named `column`.
+fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let names = stmt.query_map([], |r| r.get::<_, String>(1))?;
+    for name in names {
+        if name? == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// The keys of a game's YAML settings under `game:` this reads.
@@ -165,9 +181,10 @@ mod tests {
                lastplayed INTEGER, installed INTEGER, installed_at INTEGER, year INTEGER, configpath TEXT,
                has_custom_banner INTEGER, has_custom_icon INTEGER, has_custom_coverart_big INTEGER, playtime REAL,
                service TEXT, service_id TEXT, discord_id TEXT);
+             INSERT INTO games (id, name, sortname, slug, platform, runner, directory, installed, playtime, lastplayed, configpath) VALUES
+               (3, 'Celeste', 'Celeste 1', 'celeste', 'Windows', 'wine', '/games/celeste', 1, 1.5, 1700000000, 'celeste-1700'),
+               (4, 'SuperTux', 'supertux', 'supertux', 'Linux', 'linux', '/games/supertux', 1, NULL, NULL, 'supertux-1');
              INSERT INTO games (id, name, slug, platform, runner, directory, installed, playtime, lastplayed, configpath) VALUES
-               (3, 'Celeste', 'celeste', 'Windows', 'wine', '/games/celeste', 1, 1.5, 1700000000, 'celeste-1700'),
-               (4, 'SuperTux', 'supertux', 'Linux', 'linux', '/games/supertux', 1, NULL, NULL, 'supertux-1'),
                (5, 'Portal', 'portal', 'Linux', 'steam', '', 1, 2.0, NULL, 'portal-1'),
                (6, 'Hades', 'hades', 'Windows', 'wine', '', 0, 0, NULL, 'hades-1'),
                (7, 'Hollow Knight', 'hollow-knight', NULL, 'wine', '', 1, 0, NULL, 'hollow-knight-1');",
@@ -217,6 +234,33 @@ mod tests {
         let tux = &found.games[1];
         assert!(!tux.windows);
         assert_eq!((tux.minutes, tux.prefix.as_deref(), tux.cover.as_deref()), (0, None, None));
+        assert_eq!(celeste.sort_name.as_deref(), Some("Celeste 1"));
+        assert_eq!(tux.sort_name, None, "the name again is no sorting name");
+        assert_eq!(hk.sort_name, None);
+    }
+
+    /// `sortname` when the library has it, and a library from before it.
+    #[test]
+    fn sorting_names_when_the_library_has_them() {
+        for (schema, expected) in [("name TEXT, sortname TEXT", Some("Pokemon Gen 3")), ("name TEXT", None)] {
+            let h = tempfile::tempdir().unwrap();
+            let install = Install { data: h.path().into(), config: h.path().into(), flatpak: false };
+            let conn = Connection::open(h.path().join("pga.db")).unwrap();
+            conn.execute_batch(&format!(
+                "CREATE TABLE games (id INTEGER PRIMARY KEY, {schema}, slug TEXT, platform TEXT, runner TEXT, directory TEXT,
+                   lastplayed INTEGER, installed INTEGER, configpath TEXT, playtime REAL);
+                 INSERT INTO games (id, name, slug, runner, installed) VALUES (1, 'Pokemon Emerald', 'emerald', 'mgba', 1);"
+            ))
+            .unwrap();
+            if expected.is_some() {
+                conn.execute("UPDATE games SET sortname = '  Pokemon Gen 3 '", []).unwrap();
+            }
+            drop(conn);
+            let games = read(&install).unwrap();
+            assert_eq!(games.len(), 1);
+            assert_eq!(games[0].title, "Pokemon Emerald");
+            assert_eq!(games[0].sort_name.as_deref(), expected, "{schema}");
+        }
     }
 
     #[test]

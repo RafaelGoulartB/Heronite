@@ -313,9 +313,7 @@ fn body_height(window: &Window, hints: bool) -> f32 {
 /// The `k` most recently played games, newest first (never-played ones
 /// follow, by title).
 fn top_recent(games: &[Arc<CollectionGame>], k: usize) -> Vec<Arc<CollectionGame>> {
-    let order = |a: &&Arc<CollectionGame>, b: &&Arc<CollectionGame>| {
-        b.last_played.cmp(&a.last_played).then_with(|| a.title_lower.cmp(&b.title_lower))
-    };
+    let order = |a: &&Arc<CollectionGame>, b: &&Arc<CollectionGame>| b.last_played.cmp(&a.last_played).then_with(|| a.cmp_by_name(b));
     let mut v: Vec<&Arc<CollectionGame>> = games.iter().collect();
     if v.len() > k {
         v.select_nth_unstable_by(k, order);

@@ -168,9 +168,9 @@ impl Nav {
             .filter(|g| cats.matches(&category, &g.runner, &g.app_name))
             .collect();
         match f.sort {
-            1 => games.sort_by(|a, b| b.last_played.cmp(&a.last_played).then_with(|| a.title_lower.cmp(&b.title_lower))),
-            2 => games.sort_by(|a, b| b.playtime_minutes.cmp(&a.playtime_minutes).then_with(|| a.title_lower.cmp(&b.title_lower))),
-            _ => games.sort_by(|a, b| a.title_lower.cmp(&b.title_lower)),
+            1 => games.sort_by(|a, b| b.last_played.cmp(&a.last_played).then_with(|| a.cmp_by_name(b))),
+            2 => games.sort_by(|a, b| b.playtime_minutes.cmp(&a.playtime_minutes).then_with(|| a.cmp_by_name(b))),
+            _ => games.sort_by(|a, b| a.cmp_by_name(b)),
         }
         if !tokens.is_empty() {
             // Same search as the desktop Collection; stable, so the sort orders ties.
@@ -214,7 +214,8 @@ fn rail_letters() -> impl Iterator<Item = char> {
     std::iter::once('#').chain('A'..='Z')
 }
 
-/// The rail letter of a title: its first letter without accents, `#` for
+/// The rail letter of a game's sort key (`CollectionGame::sort_key`, what
+/// the A–Z order uses): its first letter without accents, `#` for
 /// digits and symbols (they sort before A).
 pub(super) fn letter_of(title: &str) -> char {
     let first = title.trim_start().chars().next().unwrap_or('#');
@@ -403,7 +404,7 @@ impl CollectionView {
             kit::empty(Icon::FaSearch, tr!("No games match"), tr!("Change the filters above or the search (Y).")).into_any_element()
         } else {
             let scroller = self.grid_scroller(tab, &keys, cols, grid_focus, window);
-            let current = game.as_ref().map_or('#', |g| letter_of(&g.title));
+            let current = game.as_ref().map_or('#', |g| letter_of(&g.sort_key));
             div()
                 .flex()
                 .flex_1()
@@ -589,7 +590,7 @@ impl CollectionView {
             Pad::Up => nav.index = i - cols,
             Pad::Down => nav.index = (i + cols).min(n.saturating_sub(1)),
             Pad::RT | Pad::LT if by_letter => {
-                let letters: Vec<char> = keys.iter().map(|k| lib.get(k).map_or('#', |g| letter_of(&g.title))).collect();
+                let letters: Vec<char> = keys.iter().map(|k| lib.get(k).map_or('#', |g| letter_of(&g.sort_key))).collect();
                 nav.index = jump_letter(&letters, i, pad == Pad::RT);
             }
             Pad::ScrollDown | Pad::RT => nav.index = (i + cols * 3).min(n.saturating_sub(1)),

@@ -171,6 +171,11 @@ pub struct CollectionGameMetadata {
     pub steam_app_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// What the A-Z sort and the related games order it by in place of its
+    /// title (never shown). Set in Edit details (`fieldSources.sortName`
+    /// `manual`) or brought from a launcher (its id as the source).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

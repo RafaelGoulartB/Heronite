@@ -263,6 +263,7 @@ fn game(d: &Document, install: &Install, resolver: &Resolver, names: &library::N
         runs_from: runs_from(d, folder.as_deref(), install, &resolver.emulators),
         folder: folder.map(|f| f.to_string_lossy().into_owned()),
         title,
+        sort_name: None,
         windows: true,
         minutes: (seconds as f64 / 60.0).round() as u64,
         last_played,

@@ -10,8 +10,10 @@ use std::path::Path;
 
 use anyhow::Result;
 use heronite_data::launchers::{Launcher, LAUNCH_KIND, PREFIX_KEY, RUNS_FROM_KEY};
-use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta, LocalMetaFile, TimestampFile};
+use heronite_data::library::metadata_key;
+use heronite_data::models::{CollectionGameMetadata, GameInfo, InstallInfo, LocalGameMeta, LocalMetaFile, MetadataFile, TimestampFile};
 use heronite_data::{json_store, DataPaths};
+use heronite_metadata::edit::SORT_NAME;
 use serde_json::{json, Map, Value};
 
 use crate::transfer::{self, Transfer};
@@ -189,6 +191,8 @@ pub fn sync(paths: &DataPaths, home: &Path, launcher: Launcher, games: &[Game], 
         Ok(())
     })?;
 
+    set_sort_names(paths, launcher, &fresh)?;
+
     let played: Vec<_> = games.iter().map(|g| (app_name(launcher, &g.id), g.minutes, g.last_played.clone())).collect();
     // A new entry's play time is part of adding it.
     report.updated += raise_playtime(paths, &played)?.iter().filter(|app| ours.contains(*app)).count();
@@ -199,6 +203,45 @@ pub fn sync(paths: &DataPaths, home: &Path, launcher: Launcher, games: &[Game], 
         log::info!("Brought {} game(s) over from {}: they start here", copying.len(), launcher.name());
     }
     Ok(report)
+}
+
+/// Writes the launcher's sorting names into the games' Collection metadata
+/// (`sortName`, the launcher's id as its source) and takes out one the
+/// launcher no longer has. A sorting name set in Edit details (source
+/// `manual`, even when cleared) is left alone.
+fn set_sort_names(paths: &DataPaths, launcher: Launcher, fresh: &[(GameInfo, &Game)]) -> Result<()> {
+    let source = launcher.id();
+    let ours = |md: &CollectionGameMetadata| match md.field_sources.get(SORT_NAME) {
+        Some(s) => s == source,
+        None => md.sort_name.is_none(),
+    };
+    json_store::update_if_changed::<MetadataFile, _>(&paths.metadata(), |file| {
+        for (info, game) in fresh {
+            match file.games.get_mut(&metadata_key(&info.runner, &info.app_name)) {
+                Some(md) if ours(md) && md.sort_name != game.sort_name => {
+                    md.sort_name = game.sort_name.clone();
+                    match md.sort_name {
+                        Some(_) => md.field_sources.insert(SORT_NAME.into(), source.into()),
+                        None => md.field_sources.shift_remove(SORT_NAME),
+                    };
+                }
+                Some(_) => {}
+                None => {
+                    let Some(name) = &game.sort_name else { continue };
+                    let md = CollectionGameMetadata {
+                        app_name: info.app_name.clone(),
+                        runner: info.runner.clone(),
+                        sort_name: Some(name.clone()),
+                        field_sources: [(SORT_NAME.to_string(), source.to_string())].into_iter().collect(),
+                        ..Default::default()
+                    };
+                    file.games.insert(metadata_key(&info.runner, &info.app_name), md);
+                }
+            }
+        }
+        Ok(())
+    })?;
+    Ok(())
 }
 
 /// Raises `totalPlayed` / `lastPlayed` of each `(app, minutes, last played)`
@@ -298,6 +341,52 @@ mod tests {
             prefix: Some(format!("/prefixes/{id}")),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn brings_lutris_sorting_names_until_one_is_set_by_hand() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let home = Path::new("/home/u");
+        let none = BTreeSet::new();
+        let sorted = |id: &str, title: &str, sort: Option<&str>| Game { sort_name: sort.map(Into::into), ..game(id, title, 0) };
+        let first = [sorted("1", "Pokemon Emerald", Some("Pokemon Gen 3")), sorted("2", "Hades", None)];
+        sync(&paths, home, Launcher::Lutris, &first, &none).unwrap();
+        let lib = Library::load(&paths).unwrap();
+        let emerald = lib.get("sideload_lutris_1").unwrap();
+        assert_eq!((emerald.title.as_str(), emerald.sort_key.as_str()), ("Pokemon Emerald", "Pokemon Gen 00000003"));
+        let md = emerald.metadata.as_ref().unwrap();
+        assert_eq!(md.field_sources[SORT_NAME], "lutris");
+        assert!(md.fetched_at.is_none(), "still to be fetched");
+        assert!(lib.get("sideload_lutris_2").unwrap().metadata.is_none(), "no record for a game without one");
+
+        // Nothing new: the records are not written again.
+        let time = json_store::mtime(&paths.metadata());
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        sync(&paths, home, Launcher::Lutris, &first, &none).unwrap();
+        assert_eq!(json_store::mtime(&paths.metadata()), time);
+
+        // Lutris changes it: it follows. Then it is cleared in Edit details:
+        // Lutris no longer brings it back.
+        let renamed = [sorted("1", "Pokemon Emerald", Some("Pokemon Gen 3 Emerald"))];
+        sync(&paths, home, Launcher::Lutris, &renamed, &none).unwrap();
+        let sort_of = || heronite_metadata::store::get_game_metadata(&paths, "sideload", "lutris_1").unwrap().unwrap().sort_name;
+        assert_eq!(sort_of().as_deref(), Some("Pokemon Gen 3 Emerald"));
+        let patch = heronite_metadata::DetailsPatch {
+            app_name: "lutris_1".into(),
+            runner: "sideload".into(),
+            sort_name: Some(String::new()),
+            ..Default::default()
+        };
+        heronite_metadata::edit::update_collection_game_details(&paths, &patch).unwrap();
+        sync(&paths, home, Launcher::Lutris, &renamed, &none).unwrap();
+        assert_eq!(sort_of(), None);
+
+        // A sorting name Lutris dropped goes.
+        sync(&paths, home, Launcher::Lutris, &[sorted("2", "Hades", Some("Hades 1"))], &none).unwrap();
+        sync(&paths, home, Launcher::Lutris, &[sorted("2", "Hades", None)], &none).unwrap();
+        let md = heronite_metadata::store::get_game_metadata(&paths, "sideload", "lutris_2").unwrap().unwrap();
+        assert_eq!((md.sort_name, md.field_sources.get(SORT_NAME)), (None, None));
     }
 
     #[test]
