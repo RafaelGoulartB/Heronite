@@ -692,6 +692,33 @@ fn mupen64plus_runs_fullscreen_without_touching_its_config() {
     assert_eq!(process.stop.kill_patterns, ["mupen64plus"]);
 }
 
+// Xenia's AppImage runs the game in fullscreen, and stopping finds `xenia_edge`.
+#[cfg(unix)]
+#[test]
+fn xenia_runs_an_xbox_360_game_in_fullscreen() {
+    let exe = "/apps/xenia_edge_linux.AppImage";
+    let emu = UserEmulator {
+        id: "e1".into(),
+        definition_id: "xenia".into(),
+        executable: exe.into(),
+        launch_kind: "native".into(),
+        profiles: vec![profile("x360", "--fullscreen {ImagePath}")],
+        ..Default::default()
+    };
+    let probe = FakeProbe::new("/h").with_path(exe).with_path("/roms/x360/Halo 3.iso");
+    let m = LocalGameMeta { emulator_profile_id: Some("x360".into()), ..emu_meta(&["/roms/x360/Halo 3.iso"]) };
+    let game = sideload("g", exe, "linux");
+    let LaunchPlan::Emulator { process, .. } =
+        build_plan_with_settings(&emu_ctx(emu), &probe, &game, Some(&m), &settings(json!({})), &Default::default())
+    else {
+        panic!()
+    };
+    assert_eq!(process.command.program, exe);
+    assert_eq!(process.command.args, ["--fullscreen", "/roms/x360/Halo 3.iso"]);
+    assert_eq!(process.stop.kill_patterns, ["xenia"]);
+    assert!(crate::procs::program_matches("xenia_edge", &process.stop.kill_patterns[0]));
+}
+
 // Flatpak is Linux's.
 #[cfg(unix)]
 #[test]

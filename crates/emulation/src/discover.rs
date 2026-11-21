@@ -67,6 +67,7 @@ const RULES: &[Rule] = &[
     rule("cemu", "Cemu", &["cemu"]),
     rule("ryujinx", "Ryujinx", &["ryujinx"]),
     rule("xemu", "Xemu", &["xemu"]),
+    rule("xenia", "Xenia", &["xenia"]),
     rule("melonds", "melonDS", &["melonds"]),
     rule("mgba", "mGBA", &["mgba"]),
     rule("flycast", "Flycast", &["flycast"]),
@@ -114,7 +115,7 @@ const HELPERS: &[&str] = &["debug", "headless", "room", "updater", "uninstall", 
 
 const NOT_EXECUTABLE_EXT: &[&str] = &[
     "so", "txt", "json", "ini", "png", "jpg", "svg", "desktop", "log", "md", "zip", "7z", "gz", "xz", "bz2", "tar", "dll", "yml", "yaml",
-    "cfg", "conf", "bak", "sig", "sha256", "zsync", "pdb", "xml", "ico", "pkg", "iso", "bin", "chd", "cue",
+    "cfg", "conf", "toml", "bak", "sig", "sha256", "zsync", "pdb", "xml", "ico", "pkg", "iso", "bin", "chd", "cue",
 ];
 
 fn matches_alias(token: &str, alias: &str) -> bool {
@@ -670,6 +671,9 @@ mod tests {
         assert_eq!(id("ePSXe"), Some("ePSXe"));
         assert_eq!(id("desmume"), Some("DeSmuME"));
         assert_eq!(id("desmume-cli"), Some("DeSmuME"));
+        assert_eq!(id("xenia_edge_linux.AppImage"), Some("Xenia"));
+        assert_eq!(id("xenia_edge"), Some("Xenia"));
+        assert_eq!(id("xenia_canary"), Some("Xenia"));
         // The libraries, plugins and data files of Mupen64Plus are not programs.
         assert_eq!(id("libmupen64plus.so.2.0.0"), None);
         // KDE's file manager and unrelated names are not emulators.
@@ -690,6 +694,10 @@ mod tests {
         assert_eq!(id("gopher64-windows-x86_64.exe"), Some("gopher64"));
         assert_eq!(id("ePSXe.exe"), Some("ePSXe"));
         assert_eq!(id("DeSmuME_0.9.13_x64.exe"), Some("DeSmuME"));
+        assert_eq!(id("xenia_edge.exe"), Some("Xenia"));
+        assert_eq!(id("xenia_canary.exe"), Some("Xenia"));
+        // Xenia Manager is a frontend, not the emulator.
+        assert_eq!(id("XeniaManager.exe"), None);
         // Only Windows' `Dolphin.exe` is sure to be the emulator.
         assert_eq!(id("Dolphin.exe"), cfg!(windows).then_some("Dolphin"));
         // The other programs shipped next to an emulator.
@@ -749,6 +757,22 @@ mod tests {
                 ("mupen64plus".to_string(), "mupen64plus", false),
             ]
         );
+    }
+
+    // Xenia's Linux build is native; its Windows build runs through Wine.
+    #[cfg(unix)]
+    #[test]
+    fn walk_finds_xenia_and_runs_its_exe_through_wine() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        touch(&r.join("x360/xenia_edge_linux.AppImage"), true);
+        touch(&r.join("x360/xenia-win/xenia_edge.exe"), false);
+        // A portable install's config, executable on a drive where every file is.
+        touch(&r.join("x360/xenia-win/xenia_edge.config.toml"), true);
+        let mut found: Vec<(String, &str, bool)> =
+            find_candidates(r, WalkLimits::default()).into_iter().map(|c| (basename(&c.path), c.definition_id, c.wine)).collect();
+        found.sort();
+        assert_eq!(found, [("xenia_edge.exe".to_string(), "xenia", true), ("xenia_edge_linux.AppImage".to_string(), "xenia", false)]);
     }
 
     #[cfg(windows)]

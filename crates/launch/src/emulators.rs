@@ -195,6 +195,8 @@ static CATALOG: &[CatalogEmulator] = &[
         stop_pattern: Some("xemu"),
         profiles: &[p("xbox", "-full-screen -dvd_path {ImagePath}")],
     },
+    // Xenia Edge, Canary or master: the game is the one positional argument.
+    CatalogEmulator { id: "xenia", flatpak_id: None, stop_pattern: Some("xenia"), profiles: &[p("x360", "--fullscreen {ImagePath}")] },
     CatalogEmulator {
         id: "melonds",
         flatpak_id: Some("net.kuribo64.melonDS"),
@@ -493,6 +495,18 @@ mod tests {
         assert_eq!(definition_profile("retroarch", "snes").unwrap().arguments, RA);
         assert_eq!(definition_profile("mame", "arcade").unwrap().working_dir, Some("rom"));
         assert!(emulator_definition("custom").unwrap().stop_pattern.is_none());
+    }
+
+    #[test]
+    fn xenia_starts_the_game_in_fullscreen() {
+        let rom = vars_for_rom("/roms/x360/Halo 3 (USA).iso", None, None, "Halo 3");
+        assert_eq!(
+            expand_argv(definition_profile("xenia", "x360").unwrap().arguments, &rom),
+            ["--fullscreen", "/roms/x360/Halo 3 (USA).iso"]
+        );
+        let xenia = emulator_definition("xenia").unwrap();
+        assert_eq!(xenia.stop_pattern, Some("xenia"));
+        assert!(xenia.flatpak_id.is_none());
     }
 
     #[test]
