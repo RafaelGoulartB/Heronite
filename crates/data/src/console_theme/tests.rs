@@ -404,3 +404,30 @@ fn living_room_drops_the_new_badges() {
     ConsolePrefs { theme: old, ..ConsolePrefs::default() }.save(&paths).unwrap();
     assert_eq!(ConsolePrefs::load(&paths).theme.tiles.badges, Badges::Running);
 }
+
+#[test]
+fn a_migration_runs_once_so_the_user_can_pick_the_old_value_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+    let mut old = presets::living_room();
+    old.tiles.badges = Badges::All;
+    ConsolePrefs { theme: old, ..ConsolePrefs::default() }.save(&paths).unwrap();
+    // The first load moves the built-in theme on.
+    let mut p = ConsolePrefs::load(&paths);
+    assert_eq!(p.theme.tiles.badges, Badges::Running);
+    // The user turns every badge back on: it stays through the next start.
+    p.theme.tiles.badges = Badges::All;
+    p.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).theme.tiles.badges, Badges::All);
+    // The same for Minimal's page and Arcade's logos.
+    let mut p = ConsolePrefs::load(&paths);
+    p.theme = presets::minimal();
+    p.theme.game_page = GamePage::Sheet;
+    p.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).theme.game_page, GamePage::Sheet);
+    let mut p = ConsolePrefs::load(&paths);
+    p.theme = presets::arcade();
+    p.theme.layouts.wheel_items = WheelItems::Logo;
+    p.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).theme.layouts.wheel_items, WheelItems::Logo);
+}
