@@ -204,13 +204,11 @@ fn lookup_of<T>(out: Result<Lookup<T>, CallError>) -> Lookup<T> {
 /// The code `manifest`'s `[ids] pattern` finds in `texts` (a game's
 /// title and file name), keyed by the extension's id.
 fn pattern_id<'a>(manifest: &Manifest, texts: impl IntoIterator<Item = &'a str>) -> Option<(String, String)> {
-    let pattern = manifest.id_pattern.as_ref()?;
-    let texts: Vec<&str> = texts.into_iter().collect();
-    let code = pattern.find(texts.iter().copied());
-    if code.is_none() && texts.iter().any(|t| pattern.find([*t]).is_some()) {
-        log::info!("Extension {}: different codes in the game's title and file name; none passed", manifest.id);
+    let mut codes = manifest.id_pattern.as_ref()?.codes(texts);
+    if codes.len() > 1 {
+        log::info!("Extension {}: {} different codes in the game's title or file name; none passed", manifest.id, codes.len());
     }
-    code.map(|c| (manifest.id.clone(), c))
+    (codes.len() == 1).then(|| (manifest.id.clone(), codes.remove(0)))
 }
 
 /// The game as `manifest`'s script sees it (see `docs/EXTENSIONS.md`).

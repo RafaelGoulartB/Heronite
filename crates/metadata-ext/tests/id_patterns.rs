@@ -97,6 +97,7 @@ fn a_code_in_the_title_or_folder_is_passed_and_matches_surely() {
             "Midnight": game("Midnight", "VJ0099887 Midnight Garden v1.1"),
             "Two Codes RJ123456": game("Two Codes RJ123456", "VJ0099887"),
             "Careless": game("Careless", "RJ555555"),
+            "Lower": game("Lower", "rj123456_Its Japanese Name"),
             "Plain": game("Plain", "Plain"),
         }}),
     );
@@ -118,6 +119,11 @@ fn a_code_in_the_title_or_folder_is_passed_and_matches_surely() {
     // In the install folder's name.
     let preview = svc.preview_game_metadata(&args("Midnight")).unwrap();
     assert_eq!(last_code().as_deref(), Some("VJ0099887"));
+    assert_eq!(matched_by(&preview), Some(MatchedBy::SourceId));
+
+    // In lower case and joined by `_`: found, and passed in upper case.
+    let preview = svc.preview_game_metadata(&args("Lower")).unwrap();
+    assert_eq!(last_code().as_deref(), Some("RJ123456"));
     assert_eq!(matched_by(&preview), Some(MatchedBy::SourceId));
 
     // Two different codes: none is passed; the title finds nothing.
