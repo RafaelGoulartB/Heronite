@@ -34,7 +34,7 @@ const HOST: &str = "www.dlsite.com";
 /// The games: (app name, title, install folder).
 const GAMES: [(&str, &str, &str); 7] = [
     ("drago", "Drago Noka [RJ345679]", "Drago Noka"),
-    ("stella", "Stella of the End", "VJ015604"),
+    ("stella", "Stella of the End", "vj015604_Stella"),
     ("adult", "RJ01000001 Night Shift", "Night Shift"),
     ("two", "RJ345679 + VJ015604 bundle", "bundle"),
     ("gone", "Lost Work RJ00000002", "Lost Work"),
@@ -223,7 +223,7 @@ fn a_code_in_the_title_finds_the_product_surely_and_fills_its_fields() {
 }
 
 #[test]
-fn a_code_in_the_folder_name_finds_it_too() {
+fn a_code_in_the_folder_name_finds_it_too_in_any_case_before_an_underscore() {
     let s = setup();
     let preview = s.svc.preview_game_metadata(&args("stella")).unwrap();
     match state(&preview) {
