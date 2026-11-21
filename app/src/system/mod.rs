@@ -9,6 +9,7 @@ pub mod desktop_colours;
 #[cfg(target_os = "linux")]
 pub mod desktop_entry;
 mod hub;
+pub mod interface_gpu;
 pub mod notify;
 pub mod own_exe;
 pub mod power;

@@ -586,5 +586,16 @@
   "Whole cover": "Portada entera",
   "Whole cover shows each cover in its own shape, never cut: console box art stays whole.": "Portada entera muestra cada portada con su propia forma, sin recortes: las cajas de juegos de consola se ven enteras.",
   "{real} with their own · {other} borrowed": "{real} con imagen propia · {other} prestadas",
-  "Logos": "Logos"
+  "Logos": "Logos",
+  "Troubleshooting": "Solución de problemas",
+  "Graphics card for the interface": "Tarjeta gráfica de la interfaz",
+  "Card {id} (not connected)": "Tarjeta {id} (no conectada)",
+  "The card that draws Heronite's own windows; games keep their own setting. Automatic uses the card the desktop draws on. On a laptop with two cards, if scrolling stutters, try the card the screen is connected to.": "La tarjeta que dibuja las ventanas del propio Heronite; los juegos mantienen su propio ajuste. Automático usa la tarjeta con la que dibuja el escritorio. En un portátil con dos tarjetas, si el desplazamiento se entrecorta, prueba la tarjeta a la que está conectada la pantalla.",
+  "ZED_DEVICE_ID is set in the environment, so this setting is not used.": "ZED_DEVICE_ID está definida en el entorno, así que este ajuste no se usa.",
+  "Takes effect after a restart.": "Se aplica tras reiniciar.",
+  "The graphics card chosen for the interface was not kept, so Heronite went back to Automatic.": "La tarjeta gráfica elegida para la interfaz no se mantuvo, así que Heronite volvió a Automático.",
+  "Heronite now draws with the graphics card you chose. If it looks right, keep it in Settings → Advanced; otherwise the next start goes back to Automatic.": "Heronite ahora dibuja con la tarjeta gráfica que elegiste. Si se ve bien, mantenla en Ajustes → Avanzado; si no, el próximo inicio vuelve a Automático.",
+  "Keep this card?": "¿Mantener esta tarjeta?",
+  "Heronite is drawing with it now. If it looks right, keep it; otherwise the next start goes back to Automatic.": "Heronite está dibujando con ella ahora. Si se ve bien, mantenla; si no, el próximo inicio vuelve a Automático.",
+  "Keep this card": "Mantener esta tarjeta"
 }

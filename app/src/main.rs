@@ -49,6 +49,8 @@ fn main() {
     let migration = migrate_from_heroic();
     env_logger_init();
     log::info!("interface language: {}", heronite_i18n::current().code());
+    // Sets an environment variable: before the app starts its threads.
+    system::interface_gpu::apply(&heronite_data::AppPaths::for_data(&heronite_data::DataPaths::detect()));
     if let Some(result) = &restored {
         match result {
             Ok(r) => log::info!("restored {:?} from {}: {} files written, {} removed", r.parts, r.snapshot.display(), r.written, r.removed),

@@ -586,5 +586,16 @@
   "Whole cover": "Ganzes Cover",
   "Whole cover shows each cover in its own shape, never cut: console box art stays whole.": "Ganzes Cover zeigt jedes Cover in seiner eigenen Form, nie beschnitten: Konsolen-Boxcover bleiben vollständig.",
   "{real} with their own · {other} borrowed": "{real} mit eigenem Bild · {other} geliehen",
-  "Logos": "Logos"
+  "Logos": "Logos",
+  "Troubleshooting": "Fehlerbehebung",
+  "Graphics card for the interface": "Grafikkarte der Oberfläche",
+  "Card {id} (not connected)": "Karte {id} (nicht verbunden)",
+  "The card that draws Heronite's own windows; games keep their own setting. Automatic uses the card the desktop draws on. On a laptop with two cards, if scrolling stutters, try the card the screen is connected to.": "Die Karte, die Heronites eigene Fenster zeichnet; Spiele behalten ihre eigene Einstellung. Automatisch nutzt die Karte, auf der der Desktop zeichnet. Ruckelt das Scrollen auf einem Laptop mit zwei Karten, probiere die Karte, an der der Bildschirm hängt.",
+  "ZED_DEVICE_ID is set in the environment, so this setting is not used.": "ZED_DEVICE_ID ist in der Umgebung gesetzt, daher wird diese Einstellung nicht verwendet.",
+  "Takes effect after a restart.": "Gilt nach einem Neustart.",
+  "The graphics card chosen for the interface was not kept, so Heronite went back to Automatic.": "Die für die Oberfläche gewählte Grafikkarte wurde nicht behalten, daher ist Heronite zu Automatisch zurückgekehrt.",
+  "Heronite now draws with the graphics card you chose. If it looks right, keep it in Settings → Advanced; otherwise the next start goes back to Automatic.": "Heronite zeichnet jetzt mit der gewählten Grafikkarte. Wenn alles richtig aussieht, behalte sie unter Einstellungen → Erweitert; sonst kehrt der nächste Start zu Automatisch zurück.",
+  "Keep this card?": "Diese Karte behalten?",
+  "Heronite is drawing with it now. If it looks right, keep it; otherwise the next start goes back to Automatic.": "Heronite zeichnet gerade damit. Wenn alles richtig aussieht, behalte sie; sonst kehrt der nächste Start zu Automatisch zurück.",
+  "Keep this card": "Diese Karte behalten"
 }
