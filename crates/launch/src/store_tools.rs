@@ -196,7 +196,9 @@ impl StoreTool {
         self.assets.iter().find(|(o, a, _, _)| *o == os && *a == arch).map(|(_, _, _, sha)| *sha)
     }
 
-    /// Whether `bin` is the pinned release asset for this system.
+    /// Whether `bin` is the pinned release asset for this system. Read from
+    /// the disk, not through the [`Probe`]: only for the data folder's copy,
+    /// which Heronite wrote itself.
     fn is_pinned_release(&self, bin: &Path) -> bool {
         self.pinned_sha256().is_some_and(|pin| crate::legendary_install::sha256_of(bin).is_ok_and(|sum| sum == pin))
     }
@@ -257,6 +259,13 @@ impl StoreTool {
             .asset_name()
             .ok_or_else(|| format!("{} has no build for {} {}", self.name, std::env::consts::OS, std::env::consts::ARCH))?;
         if !net.is_online() {
+            // A tool on `PATH` is the user's: it works without the internet.
+            if let Some(on_path) = stale.then(|| if self.on_path { probe.which(self.name) } else { None }).flatten() {
+                if let Some(why) = missing_runtime(self.name, &on_path, probe) {
+                    return Err(why);
+                }
+                return Ok(PathBuf::from(on_path));
+            }
             if stale {
                 return Err(format!(
                     "the {} in Heronite's data folder is not the release Heronite expects, and there is no internet connection to download it again",
@@ -454,6 +463,9 @@ pub(crate) mod tests {
         let err = tool.ensure(&paths, &probe, &FakeNet::offline(), &|| false).unwrap_err();
         assert!(err.contains("not the release Heronite expects") && err.contains("no internet"), "{err}");
         assert_eq!(std::fs::read(&data).unwrap(), b"an older or changed nile", "kept for when the internet is back");
+        // Offline, a nile on `PATH` does instead.
+        let with_path = probe.clone().with_bin("nile", "/usr/bin/nile");
+        assert_eq!(tool.ensure(&paths, &with_path, &FakeNet::offline(), &|| false).unwrap(), PathBuf::from("/usr/bin/nile"));
 
         let net = FakeNet::online().with_file(&tool.download_url(tool.asset_name().unwrap()), fake_bin(true));
         assert_eq!(tool.ensure(&paths, &probe, &net, &|| false).unwrap(), data);
@@ -525,5 +537,7 @@ pub(crate) mod tests {
             let version = tool.version().trim_start_matches('v');
             assert!(out.stdout_text().contains(version), "{}: {}", tool.name, out.stdout_text());
         }
+        // Comet's dummy service, unpacked from the same release.
+        crate::galaxy::ensure_dummy_service(&paths, &crate::net::SystemNet, &|| false).unwrap();
     }
 }
