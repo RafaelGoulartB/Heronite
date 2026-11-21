@@ -382,7 +382,15 @@ impl CollectionView {
         }
         let (_, on) = row::icon_sizes(self.cover_aspect);
         let top = if host == Host::Game { GAME_TOP } else { row::row_height(on) };
-        let logo_h = if logo { page::logo_h(theme.hero.size) } else { 0. };
+        // No logo: the home keeps a small box for the name; Cinema's page
+        // measures its own head.
+        let logo_h = if logo {
+            page::logo_h(theme.hero.size)
+        } else if host == Host::Game {
+            0.
+        } else {
+            page::NAME_H
+        };
         // The game page keeps a line under the facts (Showcase's genre
         // chips, Cinema's genres); the console home has none.
         s.chips = host == Host::Game;
@@ -887,28 +895,42 @@ impl CollectionView {
             return self.cinema_page_head(g, shape, f, strip_x, window);
         }
         let geo = shape.geo;
-        let size = HeroSize { title: 54., logo: (600., geo.logo_h), max_w: 760., overview: 0 };
+        // The logo's own request (as `spot_has_logo` makes it), not the box's
+        // height: without a logo that box holds only the name.
+        let size = HeroSize { title: 54., logo: (600., page::logo_h(look::theme().hero.size)), max_w: 760., overview: 0 };
         // The logo, else the name in type, smaller when long, on two lines at most.
         let logo = (look::theme().hero.title == HeroTitle::Logo)
             .then(|| self.console_logo(&SharedString::from(g.key.clone()), size.logo.0, size.logo.1, false, window))
             .flatten();
-        // No logo: nothing in its place on the home (its name is beside the
-        // icon) — the name in type only on Showcase's page and with a theme
-        // that asks for text.
+        // No logo: the name in type, large on Showcase's page and with a
+        // theme that asks for text, else small on one line so the head isn't
+        // empty.
         let text = look::theme().hero.title != HeroTitle::Logo || f.glass;
+        let has_logo = logo.is_some();
         let name = match logo {
             Some(src) => logo_element(src, size.logo.0, size.logo.1, window),
             None if text => kit::title(g.title.clone(), fitted_title(size.title, g.title.chars().count())).line_clamp(2).into_any_element(),
-            None => div().into_any_element(),
+            None => kit::title(g.title.clone(), page::NAME_SIZE).line_clamp(1).into_any_element(),
         };
         let key = &g.key;
-        let logo = div().absolute().top(u(geo.logo)).left(u(SIDE)).w(u(760.)).h(u(geo.logo_h)).flex().items_end().child(reveal(
-            SharedString::from(format!("spot-logo-{key}")),
-            div().relative().child(name),
-            LOGO_HOLD,
-            LOGO_FADE,
-            Some((LOGO_SLIDE, LOGO_SLIDE_MS)),
-        ));
+        // A logo sits on the box's foot; the small name in its middle.
+        let small_name = !has_logo && !text;
+        let logo = div()
+            .absolute()
+            .top(u(geo.logo))
+            .left(u(SIDE))
+            .w(u(760.))
+            .h(u(geo.logo_h))
+            .flex()
+            .when(small_name, |d| d.items_center())
+            .when(!small_name, |d| d.items_end())
+            .child(reveal(
+                SharedString::from(format!("spot-logo-{key}")),
+                div().relative().child(name),
+                LOGO_HOLD,
+                LOGO_FADE,
+                Some((LOGO_SLIDE, LOGO_SLIDE_MS)),
+            ));
         let actions = (f.zone == Zone::Actions).then_some(f.action);
         let rest = div()
             .relative()
@@ -962,8 +984,9 @@ impl CollectionView {
     }
 
     /// Whether the page's head has a logo on screen for `g` (the same request
-    /// the head makes), or shows the name in its place; else the head leaves
-    /// its room out. A logo that arrives later comes in then, with its fade.
+    /// the head makes), or shows the name in its place; else the home keeps
+    /// only a small box for the name and Cinema's page its name line. A logo
+    /// that arrives later comes in then, with its fade.
     fn spot_has_logo(&mut self, g: &CollectionGame, view: f32, host: Host, window: &Window) -> bool {
         let theme = look::theme();
         let glass = host == Host::Game && theme.layouts.showcase_glass;
