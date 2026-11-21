@@ -46,6 +46,11 @@ impl SettingsPanel {
     }
 
     pub(super) fn add_companion(&mut self, path: String, cx: &mut Context<Self>) {
+        // An AntiMicroX profile is not a program: run as one, it would fail.
+        if heronite_launch::antimicrox::is_profile(&path) {
+            self.add_antimicrox_profile(path, cx);
+            return;
+        }
         let mut list = self.companions();
         if !list.iter().any(|c| c.path == path) {
             list.push(Companion { path, delay_secs: 0 });

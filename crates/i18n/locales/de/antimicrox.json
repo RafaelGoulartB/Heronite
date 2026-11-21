@@ -1,0 +1,11 @@
+{
+  "AntiMicroX profiles": "AntiMicroX-Profile",
+  "Player {number}": "Spieler {number}",
+  "Add player": "Spieler hinzufügen",
+  "Add a player…": "Spieler hinzufügen…",
+  "Remove a player…": "Spieler entfernen…",
+  "Remove a player": "Spieler entfernen",
+  "Choose the AntiMicroX profile of {player}": "AntiMicroX-Profil für {player} wählen",
+  "AntiMicroX profile of {player}": "AntiMicroX-Profil für {player}",
+  "A profile (.amgp) for each controller, loaded while the game runs: player 1's on the first controller, player 2's on the second. Needs AntiMicroX installed.": "Ein Profil (.amgp) pro Controller, geladen, solange das Spiel läuft: das von Spieler 1 auf dem ersten Controller, das von Spieler 2 auf dem zweiten. AntiMicroX muss installiert sein."
+}
