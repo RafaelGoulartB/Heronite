@@ -147,11 +147,12 @@ fn shelves(p: &mut Pic, layer: Div) -> Div {
 
 /// Cinema (the console's `layouts/cinema.rs`): the game's name large at the
 /// left with its facts and genres under it, its achievements on the right,
-/// one row of large covers along the bottom.
+/// one row of large covers along the bottom, the first shelf's title under it.
 fn cinema(p: &mut Pic, layer: Div) -> Div {
     let h = 104. * p.size().min(1.15);
     let names = if p.t.tiles.titles == TileTitles::Always { 12. } else { 0. };
-    let row_y = p.bottom() - h - names - 4.;
+    // Room under the row for the first shelf's title, peeking in.
+    let row_y = p.bottom() - h - names - 22.;
     let gap = p.u(3.);
     // The facts: small labels over values, between thin rules.
     let rule = || div().flex_none().w(px(1.)).h(p.u(9.)).bg(Rgba { a: 0.25, ..p.text });
@@ -188,7 +189,18 @@ fn cinema(p: &mut Pic, layer: Div) -> Div {
             div().w(p.u(56.)).h(p.u(1.5)).rounded_full().bg(Rgba { a: 0.2, ..p.text }).child(div().w(p.u(14.)).h_full().bg(p.accent)),
         ));
     let row = p.tile_row(0, h, 8., 9, true);
-    layer.child(p.scrim_left(0.6)).child(p.scrim_bottom(0.75)).child(block).child(ach).child(p.at(26., row_y, row))
+    // The first shelf's title under the row: its name and a short champagne rule.
+    let peek = div()
+        .flex()
+        .flex_col()
+        .gap(p.u(2.))
+        .child(p.shelf_heading(0))
+        .child(div().w(p.u(10.)).h(p.u(1.)).rounded_full().bg(Rgba { a: 0.9, ..p.accent }));
+    layer.child(p.scrim_left(0.6)).child(p.scrim_bottom(0.75)).child(block).child(ach).child(p.at(26., row_y, row)).child(p.at(
+        26.,
+        row_y + h + names + 8.,
+        peek,
+    ))
 }
 
 /// Spotlight (the console's `layouts/spotlight/`): a row of square icons
