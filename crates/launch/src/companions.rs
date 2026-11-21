@@ -62,11 +62,13 @@ pub(crate) fn direct_command(game: &GameInfo, settings: &GameSettings, path: &st
     Command { program: path.to_string(), args: vec![], env: game_env(game, settings, &[]), cwd: Some(node_dirname(path)) }
 }
 
-/// Adds the game's programs to a plan that spawns a process. A Windows
+/// Adds the game's programs and its AntiMicroX profiles (see
+/// [`crate::antimicrox`]) to a plan that spawns a process. A Windows
 /// program that cannot get a Wine is left out with a note in the log.
 pub fn attach(plan: &mut LaunchPlan, ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &GameSettings) {
     let umu_game = matches!(plan, LaunchPlan::Wine { runtime: WineRuntime::Umu, .. });
     let Some(process) = plan.process_mut() else { return };
+    crate::antimicrox::attach(process, probe, game, settings);
     if settings.companions.is_empty() {
         return;
     }
@@ -211,6 +213,22 @@ mod tests {
         let native = plan_for(settings, &game("linux", "/games/one/game"), &probe);
         let LaunchPlan::Native(process) = &native else { panic!("{native:?}") };
         assert_eq!(process.companions[0].command.args, ["run", "/t/trainer.exe"], "no game prefix to join");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn antimicrox_profiles_run_alongside_the_game_and_without_it_the_log_says_so() {
+        let probe = FakeProbe::new("/home/u").with_file("/games/one/game", b"\x7fELF").with_file("/t/tool.sh", b"#!/bin/sh\n");
+        let settings = json!({(crate::antimicrox::KEY): ["/p/one.amgp", "/p/two.amgp"], KEY: [{"path": "/t/tool.sh"}]});
+        let found = probe.clone().with_bin("antimicrox", "/usr/bin/antimicrox");
+        let plan = plan_for(settings.clone(), &game("linux", "/games/one/game"), &found);
+        let paths: Vec<&str> = plan.process().unwrap().companions.iter().map(|c| c.path.as_str()).collect();
+        assert_eq!(paths, ["/p/one.amgp", "/p/two.amgp", "/t/tool.sh"]);
+
+        let plan = plan_for(settings, &game("linux", "/games/one/game"), &probe);
+        let process = plan.process().unwrap();
+        assert_eq!(process.companions.len(), 1, "the other programs still run");
+        assert!(process.notes.iter().any(|n| n.contains("AntiMicroX")), "{:?}", process.notes);
     }
 
     // Programs alongside a game go through Wine and Proton: Linux only.

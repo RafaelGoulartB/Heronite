@@ -155,7 +155,7 @@ fn wine_root(bin: &str, kind: &str) -> String {
 }
 
 /// Absolute, without `.`/`..` or a trailing `/`; `None` for anything else.
-fn clean(p: &str) -> Option<String> {
+pub(crate) fn clean(p: &str) -> Option<String> {
     let p = p.trim();
     if !p.starts_with('/') || p.split('/').any(|c| c == "." || c == "..") {
         return None;
@@ -164,7 +164,7 @@ fn clean(p: &str) -> Option<String> {
     Some(if p.is_empty() { "/".into() } else { p.to_string() })
 }
 
-fn inside(path: &str, dir: &str) -> bool {
+pub(crate) fn inside(path: &str, dir: &str) -> bool {
     path == dir || dir == "/" || path.strip_prefix(dir).is_some_and(|rest| rest.starts_with('/'))
 }
 
