@@ -24,6 +24,9 @@ zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2
 sha2 = "0.10"
 semver = "1"
 dom_query = { version = "0.27", default-features = false }
+# `[ids] pattern`: checked through its syntax tree, then matched.
+regex = "1"
+regex-syntax = "0.8"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 
 [dev-dependencies]

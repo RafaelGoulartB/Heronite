@@ -5,6 +5,8 @@
 //! row; the script finds a game and reads its record ([`source::ScriptSource`]).
 //!
 //! - [`manifest`]: parsing and checking `source.toml`.
+//! - [`id_pattern`]: `[ids] pattern`, a product code found in a game's
+//!   title or file name and passed as `game.ids.<extension id>`.
 //! - [`package`]: reading a folder or a zip safely.
 //! - [`store`]: what is installed under the data folder.
 //! - [`engine`]: the sandbox (QuickJS) and the `ctx` API scripts get.
@@ -20,6 +22,7 @@
 
 pub mod engine;
 mod error;
+pub mod id_pattern;
 pub mod index;
 pub mod limits;
 pub mod lists;
