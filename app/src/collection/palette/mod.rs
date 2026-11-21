@@ -112,7 +112,7 @@ impl CollectionView {
 
     /// A dialog (the Collection's or the shown page's own) or the screenshot
     /// viewer is up.
-    fn modal_open(&self, cx: &App) -> bool {
+    pub(super) fn modal_open(&self, cx: &App) -> bool {
         self.dialog.is_some() || self.shots.is_open() || self.page_modal(cx)
     }
 
@@ -133,6 +133,16 @@ impl CollectionView {
         self.palette.view = Some(view.clone());
         cx.notify();
         Some(view)
+    }
+
+    /// Opens the palette on the actions of the game `key` (the controller's
+    /// X on the desktop). Esc goes back to the palette's list.
+    pub(super) fn open_palette_on_game(&mut self, key: &SharedString, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
+        let Some(view) = self.open_palette_with("", window, cx) else { return };
+        let items = self.game_actions(&game, cx);
+        let entries = sources::action_entries(key, &game.title, &items, false);
+        view.update(cx, |p, cx| p.show_game(game.title.clone().into(), entries, window, cx));
     }
 
     pub(super) fn palette_open(&self) -> bool {

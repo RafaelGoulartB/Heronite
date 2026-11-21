@@ -335,7 +335,7 @@ impl CollectionView {
                                 pointer::hide_cursor();
                                 this.console_pad(pad, window, cx)
                             }
-                            PadMsg::Press(_) | PadMsg::Button(..) => {}
+                            PadMsg::Press(_) | PadMsg::Button(..) | PadMsg::Stick { .. } => {}
                             PadMsg::Connected(name, plugged) => {
                                 if plugged {
                                     this.show_toast(tr!("Controller connected: {name}", name), false, cx);
@@ -675,7 +675,8 @@ impl CollectionView {
     }
 
     /// The wheel moves along the row of covers of the layouts that are one
-    /// row (Carousel, Spotlight), else up and down.
+    /// row (Carousel; Spotlight and Cinema while their row has the focus),
+    /// else up and down.
     /// On a game page with long text, the wheel scrolls it.
     fn wheel_axis(&self) -> WheelAxis {
         let row = self.layout_wheel_row();
