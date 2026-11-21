@@ -135,8 +135,8 @@ pub(crate) struct Nav {
     jumps: u64,
     /// When the covers fanned out last (`None`: they fan out on the next frame).
     shown: Option<Instant>,
-    /// Counts the fans (part of their ids, so each one plays).
-    fans: u64,
+    /// A press ended the fan: the covers are in place.
+    fan_done: bool,
 }
 
 impl Nav {
@@ -151,13 +151,36 @@ impl Nav {
         self.filter
     }
 
+    /// Whether the filters have the focus: put there (↑), or the list is
+    /// empty, once the library is `loaded` (before, it is empty only for
+    /// want of games yet).
+    fn on_pills(&self, n: usize, loaded: bool) -> bool {
+        self.pills || (n == 0 && loaded)
+    }
+
+    /// How far the covers have fanned out `elapsed` after the filter showed:
+    /// 0 to 1 (ease-out), 1 once over or once a press ended it.
+    fn fan_progress(&self, elapsed: Duration) -> f32 {
+        if self.fan_done {
+            return 1.;
+        }
+        let t = (elapsed.as_secs_f32() * 1000. / FAN_MS as f32).clamp(0., 1.);
+        1. - (1. - t).powi(5)
+    }
+
+    /// A press: the fan, if it still runs, ends at once (the covers glide
+    /// from where they are instead).
+    fn end_fan(&mut self) {
+        self.fan_done = true;
+    }
+
     /// A new filter, the focus on `index`; the covers fan out again.
     fn set_filter(&mut self, filter: usize, index: usize) {
         self.filter = filter;
         self.index = index;
         self.from = 0.;
         self.shown = None;
-        self.fans += 1;
+        self.fan_done = false;
     }
 }
 
@@ -501,14 +524,19 @@ impl CollectionView {
         let filter = self.tab_nav(tab).carousel.filter.min(FILTERS.len() - 1);
         let all = self.carousel_keys(spec, filter);
         let n = all.len();
+        let loaded = self.lib.is_some();
         let nav = &mut self.tab_nav(tab).carousel;
         nav.index = nav.index.min(n.saturating_sub(1));
-        // Nothing to turn: the filters keep the focus.
-        if n == 0 {
-            nav.pills = true;
-        }
         let shown = *nav.shown.get_or_insert_with(Instant::now);
-        let (index, pills_focus, from, jumps, fans) = (nav.index, nav.pills, nav.from, nav.jumps, nav.fans);
+        // Nothing to turn: the filters have the focus (worked out, not kept:
+        // the list is empty for a moment while the library loads).
+        let pills_focus = nav.on_pills(n, loaded);
+        let (index, from, jumps) = (nav.index, nav.from, nav.jumps);
+        // How far the covers have fanned out (1: in place); a press ends it.
+        let fan_k = if motion::on() && !motion::reduced() { nav.fan_progress(shown.elapsed()) } else { 1. };
+        if fan_k < 1. {
+            window.request_animation_frame();
+        }
         let focused = all.get(index).cloned();
         self.console_focus_game(focused.clone(), cx);
 
@@ -543,7 +571,6 @@ impl CollectionView {
         let radius = look::tile_radius() * k;
         let grey = theme.tiles.grey_uninstalled;
         let reflect = theme.layouts.carousel_reflect;
-        let fan = motion::on() && !motion::reduced() && shown.elapsed() < Duration::from_millis(FAN_MS);
         let centre = vw / 2.;
 
         // Far covers first, so the near ones paint over them.
@@ -598,11 +625,13 @@ impl CollectionView {
                 // A thin ring a little way out from the cover.
                 let gap = 6. * k;
                 let ring_colour: Hsla = theme::console_focus().into();
-                el.left(px(centre - w / 2. + p.offset * cwp))
+                // The fan: each cover slides out from behind the middle one
+                // (in this same element, so its turn is never cut short).
+                el.left(px(centre - w / 2. + p.offset * cwp * fan_k))
                     .top(px(top))
                     .w(px(w))
                     .h(px(h))
-                    .opacity(p.opacity)
+                    .opacity(p.opacity * fan_k)
                     .when_some(floor, |el, f| {
                         el.child(
                             img(f)
@@ -630,22 +659,6 @@ impl CollectionView {
                         )
                     })
             });
-            // The fan: each cover slides out from behind the middle one.
-            let cover = if fan {
-                let shift = pose(d).offset * cwp;
-                div()
-                    .absolute()
-                    .inset_0()
-                    .child(cover)
-                    .with_animation(
-                        SharedString::from(format!("cr-fan-{tab}-{fans}-{key}")),
-                        Animation::new(Duration::from_millis(FAN_MS)).with_easing(ease_out_quint()),
-                        move |el, t| el.left(px(-shift * (1. - t))).opacity(t),
-                    )
-                    .into_any_element()
-            } else {
-                cover
-            };
             stage = stage.child(cover);
         }
         let letter = self.carousel_letter(&focused);
@@ -712,9 +725,10 @@ impl CollectionView {
         let filter = self.tab_nav(tab).carousel.filter.min(FILTERS.len() - 1);
         let all = self.carousel_keys(spec, filter);
         let n = all.len();
+        let loaded = self.lib.is_some();
         let (i, pills) = {
             let nav = &self.tab_nav(tab).carousel;
-            (nav.index.min(n.saturating_sub(1)), nav.pills)
+            (nav.index.min(n.saturating_sub(1)), nav.on_pills(n, loaded))
         };
         // A new filter: the focused game stays when it passes it.
         let next_filter = match pad {
@@ -773,6 +787,7 @@ impl CollectionView {
         if to != i {
             nav.from = if to > i { 1. } else { -1. };
             nav.index = to;
+            nav.end_fan();
         }
         true
     }
@@ -798,6 +813,33 @@ mod tests {
     use super::*;
     // `gpui_kit::*` above brings gpui's own `test` macro.
     use core::prelude::v1::test;
+
+    /// The list empty while the library loads does not send the focus to the
+    /// filters (the next presses would switch them); an empty filter does.
+    #[test]
+    fn only_a_loaded_empty_list_puts_the_focus_on_the_filters() {
+        let nav = Nav::default();
+        assert!(!nav.on_pills(0, false));
+        assert!(nav.on_pills(0, true));
+        assert!(!nav.on_pills(5, true));
+        assert!(Nav { pills: true, ..Nav::default() }.on_pills(5, true));
+    }
+
+    /// The covers fan out after a new filter; a press ends it at once.
+    #[test]
+    fn a_press_ends_the_fan() {
+        let mut nav = Nav::default();
+        nav.set_filter(0, 0);
+        assert_eq!(nav.fan_progress(Duration::ZERO), 0.);
+        let half = nav.fan_progress(Duration::from_millis(FAN_MS / 2));
+        assert!(half > 0.5 && half < 1.);
+        assert_eq!(nav.fan_progress(Duration::from_millis(FAN_MS * 2)), 1.);
+        nav.end_fan();
+        assert_eq!(nav.fan_progress(Duration::ZERO), 1.);
+        // The next filter fans out again.
+        nav.set_filter(1, 0);
+        assert_eq!(nav.fan_progress(Duration::ZERO), 0.);
+    }
 
     /// A carousel starts on the kept pill; one out of range reads as Installed.
     #[test]
