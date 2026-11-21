@@ -7,6 +7,11 @@
 //! and a controller (the d-pad moves over the keys, A presses one, X deletes,
 //! Start or Y goes on, B cancels). The hash is worked out off the UI thread.
 //! Five wrong PINs in a row make the next try wait (30 s, doubling).
+//!
+//! "Forgot the PIN?" asks for this computer's password instead
+//! (`services::hidden_lock::ask_system_password`) and turns the PIN off;
+//! hidden games stay hidden. Where the password cannot be asked, it says
+//! which file to delete.
 
 mod render;
 
@@ -17,7 +22,7 @@ use heronite_data::{hidden_lock, AppPaths};
 use heronite_i18n::tr;
 
 use super::DialogEvent;
-use crate::services::hidden_lock as session;
+use crate::services::hidden_lock::{self as session, SystemPassword};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PinMode {
@@ -73,6 +78,10 @@ pub struct HiddenPinDialog {
     app: AppPaths,
     /// The key under the controller's cursor.
     key: usize,
+    /// "Forgot the PIN?" is waiting for the computer's password.
+    forgot_asking: bool,
+    /// Where the password cannot be asked: how to turn the PIN off by hand.
+    forgot_help: Option<SharedString>,
     _tick: Option<Task<()>>,
 }
 
@@ -91,6 +100,8 @@ impl HiddenPinDialog {
             checking: false,
             app,
             key: 4,
+            forgot_asking: false,
+            forgot_help: None,
             _tick: None,
         };
         if step == Step::Current && session::wait_left().is_some() {
@@ -100,8 +111,9 @@ impl HiddenPinDialog {
         this
     }
 
-    /// `HERONITE_DEBUG_PIN=<digits>[,enter]…`: types those digits (Enter
-    /// goes on), for captures of each step.
+    /// `HERONITE_DEBUG_PIN=<digits>[,enter|,forgot]…`: types those digits
+    /// (Enter goes on, `forgot` presses "Forgot the PIN?"), for captures of
+    /// each step.
     fn debug_typing(&mut self, cx: &mut Context<Self>) {
         let Some(keys) = crate::env::value("HERONITE_DEBUG_PIN") else { return };
         let steps: Vec<String> = keys.split(',').map(str::to_owned).collect();
@@ -111,6 +123,8 @@ impl HiddenPinDialog {
                 let ok = this.update(cx, |this, cx| {
                     if step == "enter" {
                         this.submit(cx);
+                    } else if step == "forgot" {
+                        this.forgot(cx);
                     } else {
                         step.chars().for_each(|c| this.type_digit(c, cx));
                     }
@@ -159,7 +173,7 @@ impl HiddenPinDialog {
     /// The pad takes no digits: a hash is being worked out, or a wrong PIN
     /// made it wait.
     fn waiting(&self) -> bool {
-        self.checking || (self.step == Step::Current && session::wait_left().is_some())
+        self.checking || self.forgot_asking || (self.step == Step::Current && session::wait_left().is_some())
     }
 
     fn type_digit(&mut self, c: char, cx: &mut Context<Self>) {
@@ -275,6 +289,69 @@ impl HiddenPinDialog {
         .detach();
     }
 
+    /// "Forgot the PIN?" is offered while the saved PIN is asked for.
+    fn can_forget(&self) -> bool {
+        self.step == Step::Current && !self.checking && !self.forgot_asking && self.forgot_help.is_none()
+    }
+
+    /// Asks for the computer's password off the UI thread; given, the PIN is
+    /// turned off and the dialog goes on as if it had been typed.
+    fn forgot(&mut self, cx: &mut Context<Self>) {
+        if !self.can_forget() {
+            return;
+        }
+        self.forgot_asking = true;
+        self.error = None;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let answer = cx.background_spawn(async move { session::ask_system_password() }).await;
+            // The PIN goes only while the dialog is still open: one closed
+            // during the password prompt changes nothing.
+            this.update(cx, |this, cx| {
+                this.forgot_asking = false;
+                let res = match answer {
+                    SystemPassword::Given => hidden_lock::clear(&this.app).map(|_| {
+                        session::note_pin_set(false);
+                        answer
+                    }),
+                    _ => Ok(answer),
+                };
+                match res {
+                    Ok(SystemPassword::Given) => {
+                        session::succeeded();
+                        this.entry.clear();
+                        match this.mode {
+                            PinMode::Change | PinMode::Set => this.step = Step::New,
+                            _ => this.finish(cx),
+                        }
+                    }
+                    Ok(SystemPassword::Refused) => this.error = Some(tr!("The password was not given: the PIN stays.").into()),
+                    Ok(SystemPassword::Unavailable) => this.forgot_help = Some(this.manual_reset_text()),
+                    Err(e) => this.error = Some(format!("{e:#}").into()),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn manual_reset_text(&self) -> SharedString {
+        let file = self.app.hidden_lock();
+        tr!(
+            "Heronite cannot ask for this computer's password here. To turn the PIN off, delete {file} and start Heronite again. Hidden games stay hidden.",
+            file = file.display().to_string()
+        )
+        .into()
+    }
+
+    /// Esc closes the dialog through its own event, so the host hears of it
+    /// (Settings follows a PIN turned off by "Forgot the PIN?").
+    pub fn on_escape(&mut self, cx: &mut Context<Self>) -> bool {
+        cx.emit(DialogEvent::Close);
+        true
+    }
+
     fn finish(&mut self, cx: &mut Context<Self>) {
         cx.emit(PinDone(self.mode));
         cx.emit(DialogEvent::Close);
@@ -340,7 +417,8 @@ impl crate::console::PadTarget for HiddenPinDialog {
             }
             Pad::A => self.press(self.key, cx),
             Pad::X => self.delete(cx),
-            Pad::Start | Pad::Y => self.submit(cx),
+            Pad::Start => self.submit(cx),
+            Pad::Y => self.forgot(cx),
             Pad::B => cx.emit(DialogEvent::Close),
             _ => return false,
         }
@@ -349,7 +427,12 @@ impl crate::console::PadTarget for HiddenPinDialog {
 
     fn hints(&self, _: &App) -> Vec<crate::console::Hint> {
         use crate::console::{hint, Btn};
-        vec![hint(Btn::A, tr!("Type")), hint(Btn::X, tr!("Delete")), hint(Btn::Start, self.primary_label()), hint(Btn::B, tr!("Cancel"))]
+        let mut hints = vec![hint(Btn::A, tr!("Type")), hint(Btn::X, tr!("Delete")), hint(Btn::Start, self.primary_label())];
+        if self.can_forget() {
+            hints.push(hint(Btn::Y, tr!("Forgot the PIN?")));
+        }
+        hints.push(hint(Btn::B, tr!("Cancel")));
+        hints
     }
 }
 

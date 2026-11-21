@@ -84,6 +84,9 @@ pub enum DialogEvent {
 /// dialog used the key: it closed something inside itself (an image picker,
 /// a question) or asked before throwing away what was typed.
 pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool {
+    if let Ok(d) = view.clone().downcast::<hidden_pin::HiddenPinDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
     if let Ok(d) = view.clone().downcast::<add_game::AddGameDialog>() {
         return d.update(cx, |d, cx| d.on_escape(cx));
     }

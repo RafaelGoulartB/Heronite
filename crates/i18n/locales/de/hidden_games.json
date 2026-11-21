@@ -19,5 +19,9 @@
   "Ask for a PIN": "Nach einer PIN fragen",
   "Ask for a PIN to show hidden games": "Nach einer PIN fragen, bevor ausgeblendete Spiele angezeigt werden",
   "Before hidden games show": "Bevor ausgeblendete Spiele erscheinen",
-  "Hidden games stay out of sight until the PIN is typed, and again once the switch is off or Heronite restarts. This keeps them private in Heronite; their files are not encrypted.": "Ausgeblendete Spiele bleiben unsichtbar, bis die PIN eingegeben wird, und wieder, sobald der Schalter aus ist oder Heronite neu startet. So bleiben sie in Heronite privat; ihre Dateien werden nicht verschlüsselt."
+  "Hidden games stay out of sight until the PIN is typed, and again once the switch is off or Heronite restarts. This keeps them private in Heronite; their files are not encrypted.": "Ausgeblendete Spiele bleiben unsichtbar, bis die PIN eingegeben wird, und wieder, sobald der Schalter aus ist oder Heronite neu startet. So bleiben sie in Heronite privat; ihre Dateien werden nicht verschlüsselt.",
+  "Enter this computer's password in the window that opened.": "Gib das Passwort dieses Computers im geöffneten Fenster ein.",
+  "Forgot the PIN?": "PIN vergessen?",
+  "Heronite cannot ask for this computer's password here. To turn the PIN off, delete {file} and start Heronite again. Hidden games stay hidden.": "Heronite kann hier nicht nach dem Passwort dieses Computers fragen. Um die PIN auszuschalten, lösche {file} und starte Heronite neu. Ausgeblendete Spiele bleiben ausgeblendet.",
+  "The password was not given: the PIN stays.": "Das Passwort wurde nicht eingegeben: Die PIN bleibt."
 }

@@ -42,6 +42,8 @@ impl HiddenPinDialog {
     /// does not move.
     fn status_line(&self, size: Pixels) -> Div {
         let (text, error): (SharedString, bool) = match (self.wait_text(), &self.error) {
+            _ if self.forgot_asking => (tr!("Enter this computer's password in the window that opened.").into(), false),
+            _ if self.forgot_help.is_some() => (self.forgot_help.clone().unwrap_or_default(), false),
             (Some(wait), _) => (wait, true),
             (None, Some(e)) => (e.clone(), true),
             (None, None) if self.checking => (tr!("Checking\u{2026}").into(), false),
@@ -139,7 +141,18 @@ impl Render for HiddenPinDialog {
             )
             .child(div().pt(px(4.)).child(self.dots(px(14.), px(12.))))
             .child(self.status_line(px(13.)))
-            .child(self.pad(px(60.), px(12.), px(22.), None, cx));
+            .child(self.pad(px(60.), px(12.), px(22.), None, cx))
+            .children(self.can_forget().then(|| {
+                div()
+                    .id("hidden-pin-forgot")
+                    .pt(px(2.))
+                    .text_size(px(13.))
+                    .text_color(theme::accent())
+                    .cursor_pointer()
+                    .hover(|s| s.underline())
+                    .on_click(cx.listener(|this, _, _, cx| this.forgot(cx)))
+                    .child(tr!("Forgot the PIN?"))
+            }));
         let ready = !self.waiting() && heronite_data::hidden_lock::valid_pin(&self.entry);
         let kind = if self.mode == super::PinMode::Remove && ready { ButtonKind::Danger } else { ButtonKind::Primary };
         let mut go = button("hidden-pin-go", kind, self.primary_label());

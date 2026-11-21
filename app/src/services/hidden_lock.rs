@@ -85,3 +85,41 @@ pub fn wait_left() -> Option<Duration> {
     let until = tries().until?;
     until.checked_duration_since(Instant::now()).filter(|d| !d.is_zero())
 }
+
+/// What asking for the computer's password gave.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SystemPassword {
+    Given,
+    /// Dismissed, or a wrong password.
+    Refused,
+    /// No way to ask here (no `pkexec`, or not Linux).
+    Unavailable,
+}
+
+/// "Forgot the PIN?": the desktop asks for this computer's password (an
+/// administrator's, through polkit's `pkexec`), which proves the owner is
+/// here. Blocks until it is answered: call it off the UI thread.
+pub fn ask_system_password() -> SystemPassword {
+    // `HERONITE_DEBUG_SYSTEM_PASSWORD=given|refused|unavailable` answers
+    // without asking (captures); debug builds only, as it skips the password.
+    let fake = if cfg!(debug_assertions) { crate::env::value("HERONITE_DEBUG_SYSTEM_PASSWORD") } else { None };
+    match fake.as_deref() {
+        Some("given") => return SystemPassword::Given,
+        Some("refused") => return SystemPassword::Refused,
+        Some(_) => return SystemPassword::Unavailable,
+        None => {}
+    }
+    if !cfg!(target_os = "linux") {
+        return SystemPassword::Unavailable;
+    }
+    let Some(pkexec) = ["/usr/bin/pkexec", "/bin/pkexec"].into_iter().find(|p| std::path::Path::new(p).exists()) else {
+        return SystemPassword::Unavailable;
+    };
+    let status = std::process::Command::new(pkexec).arg("/bin/true").stdin(std::process::Stdio::null()).status();
+    match status.map(|s| s.code()) {
+        Ok(Some(0)) => SystemPassword::Given,
+        // 126: dismissed; 127: not authorised (a wrong password).
+        Ok(Some(126 | 127)) => SystemPassword::Refused,
+        _ => SystemPassword::Unavailable,
+    }
+}
