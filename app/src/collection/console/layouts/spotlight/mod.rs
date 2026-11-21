@@ -295,7 +295,10 @@ impl CollectionView {
     /// What the page of `g` has, laid out for a view `view` design px wide.
     /// `logo`: the game's logo is on screen (else nothing takes its place:
     /// the head starts with what comes under it).
-    fn spotlight_shape(&mut self, g: &CollectionGame, view: f32, host: Host, logo: bool, cx: &mut Context<Self>) -> Shape {
+    /// `body_h`: the height of the screen under the top bar (and a hint bar
+    /// that takes room), design px.
+    #[allow(clippy::too_many_arguments)]
+    fn spotlight_shape(&mut self, g: &CollectionGame, view: f32, body_h: f32, host: Host, logo: bool, cx: &mut Context<Self>) -> Shape {
         let theme = look::theme();
         let sections = theme.layouts.spotlight_sections.clone();
         let key = SharedString::from(g.key.clone());
@@ -383,6 +386,10 @@ impl CollectionView {
         // The game page keeps a line under the facts (Showcase's genre
         // chips, Cinema's genres); the console home has none.
         s.chips = host == Host::Game;
+        // The home's peek sits at the bottom of its body.
+        if host != Host::Game {
+            s.pin = body_h;
+        }
         s.layout(top, logo_h, width, page::COVER_W * self.cover_aspect);
         // The game page ends clear of the hint bar under it.
         if host == Host::Game {
@@ -630,7 +637,8 @@ impl CollectionView {
         let shape = match &game {
             Some(g) => {
                 let logo = self.spot_has_logo(g, view_w, host, window);
-                self.spotlight_shape(g, view_w, host, logo, cx)
+                let body_h = super::body_height(window, self.hints_visible() && !super::hints_float(Layout::Spotlight));
+                self.spotlight_shape(g, view_w, body_h, host, logo, cx)
             }
             None => Shape::default(),
         };
@@ -793,9 +801,22 @@ impl CollectionView {
         // panels run to the edge.)
         let veil = (!game_page && (shape.first_left().is_some() || shape.has_side()) && lift < 0.99).then(|| {
             let top = shape.geo.media + page::TILE_H * 0.3 - rise;
-            let band = self.console_art_band(super::super::Scrim::Home, top, PEEK_FADE, bar, (view_w, view_h));
             let end = view_h - bar;
-            div().absolute().inset_0().opacity(1. - lift).children(band).child(
+            // No art (a plain background): the peek fades into the background's colour.
+            let band = self.console_art_band(super::super::Scrim::Home, top, PEEK_FADE, bar, (view_w, view_h)).unwrap_or_else(|| {
+                let (mut clear, solid) = (theme::console_bg(), theme::console_bg());
+                clear.a = 0.;
+                div()
+                    .absolute()
+                    .inset_0()
+                    .child(div().absolute().top(u(top)).left_0().right_0().h(u(PEEK_FADE)).bg(linear_gradient(
+                        180.,
+                        linear_color_stop(clear, 0.),
+                        linear_color_stop(solid, 1.),
+                    )))
+                    .child(div().absolute().top(u(top + PEEK_FADE)).left_0().right_0().h(u((end - top - PEEK_FADE).max(0.))).bg(solid))
+            });
+            div().absolute().inset_0().opacity(1. - lift).child(band).child(
                 div().absolute().top(u(end - HINT_SHADE)).left_0().right_0().h(u(HINT_SHADE)).bg(linear_gradient(
                     180.,
                     linear_color_stop(kit::dim(0.), 0.),

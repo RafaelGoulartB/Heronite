@@ -95,6 +95,12 @@ pub(super) enum Link {
     Store,
 }
 
+/// On the home, how much of the page's first sections shows above the
+/// body's bottom, and the room between the row and the buttons of a game
+/// without a logo, design px.
+pub(super) const PEEK_SHOWS: f32 = 230.;
+const NO_LOGO_GAP: f32 = 48.;
+
 /// The sizes the page is laid out with, design px.
 pub(super) const SIDE: f32 = 46.;
 /// The widest the page's column gets (a very wide window keeps the art on the right).
@@ -170,6 +176,10 @@ pub(super) struct Shape {
     pub shots: usize,
     pub shots_shown: usize,
     pub related: Vec<SharedString>,
+    /// On the console home: the body's height, design px. The page's first
+    /// sections then start [`PEEK_SHOWS`] above its bottom, however tall the
+    /// head is (never over it). 0: right under the head.
+    pub pin: f32,
     /// The head has a line under its facts: Showcase's genre chips, Cinema's
     /// genres (the console home has none).
     pub chips: bool,
@@ -252,11 +262,18 @@ impl Shape {
         // sidebar has the left's place when that has nothing).
         let stacked = stacks(width) && self.has_side() && self.first_left().is_some();
         let left = if self.has_side() && self.first_left().is_some() { left_width(width) } else { width };
-        let mut g = Geo { logo: row + 2., logo_h, width, left, stacked, ..Geo::default() };
+        // Without a logo the buttons keep a clear gap under the row (and the
+        // name beside its focused icon).
+        let logo = row + if logo_h > 0. { 2. } else { NO_LOGO_GAP };
+        let mut g = Geo { logo, logo_h, width, left, stacked, ..Geo::default() };
         g.buttons = g.logo + if logo_h > 0. { logo_h + 16. } else { 0. };
         g.facts = g.buttons + BUTTON_H + 18.;
         g.chips = g.facts + FACTS_H + 10.;
-        let top = if self.chips { g.chips + CHIPS_H + 24. } else { g.facts + FACTS_H + 24. };
+        let under_head = if self.chips { g.chips + CHIPS_H + 24. } else { g.facts + FACTS_H + 24. };
+        // On the home the peek of the page sits at the bottom, just above the
+        // hints, whatever the head's height; a short window pushes it down
+        // (out of sight) rather than over the buttons.
+        let top = if self.pin > 0. { under_head.max(self.pin - PEEK_SHOWS) } else { under_head };
         g.media = top;
         g.side = top;
         self.shots_shown = self.shots.min(shots_room(left));
@@ -604,6 +621,25 @@ mod tests {
         n.layout(172., 150., 1500., 192.);
         assert_eq!(n.first_left(), None);
         assert!(n.has_side() && n.geo.left == n.geo.width);
+    }
+
+    #[test]
+    fn the_home_pins_the_peek_to_the_bottom_and_keeps_the_head_clear_of_the_row() {
+        // Whatever the logo, the peek starts the same distance above the bottom.
+        for logo in [0., 96., 150.] {
+            let mut s = Shape { media: 6, pin: 1300., ..Shape::default() };
+            s.layout(172., logo, 1500., 192.);
+            assert_eq!(s.geo.media, 1300. - PEEK_SHOWS, "{logo}");
+            assert_eq!(s.geo.side, s.geo.media);
+        }
+        // A short body: the peek goes below the head, never over it.
+        let mut short = Shape { media: 6, pin: 500., ..Shape::default() };
+        short.layout(172., 150., 1500., 192.);
+        assert!(short.geo.media >= short.geo.facts + FACTS_H + 24.);
+        // No logo: a clear gap between the row and the buttons.
+        let mut bare = Shape { media: 6, ..Shape::default() };
+        bare.layout(172., 0., 1500., 192.);
+        assert!(bare.geo.buttons - 172. >= 40.);
     }
 
     #[test]
