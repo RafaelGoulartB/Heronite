@@ -95,6 +95,12 @@ impl FakeSpawner {
             h.lock().unwrap().exit = Some(ExitInfo { code: Some(code), signal: None });
         }
     }
+    /// Makes the `index`-th spawned process die of `signal`, like a crash.
+    pub fn crash(&self, index: usize, signal: i32) {
+        if let Some(h) = self.handle(index) {
+            h.lock().unwrap().exit = Some(ExitInfo { code: None, signal: Some(signal) });
+        }
+    }
     pub fn fail_next_spawn(&self, message: &str) {
         self.state.lock().unwrap().fail_spawn = Some(message.to_string());
     }

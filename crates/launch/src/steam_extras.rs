@@ -53,6 +53,7 @@ pub fn attach(plan: &mut LaunchPlan, probe: &dyn Probe, game: &GameInfo, setting
                 path: c.path.clone(),
                 command: crate::companions::direct_command(game, settings, &c.path),
                 delay: std::time::Duration::from_secs(c.delay_secs.into()),
+                ..Default::default()
             })
             .collect(),
     };

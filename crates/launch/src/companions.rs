@@ -89,7 +89,12 @@ pub fn attach(plan: &mut LaunchPlan, ctx: &PlanContext, probe: &dyn Probe, game:
             }
             _ => direct_command(game, settings, &c.path),
         };
-        process.companions.push(CompanionPlan { path: c.path.clone(), command, delay: Duration::from_secs(c.delay_secs.into()) });
+        process.companions.push(CompanionPlan {
+            path: c.path.clone(),
+            command,
+            delay: Duration::from_secs(c.delay_secs.into()),
+            ..Default::default()
+        });
     }
     // In the sandbox the programs join the game's sandbox instead: umu's way
     // into the container needs the session bus, which the sandbox hides.
