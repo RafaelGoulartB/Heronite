@@ -14,6 +14,7 @@ mod context_menu;
 mod copies;
 mod data;
 mod debug;
+mod desktop_pad;
 mod dock;
 mod downloads_pill;
 mod emulation;
@@ -285,6 +286,8 @@ pub struct CollectionView {
     palette: palette::Host,
     /// Console mode state (`console/`).
     console: console::ConsoleUi,
+    /// The controller outside console mode (`desktop_pad.rs`).
+    desktop_pad: desktop_pad::DesktopPad,
     /// Language the precomputed view models and the search placeholder were
     /// built in.
     lang: heronite_i18n::Lang,
@@ -475,6 +478,7 @@ impl CollectionView {
             pages: nav::Pages::default(),
             palette: palette::Host::new(window, cx),
             console: Default::default(),
+            desktop_pad: Default::default(),
             lang: heronite_i18n::current(),
         };
         this.apply_start_view();
@@ -705,6 +709,7 @@ impl CollectionView {
         self.drive_palette(window, cx);
         crate::ui::glass::set_backdrop(self.glass_image(window));
         self.sync_nav_meta(cx);
+        self.sync_desktop_pad(window, cx);
         if crate::console::active() {
             return self.render_console(window, cx);
         }
@@ -796,6 +801,7 @@ impl CollectionView {
             .children(self.render_gallery(window, cx))
             .children(self.render_viewer(window, cx))
             .children(self.render_palette())
+            .children(self.render_desktop_pointer())
             .into_any_element()
     }
 }

@@ -289,6 +289,7 @@ impl UiState {
         state.controller = ControllerPrefs {
             glyphs: controller.and_then(|c| c.get("glyphs")).and_then(Value::as_str).and_then(Glyphs::parse).unwrap_or_default(),
             confirm: controller.and_then(|c| c.get("confirm")).and_then(Value::as_str).and_then(ConfirmButton::parse).unwrap_or_default(),
+            desktop: controller.and_then(|c| c.get("desktop")).and_then(Value::as_bool).unwrap_or(true),
         };
         state
     }
@@ -844,7 +845,8 @@ pub fn set_controller(paths: &AppPaths, value: ControllerPrefs) -> Result<()> {
     set_mirror(
         paths,
         CONTROLLER,
-        (value != ControllerPrefs::default()).then(|| json!({ "glyphs": value.glyphs.as_str(), "confirm": value.confirm.as_str() })),
+        (value != ControllerPrefs::default())
+            .then(|| json!({ "glyphs": value.glyphs.as_str(), "confirm": value.confirm.as_str(), "desktop": value.desktop })),
     )
 }
 
@@ -1092,7 +1094,7 @@ mod tests {
         assert_eq!(UiState::load(&paths).console_button, ConsoleButton::Off);
         set_console_button(&paths, ConsoleButton::Bumpers).unwrap();
         assert_eq!(UiState::load(&paths).controller, ControllerPrefs::default());
-        let east = ControllerPrefs { glyphs: Glyphs::PlayStation, confirm: ConfirmButton::East };
+        let east = ControllerPrefs { glyphs: Glyphs::PlayStation, confirm: ConfirmButton::East, desktop: false };
         set_controller(&paths, east).unwrap();
         let stale = UiState::default();
         let loaded = UiState::load(&paths);

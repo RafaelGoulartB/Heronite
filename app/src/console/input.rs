@@ -14,6 +14,9 @@
 //!
 //! [`start_buttons`] reads the buttons as they go down and up instead (a
 //! button held, for the shortcut to console mode: `console::summon`).
+//! [`start_desktop`] sends the presses of the buttons and the d-pad, and
+//! where each stick points (the desktop's pointer and scrolling:
+//! `collection::desktop_pad`).
 
 use std::time::{Duration, Instant};
 
@@ -43,6 +46,15 @@ pub enum PadMsg {
     Disconnected {
         remaining: Option<String>,
     },
+    /// Where a stick points, from [`start_desktop`] only: past the dead zone,
+    /// scaled so the edge of the zone is 0 and full tilt 1; positive `y` up.
+    /// Sent when it moves by a step ([`STICK_STEP`]), and as 0, 0 once back
+    /// in the zone.
+    Stick {
+        right: bool,
+        x: f32,
+        y: f32,
+    },
 }
 
 /// First repeat after this long, then every [`REPEAT_EVERY`].
@@ -57,6 +69,12 @@ const STICK_OFF: f32 = 0.35;
 /// gilrs uses to turn analog triggers into buttons).
 const TRIGGER_ON: f32 = 0.75;
 const TRIGGER_OFF: f32 = 0.65;
+/// A stick this close to the middle rests ([`PadMsg::Stick`]): worn sticks
+/// drift past 0.1.
+const STICK_DEAD: f32 = 0.18;
+/// [`PadMsg::Stick`] goes out when a stick moved this much: a few dozen
+/// messages for a whole sweep, not one per reading.
+const STICK_STEP: f32 = 1. / 32.;
 
 /// A controller button by its position, whatever reads it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -243,13 +261,38 @@ fn is_direction(p: Pad) -> bool {
     matches!(p, Pad::Up | Pad::Down | Pad::Left | Pad::Right)
 }
 
+/// A stick at `x`, `y` as [`PadMsg::Stick`] gives it: 0, 0 inside the dead
+/// zone, then scaled from its edge (0) to full tilt (1), in steps of
+/// [`STICK_STEP`].
+fn stick_out(x: f32, y: f32) -> (f32, f32) {
+    let len = x.hypot(y);
+    if len <= STICK_DEAD {
+        return (0., 0.);
+    }
+    let k = ((len - STICK_DEAD) / (1. - STICK_DEAD)).min(1.) / len;
+    let step = |v: f32| (v * k / STICK_STEP).round() * STICK_STEP;
+    (step(x), step(y))
+}
+
+/// What a [`Translator`] sends.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Mode {
+    /// Presses, the sticks as directions (console mode).
+    #[default]
+    Presses,
+    /// The buttons as they go down and up ([`PadMsg::Button`]), nothing else.
+    Buttons,
+    /// Presses of the buttons and the d-pad, the sticks as they point
+    /// ([`PadMsg::Stick`]).
+    Desktop,
+}
+
 /// Turns a backend's [`RawEvent`]s into [`PadMsg`]s: repeats for held
 /// directions, stick and trigger thresholds. Pure, so it is tested without a
 /// controller.
 #[derive(Default)]
 pub(super) struct Translator {
-    /// Sends the buttons as they are ([`PadMsg::Button`]), nothing else.
-    buttons: bool,
+    mode: Mode,
     rep: Repeater,
     /// Sticks report X and Y separately; keep both.
     lx: f32,
@@ -258,22 +301,66 @@ pub(super) struct Translator {
     ry: f32,
     /// Analog triggers held past [`TRIGGER_ON`] (left, right).
     triggers: [bool; 2],
+    /// A hat d-pad (gilrs), which presses as the d-pad's buttons do.
+    hx: f32,
+    hy: f32,
+    /// The last [`PadMsg::Stick`] of each stick (left, right).
+    sent: [(f32, f32); 2],
 }
 
 impl Translator {
     /// For [`start_buttons`].
     pub fn buttons() -> Self {
-        Self { buttons: true, ..Self::default() }
+        Self { mode: Mode::Buttons, ..Self::default() }
+    }
+
+    /// For [`start_desktop`].
+    pub fn desktop() -> Self {
+        Self { mode: Mode::Desktop, ..Self::default() }
     }
 
     /// Made by [`Translator::buttons`]: nothing repeats, a slower read does.
     #[cfg_attr(not(windows), allow(dead_code))]
     pub fn buttons_only(&self) -> bool {
-        self.buttons
+        self.mode == Mode::Buttons
     }
 
     pub fn event(&mut self, ev: RawEvent, now: Instant, swap_ab: bool) -> Option<PadMsg> {
-        if self.buttons {
+        if self.mode == Mode::Desktop {
+            match ev {
+                RawEvent::Axis(axis @ (StickAxis::DPadX | StickAxis::DPadY), v) => {
+                    if axis == StickAxis::DPadX {
+                        self.hx = v;
+                    } else {
+                        self.hy = v;
+                    }
+                    // The left stick's slot of the repeater: here the stick points instead.
+                    return self.rep.stick(false, self.hx, self.hy, now).map(PadMsg::Press);
+                }
+                RawEvent::Axis(axis, v) => {
+                    match axis {
+                        StickAxis::LeftX => self.lx = v,
+                        StickAxis::LeftY => self.ly = v,
+                        StickAxis::RightX => self.rx = v,
+                        _ => self.ry = v,
+                    }
+                    let right = matches!(axis, StickAxis::RightX | StickAxis::RightY);
+                    let out = if right { stick_out(self.rx, self.ry) } else { stick_out(self.lx, self.ly) };
+                    let sent = &mut self.sent[usize::from(right)];
+                    if *sent == out {
+                        return None;
+                    }
+                    *sent = out;
+                    return Some(PadMsg::Stick { right, x: out.0, y: out.1 });
+                }
+                RawEvent::Disconnected { .. } => {
+                    (self.hx, self.hy) = (0., 0.);
+                    self.sent = [(0., 0.); 2];
+                }
+                _ => {}
+            }
+        }
+        if self.mode == Mode::Buttons {
             return match ev {
                 RawEvent::Button(b, down) => Some(PadMsg::Button(b, down)),
                 RawEvent::Connected { name, plugged } => Some(PadMsg::Connected(name, plugged)),
@@ -351,6 +438,17 @@ pub fn start() -> Option<(PadThread, UnboundedReceiver<PadMsg>)> {
         return None;
     }
     let (source, rx) = backend::start(Translator::default())?;
+    Some((PadThread { _source: source }, rx))
+}
+
+/// [`start`] for the desktop: presses of the buttons, the d-pad and the
+/// triggers, and where each stick points ([`PadMsg::Stick`]) rather than
+/// directions.
+pub fn start_desktop() -> Option<(PadThread, UnboundedReceiver<PadMsg>)> {
+    if crate::env::flag("HERONITE_NO_GAMEPAD") {
+        return None;
+    }
+    let (source, rx) = backend::start(Translator::desktop())?;
     Some((PadThread { _source: source }, rx))
 }
 
@@ -519,6 +617,43 @@ mod tests {
         let plugged = RawEvent::Connected { name: "Pad".into(), plugged: true };
         assert_eq!(t.event(plugged, t0, false), Some(PadMsg::Connected("Pad".into(), true)));
         assert!(t.buttons_only() && !Translator::default().buttons_only());
+    }
+
+    #[test]
+    fn the_desktop_translator_sends_where_the_sticks_point_and_presses_the_rest() {
+        let t0 = Instant::now();
+        let mut t = Translator::desktop();
+        // Buttons and the d-pad press, and directions repeat.
+        assert_eq!(t.event(RawEvent::Button(Button::South, true), t0, false), press(Pad::A));
+        assert_eq!(t.event(RawEvent::Button(Button::Down, true), t0, false), press(Pad::Down));
+        assert_eq!(t.tick(t0 + REPEAT_AFTER), press(Pad::Down));
+        assert_eq!(t.event(RawEvent::Button(Button::Down, false), t0, false), None);
+        assert_eq!(t.event(RawEvent::Trigger { right: true, value: 1.0 }, t0, false), press(Pad::RT));
+        // A stick inside the dead zone says nothing; out of it, where it points.
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::RightX, 0.1), t0, false), None);
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::RightX, 1.0), t0, false), Some(PadMsg::Stick { right: true, x: 1.0, y: 0.0 }));
+        // Nothing for a change smaller than a step, and no presses from a stick.
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::RightX, 0.999), t0, false), None);
+        assert_eq!(t.wait(t0 + REPEAT_AFTER), None);
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::LeftY, -0.59), t0, false), Some(PadMsg::Stick { right: false, x: 0.0, y: -0.5 }));
+        // Back in the zone: 0, 0 once.
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::LeftY, 0.05), t0, false), Some(PadMsg::Stick { right: false, x: 0.0, y: 0.0 }));
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::LeftY, 0.0), t0, false), None);
+        // A hat d-pad presses as the d-pad does.
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::DPadX, 1.0), t0, false), press(Pad::Right));
+        assert!(!t.buttons_only());
+    }
+
+    #[test]
+    fn stick_out_scales_from_the_dead_zone() {
+        assert_eq!(super::stick_out(0.1, 0.1), (0., 0.));
+        assert_eq!(super::stick_out(0., 1.), (0., 1.));
+        assert_eq!(super::stick_out(-1., 0.), (-1., 0.));
+        // Past full tilt (a square gate's corner) stays at 1.
+        let (x, y) = super::stick_out(1., 1.);
+        assert!((x.hypot(y) - 1.).abs() < 0.05, "{x} {y}");
+        // Just out of the zone: near 0, not a jump to the zone's edge.
+        assert!(super::stick_out(0.2, 0.).0 <= super::STICK_STEP);
     }
 
     #[test]

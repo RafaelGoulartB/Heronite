@@ -280,18 +280,24 @@ fn the_controller_options_leave_the_theme_and_keep_what_was_chosen() {
         std::fs::write(paths.console_prefs(), v.to_string()).unwrap();
     };
     // New: automatic both.
-    assert_eq!(ConsolePrefs::default().controller, ControllerPrefs { glyphs: Glyphs::Auto, confirm: ConfirmButton::Auto });
+    assert_eq!(ConsolePrefs::default().controller, ControllerPrefs { glyphs: Glyphs::Auto, confirm: ConfirmButton::Auto, desktop: true });
     // A file from before: the east button stays the confirm button; a
     // theme's Xbox or PlayStation drawing becomes automatic, the keyboard's stays.
     write(json!({ "theme": { "controls": { "glyphs": "playstation", "swapAb": true, "hints": "off" } } }));
     let p = ConsolePrefs::load(&paths);
-    assert_eq!(p.controller, ControllerPrefs { glyphs: Glyphs::Auto, confirm: ConfirmButton::East });
+    assert_eq!(p.controller, ControllerPrefs { glyphs: Glyphs::Auto, confirm: ConfirmButton::East, desktop: true });
     assert_eq!(p.theme.controls.hints, Hints::Off);
     write(json!({ "theme": { "controls": { "glyphs": "keyboard" } } }));
-    assert_eq!(ConsolePrefs::load(&paths).controller, ControllerPrefs { glyphs: Glyphs::Keyboard, confirm: ConfirmButton::Auto });
+    assert_eq!(
+        ConsolePrefs::load(&paths).controller,
+        ControllerPrefs { glyphs: Glyphs::Keyboard, confirm: ConfirmButton::Auto, desktop: true }
+    );
     // Once saved, its own key wins over what the theme had.
     write(json!({ "controller": { "glyphs": "nintendo", "confirm": "south" }, "theme": { "controls": { "swapAb": true } } }));
-    assert_eq!(ConsolePrefs::load(&paths).controller, ControllerPrefs { glyphs: Glyphs::Nintendo, confirm: ConfirmButton::South });
+    assert_eq!(
+        ConsolePrefs::load(&paths).controller,
+        ControllerPrefs { glyphs: Glyphs::Nintendo, confirm: ConfirmButton::South, desktop: true }
+    );
     // A theme no longer carries them.
     let text = presets::pulse().to_json().unwrap();
     assert!(!text.contains("glyphs") && !text.contains("swapAb"), "{text}");

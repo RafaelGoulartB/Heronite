@@ -495,12 +495,22 @@ impl Default for ControlOptions {
 }
 
 /// The controller's options, the same everywhere (console mode, the
-/// overlay, Settings): how its buttons are drawn and which one confirms.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// overlay, Settings): how its buttons are drawn, which one confirms and
+/// whether it drives the desktop too.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ControllerPrefs {
     pub glyphs: Glyphs,
     pub confirm: ConfirmButton,
+    /// The controller moves around the desktop (outside console mode) as
+    /// the keyboard and the mouse do.
+    pub desktop: bool,
+}
+
+impl Default for ControllerPrefs {
+    fn default() -> Self {
+        Self { glyphs: Glyphs::Auto, confirm: ConfirmButton::Auto, desktop: true }
+    }
 }
 
 impl ControllerPrefs {
@@ -515,7 +525,7 @@ impl ControllerPrefs {
             _ => Glyphs::Auto,
         };
         let east = controls.and_then(|c| c.get("swapAb")).and_then(Value::as_bool).unwrap_or(false);
-        Self { glyphs, confirm: if east { ConfirmButton::East } else { ConfirmButton::Auto } }
+        Self { glyphs, confirm: if east { ConfirmButton::East } else { ConfirmButton::Auto }, ..Self::default() }
     }
 }
 

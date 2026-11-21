@@ -60,8 +60,9 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   them; mirrored in `ui-state.json` so the overlay never reads `console.json`). Both are automatic by default: the
   drawing follows the controller in use (`look::glyphs_for_controller`), and a Nintendo drawing confirms with the east
   button (its A) and goes back with the south one, in console mode (`console::input`), the overlay (`panel::pad_of`)
-  and every hint (`kit::glyph`). Then one tab at a time (In a game, Outside games, Overlay
-  open, Console mode): the drawn controller of the buttons in use (`pad/model.rs`: an Xbox Series controller, a DualSense or a Switch Pro Controller, from Zacksly's CC BY 3.0 drawings without the makers' logos: their geometry read once with `usvg` and painted as paths in the theme's colours, no picture rasterized or kept) with the tab's buttons lit and a callout per button in a column on its side
+  and every hint (`kit::glyph`). A last switch, "Use the controller on the desktop" (`ControllerPrefs::desktop`, on by
+  default), turns the controller on the desktop on or off. Then one tab at a time (In a game, Outside games, On the
+  desktop, Overlay open, Console mode): the drawn controller of the buttons in use (`pad/model.rs`: an Xbox Series controller, a DualSense or a Switch Pro Controller, from Zacksly's CC BY 3.0 drawings without the makers' logos: their geometry read once with `usvg` and painted as paths in the theme's colours, no picture rasterized or kept) with the tab's buttons lit and a callout per button in a column on its side
   (Guide, View and Menu on top), joined by lines that never cross (`pad.rs`, tested; a click on a button or callout lights
   it and its table row), then the tab's shortcuts in a table (`table.rs`: action, controller, keyboard). Every button is
   drawn as the controller has it (✕ ○ □ △ and L1 / Options for PlayStation, B A Y X and ZL / + for Nintendo). Every shortcut
@@ -1448,6 +1449,21 @@ the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
 `HERONITE_DEBUG_DROPDOWN=nav|view|view:<text>|groups-select|more-filters|manage`, `HERONITE_DEBUG_MENU=<key>`,
 `HERONITE_DEBUG_DIALOG=...`, `HERONITE_DEBUG_PAGE=...`. Copy
 `~/.local/share/heronite/images-cache` into the fixture or no art appears at all.
+
+**The controller on the desktop** (`collection/desktop_pad.rs`): outside console mode the controller drives the desktop
+as it is; the layout never changes and nothing is drawn for it but a pointer. It types the keys the desktop already
+takes: the d-pad is the arrows (with repeats), A Enter, B Esc, Y the palette (Ctrl K, which reaches every page, command
+and game), X the selected game's actions in the palette, LB / RB the page before / after in the ☰ menu's order (the
+palette's filters while it is open; nothing while LB + RB is the button held to enter console mode). The right stick moves a pointer painted over the window (a white disc, above menus
+and popovers) and RT / LT click and right-click with it, so dialog buttons and switches are reachable; the first RT shows
+the pointer without clicking, and it hides when the mouse moves or a key-like button is pressed. The left stick scrolls
+what is under the pointer, else the mouse, else the middle of the window (synthesized wheel events). Guide, Start and Back are left to console mode's shortcut and the
+overlay (`console::summon`). Cost: the reader blocks between events (`input::start_desktop`; sticks are sent only when
+they move by a step), the pointer and scrolling move on a 16 ms timer only while a stick is tilted, and the reader stops
+while a game runs and, on Windows, while the window is in the background (SDL reads open controllers every 8 ms; the
+window's activation starts and stops it, as a minimized window draws no frame). Presses only count while
+the window is in front, no game runs and "Use the controller on the desktop" (Settings › Controller) is on; the
+Controller page's On the desktop tab lists the buttons.
 
 **Entering console mode from anywhere** (`app/src/console/summon.rs`, by user decision: the corner notice with a ring,
 issue #253): the app's, not the window's, so it works with the window closed to the tray or behind another app. "When a

@@ -335,7 +335,7 @@ impl CollectionView {
                                 pointer::hide_cursor();
                                 this.console_pad(pad, window, cx)
                             }
-                            PadMsg::Press(_) | PadMsg::Button(..) => {}
+                            PadMsg::Press(_) | PadMsg::Button(..) | PadMsg::Stick { .. } => {}
                             PadMsg::Connected(name, plugged) => {
                                 if plugged {
                                     this.show_toast(tr!("Controller connected: {name}", name), false, cx);
