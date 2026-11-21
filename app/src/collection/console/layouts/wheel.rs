@@ -1,9 +1,11 @@
 //! Wheel: a vertical list of the tab's games on the left, EmulationStation
 //! style. The focused row stays centred and the others fade and bend away
 //! with their distance; the rows are placed from the list's scroll position,
-//! so a [`Glide`] moves them all smoothly. ◀ ▶ switch the filter in the
-//! header (All games, each platform, Favourites). On the right: the focused
-//! game's art with its logo over it, its facts and overview.
+//! so a [`Glide`] moves them all smoothly. The games are the tab's as the
+//! Filters panel (Y) leaves them, as a grid's would be: Show, Favourites,
+//! Status, Category, the search and the sort; ◀ ▶ switch the chooser in the
+//! header over those (All games, each platform, Favourites). On the right:
+//! the focused game's art with its logo over it, its facts and overview.
 
 use std::collections::BTreeMap;
 
@@ -16,7 +18,6 @@ use heronite_i18n::{tr, trn};
 
 use super::super::super::CollectionView;
 use super::super::hero::{clip, played_time};
-use super::super::sources::{by_title, keys};
 use super::grid::fact_cell;
 use crate::console::kit::{self, u};
 use crate::console::look;
@@ -64,6 +65,14 @@ impl Default for Nav {
     }
 }
 
+impl Nav {
+    /// The Filters panel changed the list: back to its first game, at once.
+    pub(crate) fn restart_list(&mut self) {
+        self.index = 0;
+        self.restart = true;
+    }
+}
+
 #[derive(Clone, PartialEq)]
 enum Filter {
     All,
@@ -89,36 +98,59 @@ fn bend(d: f32) -> f32 {
     d * d * 2.4
 }
 
+/// A game of the wheel, as its ‹ › chooser sees it.
+struct Entry {
+    key: SharedString,
+    platform: String,
+    favourite: bool,
+}
+
+/// The chooser over `games` (already through the Filters panel, in its
+/// order): All, each platform present (most games first; one that holds
+/// every game adds nothing) and Favourites; then the games of `want`.
+fn wheel_pick(games: &[Entry], want: usize) -> Data {
+    let mut platforms: BTreeMap<&str, usize> = BTreeMap::new();
+    for g in games {
+        *platforms.entry(g.platform.as_str()).or_default() += 1;
+    }
+    let mut platforms: Vec<(&str, usize)> = platforms.into_iter().filter(|(_, n)| *n < games.len()).collect();
+    platforms.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+    let favourites = games.iter().filter(|g| g.favourite).count();
+    let mut filters = vec![(Filter::All, SharedString::from(tr!("All games")), games.len())];
+    filters.extend(platforms.into_iter().map(|(p, n)| (Filter::Platform(p.to_string()), SharedString::from(p.to_string()), n)));
+    if favourites > 0 && favourites < games.len() {
+        filters.push((Filter::Favourites, tr!("Favourites").into(), favourites));
+    }
+    let active = want.min(filters.len() - 1);
+    let keys = games
+        .iter()
+        .filter(|g| match &filters[active].0 {
+            Filter::All => true,
+            Filter::Platform(p) => g.platform == *p,
+            Filter::Favourites => g.favourite,
+        })
+        .map(|g| g.key.clone())
+        .collect();
+    Data { keys, filters, active }
+}
+
 impl CollectionView {
-    /// The filters over the tab's games: All, each platform present (most
-    /// games first; one that holds every game adds nothing) and Favourites,
-    /// then the games of filter `want` sorted A–Z.
-    fn wheel_data(&self, spec: &TabSpec, want: usize) -> Data {
-        let games = self.console_games(&spec.source);
+    /// The tab's games as the Filters panel leaves them (show, favourites,
+    /// status, category or smart group, search and sort: the Grid's own
+    /// filtering, `grid_keys`, with this tab's filters), then the ‹ ›
+    /// chooser over them ([`wheel_pick`]).
+    fn wheel_data(&mut self, tab: usize, spec: &TabSpec, want: usize) -> Data {
+        let keys = self.grid_keys(tab, spec);
+        let Some(lib) = self.lib.clone() else { return wheel_pick(&[], want) };
         let org = self.organize();
-        let mut platforms: BTreeMap<String, usize> = BTreeMap::new();
-        for g in &games {
-            *platforms.entry(org.platform(g)).or_default() += 1;
-        }
-        let mut platforms: Vec<(String, usize)> = platforms.into_iter().filter(|(_, n)| *n < games.len()).collect();
-        platforms.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        let favourites = games.iter().filter(|g| g.favourite).count();
-        let mut filters = vec![(Filter::All, SharedString::from(tr!("All games")), games.len())];
-        filters.extend(platforms.into_iter().map(|(p, n)| (Filter::Platform(p.clone()), SharedString::from(p), n)));
-        if favourites > 0 && favourites < games.len() {
-            filters.push((Filter::Favourites, tr!("Favourites").into(), favourites));
-        }
-        let active = want.min(filters.len() - 1);
-        let picked: Vec<&CollectionGame> = games
-            .iter()
-            .map(|g| g.as_ref())
-            .filter(|g| match &filters[active].0 {
-                Filter::All => true,
-                Filter::Platform(p) => org.platform(g) == *p,
-                Filter::Favourites => g.favourite,
+        let games: Vec<Entry> = keys
+            .into_iter()
+            .filter_map(|key| {
+                let g = lib.get(&key)?;
+                Some(Entry { platform: org.platform(g), favourite: g.favourite, key })
             })
             .collect();
-        Data { keys: keys(by_title(picked)), filters, active }
+        wheel_pick(&games, want)
     }
 
     /// The small tag at the end of a row: the emulated system, else the store.
@@ -132,7 +164,7 @@ impl CollectionView {
 
     pub(super) fn render_wheel(&mut self, tab: usize, spec: &TabSpec, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let want = self.tab_nav(tab).wheel.filter;
-        let data = self.wheel_data(spec, want);
+        let data = self.wheel_data(tab, spec, want);
         let n = data.keys.len();
         if n == 0 {
             return super::no_games();
@@ -369,7 +401,7 @@ impl CollectionView {
 
     pub(super) fn wheel_pad(&mut self, tab: usize, spec: &TabSpec, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let want = self.tab_nav(tab).wheel.filter;
-        let data = self.wheel_data(spec, want);
+        let data = self.wheel_data(tab, spec, want);
         let n = data.keys.len();
         if n == 0 {
             return false;
@@ -419,6 +451,28 @@ mod tests {
     use super::*;
     // `gpui_kit::*` above brings gpui's own `test` macro.
     use core::prelude::v1::test;
+
+    fn entry(key: &str, platform: &str, favourite: bool) -> Entry {
+        Entry { key: key.into(), platform: platform.into(), favourite }
+    }
+
+    #[test]
+    fn the_chooser_works_over_the_filtered_list_and_keeps_its_order() {
+        // As the Filters panel left them: installed favourites, last played first.
+        let games = [entry("c", "PC", true), entry("a", "PS2", true), entry("b", "PC", true)];
+        let all = wheel_pick(&games, 0);
+        assert_eq!(all.keys, ["c", "a", "b"]);
+        // The counts are the filtered list's.
+        assert_eq!(all.filters[0].2, 3);
+        assert_eq!(all.filters.iter().map(|f| f.1.to_string()).collect::<Vec<_>>(), ["All games", "PC", "PS2"]);
+        // Every game a favourite: no Favourites choice that adds nothing.
+        assert!(!all.filters.iter().any(|f| f.0 == Filter::Favourites));
+        let pc = wheel_pick(&games, 1);
+        assert_eq!(pc.keys, ["c", "b"]);
+        // A choice past the end (the list shrank) falls back to the last one.
+        assert_eq!(wheel_pick(&games, 9).active, 2);
+        assert!(wheel_pick(&[], 0).keys.is_empty());
+    }
 
     #[test]
     fn the_art_leaves_room_for_the_text_under_it() {
