@@ -434,7 +434,11 @@ fn remove_entry(list: &mut ModList, id: &str) -> bool {
 /// nothing of them is deleted, replaced or emptied. Blocking (reads the mount
 /// table or the journals).
 pub(super) fn refuse_while_mounted(root: &ModsRoot, game_dir: Option<&std::path::Path>) -> Result<(), String> {
-    if game_dir.is_some_and(|d| heronite_mods::deployment::in_use(root, d)) {
+    if let Some(dir) = game_dir.filter(|d| heronite_mods::deployment::in_use(root, d)) {
+        // The game ended, but a file kept the mods from being taken out.
+        if let Some(problem) = heronite_mods::deployment::problem(root, dir) {
+            return Err(problem);
+        }
         return Err(tr!("The game is running with mods; close it first").to_string());
     }
     Ok(())

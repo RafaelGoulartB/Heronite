@@ -37,7 +37,9 @@ Mods.
      in the app and installs with every dependency (BepInExPack included);
      "Install with mod manager" on thunderstore.io (`ror2mm://`) works too.
    - *A file*: "Add from file…" (zip, 7z, rar, tar, or a folder), or dropping
-     an archive on the manager.
+     an archive on the manager. Zip and 7z are opened in process
+     (`heronite_installer::builtin`); tar and RAR need `tar`/`bsdtar`,
+     `unrar` or 7-Zip, and on Windows its own `tar.exe` does both.
 3. **Installers.** A FOMOD installer (`fomod/ModuleConfig.xml`) opens the
    installer wizard: steps, options with their pictures and descriptions,
    conditions between them. The choices are kept: "Reinstall" asks again with
@@ -213,11 +215,6 @@ still on its folder (`deploy::unmount_ours`).
 
 ## Windows
 
-Hidden for now (`Feature::Mods` is off on Windows; a debug build turns it on
-with `HERONITE_FEATURES=+mods`): mod archives still need 7-Zip, `unzip` or
-`bsdtar` on the PATH, which a stock Windows lacks, and putting the game's
-folder back has no retry when a file is still locked.
-
 Windows has no overlay file system, and Heronite does not hook a game's file
 calls (MO2's usvfs). So while the game runs, the enabled mods' files are **in
 its folder**, and they come out again when it ends (`journal_deploy`):
@@ -237,6 +234,22 @@ its folder**, and they come out again when it ends (`journal_deploy`):
   when an adopted game ends (`GameMods::release`), at start for every game
   that is not running (`deployment::cleanup_stale`), and before the next
   deployment. A failed restore keeps the journal for the next try.
+- **A file still open** (a crash reporter, a virus scan, the store client):
+  before anything moves, `restore` checks that every file it takes can be
+  taken (`journal_fs::probe`), and retries a locked one with a growing pause,
+  15 s for all files together (`journal_fs::Patience`). If one is still open,
+  nothing is touched: the mods stay as the game had them, the journal keeps
+  the reason (`journal_deploy::problem`, shown when the mod manager refuses a
+  change), and the next start or launch tries again. A file locked between
+  the check and the move is retried too; if it still fails, the files done
+  are done and the journal lists the rest.
+- **Copies to another drive** go to `<name>.heronite-partial` beside the
+  target, are flushed, keep the source's time, and are renamed into place;
+  the source is removed only after. So a crash leaves a whole file or none,
+  and a leftover partial copy (its source is still whole) is removed by the
+  next restore or at start. A game file that was copied back whole but whose
+  backup was not removed yet matches the backup's size and time, and is not
+  taken for something the game wrote.
 - **What the game wrote** goes to the overwrite folder, as on Linux: files
   that were not in the snapshot, and copies of ours whose size or time
   changed. The overwrite folder is the top layer of the next deployment. Not

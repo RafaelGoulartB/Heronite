@@ -223,25 +223,15 @@ mod tests {
     }
 
     #[test]
-    fn unpacks_a_zip_when_unzip_exists() {
-        if heronite_installer::exec::which_any(&["unzip", "7z", "7za", "7zz", "bsdtar"]).is_none()
-            || heronite_installer::exec::which_any(&["zip"]).is_none()
-        {
-            return;
-        }
+    fn unpacks_a_zip_without_any_archiver() {
+        use std::io::Write;
         let t = tempfile::tempdir().unwrap();
         let dirs = ModsRoot::at(t.path().join("m")).game("g");
-        put(t.path().join("src/Data/a.esp"));
         let zip = t.path().join("mod.zip");
-        let ok = std::process::Command::new("zip")
-            .arg("-qr")
-            .arg(&zip)
-            .arg("Data")
-            .current_dir(t.path().join("src"))
-            .status()
-            .unwrap()
-            .success();
-        assert!(ok);
+        let mut w = zip::ZipWriter::new(fs::File::create(&zip).unwrap());
+        w.start_file("Data/a.esp", zip::write::SimpleFileOptions::default()).unwrap();
+        w.write_all(b"x").unwrap();
+        w.finish().unwrap();
         let s = stage(&dirs, &Source::Archive(zip), &AtomicBool::new(false)).unwrap();
         assert!(s.root.join("Data/a.esp").is_file());
         let cancelled = stage(&dirs, &Source::Archive(t.path().join("mod.zip")), &AtomicBool::new(true));

@@ -33,6 +33,7 @@ pub mod games;
 pub mod http;
 pub mod install;
 pub mod journal_deploy;
+mod journal_fs;
 pub mod layout;
 pub mod links;
 pub mod loaders;
