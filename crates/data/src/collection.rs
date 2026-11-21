@@ -13,7 +13,7 @@ use crate::library::CollectionGame;
 use crate::models::{CollectionGameMetadata, CompletionStatus, GameInfo};
 use crate::organize::{compare_keyed, Keyed, Organize};
 use crate::status::{resolve_status_id, status_color, status_label, UNKNOWN_GROUP_ID};
-use crate::text::{facet_key, locale_cmp, locale_cmp_base, split_names, unique_names};
+use crate::text::{facet_key, locale_cmp, split_names, unique_names};
 
 pub type Game = Arc<CollectionGame>;
 
@@ -689,7 +689,7 @@ pub fn related_games(current: &CollectionGame, series: &[String], developers: &[
         }
     }
     let finish = |mut list: Vec<Game>| {
-        list.sort_by(|a, b| locale_cmp_base(&a.title, &b.title));
+        list.sort_by(|a, b| crate::organize::title_order(a, b));
         list.truncate(RELATED_MAX_ITEMS);
         list
     };
@@ -701,7 +701,7 @@ pub fn related_games(current: &CollectionGame, series: &[String], developers: &[
         groups.push(RelatedGroup { kind: RelatedKind::Developer, games: finish(developer_items) });
     }
     if !similar_items.is_empty() {
-        similar_items.sort_by(|(na, a), (nb, b)| nb.cmp(na).then_with(|| locale_cmp_base(&a.title, &b.title)));
+        similar_items.sort_by(|(na, a), (nb, b)| nb.cmp(na).then_with(|| crate::organize::title_order(a, b)));
         similar_items.truncate(RELATED_MAX_ITEMS);
         groups.push(RelatedGroup { kind: RelatedKind::Similar, games: similar_items.into_iter().map(|(_, g)| g).collect() });
     }
@@ -1022,6 +1022,24 @@ mod tests {
         assert_eq!(groups[1].kind, RelatedKind::Developer);
         // sorted by title: Half-Life before portal
         assert_eq!(groups[1].games.iter().map(|g| g.app_name.as_str()).collect::<Vec<_>>(), ["h1", "p1"]);
+    }
+
+    #[test]
+    fn a_series_lists_its_games_by_sorting_name() {
+        let pokemon = |app: &str, title: &str, sort: Option<&str>| {
+            g(app, title, |s| {
+                s.series = Some("Pokémon".into());
+                s.sort_name = sort.map(str::to_owned);
+            })
+        };
+        let games = vec![
+            pokemon("cur", "Pokémon Crystal", None),
+            pokemon("e", "Pokémon Emerald", Some("Pokémon Gen 3")),
+            pokemon("f", "Pokémon FireRed", Some("Pokémon Gen 1")),
+        ];
+        let groups = related_games_for(&games[0], &games);
+        assert_eq!(groups[0].kind, RelatedKind::Series);
+        assert_eq!(groups[0].games.iter().map(|g| g.app_name.as_str()).collect::<Vec<_>>(), ["f", "e"]);
     }
 
     #[test]
