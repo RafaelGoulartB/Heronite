@@ -89,8 +89,9 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      Moonlight; only entries marked as Heronite's  → data, platform
  └─ heronite-update     app updates: release check, signed download,
                         AppImage swap / package install, relaunch   → data
-epic-login (bin)        WebKit window for the Epic, GOG (`--store gog`) and Amazon
-                        (`--store amazon --url ..`) logins (keeps a web engine out of the app)
+epic-login (bin)        WebKit window for the Epic, GOG (`--store gog`), Amazon
+                        (`--store amazon --url ..`), Xbox and EA (`--store ea`) logins
+                        (keeps a web engine out of the app)
 ```
 
 Library crates never depend on GPUI. Their functions are blocking; the app
@@ -401,6 +402,25 @@ text size) and applies it.
   (a client already open takes the same command as a request) and
   `Procs::prefix_programs` lists every program of the PC, the game being the
   ones running from its folder.
+  The EA account is optional (`ea_account`, as Lutris's and Playnite's EA
+  libraries do it): `heronite-epic-login --store ea` opens EA's own page for
+  a token of its web client (`connect/auth`, `ORIGIN_JS_SDK`) and prints the
+  window's `accounts.ea.com` cookies, never a password; `services::clients`
+  keeps them sealed with DPAPI on Windows (`local_library/ea-account.bin`)
+  and in the desktop's keyring elsewhere, and `clients.json` only says that
+  it is signed in (`accounts`). A read (after an EA app sync, at most every
+  six hours, after the sign-in and when asked; only with the EA app set up)
+  turns them into a token (`prompt=none`, renewed cookies are kept), asks
+  EA's GraphQL service for the owned base PC games (`ownedGameProducts`,
+  paged) and their content id and title (`legacyOffers`, `gameProducts`),
+  and `owned::sync` adds the ones the Collection has no EA entry for (by app
+  name, by a content id of an installed copy's link, by title) as not
+  installed, under the installed copy's app name (`ea_<content id>`), so an
+  install makes that same entry installed. It never takes an entry out or
+  changes one: a read that fails (`ea_account::Error`: signed out, a service
+  that changed, the network) leaves the Collection as the EA app's files
+  make it. A game the user removed stays out of it
+  (`clients.json`'s `removedOwned`, which the client's sync does not prune).
 
 - **heronite-steam:** Steam games keep launching through Steam
   (`steam://rungameid`), with Steam's Proton and prefix. Their game settings

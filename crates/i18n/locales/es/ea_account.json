@@ -1,0 +1,23 @@
+{
+  "Connect EA account": "Conectar cuenta de EA",
+  "Connected to your EA account": "Conectado a tu cuenta de EA",
+  "Could not keep the EA sign-in: {error}": "No se pudo guardar el inicio de sesión de EA: {error}",
+  "Could not read your EA library: {error}. Your installed EA games are not affected.": "No se pudo leer tu biblioteca de EA: {error}. Tus juegos de EA instalados no se ven afectados.",
+  "Could not sign in to EA: {error}": "No se pudo iniciar sesión en EA: {error}",
+  "Disconnected. The games your EA account brought stay in your Collection.": "Desconectado. Los juegos que trajo tu cuenta de EA se quedan en tu Colección.",
+  "EA account connected: {name}": "Cuenta de EA conectada: {name}",
+  "EA account not connected": "Cuenta de EA no conectada",
+  "EA changed how its service answers, so your EA library cannot be read for now; a Heronite update may be needed. Your installed EA games are not affected.": "EA cambió la forma en que responde su servicio, así que tu biblioteca de EA no se puede leer por ahora; puede que haga falta actualizar Heronite. Tus juegos de EA instalados no se ven afectados.",
+  "EA did not finish the sign-in. Try again.": "EA no terminó el inicio de sesión. Inténtalo de nuevo.",
+  "EA ended the connection. Connect your EA account again to see the games you own that are not installed.": "EA cerró la conexión. Vuelve a conectar tu cuenta de EA para ver los juegos que tienes y no están instalados.",
+  "Heronite signs in on EA's own page and only reads the list of your games: it never sees your password, and never buys, installs or changes anything in your account. If EA changes its service, your installed games keep showing as they do now.": "Heronite inicia sesión en la propia página de EA y solo lee la lista de tus juegos: nunca ve tu contraseña y nunca compra, instala ni cambia nada en tu cuenta. Si EA cambia su servicio, tus juegos instalados se siguen mostrando como ahora.",
+  "Optional, apart from the EA app's own sign-in above. Connect your EA account to also see the games you own that are not installed; they install through the EA app.": "Opcional y aparte del inicio de sesión de EA app de arriba. Conecta tu cuenta de EA para ver también los juegos que tienes y no están instalados; se instalan con EA app.",
+  "Read {n} game from your EA account.": "Se leyó {n} juego de tu cuenta de EA.",
+  "Read {n} games from your EA account.": "Se leyeron {n} juegos de tu cuenta de EA.",
+  "The login window (heronite-epic-login) was not found next to the app.": "No se encontró la ventana de inicio de sesión (heronite-epic-login) junto a la app.",
+  "The login window stopped unexpectedly. Try again.": "La ventana de inicio de sesión se cerró de forma inesperada. Inténtalo de nuevo.",
+  "Wait for your EA account to finish, then try again.": "Espera a que tu cuenta de EA termine y vuelve a intentarlo.",
+  "Your EA library": "Tu biblioteca de EA",
+  "{n} game on the account": "{n} juego en la cuenta",
+  "{n} games on the account": "{n} juegos en la cuenta"
+}

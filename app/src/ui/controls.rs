@@ -390,6 +390,11 @@ pub fn button_sm(id: impl Into<ElementId>, kind: ButtonKind, label: impl Into<Sh
     button_base(id, kind, None, label.into(), true, true)
 }
 
+/// A [`button_sm`] drawn disabled (45% opacity, no hover) unless `enabled`.
+pub fn button_sm_enabled(id: impl Into<ElementId>, kind: ButtonKind, label: impl Into<SharedString>, enabled: bool) -> Stateful<Div> {
+    button_base(id, kind, None, label.into(), true, enabled)
+}
+
 /// A [`button_sm`] with an icon before the label that only reacts when
 /// `enabled`; disabled ones are drawn at 45% opacity.
 pub fn icon_button_sm(

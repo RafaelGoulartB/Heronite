@@ -10,8 +10,9 @@
 //!   folder instead (inside the folder of a portable copy). The view is
 //!   InPrivate like the Linux one is incognito: no cookie or session is kept
 //!   from one login to the next.
-//! * GOG and Amazon get WebView2's own user agent, the one of Microsoft Edge
-//!   on Windows (they refuse unknown web views); Epic gets its launcher's.
+//! * GOG, Amazon, Xbox and EA get WebView2's own user agent, the one of
+//!   Microsoft Edge on Windows (they refuse unknown web views); Epic gets its
+//!   launcher's.
 //! * A popup a page opens ("Sign in with Google") gets a window of the
 //!   helper's own, over the login window, closed with it or when the page
 //!   closes itself; left to WebView2, it would outlive the helper.
@@ -47,7 +48,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     LoadImageW, MsgWaitForMultipleObjectsEx, PeekMessageW, PostMessageW, PostQuitMessage, RegisterClassExW, SetForegroundWindow, SetTimer,
     SetWindowPos, SetWindowTextW, ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, IMAGE_ICON, LR_DEFAULTCOLOR, MINMAXINFO,
     MSG, MWMO_INPUTAVAILABLE, PM_REMOVE, QS_ALLINPUT, SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, SWP_NOACTIVATE, SWP_NOZORDER,
-    SW_SHOWNORMAL, WM_APP, WM_CLOSE, WM_DESTROY, WM_DPICHANGED, WM_GETMINMAXINFO, WM_PARENTNOTIFY, WM_QUIT, WM_TIMER, WNDCLASSEXW,
+    SW_HIDE, SW_SHOWNORMAL, WM_APP, WM_CLOSE, WM_DESTROY, WM_DPICHANGED, WM_GETMINMAXINFO, WM_PARENTNOTIFY, WM_QUIT, WM_TIMER, WNDCLASSEXW,
     WS_OVERLAPPEDWINDOW,
 };
 use wry::raw_window_handle::{HandleError, HasWindowHandle, RawWindowHandle, Win32WindowHandle, WindowHandle};
@@ -55,7 +56,10 @@ use wry::{
     NewWindowFeatures, NewWindowResponse, PageLoadEvent, WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows, WebViewExtWindows,
 };
 
-use super::{code_from_page_text, parse_args, Store, CLOSED, EPIC_USER_AGENT};
+use super::{
+    code_from_page_text, ea_cookies_json, ea_page, ea_token_in, parse_args, EaPage, Store, CLOSED, EA_COOKIES_URL, EA_DONE, EA_LOGIN_URL,
+    EA_MAX_RETURNS, EPIC_USER_AGENT,
+};
 
 /// Exit status when the WebView2 runtime is not installed (the app tells the
 /// user to install it or use the browser method).
@@ -89,7 +93,7 @@ const SMOKE_PAGE: &str = "<html><body style='font-family:\"Segoe UI\",sans-serif
 fn user_agent(store: Store) -> Option<&'static str> {
     match store {
         Store::Epic => Some(EPIC_USER_AGENT),
-        Store::Gog | Store::Amazon | Store::Xbox => None,
+        Store::Gog | Store::Amazon | Store::Xbox | Store::Ea => None,
     }
 }
 
@@ -127,7 +131,12 @@ pub(crate) fn main() -> ! {
     // A code: keep it and tell the loop (from any thread; handles are not
     // `Send`, their value is).
     let hwnd_value = hwnd as isize;
+    // Once: a second quit would cancel the cookie read after the loop.
+    let sent = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let done = move |code: String| {
+        if sent.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
         let _ = tx.send(code);
         // SAFETY: posting to a window of this process; a stale handle only fails.
         unsafe { PostMessageW(hwnd_value as HWND, WM_LOGIN_DONE, 0, 0) };
@@ -153,6 +162,7 @@ pub(crate) fn main() -> ! {
     }
     builder = if smoke { builder.with_html(SMOKE_PAGE) } else { builder.with_url(&start_url) };
     let page_view = view.clone();
+    let ea_returns = Cell::new(0u32);
     let built = builder
         .with_on_page_load_handler(move |event, url| {
             if !matches!(event, PageLoadEvent::Finished) {
@@ -165,6 +175,33 @@ pub(crate) fn main() -> ! {
             }
             if let Some(code) = store.code_from_url(&url) {
                 done(code);
+                return;
+            }
+            // EA answers its token as JSON on connect/auth; another page of
+            // its site goes back there, which answers at once once signed in.
+            if store == Store::Ea {
+                match ea_page(&url) {
+                    EaPage::Token => {
+                        if let Some(view) = page_view.borrow().as_ref() {
+                            let done = done.clone();
+                            let _ = view.evaluate_script_with_callback(
+                                "(function(){var p=document.querySelector('pre');return p?p.innerText:(document.body?document.body.innerText:'');})()",
+                                move |text| {
+                                    if ea_token_in(&text) {
+                                        done(EA_DONE.to_string());
+                                    }
+                                },
+                            );
+                        }
+                    }
+                    EaPage::Elsewhere if ea_returns.get() < EA_MAX_RETURNS => {
+                        ea_returns.set(ea_returns.get() + 1);
+                        if let Some(view) = page_view.borrow().as_ref() {
+                            let _ = view.load_url(EA_LOGIN_URL);
+                        }
+                    }
+                    _ => {}
+                }
                 return;
             }
             // Epic's JSON page of /id/api/redirect shows the code as text
@@ -204,8 +241,28 @@ pub(crate) fn main() -> ! {
         }
     }
 
-    let status = run_loop(parent.as_ref().map(|p| p.0));
-    let code = rx.try_recv().ok();
+    let mut status = run_loop(parent.as_ref().map(|p| p.0));
+    let mut code = rx.try_recv().ok();
+    // EA's token came: what is handed over is the session, the view's
+    // cookies. The window goes first: a close meanwhile would end the read.
+    if store == Store::Ea && code.is_some() {
+        // SAFETY: our window.
+        unsafe { ShowWindow(hwnd, SW_HIDE) };
+        let cookies = view.borrow().as_ref().map(|v| v.cookies_for_url(EA_COOKIES_URL));
+        code = match cookies {
+            Some(Ok(c)) if !c.is_empty() => Some(ea_cookies_json(c.iter().map(|c| (c.name(), c.value())))),
+            other => {
+                let why = match other {
+                    Some(Err(e)) => e.to_string(),
+                    Some(Ok(_)) => "none set".into(),
+                    None => "no view".into(),
+                };
+                eprintln!("no EA cookies after the sign-in ({why})");
+                status = 1;
+                None
+            }
+        };
+    }
     // The views first (they close their WebView2 processes), then the windows.
     for (popup, view) in POPUPS.take() {
         drop(view);

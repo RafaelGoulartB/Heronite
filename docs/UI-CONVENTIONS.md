@@ -449,7 +449,9 @@ settings panel bound to the client's own settings), the sign-in the client's fil
 switch for the Desktop and one for the application menu: `heronite-client-<id>.desktop` running `--open-client <id>`,
 with the icon read from the client's `.exe`; `services/clients/shortcuts.rs`, `HERONITE_DEBUG_CLIENT=<id>:shortcuts`),
 the games it installed (Show selects one in the Collection) and an About card with the anti-cheats that keep some of
-its games off Linux.
+its games off Linux. The EA page adds "Your EA library" under the sign-in: the optional EA account, connected in the
+login window, with the games it owns, "Read library now" and "Disconnect" (`pages/clients/ea.rs`;
+`HERONITE_DEBUG_EA_ACCOUNT=signed|out|error`).
 The ☰ Emulators page (`pages/emulators/`) has the same layout (`side_nav`): the list holds "All emulators" (counts, what
 needs attention with its fix, every ROM folder, "Scan all folders now"), then each emulator with its icon
 (`emulators::icon`: Dolphin's and RetroArch's logos, an icon drawn for each other emulator of the catalog, a gamepad

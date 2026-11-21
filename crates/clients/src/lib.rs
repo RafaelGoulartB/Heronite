@@ -17,11 +17,15 @@
 //! * [`winpath`]: the prefix's Windows paths as Linux paths.
 //! * [`battlenet`], [`ea`], [`ubisoft`], [`rockstar`]: where each client
 //!   keeps its games and its sign-in.
+//! * [`ea_account`] and [`owned`]: the EA account's library (optional),
+//!   which brings the games it owns that are not installed.
 
 pub mod battlenet;
 pub mod collection;
 pub mod ea;
+pub mod ea_account;
 pub mod native;
+pub mod owned;
 pub mod place;
 pub mod reg;
 pub mod rockstar;
