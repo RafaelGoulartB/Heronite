@@ -1384,9 +1384,8 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
 - Launch screen, Now Playing and session card (the theme's `launch`; `collection/console/launch_screen.rs`,
   `now_playing.rs`, `session_card.rs`, drawn by the shell over everything): any launch while console mode is in front
   (Play, X, the quick launcher, the tray) covers the window so the desktop never shows: black, then (`art-logo`) the
-  game's art, 8 % larger than the screen, panning slowly sideways over 20 s at the display's rate (`motion`, not with
-  Reduced; a pan, not a zoom: its size never changes, so pixel snapping moves it a pixel at a time instead of making
-  its edges shake) under the `shade` (none / 35 % / 60 % black), and the logo (the name, large, in a box of its own
+  game's art, still (a slow pan or zoom moves it by less than a pixel a frame, which pixel snapping turns into a
+  judder) under the `shade` (none / 35 % / 60 % black), and the logo (the name, large, in a box of its own
   width so it wraps only between words, when no logo came within 2.5 s; a later logo still replaces it) fading in
   while it rises 26 px after the screen's 360 ms fade; `logo` is the logo on black, `off` nothing. Near the bottom a
   thin line with a light sweeping along it and the launch's step (`preparing`, else "Starting..."). A failed launch

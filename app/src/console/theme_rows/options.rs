@@ -315,7 +315,7 @@ pub(super) static OPTS: &[Opt] = &[
         launch_screen_name,
         theme.launch.screen
     ),
-    tgl!("launch.motion", GamePage, n_!("Launch screen motion"), n_!("The art drifts slowly closer."), &[], theme.launch.motion),
+    tgl!("launch.motion", GamePage, n_!("Launch screen motion"), n_!("The logo rises in as the game starts."), &[], theme.launch.motion),
     sel!("launch.shade", GamePage, n_!("Launch screen shade"), "", &[], LaunchShade, launch_shade_name, theme.launch.shade),
     tgl!(
         "launch.session_card",

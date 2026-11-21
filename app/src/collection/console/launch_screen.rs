@@ -1,7 +1,7 @@
 //! The screen that covers console mode while a game starts, so the desktop
 //! never shows between Play and the game (the theme's `launch`): black, then
-//! the game's art drifting slowly closer under a shade, its logo (or name)
-//! rising into place, and under it a quiet line with the launch's step. It
+//! the game's art, still, under a shade, its logo (or name) rising into
+//! place (`motion`), and under it a quiet line with the launch's step. It
 //! comes up for any launch while console mode is in front (Play, X, the quick
 //! launcher, the tray) and leaves, fading to black and out, once the game
 //! runs and its window is in front: our window lost the focus, or the
@@ -60,12 +60,6 @@ const LOGO_RISE: f32 = 26.;
 /// To black, then out.
 const BLACKOUT_MS: u64 = 300;
 const OUT_MS: u64 = 300;
-/// The art's drift: art this much larger than the screen, its left edge
-/// panning from the first to the second (parts of the screen's width) over
-/// this long.
-const ART_SCALE: f32 = 1.08;
-const ART_PAN: (f32, f32) = (-0.06, -0.02);
-const ART_DRIFT: Duration = Duration::from_secs(20);
 /// The logo's box, design px (the logo is fitted in it, enlarged when
 /// smaller).
 const LOGO_W: f32 = 900.;
@@ -573,36 +567,15 @@ impl CollectionView {
         let title = c.title.clone();
         let failed = c.failed.as_ref().map(|(m, _)| m.clone());
         let step = self.preparing.get(&c.app_name).map(|s| s.label()).unwrap_or_else(|| tr!("Starting...").into());
-        let moves = motion::on() && !motion::reduced();
         let art = (opts.screen == LaunchScreen::ArtLogo || playing).then(|| self.launch_art(&key, window)).flatten();
         let logo = self.console_logo(&key, LOGO_W, LOGO_H, true, window);
 
         let mut layer = div().absolute().inset_0().bg(black());
         if let Some(img_) = art {
             let picture = img(ImageSource::Render(img_)).absolute().inset_0().size_full().object_fit(ObjectFit::Cover);
-            let drift = moves && opts.motion && !playing;
-            // A slow pan of art a little larger than the screen: its size
-            // never changes, so pixel snapping moves it a pixel at a time
-            // instead of making its edges wobble (a zoom did). At the
-            // display's rate, from when the screen came up.
-            let started = since;
-            let scaled = div()
-                .absolute()
-                .w(relative(ART_SCALE))
-                .h(relative(ART_SCALE))
-                .top(relative(-(ART_SCALE - 1.) / 2.))
-                .left(relative(ART_PAN.0))
-                .child(picture);
-            let scaled = if drift {
-                scaled
-                    .with_animation(SharedString::from(format!("launch-drift-{id}")), Animation::new(ART_DRIFT), move |d, _| {
-                        let t = sine_out(started.elapsed().as_secs_f32() / ART_DRIFT.as_secs_f32());
-                        d.left(relative(ART_PAN.0 + (ART_PAN.1 - ART_PAN.0) * t))
-                    })
-                    .into_any_element()
-            } else {
-                scaled.into_any_element()
-            };
+            // Still: a slow pan or zoom of a full-screen picture moves it by
+            // less than a pixel a frame, and pixel snapping makes that judder.
+            let scaled = picture;
             layer =
                 layer.child(motion::fade_in(SharedString::from(format!("launch-art-{id}")), div().absolute().inset_0().child(scaled), 300));
             let shade = shade_alpha(opts.shade);
@@ -662,7 +635,7 @@ impl CollectionView {
             if !motion::on() {
                 return holder.into_any_element();
             }
-            let rise = !motion::reduced();
+            let rise = !motion::reduced() && opts.motion;
             let total = FADE_IN_MS + LOGO_DELAY_MS + LOGO_RISE_MS.max(LOGO_FADE_MS);
             holder
                 .with_animation(
