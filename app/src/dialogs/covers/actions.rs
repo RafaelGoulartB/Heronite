@@ -40,6 +40,7 @@ impl CoversDialog {
         }
         self.slot = slot;
         self.source = None;
+        self.style = None;
         self.error.clear();
         self.search(cx);
         cx.notify();
@@ -115,6 +116,10 @@ impl CoversDialog {
                 if self.slot == slot {
                     self.results = list;
                     self.selected = None;
+                    // `HERONITE_DEBUG_PICK_ANIMATED=1`: the first animated one picked (captures).
+                    if crate::env::flag("HERONITE_DEBUG_PICK_ANIMATED") {
+                        self.selected = self.found().iter().position(|f| f.image.animated);
+                    }
                 }
             }
             Err(err) => self.error = format!("{err:#}"),

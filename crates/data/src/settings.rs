@@ -114,7 +114,7 @@ pub fn default_field_priority(field: &str) -> Vec<String> {
         "gameModes" => &["igdb", "launchbox"],
         "platforms" => &["igdb", "store", "playnite", "lutris", "launchbox"],
         "features" => &["igdb", "steam", "playnite"],
-        "criticScore" => &["igdb", "steam", "launchbox"],
+        "criticScore" => &["igdb", "steam", "playnite", "launchbox"],
         // Both are read: the first fills the boards it has, the next the rest.
         "ageRatings" => &["igdb", "steam"],
         "cover" => &["igdb", "steam", "lutris", "playnite", "store", "launchbox", "libretro"],

@@ -12,6 +12,7 @@
 
 pub mod achievements;
 pub mod add_game;
+pub mod animated_art;
 pub mod art_images;
 pub mod batch_edit;
 pub mod client_settings;
@@ -54,6 +55,7 @@ pub mod script_install;
 pub mod settings_panel;
 pub mod shortcuts;
 pub mod smart_group;
+pub mod steamgrid_styles;
 pub mod store_import;
 pub mod store_install;
 pub mod web_image;

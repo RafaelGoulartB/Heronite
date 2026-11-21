@@ -94,7 +94,14 @@ pub fn console_rows(d: &SettingsPage) -> Vec<Row> {
         } else {
             sorted(st, items)
         };
-        rows.push(Row::header(format!("{} \u{b7} {}", group_label(group), human_size(st.group_bytes(group)))));
+        // A group of things on disk: closed, it says how many and how much.
+        let parent = format!("grp:{group:?}");
+        let count = items.len();
+        rows.push(Row::group(parent.clone(), group_label(group)).summary(format!(
+            "{} \u{b7} {}",
+            heronite_i18n::trn!(count, "{n} item", "{n} items"),
+            human_size(st.group_bytes(group))
+        )));
         for item in items {
             let id = SharedString::from(format!("item:{}", item.id));
             let armed = st.armed.as_ref() == Some(&id);
@@ -116,7 +123,7 @@ pub fn console_rows(d: &SettingsPage) -> Vec<Row> {
             if armed {
                 row = row.danger();
             }
-            rows.push(row);
+            rows.push(row.child_of(parent.clone()));
         }
     }
     rows

@@ -16,6 +16,7 @@ use heronite_metadata::{ArtImages, ArtKind, MetadataApplyArgs, MetadataService, 
 
 use super::art_images::{logo_picture, picture, DialogImages};
 use super::metadata_wizard::hub;
+use super::steamgrid_styles;
 use super::DialogCtx;
 use crate::icons::Icon;
 use crate::theme;
@@ -54,6 +55,8 @@ pub enum ArtEvent {
 pub struct WebImageDialog {
     service: Arc<MetadataService>,
     images: Entity<DialogImages>,
+    /// Where "Turn on" (animated backgrounds) saves the appearance.
+    app: heronite_data::AppPaths,
     app_name: String,
     runner: String,
     /// The game's title and Steam app id: SteamGridDB's art is of the game
@@ -66,6 +69,8 @@ pub struct WebImageDialog {
     results: ArtImages,
     /// Images listed in each section before its "Load more".
     visible_steamgrid: usize,
+    /// The SteamGridDB style whose images alone are listed; `None`: every style.
+    style: Option<String>,
     visible_web: usize,
     selected: Option<(Source, usize)>,
     loading: bool,
@@ -106,6 +111,7 @@ impl WebImageDialog {
         let mut this = Self {
             service,
             images,
+            app: ctx.app.clone(),
             app_name: game.app_name.clone(),
             runner,
             title,
@@ -116,6 +122,8 @@ impl WebImageDialog {
             transparent: kind == ArtKind::Logo,
             results: ArtImages::default(),
             visible_steamgrid: STEAMGRID_PAGE,
+            // `HERONITE_DEBUG_SGDB_STYLE=<style>`: opens on that SteamGridDB style (captures).
+            style: crate::env::value("HERONITE_DEBUG_SGDB_STYLE"),
             visible_web: PAGE_SIZE,
             selected: None,
             loading: false,
@@ -161,6 +169,10 @@ impl WebImageDialog {
                             this.error = tr!("No images found. Try another search.").into();
                         }
                         this.results = list;
+                        // `HERONITE_DEBUG_PICK_ANIMATED=1`: the first animated one picked (captures).
+                        if crate::env::flag("HERONITE_DEBUG_PICK_ANIMATED") {
+                            this.selected = this.images(Source::SteamGrid).iter().position(|i| i.animated).map(|i| (Source::SteamGrid, i));
+                        }
                     }
                     Err(err) => this.error = format!("{err:#}"),
                 }
@@ -172,15 +184,29 @@ impl WebImageDialog {
         cx.notify();
     }
 
-    fn images(&self, from: Source) -> &[WebImage] {
+    /// A section's images: SteamGridDB's of the style picked, the web's.
+    fn images(&self, from: Source) -> Vec<&WebImage> {
         match from {
-            Source::SteamGrid => &self.results.steamgrid,
-            Source::Web => &self.results.web,
+            Source::SteamGrid => {
+                let style = steamgrid_styles::shown(&self.results.steamgrid, self.style.as_deref());
+                self.results.steamgrid.iter().filter(|i| steamgrid_styles::keeps(i, style)).collect()
+            }
+            Source::Web => self.results.web.iter().collect(),
         }
     }
 
+    /// Lists SteamGridDB's images of `style` alone (`None`: of every style).
+    fn show_style(&mut self, style: Option<String>, cx: &mut Context<Self>) {
+        self.style = style;
+        self.visible_steamgrid = STEAMGRID_PAGE;
+        if self.selected.is_some_and(|(from, _)| from == Source::SteamGrid) {
+            self.selected = None;
+        }
+        cx.notify();
+    }
+
     fn confirm(&mut self, pick: Option<(Source, usize)>, cx: &mut Context<Self>) {
-        let Some(image) = pick.or(self.selected).and_then(|(from, i)| self.images(from).get(i)).cloned() else { return };
+        let Some(image) = pick.or(self.selected).and_then(|(from, i)| self.images(from).get(i).copied().cloned()) else { return };
         if self.saving {
             return;
         }
@@ -225,6 +251,14 @@ impl WebImageDialog {
         for i in 0..total.min(visible) {
             tiles = tiles.child(self.tile(from, i, tw, th, cx));
         }
+        let styles = (from == Source::SteamGrid)
+            .then(|| {
+                steamgrid_styles::row("wi-style", &self.results.steamgrid, self.style.as_deref(), cx, |this: &mut Self, style, cx| {
+                    this.show_style(style, cx)
+                })
+            })
+            .flatten()
+            .map(|row| row.pb(px(10.)));
         let more = (visible < total).then(|| {
             div().flex().justify_center().pt(px(10.)).child(
                 button(SharedString::from(format!("wi-more-{}", from.id())), ButtonKind::Glass, tr!("Load more")).min_w(px(192.)).on_click(
@@ -238,7 +272,16 @@ impl WebImageDialog {
                 ),
             )
         });
-        Some(div().flex().flex_col().pb(px(8.)).when(titled, |d| d.child(caption(title).mt(px(4.)))).child(tiles).children(more))
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .pb(px(8.))
+                .when(titled, |d| d.child(caption(title).mt(px(4.))))
+                .children(styles)
+                .child(tiles)
+                .children(more),
+        )
     }
 
     fn tile(&mut self, from: Source, i: usize, tw: f32, th: f32, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -270,7 +313,7 @@ impl WebImageDialog {
                 }
                 cx.notify();
             }))
-            .child(preview.w(px(tw)).h(px(th)))
+            .child(super::animated_art::marked(preview.w(px(tw)).h(px(th)), image.animated))
             .children(size.map(|s| div().text_size(px(12.)).text_color(theme::text_dim()).child(s)))
     }
 }
@@ -336,6 +379,8 @@ impl Render for WebImageDialog {
             }
         }
 
+        let picked_animated =
+            self.kind == ArtKind::Hero && self.selected.and_then(|(from, i)| self.images(from).get(i).map(|im| im.animated)) == Some(true);
         let mut body = div()
             .flex()
             .flex_col()
@@ -346,6 +391,12 @@ impl Render for WebImageDialog {
             )))
             .child(toolbar)
             .child(grid);
+        // An animated background picked while they are off: it will show
+        // still. In the footer, whose height does not change, so the dialog
+        // never moves the picture being clicked.
+        let hint = super::animated_art::hint("wi-animated", picked_animated, cx, |this: &mut Self, cx| {
+            super::animated_art::turn_on(&this.app, cx)
+        });
         if !self.error.is_empty() {
             body = body.child(
                 div()
@@ -360,8 +411,14 @@ impl Render for WebImageDialog {
         }
 
         let footer = div()
+            .w_full()
             .flex()
+            .items_center()
             .gap(px(16.))
+            .child(match hint {
+                Some(h) => h.flex_1().min_w_0(),
+                None => div().flex_1(),
+            })
             .child(action_button(
                 "wi-cancel",
                 ButtonKind::Ghost,

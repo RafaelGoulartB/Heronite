@@ -118,18 +118,33 @@ impl CollectionView {
 
     /// "Covers…": the game's picture of each cover family and its background.
     pub(super) fn open_covers_for(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_covers_at(key, None, window, cx);
+    }
+
+    /// "Covers" of `key` on `slot` (the cover the library uses when `None`).
+    pub(super) fn open_covers_at(
+        &mut self,
+        key: &str,
+        slot: Option<crate::dialogs::covers::Slot>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(key)) else { return };
-        let view = cx.new(|cx| CoversDialog::new(ctx, game, None, window, cx));
+        let view = cx.new(|cx| CoversDialog::new(ctx, game, slot, window, cx));
         self.open_dialog(view, cx);
     }
 
     /// `HERONITE_DEBUG_DIALOG=covers[:<state>]`: "Covers" of the selected
     /// game over made-up searches (see the dialog's `fake.rs`);
-    /// `covers:live`: the dialog itself, searching for real.
+    /// `covers:live[:<slot>]`: the dialog itself, searching for real (on
+    /// that slot: `tall`, `square`, `wide`, `background`).
     fn open_covers_debug(&mut self, state: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(key) = self.selected.clone() else { return };
-        if state == "live" {
-            self.open_covers_for(&key, window, cx);
+        if let Some(slot) = state.strip_prefix("live") {
+            let slot = slot.strip_prefix(':').and_then(crate::dialogs::covers::Slot::parse);
+            let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(&key)) else { return };
+            let view = cx.new(|cx| CoversDialog::new(ctx, game, slot, window, cx));
+            self.open_dialog(view, cx);
             return;
         }
         let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(&key)) else { return };

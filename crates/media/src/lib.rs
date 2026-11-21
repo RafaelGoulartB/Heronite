@@ -16,6 +16,7 @@ pub mod compress;
 pub mod list;
 pub mod matching;
 pub mod posters;
+pub mod stills;
 pub mod stream;
 pub mod thumbnails;
 mod trashing;

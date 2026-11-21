@@ -40,7 +40,8 @@ static GAME_ACCENT: RwLock<Option<(u8, u8, u8)>> = RwLock::new(None);
 /// The connected controller's family, for `Glyphs::Auto`.
 static CONTROLLER: RwLock<Option<Glyphs>> = RwLock::new(None);
 /// The controller's options (`ConsolePrefs::controller`).
-static CONTROLS: RwLock<ControllerPrefs> = RwLock::new(ControllerPrefs { glyphs: Glyphs::Auto, confirm: ConfirmButton::Auto });
+static CONTROLS: RwLock<ControllerPrefs> =
+    RwLock::new(ControllerPrefs { glyphs: Glyphs::Auto, confirm: ConfirmButton::Auto, desktop: true });
 
 fn classic() -> &'static Installed {
     static C: OnceLock<Installed> = OnceLock::new();

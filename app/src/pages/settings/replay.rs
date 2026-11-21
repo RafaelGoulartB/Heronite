@@ -825,8 +825,9 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
             SECONDS.iter().map(|s| seconds_label(*s)).collect(),
             SECONDS.iter().position(|s| *s == o.seconds),
         )
-        .desc(estimate_line(o, st)),
-        Row::info("disk", tr!("Each replay on disk"), format_size(e.file_bytes)),
+        .desc(estimate_line(o, st))
+        .child_of("enabled"),
+        Row::info("disk", tr!("Each replay on disk"), format_size(e.file_bytes)).child_of("enabled"),
     ];
     rows.extend(overlay::console_replay_rows(d));
     rows.extend([

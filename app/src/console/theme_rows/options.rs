@@ -305,6 +305,26 @@ pub(super) static OPTS: &[Opt] = &[
     ),
     num!("controls.sound_volume", Controls, n_!("Sound volume"), "", 10, 100, 10, "%", u8, theme.controls.sound_volume),
     sel!("game_page", GamePage, n_!("Game page"), "", &[], GamePage, game_page_name, theme.game_page),
+    sel!(
+        "launch.screen",
+        GamePage,
+        n_!("Launch screen"),
+        n_!("Shown while a game starts, instead of the desktop."),
+        &[],
+        LaunchScreen,
+        launch_screen_name,
+        theme.launch.screen
+    ),
+    tgl!("launch.motion", GamePage, n_!("Launch screen motion"), n_!("The logo rises in as the game starts."), &[], theme.launch.motion),
+    sel!("launch.shade", GamePage, n_!("Launch screen shade"), "", &[], LaunchShade, launch_shade_name, theme.launch.shade),
+    tgl!(
+        "launch.session_card",
+        GamePage,
+        n_!("Session card"),
+        n_!("When a game closes: the time of the session and the total."),
+        &[],
+        theme.launch.session_card
+    ),
     sel!("menu.style", GamePage, n_!("Menu"), "", &[], MenuStyle, menu_style_name, theme.menu.style),
     sel!("menu.side", GamePage, n_!("Side of the menu"), "", &[], Side, side_name, theme.menu.side),
     sel!(
@@ -342,6 +362,54 @@ pub(super) static OPTS: &[Opt] = &[
         n_!("Time played, time to beat and the journal."),
         &[Layout::Spotlight],
         theme.layouts.spotlight_cards
+    ),
+    tgl!(
+        "layouts.spotlight_sections.media",
+        Layouts,
+        n_!("Spotlight: media"),
+        n_!("The store's trailers and screenshots."),
+        &[Layout::Spotlight],
+        theme.layouts.spotlight_sections.media
+    ),
+    tgl!(
+        "layouts.spotlight_sections.screenshots",
+        Layouts,
+        n_!("Spotlight: your screenshots"),
+        "",
+        &[Layout::Spotlight],
+        theme.layouts.spotlight_sections.screenshots
+    ),
+    tgl!(
+        "layouts.spotlight_sections.about",
+        Layouts,
+        n_!("Spotlight: about the game"),
+        "",
+        &[Layout::Spotlight],
+        theme.layouts.spotlight_sections.about
+    ),
+    tgl!(
+        "layouts.spotlight_sections.achievements",
+        Layouts,
+        n_!("Spotlight: achievements"),
+        "",
+        &[Layout::Spotlight],
+        theme.layouts.spotlight_sections.achievements
+    ),
+    tgl!(
+        "layouts.spotlight_sections.details",
+        Layouts,
+        n_!("Spotlight: details"),
+        n_!("Developer, size, score and the store pages."),
+        &[Layout::Spotlight],
+        theme.layouts.spotlight_sections.details
+    ),
+    tgl!(
+        "layouts.spotlight_sections.related",
+        Layouts,
+        n_!("Spotlight: more like this"),
+        "",
+        &[Layout::Spotlight],
+        theme.layouts.spotlight_sections.related
     ),
     sel!(
         "layouts.spotlight_actions",

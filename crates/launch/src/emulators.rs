@@ -33,6 +33,11 @@ pub struct UserEmulator {
     pub flatpak_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub playnite_id: Option<String>,
+    /// The Ludusavi game (often a custom entry) that holds the saves of every
+    /// game this emulator runs; backed up in place of each game's own name.
+    /// `None` or blank: each game is looked up by its own name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ludusavi_entry: Option<String>,
     #[serde(default)]
     pub profiles: Vec<UserEmulatorProfile>,
     #[serde(flatten)]
@@ -75,6 +80,11 @@ impl EmulatorsFile {
 }
 
 impl UserEmulator {
+    /// [`Self::ludusavi_entry`], trimmed; `None` when blank.
+    pub fn ludusavi_entry(&self) -> Option<&str> {
+        self.ludusavi_entry.as_deref().map(str::trim).filter(|e| !e.is_empty())
+    }
+
     /// `getUserProfile`: by id, then by catalog profile id, then the first.
     pub fn profile(&self, profile_id: &str) -> Option<&UserEmulatorProfile> {
         self.profiles

@@ -160,6 +160,7 @@ impl CollectionView {
             "installed" => g.installed,
             "not-installed" => !g.installed,
             "favourites" => g.favourite,
+            "recent" => g.last_played.is_some(),
             "pc" => !self.game_extras.systems.contains_key(&g.key),
             "emulated" => self.game_extras.systems.contains_key(&g.key),
             "status" => status_is(lib, g, value),

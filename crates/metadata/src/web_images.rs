@@ -45,7 +45,7 @@ fn map_images(rows: impl IntoIterator<Item = (String, String, u32, u32)>) -> Vec
         if !seen.insert(image_url.clone()) {
             continue;
         }
-        out.push(WebImage { image_url, thumb_url, width, height });
+        out.push(WebImage { image_url, thumb_url, width, height, style: String::new(), animated: false });
     }
     out
 }

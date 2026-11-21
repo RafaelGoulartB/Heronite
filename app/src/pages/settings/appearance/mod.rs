@@ -86,6 +86,8 @@ pub struct State {
     /// The "Under the cover" and background picture selects are open.
     label_open: bool,
     picture_open: bool,
+    /// ffmpeg is there to play animated backgrounds (looked for when the page opens).
+    ffmpeg: bool,
     /// The "With no game selected" select is open.
     home_open: bool,
     /// The Collection background's finer sliders (blur, colour intensity,
@@ -199,12 +201,16 @@ impl State {
             preview: None,
             preview_task: None,
             preview_light: theme::is_light(),
-            opts: Opts::new(ctx.data_paths.images_cache_dir(), Some(ctx.app.thumbs_dir())),
+            opts: Opts {
+                video_still: Some(heronite_media::stills::video_still),
+                ..Opts::new(ctx.data_paths.images_cache_dir(), Some(ctx.app.thumbs_dir()))
+            },
             aspect_open: false,
             notice_watch: None,
             label_open: false,
             picture_open: false,
             home_open: false,
+            ffmpeg: heronite_media::stream::available(),
             more_background: false,
             profiles: None,
             profiles_task: None,
@@ -486,6 +492,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     if a.enabled {
         rows.push(look::picture_row(d, cx));
         rows.push(look::home_row(d, cx));
+        rows.push(look::animated_row(d, cx));
         let a = &d.appearance;
         let more = a.more_background;
         let mut extra = Vec::new();
@@ -673,68 +680,6 @@ fn img_el(img: Arc<RenderImage>) -> Img {
     gpui_kit::img(ImageSource::Render(img)).absolute().inset_0().size_full().object_fit(ObjectFit::Cover)
 }
 
-/// Console mode rows (the sliders become ◀ ▶ numbers).
-pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
-    use crate::console::list::Row;
-    let a = &d.appearance;
-    let n = |v: f32| v.round() as i64;
-    let mut rows = vec![
-        Row::header(tr!("Collection background")),
-        Row::toggle("bg-enabled", tr!("Game artwork behind the library"), a.enabled).desc(tr!("Desktop mode's Collection background")),
-        Row::number("bg-opacity", tr!("Opacity"), n(a.ui.collection_opacity), 0, 100, 5, "%"),
-        Row::number("bg-blur", tr!("Blur"), n(a.blur), 0, 40, 1, " px"),
-        Row::number("bg-dim", if theme::theme_is_light() { tr!("Fading") } else { tr!("Darkening") }, n(a.dimming), 0, 90, 5, "%"),
-        Row::number("bg-sat", tr!("Colour intensity"), n(a.saturation), 0, 150, 5, "%"),
-        Row::number("bg-scrim", tr!("Edge shading"), n(a.scrim), 0, 150, 5, "%"),
-        Row::action("bg-reset", tr!("Reset the background")),
-        Row::header(tr!("Interface background")),
-        Row::choice(
-            "ui-mode",
-            tr!("Panels"),
-            vec![tr!("Transparent").into(), tr!("Solid").into()],
-            if a.ui.interface_mode == InterfaceMode::Solid { 1 } else { 0 },
-        ),
-    ];
-    match a.ui.interface_mode {
-        InterfaceMode::Transparent => {
-            rows.push(Row::number(
-                "ui-opacity",
-                tr!("Opacity"),
-                n(a.ui.interface_opacity),
-                INTERFACE_OPACITY_RANGE.0 as i64,
-                INTERFACE_OPACITY_RANGE.1 as i64,
-                2,
-                "%",
-            ));
-            rows.push(Row::number(
-                "ui-blur",
-                tr!("Blur"),
-                n(a.ui.interface_blur),
-                INTERFACE_BLUR_RANGE.0 as i64,
-                INTERFACE_BLUR_RANGE.1 as i64,
-                INTERFACE_BLUR_STEP as i64,
-                " px",
-            ));
-        }
-        InterfaceMode::Solid => rows.extend(scheme::console_tint_rows(d)),
-    }
-    rows.push(Row::action("ui-reset", tr!("Reset theme")));
-    rows.push(Row::header(tr!("Covers")));
-    let aspect = CoverAspect::parse(&d.settings.metadata.cover_aspect);
-    let ai = ASPECTS.iter().position(|(x, _)| *x == aspect).unwrap_or(0);
-    rows.push(Row::choice("aspect", tr!("Cover aspect"), ASPECTS.iter().map(|(_, l)| SharedString::from(tr(l))).collect(), ai));
-    let (fits, fi) = console_choice(&look::fit_items(), d.appearance.ui.cover_fit);
-    rows.push(Row::choice("cover-fit", tr!("Cover fit"), fits, fi));
-    rows.push(Row::toggle("grey", tr!("Show uninstalled games in grey"), d.settings.grey_uninstalled_games));
-    rows.extend(console_look_rows(d));
-    rows
-}
-
-/// Labels of `items` and the index of `active` among them.
-fn console_choice<T: Copy + PartialEq>(items: &[(T, &'static str)], active: T) -> (Vec<SharedString>, usize) {
-    (items.iter().map(|(_, l)| SharedString::from(*l)).collect(), items.iter().position(|(v, _)| *v == active).unwrap_or(0))
-}
-
 /// The pictures console mode offers: not "Your own picture" (it needs a file picker).
 fn console_pictures() -> Vec<(heronite_data::appearance::BackgroundSource, &'static str)> {
     look::picture_items().into_iter().filter(|(p, _)| *p != heronite_data::appearance::BackgroundSource::Custom).collect()
@@ -747,49 +692,21 @@ fn console_home_pictures() -> Vec<(heronite_data::appearance::HomeBackground, &'
 }
 
 /// Console rows of `look.rs` and the profiles (the sections' order stays a desktop setting).
-fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
+/// "Animated backgrounds": it plays console mode's background too, so
+/// console's Settings shows it under Console mode (Appearance is the
+/// desktop's). Console mode has no header pill: ffmpeg missing is said here.
+pub(super) fn console_animated_row(d: &SettingsPage) -> crate::console::list::Row {
     use crate::console::list::Row;
-    use heronite_data::appearance::{presets, Accent};
     let a = d.appearance.ui;
-    let accents: Vec<(Accent, &'static str)> = Accent::ALL.iter().map(|x| (*x, look::accent_label(*x))).collect();
-    let choice = |id: &'static str, label: &'static str, (items, i): (Vec<SharedString>, usize)| Row::choice(id, label, items, i);
-    let mut rows = vec![
-        choice("cover-corners", tr!("Corners"), console_choice(&look::corner_items(), a.cover_corners)),
-        choice("cover-label", tr!("Under the cover"), console_choice(&look::label_items(), a.cover_label)),
-        Row::toggle("cover-badges", tr!("Favourite star"), a.cover_badges),
-        choice("cover-hover", tr!("Under the pointer"), console_choice(&look::hover_items(), a.cover_hover)),
-        Row::choice("cover-categories", tr!("Categories on covers"), console_categories().0, console_categories_index(&a)),
-        choice("bg-picture", tr!("Picture"), console_choice(&console_pictures(), a.background)),
-        Row::toggle("bg-slideshow", tr!("Change the screenshot by itself"), a.background_slideshow),
-        choice("bg-home", tr!("With no game selected"), console_choice(&console_home_pictures(), a.home_background)),
-        Row::header(tr!("Colour")),
-        choice("theme", tr!("Theme"), console_choice(&scheme::theme_items(), a.theme)).desc(tr!("Console mode stays dark")),
-        choice("accent", tr!("Accent colour"), console_choice(&accents, a.accent)),
-        Row::toggle("high-contrast", tr!("High contrast"), a.high_contrast),
-        Row::header(tr!("Reading")),
-        Row::number(
-            "ui-scale",
-            tr!("Zoom"),
-            ui_scale::percent_of(&a).round() as i64,
-            INTERFACE_SCALE_RANGE.0 as i64,
-            INTERFACE_SCALE_RANGE.1 as i64,
-            10,
-            "%",
-        )
-        .desc(tr!("Console mode fills the screen by itself: this matters most in desktop mode.")),
-        Row::toggle("ui-scale-system", tr!("Follow the system"), a.interface_scale.is_none()).desc(ui_scale::system().label()),
-        choice("font", tr!("Font"), console_choice(&look::font_items(), a.font)),
-        choice("density", tr!("Density"), console_choice(&look::density_items(), a.density)),
-        Row::header(tr!("Motion")),
-        choice("motion", tr!("Animations"), console_choice(&look::motion_items(), a.motion)),
-        Row::header(tr!("Layout")),
-        choice("start-view", tr!("Open the Collection in"), console_choice(&look::start_items(), a.start_view)),
-        Row::toggle("open-with-game", tr!("Open with the last game selected"), a.open_with_game),
-        Row::action("reset-widths", tr!("Reset widths")),
-        Row::header(tr!("Profiles")),
-    ];
-    rows.extend(presets().iter().map(|p| Row::action(SharedString::from(format!("preset:{}", p.id)), profiles::preset_name(p.id))));
-    rows
+    Row::toggle("bg-animated", tr!("Animated backgrounds"), a.animated_backgrounds).desc(
+        if a.animated_backgrounds && !d.appearance.ffmpeg {
+            tr!("ffmpeg, which plays them, was not found, so backgrounds stay still.")
+        } else if a.animated_backgrounds && a.motion != heronite_data::appearance::Motion::Full {
+            tr!("Animations are not on Full (Text and motion), so backgrounds stay still.")
+        } else {
+            tr!("A background that is a video or an animated picture plays; off, it stays still")
+        },
+    )
 }
 
 /// The console's "Categories on covers" choices: off, then each style.
@@ -797,13 +714,6 @@ fn console_categories() -> (Vec<SharedString>, Vec<Option<heronite_data::appeara
     let items = look::category_style_items();
     let labels = std::iter::once(SharedString::from(tr!("Off"))).chain(items.iter().map(|(_, l)| SharedString::from(*l))).collect();
     (labels, std::iter::once(None).chain(items.iter().map(|(s, _)| Some(*s))).collect())
-}
-
-/// Where the look's categories are among [`console_categories`].
-fn console_categories_index(a: &Appearance) -> usize {
-    let styles = console_categories().1;
-    let current = a.cover_categories.then_some(a.category_style);
-    styles.iter().position(|s| *s == current).unwrap_or(0)
 }
 
 /// The value at `i` of `items`.
@@ -901,6 +811,7 @@ fn console_apply_look(
         }
         ("cover-badges", _, Some(on)) => look::set_look(d, cx, |a| a.cover_badges = on),
         ("bg-slideshow", _, Some(on)) => look::set_look(d, cx, |a| a.background_slideshow = on),
+        ("bg-animated", _, Some(on)) => look::set_look(d, cx, |a| a.animated_backgrounds = on),
         ("open-with-game", _, Some(on)) => look::set_look(d, cx, |a| a.open_with_game = on),
         ("high-contrast", _, Some(on)) => look::set_look(d, cx, |a| a.high_contrast = on),
         ("ui-scale-system", _, Some(on)) => {

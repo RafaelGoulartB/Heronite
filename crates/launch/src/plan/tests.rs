@@ -456,6 +456,61 @@ fn playnite_starts_its_games_through_its_link() {
     assert_eq!(p.handoff.unwrap().folder.as_deref(), Some(r"D:\Emulators\duckstation"));
 }
 
+/// A Windows game starts in its executable's folder, or in the one it names
+/// (a game brought over from Playnite keeps its working folder) while that
+/// folder exists.
+#[test]
+fn a_windows_game_starts_in_the_folder_it_names() {
+    use heronite_data::sideload::WORKING_DIR_KEY;
+    use std::path::Path;
+    // This system's paths: the folder is the program's parent.
+    let root = Path::new(if cfg!(windows) { r"C:\Games\Witcher" } else { "/games/witcher" });
+    let (bin, exe) = (root.join("bin").join("x64"), root.join("bin").join("x64").join("witcher3.exe"));
+    let (root, bin, exe) = (root.to_str().unwrap(), bin.to_str().unwrap(), exe.to_str().unwrap());
+    let mut game = sideload("g", exe, "Windows");
+    let probe = FakeProbe::new("/h").with_path(exe);
+    let plan = build::windows_plan(&probe, &game, &settings(json!({})), exe, vec!["-skipintro".into()], "sideload");
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!(p.command.cwd.as_deref(), Some(bin));
+    assert_eq!(p.command.args, ["-skipintro"]);
+
+    game.rest.insert(WORKING_DIR_KEY.into(), json!(root));
+    let plan = build::windows_plan(&probe, &game, &settings(json!({})), exe, vec![], "sideload");
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!(p.command.cwd.as_deref(), Some(bin), "the folder is gone");
+    let probe = probe.with_path(root);
+    let plan = build::windows_plan(&probe, &game, &settings(json!({})), exe, vec![], "sideload");
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!(p.command.cwd.as_deref(), Some(root));
+}
+
+/// An emulated game with its own command line and no emulator of the
+/// Emulators page (a game brought over from Playnite): the emulator's
+/// program, the arguments with the ROM in them, from the program's folder.
+#[test]
+fn an_emulated_game_can_carry_its_own_command_line() {
+    let m = LocalGameMeta {
+        remapped_executable: Some("/emu/duckstation/duckstation-qt".into()),
+        launcher_args: Some(r#"-batch -fullscreen "{ImagePath}" -bios "/emu/bios dir/scph1001.bin""#.into()),
+        emulator_name: Some("DuckStation".into()),
+        roms: Some(vec![LocalGameRom {
+            name: Some("Disc 1".into()),
+            path: "/roms/ps1/Castlevania (USA).cue".into(),
+            extra: Default::default(),
+        }]),
+        ..meta("emulator")
+    };
+    let probe = FakeProbe::new("/h").with_path("/emu/duckstation/duckstation-qt").with_path("/roms/ps1/Castlevania (USA).cue");
+    let game = sideload("g", "/emu/duckstation/duckstation-qt", "linux");
+    let plan = build_plan_with_settings(&ctx(json!({})), &probe, &game, Some(&m), &settings(json!({})), &Default::default());
+    let LaunchPlan::Emulator { process, emulator, rom } = plan else { panic!("{plan:?}") };
+    assert_eq!(emulator, "DuckStation");
+    assert_eq!(rom.as_deref(), Some("/roms/ps1/Castlevania (USA).cue"));
+    assert_eq!(process.command.program, "/emu/duckstation/duckstation-qt");
+    assert_eq!(process.command.args, ["-batch", "-fullscreen", "/roms/ps1/Castlevania (USA).cue", "-bios", "/emu/bios dir/scph1001.bin"]);
+    assert_eq!(process.command.cwd.as_deref(), Some("/emu/duckstation"));
+}
+
 fn emu_ctx(emu: UserEmulator) -> PlanContext {
     let mut c = ctx(json!({}));
     c.emulators.emulators.push(emu);

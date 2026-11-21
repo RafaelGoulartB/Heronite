@@ -633,6 +633,14 @@ pub struct WebImage {
     pub thumb_url: String,
     pub width: u32,
     pub height: u32,
+    /// SteamGridDB's style of the picture (`alternate`, `white_logo`,
+    /// `official`...), which its image search filters by; empty elsewhere.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub style: String,
+    /// A moving picture (SteamGridDB's animated backgrounds, a WebM): it
+    /// plays as the background with "Animated backgrounds" on.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub animated: bool,
 }
 
 /// A picture a source has by region (LaunchBox's box art): the region as

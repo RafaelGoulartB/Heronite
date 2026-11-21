@@ -3785,11 +3785,14 @@ dependencies = [
  "anyhow",
  "chrono",
  "heronite-data",
+ "heronite-metadata",
  "heronite-platform",
  "log",
+ "regex",
  "rusqlite",
  "serde-saphyr",
  "serde_json",
+ "shlex 1.3.0",
  "tempfile",
 ]
 

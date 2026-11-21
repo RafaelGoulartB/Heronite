@@ -207,12 +207,30 @@ pub(super) fn resolve_title(env: &LudusaviEnv, binary: &str, game: &LudusaviGame
     game.title.clone()
 }
 
-/// The catalog id (`retroarch`, `pcsx2`) of the user's emulator `emulator_id`;
-/// a custom emulator is recognised by its name or program.
+/// What the user's emulator says about the Ludusavi name of a game it runs.
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct EmulatorNaming {
+    /// The catalog id (`retroarch`, `pcsx2`); a custom emulator is recognised
+    /// by its name or program.
+    pub engine: Option<String>,
+    /// The one Ludusavi entry that holds the saves of all its games
+    /// (`UserEmulator::ludusavi_entry`): when set, it is the only name tried.
+    pub entry: Option<String>,
+}
+
+/// [`EmulatorNaming`] of the user's emulator `emulator_id` (an
+/// `emulators.json` id); empty when the game is not emulated.
+pub(crate) fn emulator_naming(paths: &DataPaths, emulator_id: Option<&str>) -> EmulatorNaming {
+    let Some(id) = emulator_id.filter(|id| !id.is_empty()) else { return EmulatorNaming::default() };
+    let emulators: EmulatorsFile = json_store::read(&paths.emulators()).unwrap_or_default();
+    let Some(emulator) = emulators.get(id) else { return EmulatorNaming::default() };
+    EmulatorNaming { engine: Some(crate::save_states::engine_id_for(emulator)), entry: emulator.ludusavi_entry().map(str::to_owned) }
+}
+
+/// The catalog id (`retroarch`, `pcsx2`) of the user's emulator `emulator_id`
+/// ([`EmulatorNaming::engine`]).
 pub(crate) fn emulator_engine(paths: &DataPaths, emulator_id: Option<&str>) -> Option<String> {
-    let id = emulator_id.filter(|id| !id.is_empty())?;
-    let emulators: EmulatorsFile = json_store::read(&paths.emulators()).ok()?;
-    emulators.get(id).map(crate::save_states::engine_id_for)
+    emulator_naming(paths, emulator_id).engine
 }
 
 /// `backupLudusaviForGame`.
@@ -294,7 +312,12 @@ fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) ->
         env.runner.run(&binary, &cmd).map_err(anyhow::Error::msg)
     };
 
-    let mut game_name = game.title.clone();
+    // An emulator whose games all keep their saves under one Ludusavi entry
+    // (a custom entry for RetroArch's saves folder) is backed up under that
+    // entry, whatever the game: the per-game names are never tried.
+    let naming = emulator_naming(env.paths, game.emulator_id.as_deref());
+    let looked_up = naming.entry.clone().unwrap_or_else(|| game.title.clone());
+    let mut game_name = looked_up.clone();
     let mut result = run_backup(&game_name)?;
     let mut payload = parse_json(&result.stdout);
     let mut total = total_games(&payload);
@@ -305,9 +328,8 @@ fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) ->
     // only when it found nothing are the suffixed names tried, one run each,
     // under the usual timeout and the single in-flight guard. A suffixed name
     // without saves leaves no backup behind, so the order is safe.
-    if total == 0 {
-        let engine = emulator_engine(env.paths, game.emulator_id.as_deref());
-        for name in emulator_names(engine.as_deref(), &game.title, game.rom_path.as_deref()) {
+    if total == 0 && naming.entry.is_none() {
+        for name in emulator_names(naming.engine.as_deref(), &game.title, game.rom_path.as_deref()) {
             if name == game_name {
                 continue;
             }
@@ -323,7 +345,11 @@ fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) ->
         }
     }
 
-    if result.code != 0 && total == 0 && (game.steam_app_id.as_deref().is_some_and(|s| !s.is_empty()) || game.runner == "gog") {
+    if naming.entry.is_none()
+        && result.code != 0
+        && total == 0
+        && (game.steam_app_id.as_deref().is_some_and(|s| !s.is_empty()) || game.runner == "gog")
+    {
         game_name = resolve_title(env, &binary, game);
         if game_name != game.title {
             result = run_backup(&game_name)?;
@@ -339,8 +365,8 @@ fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) ->
     let stderr = result.stderr.trim().to_string();
 
     if result.code != 0 && total == 0 {
-        let recorded = if stderr.is_empty() { format!("Ludusavi did not find saves for {}", game.title) } else { stderr.clone() };
-        let error = if stderr.is_empty() { tr!("Ludusavi did not find saves for {title}", title = game.title) } else { stderr };
+        let recorded = if stderr.is_empty() { format!("Ludusavi did not find saves for {looked_up}") } else { stderr.clone() };
+        let error = if stderr.is_empty() { tr!("Ludusavi did not find saves for {title}", title = looked_up) } else { stderr };
         record_error(env.paths, &recorded);
         log::error!("Ludusavi backup failed: {recorded}");
         return Ok(LudusaviBackupResult {
@@ -633,11 +659,16 @@ mod tests {
     /// Adds a user emulator to `emulators.json`, under a generated id like
     /// the import writes into the meta.
     fn seed_emulator(paths: &DataPaths, id: &str, definition_id: &str, name: &str) {
+        seed_emulator_with_entry(paths, id, definition_id, name, None);
+    }
+
+    fn seed_emulator_with_entry(paths: &DataPaths, id: &str, definition_id: &str, name: &str, entry: Option<&str>) {
         json_store::update::<EmulatorsFile, _>(&paths.emulators(), |f| {
             f.emulators.push(heronite_launch::emulators::UserEmulator {
                 id: id.into(),
                 definition_id: definition_id.into(),
                 name: name.into(),
+                ludusavi_entry: entry.map(str::to_owned),
                 ..Default::default()
             });
             Ok(())
@@ -650,10 +681,11 @@ mod tests {
         let (_d, paths) = setup(ENABLED);
         seed_emulator(&paths, "7d0c2f1e", "retroarch", "RetroArch");
         seed_emulator(&paths, "a91b44c3", "custom", "Dolphin");
-        assert_eq!(emulator_engine(&paths, Some("7d0c2f1e")).as_deref(), Some("retroarch"));
-        assert_eq!(emulator_engine(&paths, Some("a91b44c3")).as_deref(), Some("dolphin"));
-        assert_eq!(emulator_engine(&paths, Some("missing")), None);
-        assert_eq!(emulator_engine(&paths, None), None);
+        let engine = |id| emulator_naming(&paths, id).engine;
+        assert_eq!(engine(Some("7d0c2f1e")).as_deref(), Some("retroarch"));
+        assert_eq!(engine(Some("a91b44c3")).as_deref(), Some("dolphin"));
+        assert_eq!(engine(Some("missing")), None);
+        assert_eq!(engine(None), None);
     }
 
     fn emulated_meta(launch_kind: &str, emulator_id: &str) -> LocalGameMeta {
@@ -869,5 +901,69 @@ mod tests {
         assert_eq!(backups.len(), 3, "{calls:?}");
         assert_eq!(backups[0].last().unwrap(), "Moon Cheese Caper");
         assert_eq!(backups[2].last().unwrap(), wii);
+    }
+
+    #[test]
+    fn the_naming_carries_the_emulators_entry_trimmed() {
+        let (_d, paths) = setup(ENABLED);
+        seed_emulator_with_entry(&paths, "e1", "custom", "Eden", Some("  Eden Saves "));
+        seed_emulator_with_entry(&paths, "e2", "retroarch", "RetroArch", Some("   "));
+        assert_eq!(emulator_naming(&paths, Some("e1")).entry.as_deref(), Some("Eden Saves"));
+        assert_eq!(emulator_naming(&paths, Some("e2")), EmulatorNaming { engine: Some("retroarch".into()), entry: None });
+    }
+
+    #[test]
+    fn an_emulators_shared_entry_is_backed_up_whatever_the_game() {
+        let _l = guard_lock();
+        let (_d, paths) = setup(ENABLED);
+        let entry = "RetroArch Saves";
+        let reply = format!(r#"{{"overall":{{"totalGames":1}},"games":{{"{entry}":{{}}}}}}"#);
+        let runner = Fake {
+            replies: vec![(
+                format!("backup --force --api --no-cloud-sync --path /backups --format zip --compression zstd {entry}"),
+                out(&reply, "", 0),
+            )],
+            ..Default::default()
+        };
+        json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |f| {
+            f.games.insert("g".into(), emulated_meta("emulator", "7d0c2f1e"));
+            Ok(())
+        })
+        .unwrap();
+        seed_emulator_with_entry(&paths, "7d0c2f1e", "retroarch", "RetroArch", Some(entry));
+        let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        let play = AfterPlay { app_name: "g".into(), title: "Turbo Goose Racer".into(), runner: "sideload".into(), elapsed_seconds: 60 };
+        let r = backup_after_play(&env, &play).unwrap();
+        assert!(r.ran, "{r:?}");
+        assert_eq!(r.game_name.as_deref(), Some(entry));
+        assert_eq!(r.backup_path, Some(join("/backups", entry)));
+        // One run, under the entry: neither the title nor the manifest names.
+        let calls = runner.calls.lock().unwrap();
+        let backups: Vec<_> = calls.iter().filter(|c| c[0] == "backup").collect();
+        assert_eq!(backups.len(), 1, "{calls:?}");
+        assert_eq!(backups[0].last().unwrap(), entry);
+    }
+
+    #[test]
+    fn a_missing_shared_entry_is_reported_by_its_name() {
+        let _l = guard_lock();
+        let (_d, paths) = setup(ENABLED);
+        let runner = Fake { replies: vec![("backup".into(), out("{}", "", 1))], ..Default::default() };
+        seed_emulator_with_entry(&paths, "e1", "custom", "Eden", Some("Eden Saves"));
+        let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        let game = LudusaviGame {
+            app_name: "g".into(),
+            title: "Moon Cheese Caper".into(),
+            runner: "sideload".into(),
+            emulator_id: Some("e1".into()),
+            ..Default::default()
+        };
+        let r = backup_for_game(&env, &game, BackupReason::Manual);
+        assert!(!r.ran);
+        assert_eq!(r.skipped_reason.as_deref(), Some("no-match"));
+        assert_eq!(r.error.as_deref(), Some("Ludusavi did not find saves for Eden Saves"));
+        assert_eq!(runner.calls.lock().unwrap().iter().filter(|c| c[0] == "backup").count(), 1);
     }
 }

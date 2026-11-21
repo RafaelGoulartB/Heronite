@@ -65,6 +65,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Behind the Collection",
             "Use the game artwork as page background",
             "Picture",
+            "Animated backgrounds",
             "Covers",
             "Cover aspect",
             "Cover fit",
@@ -196,6 +197,8 @@ const INDEX: &[(Section, &[&str])] = &[
         &[
             "Buttons drawn as",
             "Confirm button",
+            "Use the controller on the desktop",
+            "Move the pointer",
             "Open the overlay",
             "Take a screenshot",
             "Save the replay",

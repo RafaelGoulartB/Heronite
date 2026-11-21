@@ -323,6 +323,8 @@ impl AddGameDialog {
         } else if let Some(note) = self.top_note() {
             left = left.child(kit::body_text(note));
         }
+        // Settings cards, as the other console config screens.
+        self.console_list.set_style(crate::console::list::RowStyle::Card);
         left = left.child(self.console_list.render("console-add-game", &rows, !self.layer.is_open()).flex_1().min_h_0());
         left = left.child(
             div()

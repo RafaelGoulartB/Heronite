@@ -24,7 +24,8 @@ pub mod ui_scale;
 #[cfg(windows)]
 pub use hub::run_on_quit;
 pub use hub::{
-    attach_runtime, candidate_keys, close_window, console_in_front, exit_code, exit_if_idle, fullscreen_asked, has_window, init,
-    keep_in_tray, main_view, play_game, post_game_idle, quit_anyway, refresh_tray, relaunch_if_requested, request_quit, restart_blocker,
-    restart_into, restart_now, running_games, show_window as show_main_window, stop_running, summon_console, update_main,
+    attach_runtime, candidate_keys, close_window, console_in_front, exit_code, exit_if_idle, fullscreen_asked, has_window,
+    hide_after_cover, init, keep_in_tray, main_view, play_game, post_game_idle, quit_anyway, refresh_tray, relaunch_if_requested,
+    request_quit, restart_blocker, restart_into, restart_now, running_games, show_window as show_main_window, stop_running, summon_console,
+    update_main,
 };

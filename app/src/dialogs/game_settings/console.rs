@@ -13,7 +13,7 @@ use super::details::TAG_FIELDS;
 use super::{GameSettingsDialog, Tab};
 use crate::console::browser::{Browser, BrowserEvent, PickKind};
 use crate::console::kit::{self, u};
-use crate::console::list::{Outcome, Row, Value};
+use crate::console::list::{Outcome, Row, RowStyle, Value};
 use crate::console::osk::{Osk, OskEvent};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::dialogs::covers::CoversDialog;
@@ -130,20 +130,17 @@ impl GameSettingsDialog {
     fn console_info_rows(&self, cx: &App) -> Vec<Row> {
         match self.tab {
             Tab::Game => {
-                // "Use the default images" resets the logo too.
-                let custom = self.art.cover_url.is_some() || self.art.hero_url.is_some() || self.art.logo_url.is_some();
                 let d = &self.details;
                 let form = self.read_form(cx);
                 let dirty = form != self.initial;
                 let mut rows = vec![
+                    // One way in: the Covers dialog shows every picture and
+                    // has its own Reset (Start › Options).
                     Row::header(tr!("Images")),
-                    Row::info("img-cover", tr!("Cover"), if self.art.cover_url.is_some() { tr!("Custom") } else { tr!("Default") }),
-                    Row::info("img-hero", tr!("Background"), if self.art.hero_url.is_some() { tr!("Custom") } else { tr!("Default") }),
                     Row::action("img-find", tr!("Change pictures\u{2026}"))
                         .icon(Icon::Image)
                         .enabled(self.busy.is_none())
                         .desc(tr!("Covers and backgrounds, from the web or a file")),
-                    Row::action("img-reset", tr!("Use the default images")).icon(Icon::Replay).enabled(custom && self.busy.is_none()),
                     Row::header(tr!("Details")),
                     Row::text("f:name", tr!("Name"), d.name.read(cx).value().to_string()),
                     Row::text("f:release", tr!("Release date"), d.release.read(cx).value().to_string()),
@@ -349,13 +346,18 @@ impl GameSettingsDialog {
                     ),
             );
 
+        // The rows are settings cards, as in Settings.
         let body: AnyElement = match (self.tab.section(), &self.panel) {
-            (Some(_), Some((panel, _))) => div().flex().flex_col().size_full().child(panel.clone()).into_any_element(),
+            (Some(_), Some((panel, _))) => {
+                panel.update(cx, |p, _| p.set_console_style(RowStyle::Card));
+                div().flex().flex_col().size_full().child(panel.clone()).into_any_element()
+            }
             _ if self.tab == Tab::Saves && self.backups.is_some() => {
                 div().flex().flex_col().size_full().children(self.backups.clone()).into_any_element()
             }
             _ => {
                 let rows = self.console_rows(cx);
+                self.console_list.set_style(RowStyle::Card);
                 self.console_list.render("console-gs", &rows, !self.layer.is_open()).size_full().into_any_element()
             }
         };
@@ -368,17 +370,7 @@ impl GameSettingsDialog {
             .flex_col()
             .child(header)
             .child(div().flex_none().px(u(46.)).py(u(12.)).child(kit::tabs(&labels, active)))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h_0()
-                    .px(u(46.))
-                    .pb(u(70.))
-                    .child(div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(body))
-                    .children(error),
-            )
+            .child(div().flex().flex_col().flex_1().min_h_0().px(u(46.)).pb(u(70.)).child(kit::settings_column(body)).children(error))
             .children(self.layer.view())
             .into_any_element()
     }
@@ -446,7 +438,6 @@ impl PadTarget for GameSettingsDialog {
                 "save-launch" => self.save_launch(cx),
                 "save-details" => self.save_details(cx),
                 "img-find" => self.console_find_pictures(window, cx),
-                "img-reset" => self.reset_all_images(cx),
                 "f:name" => self.edit_field(Field::Name, tr!("Name"), window, cx),
                 "f:release" => self.edit_field(Field::Release, tr!("Release date"), window, cx),
                 "f:score" => self.edit_field(Field::Score, tr!("Critic score"), window, cx),

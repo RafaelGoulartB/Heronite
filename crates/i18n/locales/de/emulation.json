@@ -289,5 +289,13 @@
   "From the catalog, or any program": "Aus dem Katalog oder ein beliebiges Programm",
   "Needs attention": "Braucht Aufmerksamkeit",
   "No ROM folders": "Keine ROM-Ordner",
-  "{problem}: its games cannot start until it is fixed.": "{problem}: Seine Spiele starten erst, wenn das behoben ist."
+  "{problem}: its games cannot start until it is fixed.": "{problem}: Seine Spiele starten erst, wenn das behoben ist.",
+  "Backed up after playing any game of this emulator. Empty backs up each game under its own name.": "Wird nach jedem Spiel dieses Emulators gesichert. Leer sichert jedes Spiel unter seinem eigenen Namen.",
+  "Each game under its own name": "Jedes Spiel unter seinem eigenen Namen",
+  "Ludusavi entry": "Ludusavi-Eintrag",
+  "Ludusavi entry (optional)": "Ludusavi-Eintrag (optional)",
+  "The name of a game or custom entry in Ludusavi that holds the saves of every game this emulator runs. After playing any of them, that entry is backed up. Leave empty to back up each game under its own name.": "Der Name eines Spiels oder eigenen Eintrags in Ludusavi, der die Spielstände aller Spiele dieses Emulators enthält. Nach dem Spielen eines davon wird dieser Eintrag gesichert. Leer lassen, um jedes Spiel unter seinem eigenen Namen zu sichern.",
+  "Your Ludusavi custom entries": "Deine eigenen Ludusavi-Einträge",
+  "Your Ludusavi custom entries:": "Deine eigenen Ludusavi-Einträge:",
+  "◀ ▶ picks one for the entry.": "◀ ▶ wählt einen für den Eintrag."
 }

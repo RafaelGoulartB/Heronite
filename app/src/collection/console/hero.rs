@@ -254,27 +254,6 @@ impl CollectionView {
             .then(|| div().flex().flex_wrap().gap(u(8.)).children(g.details.genres.iter().take(4).map(|t| outlined(t.clone(), 13.))))
     }
 
-    /// The genres in one line, thin bars between them ("Adventure | RPG").
-    pub(super) fn console_genre_line(g: &CollectionGame) -> Option<Div> {
-        (!g.details.genres.is_empty()).then(|| {
-            let mut line = div()
-                .flex()
-                .items_center()
-                .gap(u(14.))
-                .text_size(u(22.))
-                .font_weight(theme::W_BOLD)
-                .text_color(theme::text_primary())
-                .whitespace_nowrap();
-            for (i, t) in g.details.genres.iter().take(3).enumerate() {
-                if i > 0 {
-                    line = line.child(div().w(px(1.5)).h(u(20.)).bg(kit::ink(0.45)));
-                }
-                line = line.child(t.clone());
-            }
-            line
-        })
-    }
-
     /// The panel of numbers at the right edge (`hero.stats`): time played,
     /// last played, size on disk, score, genre and status; only what is
     /// known, at most `max` lines. The caller puts it at the edge (it is

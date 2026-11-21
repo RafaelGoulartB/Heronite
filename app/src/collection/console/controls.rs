@@ -32,6 +32,11 @@ impl Default for ControlsState {
 }
 
 impl CollectionView {
+    /// The idle screen covers everything (the background is not seen).
+    pub(super) fn console_idle_shown(&self) -> bool {
+        self.console.controls.idle.is_some()
+    }
+
     /// At app start, before the first frame (console mode may be off): where
     /// the app opens (`openIn`). Reads only the values mirrored in
     /// ui-state.json. `reopened`: the window was closed in console mode in
