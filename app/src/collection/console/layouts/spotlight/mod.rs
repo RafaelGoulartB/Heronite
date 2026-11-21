@@ -32,7 +32,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{GamePage, HeroTitle, Layout, SpotActions, TabSpec};
+use heronite_data::console_theme::{AButton, GamePage, HeroTitle, Layout, SpotActions, TabSpec};
 use heronite_data::details_url::details_url;
 use heronite_data::CollectionGame;
 use heronite_i18n::{tr, trn};
@@ -1540,6 +1540,9 @@ impl CollectionView {
         let nav = &self.spot_nav(host);
         let index = nav.index.min(n);
         let game = found.get(index).cloned();
+        // On the row A and X do what the theme's `nav.aButton` says.
+        // ("All games", past the games, opens on A either way.)
+        let pad = if game_page || nav.zone != Zone::Row || game.is_none() { pad } else { row_pad(pad, play_first()) };
         if pad == Pad::Y && !game_page {
             self.open_console_filters(window, cx);
             return true;
@@ -1715,6 +1718,12 @@ impl CollectionView {
         }
         let game = found.get(nav.index).and_then(|k| self.lib.as_ref()?.get(k));
         let primary = game.map_or(tr!("Play"), |g| self.primary_label(g));
+        // The row with A to play (`nav.aButton`): A plays, X opens the buttons.
+        if nav.zone == Zone::Row && game.is_some() && play_first() {
+            let mut h = vec![hint(Btn::A, primary), hint(Btn::X, tr!("Actions")), hint(Btn::Y, tr!("Search"))];
+            h.extend(self.console_tab_hints());
+            return h;
+        }
         let a = match nav.zone {
             Zone::Row if game.is_some() => tr!("Actions"),
             Zone::Row => tr!("Open"),
@@ -1766,6 +1775,21 @@ fn page_tile(id: (&'static str, usize), x: f32, w: f32, h: f32, radius: f32, foc
             .when(t > 0.01, |d| d.child(ring(radius, t)))
     });
     div().absolute().left(u(x)).top_0().w(u(w)).h(u(h)).child(el)
+}
+
+/// The theme's A plays the game (`nav.aButton`), X opening its details.
+fn play_first() -> bool {
+    look::theme().nav.a_button == AButton::Play
+}
+
+/// A press on the row as the row's own handling reads it (A opens the
+/// buttons, X plays): with `play_first`, A and X trade places.
+fn row_pad(pad: Pad, play_first: bool) -> Pad {
+    match (pad, play_first) {
+        (Pad::A, true) => Pad::X,
+        (Pad::X, true) => Pad::A,
+        _ => pad,
+    }
 }
 
 /// `el` at `top` on the page's left edge. A slide-in (`motion::enter_from`)
@@ -1870,4 +1894,21 @@ fn titled(top: f32, width: f32, title: &str, body: Div) -> AnyElement {
         .child(div().absolute().top_0().left(u(SIDE)).w(u(width)).child(section_title(title)))
         .child(div().absolute().top(u(parts::TITLE_H)).left_0().right_0().child(body))
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::row_pad;
+    use crate::console::Pad;
+
+    #[test]
+    fn a_plays_on_the_row_when_the_theme_says_so() {
+        // Details (the default): as pressed, A opening the buttons, X playing.
+        assert_eq!(row_pad(Pad::A, false), Pad::A);
+        assert_eq!(row_pad(Pad::X, false), Pad::X);
+        // Play: A plays, X opens the buttons; the rest is left alone.
+        assert_eq!(row_pad(Pad::A, true), Pad::X);
+        assert_eq!(row_pad(Pad::X, true), Pad::A);
+        assert_eq!(row_pad(Pad::Down, true), Pad::Down);
+    }
 }
