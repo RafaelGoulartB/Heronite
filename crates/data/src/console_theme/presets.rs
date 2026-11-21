@@ -95,7 +95,7 @@ pub const CINEMA_GOLD: &str = "#e8cf9a";
 /// filters in a pill at the top and the Library's grid of every game; its game page
 /// is Showcase over the art, without glass; Y opens the game's actions.
 pub fn cinema() -> ConsoleTheme {
-    from_classic("cinema", n_!("Cinema"), n_!("The game's art full screen with its logo, and a row of large covers below it."), |t| {
+    from_classic("cinema", n_!("Cinema"), n_!("The game's art full screen with its logo, a row of large covers and shelves of games below it."), |t| {
         t.tabs = vec![
             TabSpec::new(n_!("Installed"), Layout::Cinema, "installed"),
             TabSpec::new(n_!("All games"), Layout::Cinema, "all"),

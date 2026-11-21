@@ -1,11 +1,16 @@
-//! Cinema: the focused game's key art full bleed, its logo (or its name in
-//! spaced capitals) large left of centre with a line of facts and its genres
-//! centred under it, its achievements on the right, and one row of large
-//! covers along the bottom. ← → move along the row (LT / RT a page): while
-//! the focus travels the game's block steps aside so the art shows whole,
-//! and it comes back once the focus rests (the logo, then the rest, as
-//! `motion::reveal` brings them in). A plays (the theme's `nav.aButton`), X
-//! opens the game's page, Y its actions in a sheet, View the Filters panel.
+//! Cinema: the focused game's key art full bleed, its logo (or a quiet name
+//! line) with its facts and genres at the left over its own shade, its
+//! achievements on the right, and one row of large covers along the bottom.
+//! ← → move along the row (LT / RT a page): while the focus travels the
+//! game's block steps aside so the art shows whole, and it comes back once
+//! the focus rests (`motion::reveal`). Under the row, the theme's shelves
+//! over the tab's games (Continue playing, Favourites, a shelf per status...,
+//! less the one the row already is), smaller and quieter, the first one's
+//! title peeking in: ↓ goes down to them (the view glides so the shelf sits
+//! near the top, the block goes, the art steps back), ↑ ↓ between them, ← →
+//! along one, a cut one ending with "View all"; ↑ from the first comes back
+//! to the row and its block. A and X follow `nav.aButton`, Y the Filters
+//! panel, as on every screen.
 
 use std::time::{Duration, Instant};
 
@@ -18,12 +23,12 @@ use heronite_i18n::tr;
 
 use super::super::super::CollectionView;
 use super::super::hero::{logo_element, played_time};
-use super::super::sources::{by_last_played, by_title, keys};
+use super::super::sources::{by_last_played, by_title, keys, Shelf};
 use crate::collection::data::played_ago;
 use crate::console::kit::{self, u};
 use crate::console::motion::{self, Axis, Glide, Goal};
-use crate::console::pointer::{self, Clickable};
-use crate::console::{look, Btn, Hint, Pad};
+use crate::console::pointer::Clickable;
+use crate::console::{hint, look, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
 
@@ -32,6 +37,14 @@ const GAP: f32 = 18.;
 const RING_ROOM: f32 = 22.;
 /// Room under the row for the hint bar that floats over the bottom.
 const HINTS_ROOM: f32 = 70.;
+/// How much of the first shelf (its title) shows under the main row.
+const PEEK: f32 = 46.;
+/// A shelf's title line, the room around its covers for the ring, the space
+/// between them, and where a focused shelf comes up to under the top bar.
+const LABEL_H: f32 = 40.;
+const SHELF_RING: f32 = 14.;
+const SHELF_GAP: f32 = 14.;
+const SHELF_TOP: f32 = 24.;
 /// Between the game's block and the row.
 const BLOCK_GAP: f32 = 46.;
 /// The logo's box.
@@ -58,11 +71,42 @@ pub(crate) struct Nav {
     returns: u64,
     hidden: bool,
     wake: Option<Task<()>>,
+    /// 0: the main row; else the shelf `level - 1` under it.
+    level: usize,
+    /// The whole view, up and down; each shelf's row and focused column.
+    view: Glide,
+    glides: Vec<Glide>,
+    cols: Vec<usize>,
 }
 
 impl Default for Nav {
     fn default() -> Self {
-        Self { index: 0, row: Glide::new(Axis::X), moving_until: None, returns: 0, hidden: false, wake: None }
+        Self {
+            index: 0,
+            row: Glide::new(Axis::X),
+            moving_until: None,
+            returns: 0,
+            hidden: false,
+            wake: None,
+            level: 0,
+            view: Glide::new(Axis::Y),
+            glides: Vec::new(),
+            cols: Vec::new(),
+        }
+    }
+}
+
+impl Nav {
+    /// Room for `shelves`, the columns inside them ("View all" one past a cut one).
+    fn fit(&mut self, shelves: &[Shelf]) {
+        self.cols.resize(shelves.len(), 0);
+        while self.glides.len() < shelves.len() {
+            self.glides.push(Glide::new(Axis::X));
+        }
+        for (c, s) in self.cols.iter_mut().zip(shelves) {
+            *c = (*c).min(s.keys.len() + usize::from(s.cut()) - 1);
+        }
+        self.level = self.level.min(shelves.len());
     }
 }
 
@@ -81,15 +125,7 @@ fn cover_h(body_h: f32) -> f32 {
 /// `view` wide, now at `current`) scrolls for cover `i` to show whole with
 /// a little more than half a cover beside it: as little as it takes.
 fn row_offset(i: usize, tw: f32, side: f32, view: f32, current: f32) -> f32 {
-    let x = side + i as f32 * (tw + GAP);
-    let margin = (tw * 0.6).min((view - tw) / 2.).max(0.);
-    if x - margin < current {
-        (x - side).max(0.)
-    } else if x + tw + margin > current + view {
-        x + tw + margin - view
-    } else {
-        current
-    }
+    row_offset_with(i, tw, GAP, side, view, current)
 }
 
 /// One fact: a small label over its value, centred.
@@ -308,41 +344,62 @@ impl CollectionView {
             .child(motion::reveal(SharedString::from(format!("{id}-rest")), rest, motion::REST_HOLD, motion::REST_FADE, 0., 0.))
     }
 
+    /// The tab's shelves under the main row (the theme's, over the tab's
+    /// games), less the one that is the main row itself.
+    fn cinema_shelves(&self, spec: &TabSpec) -> Vec<Shelf> {
+        let main = spec.source.as_str();
+        self.console_shelves(main).into_iter().filter(|s| s.kind.as_ref() != main).collect()
+    }
+
     pub(super) fn render_cinema(&mut self, tab: usize, spec: &TabSpec, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let all = self.cinema_keys(spec);
         if all.is_empty() {
             return super::no_games();
         }
+        let shelves = self.cinema_shelves(spec);
         let n = all.len();
         let nav = &mut self.tab_nav(tab).cinema;
         nav.index = nav.index.min(n - 1);
+        nav.fit(&shelves);
         let moving = nav.moving_until.is_some_and(|t| Instant::now() < t);
         // The focus came to rest: the block comes back, its entrance anew.
         if nav.hidden && !moving {
             nav.hidden = false;
             nav.returns += 1;
         }
-        let (index, glide, returns) = (nav.index, nav.row.clone(), nav.returns);
-        let focused = all[index].clone();
+        let (index, glide, returns, level) = (nav.index, nav.row.clone(), nav.returns, nav.level);
+        let (view_glide, shelf_glides) = (nav.view.clone(), nav.glides.clone());
+        let mut cols = vec![index];
+        cols.extend(nav.cols.iter().copied());
+        // The focused game: the main row's, else the focused shelf's (its last
+        // one while "View all" has the focus).
+        let (focused, _on_more) = match level.checked_sub(1).and_then(|l| shelves.get(l)) {
+            Some(s) => {
+                let c = cols[level];
+                (s.keys[c.min(s.keys.len() - 1)].clone(), c >= s.keys.len())
+            }
+            None => (all[index].clone(), false),
+        };
         self.console_focus_game(Some(focused.clone()), cx);
-        let game = self.lib.as_ref().and_then(|l| l.get(&focused)).cloned();
+        let game = self.lib.as_ref().and_then(|l| l.get(&all[index])).cloned();
+        let deep = level > 0;
 
         let vw = super::body_width(window);
         let body_h = super::body_height(window, false);
         let side = side(vw);
         let th = cover_h(body_h);
         let tw = th / self.cover_aspect.max(0.5);
-        let row_top = body_h - HINTS_ROOM - th - RING_ROOM;
-
-        // The row: one scrolling line of covers, the ones out of sight empty boxes.
+        let geo = Geo::new(body_h, th, self.cover_aspect, shelves.len());
         let width = crate::ui::content_size(window).width;
+
+        // The main row: one scrolling line of covers, the ones out of sight empty boxes.
         let seen = super::in_sight(glide.handle().offset().x, tw + GAP, width);
         let mut row = div()
             .id(("console-cinema-row", tab))
             .absolute()
             .left_0()
             .right_0()
-            .top(u(row_top))
+            .top(u(geo.row_top))
             .h(u(th + 2. * RING_ROOM))
             .flex()
             .items_center()
@@ -352,16 +409,18 @@ impl CollectionView {
             .track_scroll(glide.handle());
         for (i, key) in all.iter().enumerate() {
             let visible = super::loads(&seen, i, index);
-            let pads = pointer::focus_or_activate(pointer::along(index, i, Pad::Left, Pad::Right));
-            row = row.child(self.console_tile(key, tw, th, i == index, visible, window).on_pads(pads));
+            row = row.child(
+                self.console_tile(key, tw, th, !deep && i == index, visible, window).on_pads(super::shelf_click(level, &cols, 0, i)),
+            );
         }
         row = row.child(div().flex_none().w(u(side))).child(glide.driver());
+        let row = motion::spring(("cinema-main-row", tab), row, motion::SOFT, deep, |d, k| d.opacity(1. - k.clamp(0., 1.)));
 
-        // The game's block, and its achievements on the right, while the focus rests.
-        let block_bottom = body_h - row_top + BLOCK_GAP - RING_ROOM;
-        let mut over = div().absolute().inset_0();
-        if let (Some(g), false) = (game.as_ref(), moving) {
-            let id = format!("cinema-{tab}-{focused}-{returns}");
+        // The game's block, and its achievements on the right, while the focus rests on the main row.
+        let block_bottom = body_h - geo.row_top + BLOCK_GAP - RING_ROOM;
+        let mut over = div().absolute().left_0().right_0().top_0().h(u(body_h));
+        if let (Some(g), false, false) = (game.as_ref(), moving, deep) {
+            let id = format!("cinema-{tab}-{}-{returns}", all[index]);
             let block_w = (vw * 0.5).clamp(520., 900.);
             let block = self.cinema_block(g, &id, LOGO_SLIDE, block_w, LOGO.1, window);
             let shade_h = LOGO.1 + FACTS_H + GENRES_H + 70.;
@@ -383,7 +442,81 @@ impl CollectionView {
             }
         }
 
-        div().relative().size_full().child(over).child(row).into_any_element()
+        // The shelves under it, quieter: smaller covers, the focused one bright.
+        let (sw, sh) = (geo.shelf_w, geo.shelf_h);
+        let mut content = div().relative().w_full().h(u(geo.total)).child(over).child(row);
+        for (si, shelf) in shelves.iter().enumerate() {
+            let lv = si + 1;
+            let top = geo.shelf_top(si);
+            // On the main row only the first shelf's title peeks in: its covers
+            // come with the focus.
+            let near = level > 0 && lv + 1 >= level && lv <= level + 3;
+            let mut line = div()
+                .id(("console-cinema-shelf", si))
+                .absolute()
+                .left_0()
+                .right_0()
+                .top(u(LABEL_H))
+                .h(u(sh + 2. * SHELF_RING))
+                .flex()
+                .items_center()
+                .gap(u(SHELF_GAP))
+                .px(u(side))
+                .overflow_x_scroll()
+                .track_scroll(shelf_glides[si].handle());
+            if near {
+                let seen = super::in_sight(shelf_glides[si].handle().offset().x, sw + SHELF_GAP, width);
+                for (c, key) in shelf.keys.iter().enumerate() {
+                    let visible = super::loads(&seen, c, cols[lv]);
+                    let tile = self.console_tile(key, sw, sh, level == lv && cols[lv] == c, visible, window);
+                    line = line.child(tile.on_pads(super::shelf_click(level, &cols, lv, c)));
+                }
+                if shelf.cut() {
+                    let c = shelf.keys.len();
+                    let tile = super::shelves::more_tile(("cinema-more", si), level == lv && cols[lv] == c, shelf.total, sw, sh);
+                    line = line.child(tile.on_pads(super::shelf_click(level, &cols, lv, c)));
+                }
+            }
+            line = line.child(div().flex_none().w(u(side))).child(shelf_glides[si].driver());
+            let block = div()
+                .absolute()
+                .left_0()
+                .right_0()
+                .top(u(top))
+                .h(u(geo.shelf_block))
+                .child(shelf_title(&shelf.title, shelf.total, side))
+                .child(line);
+            let dim = look::theme().dim_others;
+            content = content.child(motion::spring(("cinema-shelf-fx", si), block, motion::SOFT, level == lv, move |d, k| {
+                let low = if dim { 0.55 } else { 0.85 };
+                d.opacity(low + (1. - low) * k.clamp(0., 1.))
+            }));
+        }
+        let view = div()
+            .id(("console-cinema-view", tab))
+            .absolute()
+            .inset_0()
+            .overflow_y_scroll()
+            .track_scroll(view_glide.handle())
+            .child(content)
+            .child(view_glide.driver());
+        // In the shelves the art steps back behind them.
+        let shade = motion::spring(("cinema-deep", tab), div().absolute().inset_0().bg(kit::veil(0.55)), motion::SOFT, deep, |d, k| {
+            d.opacity(k.clamp(0., 1.))
+        });
+        // Deep in them, the shelves passing under the hints fade into the dark.
+        let foot = motion::spring(
+            ("cinema-deep-foot", tab),
+            div().absolute().left_0().right_0().bottom_0().h(u(130.)).bg(linear_gradient(
+                0.,
+                linear_color_stop(kit::dim(0.85), 0.),
+                linear_color_stop(kit::dim(0.), 1.),
+            )),
+            motion::SOFT,
+            deep,
+            |d, k| d.opacity(k.clamp(0., 1.)),
+        );
+        div().relative().size_full().child(shade).child(view).child(foot).into_any_element()
     }
 
     pub(super) fn cinema_pad(&mut self, tab: usize, spec: &TabSpec, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
@@ -392,17 +525,75 @@ impl CollectionView {
         if n == 0 {
             return false;
         }
-        let i = self.tab_nav(tab).cinema.index.min(n - 1);
+        let shelves = self.cinema_shelves(spec);
+        let body_h = super::body_height(window, false);
+        let th = cover_h(body_h);
+        let geo = Geo::new(body_h, th, self.cover_aspect, shelves.len());
+        let view = super::body_width(window);
+        let k = kit::scale();
+        let nav = &mut self.tab_nav(tab).cinema;
+        nav.fit(&shelves);
+        let level = nav.level.min(shelves.len());
+        nav.level = level;
+        let i = nav.index.min(n - 1);
+        // In a shelf: its covers, and "View all" one past them when it is cut.
+        if level > 0 {
+            let si = level - 1;
+            let shelf = &shelves[si];
+            let count = shelf.keys.len() + usize::from(shelf.cut());
+            let c = nav.cols[si].min(count - 1);
+            let to = match pad {
+                Pad::Left | Pad::Right => super::step(c, count, pad.dir(), false),
+                Pad::LT | Pad::RT => {
+                    let page = ((view / (geo.shelf_w + SHELF_GAP)).floor() as isize - 1).max(1);
+                    super::step(c, count, if pad == Pad::LT { -page } else { page }, false)
+                }
+                Pad::Up | Pad::Down => {
+                    let to = if pad == Pad::Up { level - 1 } else { (level + 1).min(shelves.len()) };
+                    if to != level {
+                        nav.level = to;
+                        nav.view.go(Goal::Offset(geo.view_offset(to) * k));
+                        if to == 0 {
+                            // Back on the main row: the game's block comes in again.
+                            nav.returns += 1;
+                        }
+                    }
+                    return true;
+                }
+                Pad::A | Pad::X => {
+                    match shelf.keys.get(c).cloned() {
+                        Some(key) => self.console_activate(key, pad, window, cx),
+                        None if pad == Pad::A => self.console_open_shelf(shelf, window, cx),
+                        None => {}
+                    }
+                    return true;
+                }
+                Pad::Y => {
+                    self.open_console_filters(window, cx);
+                    return true;
+                }
+                _ => return false,
+            };
+            if to != c {
+                nav.cols[si] = to;
+                let current = -f32::from(nav.glides[si].handle().offset().x) / k;
+                let goal = Goal::Offset(row_offset_with(to, geo.shelf_w, SHELF_GAP, side(view), view, current) * k);
+                nav.glides[si].go(goal);
+            }
+            return true;
+        }
         let key = all[i].clone();
         let wrap = look::theme().nav.wrap;
         let to = match pad {
             Pad::Left | Pad::Right => super::step(i, n, pad.dir(), wrap),
             Pad::LT | Pad::RT => {
-                let page = ((super::body_width(window) / (cover_h(super::body_height(window, false)) / self.cover_aspect + GAP)).floor()
-                    as isize
-                    - 1)
-                .max(1);
+                let page = ((view / (th / self.cover_aspect + GAP)).floor() as isize - 1).max(1);
                 super::step(i, n, if pad == Pad::LT { -page } else { page }, false)
+            }
+            Pad::Down if !shelves.is_empty() => {
+                nav.level = 1;
+                nav.view.go(Goal::Offset(geo.view_offset(1) * k));
+                return true;
             }
             Pad::A | Pad::X => {
                 self.console_activate(key, pad, window, cx);
@@ -415,7 +606,7 @@ impl CollectionView {
             _ => return false,
         };
         if to != i {
-            let tw = cover_h(super::body_height(window, false)) / self.cover_aspect.max(0.5);
+            let tw = th / self.cover_aspect.max(0.5);
             let nav = &mut self.tab_nav(tab).cinema;
             nav.index = to;
             nav.hidden = true;
@@ -423,8 +614,6 @@ impl CollectionView {
             // Worked out from the row's fixed geometry (not the last layout's
             // bounds), so the focused cover is always whole in view. Round the
             // end of the row: there at once, not a glide past every cover.
-            let k = kit::scale();
-            let view = super::body_width(window);
             let current = -f32::from(nav.row.handle().offset().x) / k;
             let goal = Goal::Offset(row_offset(to, tw, side(view), view, current) * k);
             if to.abs_diff(i) > 1 {
@@ -443,11 +632,27 @@ impl CollectionView {
 
     /// The covers' hints every layout shows (A and X as `nav.aButton` says,
     /// Y the search and filters, the tabs, the menu), the menu and the tabs
-    /// with a small second line: what the menu leads to, the next tab.
-    pub(super) fn cinema_hints(&self, _tab: usize, _spec: &TabSpec) -> Vec<Hint> {
+    /// with a small second line: what the menu leads to, the next tab; on a
+    /// shelf's "View all", A opens it.
+    pub(super) fn cinema_hints(&self, tab: usize, spec: &TabSpec) -> Vec<Hint> {
         let theme = look::theme();
         let next = theme.tabs.get((self.console.tab + 1) % theme.tabs.len().max(1)).map(|t| heronite_i18n::tr(&t.name).to_string());
-        self.console_cover_hints()
+        let on_more = self.console.tab_navs.get(tab).is_some_and(|n| {
+            let nav = &n.cinema;
+            nav.level > 0
+                && self
+                    .cinema_shelves(spec)
+                    .get(nav.level - 1)
+                    .is_some_and(|s| nav.cols.get(nav.level - 1).is_some_and(|&c| c >= s.keys.len()))
+        });
+        let hints = if on_more {
+            let mut h = vec![hint(Btn::A, tr!("View all")), hint(Btn::Y, tr!("Search"))];
+            h.extend(self.console_tab_hints());
+            h
+        } else {
+            self.console_cover_hints()
+        };
+        hints
             .into_iter()
             .map(|h| match h.btn {
                 Btn::Start => h.sub(tr!("Settings, downloads, power")),
@@ -461,11 +666,113 @@ impl CollectionView {
     }
 }
 
+/// A shelf's title in Cinema's style: its name and how many games it has,
+/// a thin champagne rule under them.
+fn shelf_title(title: &str, total: usize, side: f32) -> Div {
+    let gold: Hsla = theme::console_focus().into();
+    div()
+        .absolute()
+        .top_0()
+        .left(u(side))
+        .h(u(LABEL_H))
+        .flex()
+        .flex_col()
+        .justify_center()
+        .gap(u(5.))
+        .child(
+            div()
+                .flex()
+                .items_baseline()
+                .gap(u(10.))
+                .child(
+                    div()
+                        .text_size(u(16.))
+                        .font_weight(theme::W_BOLD)
+                        .text_color(kit::strong())
+                        .whitespace_nowrap()
+                        .child(title.to_string()),
+                )
+                .child(div().text_size(u(13.)).text_color(kit::ink(0.6)).child(total.to_string())),
+        )
+        .child(div().flex_none().w(u(40.)).h(u(2.)).rounded_full().bg(gold.opacity(0.9)))
+}
+
+/// Where the home's parts sit, design px from the top of the view.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Geo {
+    body_h: f32,
+    row_top: f32,
+    /// Where the shelves start: right under the main row, the first one's
+    /// title peeking in above the hints.
+    shelves: f32,
+    shelf_w: f32,
+    shelf_h: f32,
+    /// A shelf: its title, its row and the space under it.
+    shelf_block: f32,
+    total: f32,
+}
+
+impl Geo {
+    fn new(body_h: f32, th: f32, aspect: f32, shelves: usize) -> Self {
+        let row_top = body_h - HINTS_ROOM - PEEK - th - RING_ROOM;
+        let shelf_h = (th * 0.62).max(110.);
+        let shelf_w = shelf_h / aspect.max(0.5);
+        let shelf_block = LABEL_H + shelf_h + 2. * SHELF_RING + 8.;
+        let start = row_top + th + 2. * RING_ROOM - 6.;
+        // Room after the last shelf so it can rise to the top too.
+        let total = if shelves == 0 { body_h } else { start + shelves as f32 * shelf_block + (body_h - shelf_block - SHELF_TOP).max(0.) };
+        Self { body_h, row_top, shelves: start, shelf_w, shelf_h, shelf_block, total }
+    }
+
+    fn shelf_top(&self, i: usize) -> f32 {
+        self.shelves + i as f32 * self.shelf_block
+    }
+
+    /// Where the view scrolls for `level` (0 the main row, else shelf
+    /// `level - 1`): at the top for the main row; a shelf comes up near the
+    /// top of the body.
+    fn view_offset(&self, level: usize) -> f32 {
+        if level == 0 {
+            0.
+        } else {
+            (self.shelf_top(level - 1) - SHELF_TOP).max(0.)
+        }
+    }
+}
+
+/// [`row_offset`] for a row of items `w` wide, `gap` apart.
+fn row_offset_with(i: usize, w: f32, gap: f32, side: f32, view: f32, current: f32) -> f32 {
+    let x = side + i as f32 * (w + gap);
+    let margin = (w * 0.6).min((view - w) / 2.).max(0.);
+    if x - margin < current {
+        (x - side).max(0.)
+    } else if x + w + margin > current + view {
+        x + w + margin - view
+    } else {
+        current
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     // `gpui_kit::*` above brings gpui's own `test` macro.
     use core::prelude::v1::test;
+
+    #[test]
+    fn the_shelves_peek_under_the_row_and_each_comes_up_near_the_top() {
+        let g = Geo::new(724., 260., 1.5, 4);
+        // The first shelf's title shows above the hints' room.
+        assert!(g.shelves + LABEL_H <= 724. - 60. + 0.5, "{g:?}");
+        assert!(g.shelves > g.row_top + 260.);
+        assert_eq!(g.view_offset(0), 0.);
+        assert_eq!(g.view_offset(2), g.shelf_top(1) - SHELF_TOP);
+        // The last shelf can rise as high as the others.
+        assert!(g.total - g.view_offset(4) >= 724. - 0.5);
+        assert!(g.shelf_h < 260.);
+        // No shelves: the home is one screen.
+        assert_eq!(Geo::new(724., 260., 1.5, 0).total, 724.);
+    }
 
     #[test]
     fn the_row_scrolls_just_enough_to_show_the_focused_cover_whole() {
