@@ -94,7 +94,7 @@ impl CollectionView {
         self.facts.launch_menu_open = false;
         self.context_menu = None;
         self.set_launch_option(key, choice, cx);
-        self.primary_action(key, cx);
+        self.play_now(key, cx);
     }
 
     /// The arrow next to Play of an installed game with another way to start
@@ -199,7 +199,7 @@ impl CollectionView {
                 )
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.facts.launch_menu_open = false;
-                    this.primary_action(&k, cx);
+                    this.play_now(&k, cx);
                     cx.notify();
                 })),
             );

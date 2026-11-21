@@ -103,6 +103,9 @@ impl CollectionView {
     /// "Install" of the focus panel, the context menu and console mode: the
     /// store's install, or the manual one when the store has none.
     pub(super) fn install_or_play(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if self.ask_how_to_play(key, cx) {
+            return;
+        }
         let lib = self.lib.clone();
         let Some(game) = lib.as_deref().and_then(|l| self.copy_to_play(l, key)).cloned() else { return };
         self.install_or_play_on(&game, window, cx);

@@ -223,7 +223,10 @@ text size) and applies it.
   is kept in `local_library/gpu-preferences.json`; the registry is behind a trait), and
   `gpu::detect` asks DXGI (`heronite_platform::gpu_adapters`) which card each choice gets. `actions` turns a game's own actions (`heronite_data::game_actions`,
   `local_library/actions.json`) into something to open, spawn or launch as
-  the game's session. `galaxy` stands in for GOG Galaxy's communication service, which the GOG
+  the game's session. A game listed in that file's `askOnPlay` (the Actions tab's "Ask how to play", turned on
+  for Playnite games brought over with more than one play action) asks on Play which way to start it, Play or an
+  action that counts as playing (`dialogs/play_choice.rs`, `HERONITE_DEBUG_DIALOG=play-choice:<key>`); the menu
+  next to Play and a launch from a shortcut never ask. `galaxy` stands in for GOG Galaxy's communication service, which the GOG
   Galaxy SDK in a game talks to on `127.0.0.1:9977` for achievements, stats and leaderboards: a GOG plan of a
   Windows build sets `PrepSpec::galaxy` (not in a sandbox without the network), and the runtime starts Comet
   (`store_tools::COMET`, downloaded into `tools/bin` the first time, never taken from `PATH`) right before the
