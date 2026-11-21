@@ -15,6 +15,7 @@ use heronite_data::console_theme::{BackgroundMotion, BackgroundSource};
 use heronite_images::{ImageRef, Variant};
 
 use super::super::CollectionView;
+use crate::console::kit::u;
 use crate::console::{look, motion};
 use crate::theme;
 
@@ -185,7 +186,8 @@ fn scrim_layers(scrim: Scrim) -> Vec<Div> {
         Scrim::Classic => vec![layer(90., 0.96, 0.35, 1.), layer(0., 0.98, 0., 0.75), layer(180., 0.6, 0., 0.45)],
         Scrim::Library => vec![layer(90., 0.95, 0.58, 1.), layer(0., 0.97, 0.3, 0.85), layer(180., 0.55, 0., 0.3)],
         Scrim::Spot => vec![layer(90., 0.88, 0.1, 0.7), layer(0., 0.92, 0., 0.5), layer(180., 0.6, 0., 0.25)],
-        Scrim::Home => vec![layer(180., 0.78, 0., 0.36), layer(90., 0.82, 0., 0.58), layer(0., 0.9, 0., 0.42)],
+        // Light at the bottom: the art runs to the edge (the page below darkens it itself).
+        Scrim::Home => vec![layer(180., 0.78, 0., 0.36), layer(90., 0.82, 0., 0.58), layer(0., 0.5, 0., 0.32)],
         // The game's block on the left and the covers at the bottom: a soft
         // vignette there, and a little at the top for the tabs.
         Scrim::Cinema => vec![layer(0., 0.95, 0., 0.6), layer(90., 0.8, 0., 0.6), layer(180., 0.8, 0., 0.2)],
@@ -193,6 +195,53 @@ fn scrim_layers(scrim: Scrim) -> Vec<Div> {
         Scrim::Full => vec![layer(0., 0.86, 0.7, 1.)],
         Scrim::Glass => vec![layer(0., 0.3, 0.3, 1.), layer(180., 0.5, 0., 0.3), layer(90., 0.5, 0., 0.45)],
         Scrim::Page => vec![layer(90., 0.96, 0.96, 1.)],
+    }
+}
+
+/// Slices of [`CollectionView::console_art_band`]: enough that the steps of the fade do not show.
+const BAND_SLICES: usize = 24;
+
+impl CollectionView {
+    /// The background again, shaded as `scrim` shades it, over the band from
+    /// `top` (design px from the body's top, the body `bar` below the
+    /// window's top) `fade` tall and then down to the window's bottom: it
+    /// rises from transparent to whole over `fade`, so what is drawn under
+    /// it fades out into the art itself instead of into a dark band.
+    pub(super) fn console_art_band(&self, scrim: Scrim, top: f32, fade: f32, bar: f32, view: (f32, f32)) -> Option<Div> {
+        let art = self.console.art_layers.layers.last()?.img.clone();
+        let theme = look::theme();
+        let dim = f32::from(theme.background.dim) / 100.;
+        let wash = if look::light() { light_wash(scrim) } else { 0. };
+        let (w, h) = view;
+        let piece = |y: f32, height: f32, opacity: f32| {
+            let backdrop = div()
+                .absolute()
+                .top(u(-(y + bar)))
+                .left_0()
+                .w(u(w))
+                .h(u(h))
+                .child(img(ImageSource::Render(art.clone())).absolute().inset_0().size_full().object_fit(ObjectFit::Cover))
+                .when(dim > 0., |d| d.child(div().absolute().inset_0().bg(backing(dim))))
+                .when(wash > 0., |d| d.child(div().absolute().inset_0().bg(backing(wash))))
+                .children(scrim_layers(scrim));
+            div().absolute().top(u(y)).left_0().right_0().h(u(height)).overflow_hidden().opacity(opacity).child(backdrop)
+        };
+        // Each step is a layer from its top to the bottom (no seams between
+        // slices), its opacity such that the layers so far add up to the
+        // curve: 1 - (1 - c_i) / (1 - c_(i-1)).
+        let step = fade / BAND_SLICES as f32;
+        let end = h - bar;
+        let curve = |t: f32| t * t * (3. - 2. * t);
+        let mut band = div().absolute().inset_0();
+        let mut before = 0f32;
+        for i in 0..BAND_SLICES {
+            let now = curve((i as f32 + 1.) / BAND_SLICES as f32);
+            let alpha = if now >= 1. { 1. } else { 1. - (1. - now) / (1. - before) };
+            let y = top + i as f32 * step;
+            band = band.child(piece(y, (end - y).max(0.), alpha));
+            before = now;
+        }
+        Some(band)
     }
 }
 

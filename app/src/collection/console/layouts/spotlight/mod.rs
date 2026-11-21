@@ -786,33 +786,22 @@ impl CollectionView {
                 linear_color_stop(kit::dim(0.), 1.),
             ))
         });
-        // On the row the strip and the art under it dissolve into the dark
-        // towards the bottom edge, where the hints float: one gradient down
-        // the strip, a darker one under it, meeting at the same shade.
-        // (Not on the game page: its glass panels run to the edge.)
+        // On the row only a hint of the page shows: the first sections fade
+        // out into the art itself (it is drawn again over them, from
+        // transparent to whole), which stays to the bottom edge with only a
+        // light shade behind the hints. (Not on the game page: its glass
+        // panels run to the edge.)
         let veil = (!game_page && (shape.first_left().is_some() || shape.has_side()) && lift < 0.99).then(|| {
-            let top = shape.geo.media + page::TILE_H * 0.1 - rise;
-            let foot = (view_h - bar - 96.).max(top + 40.);
-            let mid = 0.7;
-            // To the window's bottom edge, under a hint bar that takes its own room too.
+            let top = shape.geo.media + page::TILE_H * 0.3 - rise;
+            let band = self.console_art_band(super::super::Scrim::Home, top, PEEK_FADE, bar, (view_w, view_h));
             let end = view_h - bar;
-            div()
-                .absolute()
-                .top(u(top))
-                .left_0()
-                .right_0()
-                .h(u(end - top))
-                .opacity(1. - lift)
-                .child(div().absolute().top_0().left_0().right_0().h(u(foot - top)).bg(linear_gradient(
+            div().absolute().inset_0().opacity(1. - lift).children(band).child(
+                div().absolute().top(u(end - HINT_SHADE)).left_0().right_0().h(u(HINT_SHADE)).bg(linear_gradient(
                     180.,
                     linear_color_stop(kit::dim(0.), 0.),
-                    linear_color_stop(kit::dim(mid), 1.),
-                )))
-                .child(div().absolute().top(u(foot - top)).left_0().right_0().h(u(end - foot)).bg(linear_gradient(
-                    180.,
-                    linear_color_stop(kit::dim(mid), 0.),
-                    linear_color_stop(kit::dim(0.94), 1.),
-                )))
+                    linear_color_stop(kit::dim(0.32), 1.),
+                )),
+            )
         });
         // Cinema's page: what reaches the bottom fades into the dark over its
         // last 60 px and is dark under the hint bar (no hard edge).
@@ -1822,6 +1811,11 @@ fn glass_panel(el: Div, f: &Focus) -> Div {
 
 /// Room the game page keeps under its end for the hint bar, design px.
 const HINT_ROOM: f32 = 60.;
+
+/// On the row, how tall the fade of the page's first sections into the art
+/// is, and the light shade behind the hints, design px.
+const PEEK_FADE: f32 = 110.;
+const HINT_SHADE: f32 = 120.;
 
 /// Room around a strip's tiles for the focus ring, design px.
 const STRIP_ROOM: f32 = 26.;
