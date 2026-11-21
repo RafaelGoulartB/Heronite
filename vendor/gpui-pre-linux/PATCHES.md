@@ -43,5 +43,20 @@ through `[patch.crates-io]` in the workspace `Cargo.toml`. Changes, in
   forwards through the socket, with that process's token; without it GNOME leaves the window
   behind the focused one. Returns `None` and does nothing on X11.
 
+- Wayland frame pacing (`src/linux/wayland/client.rs`, `src/linux/wayland/window.rs`):
+  Zed's open PR #65013 (https://github.com/zed-industries/zed/pull/65013), applied
+  unchanged. Compositors that apply a commit only once its buffer is rendered (KWin,
+  Mutter, and Smithay-based ones like COSMIC's cosmic-comp, through `add_blocker`)
+  hold the frame callback back too, so a frame that missed a repaint delayed the next
+  one by a whole refresh and the window ran at half the frame rate (a likely cause of
+  issue #374, choppy scrolling on COSMIC). When the compositor reports its refresh
+  rate through `wp_presentation`, the next frame now also starts about one refresh
+  after the last one began if no callback has come yet. Drop this change when a
+  release includes that PR.
+
+- GPU logging: the Wayland client logs the GPU the compositor reported, and
+  `prime_vulkan_context` logs why it fell back, under the target `gpui_linux::gpu`,
+  which the app's logger keeps at info (`app/src/main.rs`, `log_enabled`).
+
 To update: copy the new release from `~/.cargo/registry/src/*/` over this
 folder (without its `Cargo.lock`) and apply these changes again.

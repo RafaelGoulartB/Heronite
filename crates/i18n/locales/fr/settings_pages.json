@@ -593,5 +593,16 @@
   "Turn off": "Désactiver",
   "ffmpeg missing": "ffmpeg manquant",
   "A background that is a video or an animated picture plays; off, it stays still": "Un arrière-plan vidéo ou image animée bouge ; désactivé, il reste fixe",
-  "ffmpeg is still not found.": "ffmpeg est toujours introuvable."
+  "ffmpeg is still not found.": "ffmpeg est toujours introuvable.",
+  "Troubleshooting": "Dépannage",
+  "Graphics card for the interface": "Carte graphique de l’interface",
+  "Card {id} (not connected)": "Carte {id} (non connectée)",
+  "The card that draws Heronite's own windows; games keep their own setting. Automatic uses the card the desktop draws on. On a laptop with two cards, if scrolling stutters, try the card the screen is connected to.": "La carte qui dessine les fenêtres de Heronite ; les jeux gardent leur propre réglage. Automatique utilise la carte sur laquelle dessine le bureau. Sur un portable à deux cartes, si le défilement saccade, essayez la carte à laquelle l’écran est branché.",
+  "ZED_DEVICE_ID is set in the environment, so this setting is not used.": "ZED_DEVICE_ID est définie dans l’environnement, ce réglage n’est donc pas utilisé.",
+  "Takes effect after a restart.": "Prend effet après un redémarrage.",
+  "The graphics card chosen for the interface was not kept, so Heronite went back to Automatic.": "La carte graphique choisie pour l’interface n’a pas été conservée, Heronite est donc revenu à Automatique.",
+  "Heronite now draws with the graphics card you chose. If it looks right, keep it in Settings → Advanced; otherwise the next start goes back to Automatic.": "Heronite dessine maintenant avec la carte graphique choisie. Si tout s’affiche bien, conservez-la dans Paramètres → Avancé ; sinon, le prochain démarrage revient à Automatique.",
+  "Keep this card?": "Conserver cette carte ?",
+  "Heronite is drawing with it now. If it looks right, keep it; otherwise the next start goes back to Automatic.": "Heronite dessine avec elle en ce moment. Si tout s’affiche bien, conservez-la ; sinon, le prochain démarrage revient à Automatique.",
+  "Keep this card": "Conserver cette carte"
 }
