@@ -110,16 +110,20 @@ pub struct GameKeys<'a> {
     pub year: Option<i32>,
     pub ids: &'a Map<String, Value>,
     pub hashes: &'a Map<String, Value>,
+    /// The extension's own id: the key of `ids` its `[ids] pattern` found.
+    pub own: &'a str,
 }
 
 /// How the hit was found. By an id or a hash only when the hit names one
-/// the game has; by title, sure only when the game's title is the hit's
+/// the game has (by the code its `[ids] pattern` found, only when the hit
+/// is that code); by title, sure only when the game's title is the hit's
 /// title or other name once normalized and the script is not unsure.
-fn judge(hit: &Map<String, Value>, names: [Option<&str>; 2], game: &GameKeys<'_>) -> MatchedBy {
+fn judge(hit: &Map<String, Value>, hit_id: &str, names: [Option<&str>; 2], game: &GameKeys<'_>) -> MatchedBy {
     let has = |m: &Map<String, Value>, k: &str| m.get(k).is_some_and(|v| v.as_str().is_some_and(|s| !s.is_empty()));
     if let Some(Value::Object(by)) = hit.get("matchedBy") {
         if let Some(id) = by.get("id").and_then(Value::as_str) {
-            if has(game.ids, id) {
+            let is_the_code = || game.ids.get(id).and_then(Value::as_str).is_some_and(|code| code.eq_ignore_ascii_case(hit_id));
+            if has(game.ids, id) && (id != game.own || is_the_code()) {
                 return if id == "steam" { MatchedBy::SteamId } else { MatchedBy::SourceId };
             }
         }
@@ -161,7 +165,7 @@ pub fn hits(value: &Value, game: &GameKeys<'_>, pictures: &[HostRule]) -> Vec<Hi
             let title = text(h.get("title"), 200)?;
             let alt_title = text(h.get("altTitle"), 200).filter(|alt| MatchedBy::by_title(&title, Some(alt)) != MatchedBy::ExactTitle);
             Some(Hit {
-                matched_by: judge(h, [Some(&title), alt_title.as_deref()], game),
+                matched_by: judge(h, &id, [Some(&title), alt_title.as_deref()], game),
                 thumb_adult: h.get("adult").and_then(Value::as_bool) == Some(true),
                 alt_title,
                 year: h.get("year").and_then(Value::as_i64).and_then(|y| i32::try_from(y).ok()).filter(|y| (1950..=2100).contains(y)),

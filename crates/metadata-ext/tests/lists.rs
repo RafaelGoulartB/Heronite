@@ -168,7 +168,7 @@ fn a_list_is_read_kept_and_shown_offline_with_its_age() {
     let copy = &copies[0];
     assert!(copy.builtin && copy.error.is_none());
     let ids: Vec<&str> = copy.index.as_ref().unwrap().entries.iter().map(|e| e.id.as_str()).collect();
-    assert_eq!(ids, ["vndb", "wikipedia"]);
+    assert_eq!(ids, ["dlsite", "vndb", "wikipedia"]);
     let read = s.server.log.lock().iter().find(|r| r.path() == "/lists.example.org/index.json").cloned().unwrap();
     assert!(read.header("user-agent").is_some_and(|ua| ua.starts_with("Heronite/")));
 
@@ -181,7 +181,7 @@ fn a_list_is_read_kept_and_shown_offline_with_its_age() {
     let offline = s.offline();
     let copy = s.lists.read(&offline, LIST);
     assert!(matches!(copy.error, Some(ListError::Unreachable(_))), "{:?}", copy.error);
-    assert_eq!(copy.index.as_ref().unwrap().entries.len(), 2);
+    assert_eq!(copy.index.as_ref().unwrap().entries.len(), 3);
     assert_eq!(copy.read_at, Some(UNIX_EPOCH + Duration::from_secs(three_days_ago)));
     // Without the network at all, the same copy.
     assert_eq!(s.lists.cached(&offline)[0].index, copy.index);
