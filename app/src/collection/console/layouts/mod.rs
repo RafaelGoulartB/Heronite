@@ -18,12 +18,14 @@ mod xbox;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
+use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::console_theme::{GridPanel, Hints, KeptFilters, Layout, TabSpec};
 use heronite_data::CollectionGame;
 use heronite_i18n::tr;
 
 pub(super) use grid::{category_options, status_options, Filters, SHOW};
+pub(super) use spotlight::{Host as SpotHost, Nav as SpotNav};
 
 use super::super::CollectionView;
 use super::backdrop::Scrim;
@@ -39,7 +41,7 @@ use crate::icons::Icon;
 pub(crate) struct TabNav {
     pub shelves: ShelfNav,
     pub spotlight: spotlight::Nav,
-    pub cinema: ShelfNav,
+    pub cinema: cinema::Nav,
     pub dashboard: dashboard::Nav,
     pub grid: grid::Nav,
     pub wheel: wheel::Nav,
@@ -66,7 +68,9 @@ pub(super) fn scrim(layout: Layout) -> Scrim {
 /// (`Hints::Auto`) instead of taking its room: the screen never moves when it
 /// comes and goes. Spotlight keeps that room clear itself.
 pub(super) fn hints_float(layout: Layout) -> bool {
-    layout == Layout::Spotlight && look::theme().controls.hints == Hints::Auto
+    let hints = look::theme().controls.hints;
+    // Cinema's bar floats over the art whether it fades or stays.
+    (layout == Layout::Spotlight && hints == Hints::Auto) || (layout == Layout::Cinema && hints != Hints::Off)
 }
 
 /// `i` moved by `delta` in `0..n`, going round when `wrap`.
@@ -165,7 +169,7 @@ impl CollectionView {
         match spec.layout {
             Layout::Shelves => self.shelf_pad(tab, spec, pad, window, cx, |n| &mut n.shelves),
             Layout::Spotlight => self.spotlight_pad(tab, spec, pad, window, cx),
-            Layout::Cinema => self.shelf_pad(tab, spec, pad, window, cx, |n| &mut n.cinema),
+            Layout::Cinema => self.cinema_pad(tab, spec, pad, window, cx),
             Layout::Dashboard => self.dashboard_pad(tab, spec, pad, window, cx),
             Layout::Grid => self.grid_pad(tab, spec, pad, window, cx),
             Layout::Wheel => self.wheel_pad(tab, spec, pad, window, cx),
@@ -174,10 +178,70 @@ impl CollectionView {
         }
     }
 
+    /// The tabs of the top bar as the layout on screen draws them:
+    /// Spotlight's pills (they step away while its page has risen), else
+    /// [`kit::tabs`].
+    pub(super) fn layout_tabs(&self, names: &[SharedString], active: usize) -> Div {
+        match self.spotlight_lift() {
+            Some(lift) => spotlight::spotlight_tabs(names, active, lift),
+            // Cinema: the same centred pill (in its gold), the tabs around the
+            // current one when they would come near the status icons.
+            // Its Library (a Grid tab) keeps the same bar.
+            None if look::theme().tabs.iter().any(|t| t.layout == Layout::Cinema) => {
+                let (first, last) = cinema_tab_window(names, active, kit::vw());
+                spotlight::spotlight_tabs_in(&names[first..last], active - first, 0., kit::ink(0.72), (first, names.len() - last))
+            }
+            None => kit::tabs(names, active),
+        }
+    }
+
+    /// Where Cinema's hint bar starts, design px from the edges: its row of
+    /// covers' (other layouts: `None`, the shell's own).
+    pub(super) fn layout_hint_side(&self, window: &Window) -> Option<f32> {
+        (self.console_shown_tab().1.layout == Layout::Cinema).then(|| cinema::side(body_width(window)))
+    }
+
+    /// The clock of the top bar: Spotlight's larger one (a Carousel with its
+    /// filters in the bar too), else [`kit::clock`].
+    pub(super) fn layout_clock(&self) -> Div {
+        match self.spotlight_lift() {
+            Some(lift) => spotlight::spotlight_clock(lift),
+            // A Carousel with its filters in the bar, and Cinema: the larger one too.
+            None if self.layout_top_filters().is_some() || look::theme().tabs.iter().any(|t| t.layout == Layout::Cinema) => {
+                spotlight::spotlight_clock(0.)
+            }
+            None => kit::clock(),
+        }
+    }
+
+    /// What a layout puts in the middle of the top bar instead of tabs: a
+    /// single-tab Carousel's filter pills.
+    pub(super) fn layout_top_filters(&self) -> Option<Div> {
+        let (tab, spec) = self.console_shown_tab();
+        (spec.layout == Layout::Carousel && !self.console.results).then(|| self.carousel_bar_pills(tab)).flatten()
+    }
+
+    /// Whether the wheel moves along a row of covers (Carousel, and
+    /// Spotlight's row while it has the focus) rather than up and down.
+    pub(super) fn layout_wheel_row(&self) -> bool {
+        let (tab, spec) = self.console_shown_tab();
+        match spec.layout {
+            Layout::Carousel => true,
+            Layout::Spotlight => self.console.tab_navs.get(tab).is_none_or(|n| n.spotlight.on_row()),
+            _ => false,
+        }
+    }
+
+    /// How far the page of the Spotlight tab on screen has risen (`None` for other layouts).
+    fn spotlight_lift(&self) -> Option<f32> {
+        let (tab, spec) = self.console_shown_tab();
+        (spec.layout == Layout::Spotlight).then(|| self.console.tab_navs.get(tab).map_or(0., |n| n.spotlight.lift()))
+    }
+
     pub(super) fn layout_hints(&self, tab: usize, spec: &TabSpec) -> Vec<Hint> {
         match spec.layout {
             Layout::Shelves => self.shelves_hints(tab, spec),
-            Layout::Cinema => self.console_cover_hints(),
+            Layout::Cinema => self.cinema_hints(tab, spec),
             Layout::Spotlight => self.spotlight_hints(tab, spec),
             Layout::Dashboard => self.dashboard_hints(tab, spec),
             Layout::Grid => self.grid_hints(tab, spec),
@@ -214,6 +278,26 @@ fn in_sight(scroll: Pixels, step: f32, view: Pixels) -> RangeInclusive<usize> {
 /// Whether item `i` of a row loads its picture: in sight (`seen`) or near the focus.
 fn loads(seen: &RangeInclusive<usize>, i: usize, focus: usize) -> bool {
     seen.contains(&i) || i.abs_diff(focus) <= 2
+}
+
+/// Room the clock (and an activity pill beside it) takes on the right of
+/// Cinema's top bar, and the least space between it and the tabs, design px.
+const CINEMA_STATUS_W: f32 = 46. + 200.;
+const CINEMA_TABS_CLEAR: f32 = 48.;
+
+/// The tabs `first..last` of Cinema's top bar that fit centred in a window
+/// `vw` design px wide, clear of the status icons on both sides.
+fn cinema_tab_window(names: &[SharedString], active: usize, vw: f32) -> (usize, usize) {
+    let room = vw - 2. * (CINEMA_STATUS_W + CINEMA_TABS_CLEAR) - 2. * 40.;
+    let widths: Vec<f32> = names.iter().map(|n| kit::text_w(n.chars().count(), 14.5) + 30.).collect();
+    kit::fit_row(&widths, 4., active, room)
+}
+
+/// Width of the body, design px: the window's, less the menu's rail when the
+/// theme keeps one on screen (it insets the content).
+fn body_width(window: &Window) -> f32 {
+    let rail = super::sidebar::rail_inset().map_or(0., |(_, w)| f32::from(w));
+    (f32::from(crate::ui::content_size(window).width) - rail) / kit::scale()
 }
 
 /// Height of the body under the shell's top bar (and above its hint bar), design px.
@@ -297,16 +381,9 @@ impl Default for ShelfNav {
 }
 
 impl ShelfNav {
-    /// Keeps the focus on the (non-empty) `shelves`; the focused game's key.
-    fn sync(&mut self, shelves: &[Shelf]) -> SharedString {
-        self.shelf = self.shelf.min(shelves.len() - 1);
-        self.lines.sync(shelves);
-        shelves[self.shelf].keys[self.lines.cols[self.shelf]].clone()
-    }
-
-    /// [`Self::sync`] for shelves that end with a "View all" tile: the
-    /// focused game (the last one of the shelf while that tile has the
-    /// focus) and whether the tile has it.
+    /// Keeps the focus on the (non-empty) `shelves`, which end with a "View
+    /// all" tile when the theme cut them: the focused game (the last one of
+    /// the shelf while that tile has the focus) and whether the tile has it.
     fn sync_more(&mut self, shelves: &[Shelf]) -> (SharedString, bool) {
         self.shelf = self.shelf.min(shelves.len() - 1);
         self.lines.sync_with(shelves, true);

@@ -388,13 +388,15 @@ pub fn summon_console(cx: &mut App) {
     let _ = existed;
 }
 
-/// Console mode is on and its window has the focus.
+/// Console mode is on and its window has the focus. Asks the platform which
+/// window is active instead of updating the window, so it is safe to call
+/// while the Collection is being updated (a launch event arrives there).
 pub fn console_in_front(cx: &mut App) -> bool {
     if !crate::console::active() {
         return false;
     }
     let handle = cx.try_global::<Hub>().and_then(|h| h.0.borrow().window.as_ref().map(|w| w.handle));
-    handle.is_some_and(|h| h.update(cx, |_, window, _| window.is_window_active()).unwrap_or(false))
+    handle.is_some_and(|h| cx.active_window().is_some_and(|active| active == h))
 }
 
 #[cfg(test)]

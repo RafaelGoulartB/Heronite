@@ -1,5 +1,7 @@
 {
-  "A console home: icons on top, the game's art and logo, a wide Play button and cards.": "Un accueil de console : icônes en haut, illustration et logo du jeu, grand bouton Jouer et cartes.",
+  "A dashboard first: what you play, the week, downloads and a pick; the menu always at hand.": "Un tableau de bord d’abord : vos jeux, la semaine, les téléchargements et une suggestion ; le menu toujours à portée de main.",
+  "A row of wide tiles over the art, the newest one larger, groups below.": "Une rangée de grandes tuiles sur l’illustration, la plus récente agrandie, avec les groupes en dessous.",
+  "A wheel of games with their covers over the art, in neon colours, like an arcade cabinet.": "Une roue de jeux avec leurs jaquettes sur l’illustration, aux couleurs néon, comme une borne d’arcade.",
   "All adds favourite, downloading and new games.": "Tous inclut les favoris, les jeux en téléchargement et les nouveaux jeux.",
   "Along the bottom, with icons": "En bas, avec des icônes",
   "Along the top": "En haut",
@@ -7,8 +9,10 @@
   "Centred at the top": "Centré en haut",
   "Chips and genres": "Étiquettes et genres",
   "Facts as": "Présentation des informations",
+  "Hub": "Hub",
   "In a strip under the cover": "Dans une bande sous la jaquette",
   "Installed games": "Jeux installés",
+  "Living room": "Salon",
   "Names only, no buttons": "Noms seuls, sans boutons",
   "Numbers at the right edge": "Nombres sur le bord droit",
   "One line": "Une ligne",
@@ -24,11 +28,6 @@
   "Spaced capitals": "Majuscules espacées",
   "Spotlight: buttons": "À la une : boutons",
   "Store above the cover": "Boutique au-dessus de la jaquette",
-  "The game's art full screen, its logo large, a row of covers and the tabs below.": "L’illustration du jeu en plein écran, son logo en grand, une rangée de jaquettes et les onglets en dessous.",
-  "Time played, last played, size on disk and score.": "Temps de jeu, dernière partie, taille sur le disque et note.",
-  "A wheel of logos over the art, in neon colours, like an arcade cabinet.": "Une roue de logos sur l’illustration, aux couleurs néon, comme une borne d’arcade.",
-  "Hub": "Hub",
-  "A dashboard first: what you play, the week, downloads and a pick; the menu always at hand.": "Un tableau de bord d’abord : vos jeux, la semaine, les téléchargements et une suggestion ; le menu toujours à portée de main.",
-  "Living room": "Salon",
-  "A row of wide tiles over the art, the newest one larger, groups below.": "Une rangée de grandes tuiles sur l’illustration, la plus récente agrandie, avec les groupes en dessous."
+  "The game's art full screen with its logo, a row of large covers and shelves of games below it.": "L'illustration du jeu en plein écran avec son logo, une rangée de grandes jaquettes et des étagères de jeux en dessous.",
+  "Time played, last played, size on disk and score.": "Temps de jeu, dernière partie, taille sur le disque et note."
 }

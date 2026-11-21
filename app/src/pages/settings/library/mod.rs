@@ -218,6 +218,24 @@ impl SettingsPage {
     }
 }
 
+/// A list of games as a group (an empty one: a plain line saying so).
+fn list_row(id: &'static str, label: String, list: &[(String, String)]) -> crate::console::list::Row {
+    use crate::console::list::Row;
+    if list.is_empty() {
+        return Row::info(id, label, tr!("None"));
+    }
+    Row::group(id, label).summary(names(list))
+}
+
+/// The first titles of a list, for its closed group.
+fn names(list: &[(String, String)]) -> String {
+    let mut out: Vec<&str> = list.iter().take(3).map(|(_, t)| t.as_str()).collect();
+    if list.len() > 3 {
+        out.push("\u{2026}");
+    }
+    out.join(", ")
+}
+
 /// Console mode rows of the section.
 pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
     use crate::console::list::Row;
@@ -225,10 +243,11 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
     let mut rows = vec![
         Row::toggle("show-hidden", tr!("Show hidden games"), s.show_hidden).desc(tr!("Hidden games stay in the library, marked")),
         Row::number("max-recent", tr!("Recent games to keep"), s.max_recent, 1, 10, 1, ""),
-        Row::header(tr!("Hidden games \u{b7} {count}", count = s.hidden.len())),
     ];
+    // The lists are groups: closed, they say how many they hold.
+    rows.push(list_row("grp:hidden", tr!("Hidden games \u{b7} {count}", count = s.hidden.len()), &s.hidden));
     for (app, title) in &s.hidden {
-        rows.push(Row::info(SharedString::from(format!("h:{app}")), title.clone(), tr!("A shows it again")));
+        rows.push(Row::info(SharedString::from(format!("h:{app}")), title.clone(), tr!("A shows it again")).child_of("grp:hidden"));
     }
     if !s.hidden.is_empty() {
         let mut row = Row::action("unhide-all", tr!("Show all hidden games")).enabled(!p.library.busy);
@@ -239,11 +258,11 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
                 "A again shows {n} hidden games in the Collection again."
             ));
         }
-        rows.push(row);
+        rows.push(row.child_of("grp:hidden"));
     }
-    rows.push(Row::header(tr!("Favourites \u{b7} {count}", count = s.favourites.len())));
+    rows.push(list_row("grp:fav", tr!("Favourites \u{b7} {count}", count = s.favourites.len()), &s.favourites));
     for (app, title) in &s.favourites {
-        rows.push(Row::info(SharedString::from(format!("f:{app}")), title.clone(), ""));
+        rows.push(Row::info(SharedString::from(format!("f:{app}")), title.clone(), "").child_of("grp:fav"));
     }
     if !s.favourites.is_empty() {
         let mut row = Row::action("fav-clear", tr!("Clear favourites")).danger().enabled(!p.library.busy);
@@ -254,7 +273,7 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
                 "A again removes {n} games from your favourites."
             ));
         }
-        rows.push(row);
+        rows.push(row.child_of("grp:fav"));
     }
     rows.push(Row::header(tr!("Recent \u{b7} {count}", count = s.recent.len())));
     if !s.recent.is_empty() {

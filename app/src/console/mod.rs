@@ -95,16 +95,31 @@ pub enum Btn {
     Start,
     /// "◀ ▶".
     LeftRight,
+    /// "◀" alone.
+    Left,
+    /// "▶" alone.
+    Right,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Hint {
     pub btn: Btn,
     pub label: SharedString,
+    /// A small muted second line under the label (what else the button
+    /// leads to), when a screen wants one.
+    pub sub: Option<SharedString>,
 }
 
 pub fn hint(btn: Btn, label: impl Into<SharedString>) -> Hint {
-    Hint { btn, label: label.into() }
+    Hint { btn, label: label.into(), sub: None }
+}
+
+impl Hint {
+    /// With `text` as a small second line under the label.
+    pub fn sub(mut self, text: impl Into<SharedString>) -> Self {
+        self.sub = Some(text.into());
+        self
+    }
 }
 
 /// A view that takes controller presses in console mode.

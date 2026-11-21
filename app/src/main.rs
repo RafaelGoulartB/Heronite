@@ -331,7 +331,9 @@ fn env_logger_init() {
     // Panics end up in the log file too.
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        log::error!(target: "heronite_app", "panic: {info}");
+        // With the stack, whatever RUST_BACKTRACE says: a panic report is
+        // only useful with it.
+        log::error!(target: "heronite_app", "panic: {info}\n{}", std::backtrace::Backtrace::force_capture());
         default_hook(info);
     }));
 }

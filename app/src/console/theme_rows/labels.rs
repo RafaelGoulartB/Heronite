@@ -98,11 +98,13 @@ label_fn!(confirm_name, ConfirmButton {
 });
 label_fn!(sound_style_name, SoundStyle { Soft => n_!("sound style|Soft"), Classic => n_!("Classic") });
 label_fn!(hints_name, Hints { Always => n_!("Always"), Auto => n_!("Fades by itself"), Off => n_!("Hidden") });
-label_fn!(game_page_name, GamePage { Classic => n_!("Classic"), Hero => n_!("Hero"), Tabs => n_!("Tabs"), Sheet => n_!("Sheet") });
+label_fn!(game_page_name, GamePage { Classic => n_!("Classic"), Hero => n_!("Hero"), Tabs => n_!("Tabs"), Sheet => n_!("Sheet"), Showcase => n_!("Showcase") });
 label_fn!(menu_style_name, MenuStyle { Sidebar => n_!("Sidebar"), Grid => n_!("Grid"), Dock => n_!("Dock"), Rail => n_!("Rail of icons") });
 label_fn!(side_name, Side { Left => n_!("Left"), Right => n_!("Right") });
 label_fn!(grid_panel_name, GridPanel { Title => n_!("Name above"), Right => n_!("Panel on the right") });
 label_fn!(wheel_items_name, WheelItems { Name => n_!("Name"), Logo => n_!("Logo") });
+label_fn!(launch_screen_name, LaunchScreen { ArtLogo => n_!("Art and logo"), Logo => n_!("Logo on black"), Off => n_!("Off") });
+label_fn!(launch_shade_name, LaunchShade { None => n_!("None"), Soft => n_!("Soft"), Dark => n_!("Dark") });
 label_fn!(open_in_name, OpenIn { Last => n_!("As I left it"), Console => n_!("In console mode"), Desktop => n_!("In desktop mode") });
 label_fn!(console_button_name, ConsoleButton {
     Auto => n_!("Hold Guide"),

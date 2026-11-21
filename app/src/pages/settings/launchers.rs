@@ -372,15 +372,26 @@ pub fn console_rows(d: &SettingsPage, cx: &App) -> Vec<Row> {
         rows.push(Row::header(trn!(s.duplicates.len(), "{n} game is in your Collection twice", "{n} games are in your Collection twice")));
         for dup in &s.duplicates {
             let busy = s.resolving.contains(&dup.id());
-            let desc = format!("{} \u{2192} {} ({})", dup.mine.title, dup.theirs.title, dup.launcher.name());
+            // Each pair is a group: what to do with it inside.
+            let parent = format!("dup|{}", dup.id());
+            rows.push(Row::group(parent.clone(), dup.mine.title.clone()).desc(format!(
+                "{} \u{2192} {} ({})",
+                dup.mine.title,
+                dup.theirs.title,
+                dup.launcher.name()
+            )));
             rows.push(
                 Row::action(SharedString::from(format!("dup-merge|{}", dup.id())), tr!("Merge"))
-                    .desc(desc)
                     .icon(Icon::CallMerge)
-                    .enabled(!busy),
+                    .enabled(!busy)
+                    .child_of(parent.clone()),
             );
-            rows.push(Row::action(SharedString::from(format!("dup-replace|{}", dup.id())), tr!("Replace")).enabled(!busy));
-            rows.push(Row::action(SharedString::from(format!("dup-keep|{}", dup.id())), tr!("Keep both")).enabled(!busy));
+            rows.push(
+                Row::action(SharedString::from(format!("dup-replace|{}", dup.id())), tr!("Replace"))
+                    .enabled(!busy)
+                    .child_of(parent.clone()),
+            );
+            rows.push(Row::action(SharedString::from(format!("dup-keep|{}", dup.id())), tr!("Keep both")).enabled(!busy).child_of(parent));
         }
     }
     for &launcher in Launcher::here() {
@@ -401,7 +412,8 @@ pub fn console_rows(d: &SettingsPage, cx: &App) -> Vec<Row> {
                 )
                 .desc(sync_line(s, launcher).unwrap_or_default())
                 .icon(Icon::Refresh)
-                .enabled(!busy),
+                .enabled(!busy)
+                .child_of(launcher.id()),
             );
         }
     }
