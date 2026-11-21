@@ -396,6 +396,10 @@ struct RawGame {
     /// (`crate::sideload::COMMAND_KEY`).
     #[serde(rename = "heroniteCommand")]
     command: Option<String>,
+    /// Kept in `GameInfo::rest`: the folder a Windows game starts in
+    /// (`crate::sideload::WORKING_DIR_KEY`).
+    #[serde(rename = "heroniteWorkingDir")]
+    working_dir: Option<String>,
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -444,6 +448,9 @@ impl From<RawGame> for GameInfo {
                 }
                 if let Some(c) = g.command.filter(|s| !s.trim().is_empty()) {
                     rest.insert(crate::sideload::COMMAND_KEY.to_string(), Value::String(c));
+                }
+                if let Some(d) = g.working_dir.filter(|s| !s.trim().is_empty()) {
+                    rest.insert(crate::sideload::WORKING_DIR_KEY.to_string(), Value::String(d));
                 }
                 rest
             },

@@ -361,7 +361,7 @@ impl LauncherImports {
                     if found.in_use {
                         return Err(heronite_i18n::tr!("Close {launcher} to bring its games in.", launcher = launcher.name()));
                     }
-                    let report = heronite_import::sync(&paths, &found, &removed).map_err(|e| format!("{e:#}"))?;
+                    let report = heronite_import::sync(&paths, &home(), &found, &removed).map_err(|e| format!("{e:#}"))?;
                     Ok((report, found.count(), heronite_import::collection::counts(&paths)[&launcher]))
                 })
                 .await;

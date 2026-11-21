@@ -311,8 +311,19 @@ text size) and applies it.
   `games.db` and `emulators.db` with `litedb`, a reader of LiteDB 4 files;
   while Playnite runs it holds them open (`Found::in_use`) and nothing is
   synced. Its games of the stores this app brings in itself are left out.
+  Its games that can start without it (a program, or one of its emulators:
+  a custom profile, or a built-in one through the definitions in its
+  `Emulation` folder, `playnite::start`) are brought over as this app's own
+  (`transfer`): an `executable` sideload game (its arguments in its
+  `GamesConfig`, its working folder in `heroniteWorkingDir`) or an
+  `emulator` one (the emulator's command line in `launcherArgs`, its ROMs),
+  with its status, notes, favourite and hidden flags, score, categories,
+  other actions, the day it was added and its details (the `playnite`
+  metadata candidate, links and critic score included). From then on the
+  game is the user's: later imports only raise its play time; its folder
+  stays Playnite's (`launchers::managed_paths`), never deleted by an uninstall.
   `collection` writes the installed games of Lutris,
-  Bottles, Faugus and Playnite as sideload entries whose `launchKind` is
+  Bottles, Faugus and Playnite (the ones only it can start) as sideload entries whose `launchKind` is
   `launcher` (`heronite_data::launchers`): `launcherArgs` holds the command
   that asks the launcher to start them, the launcher's play time moves up
   when it is ahead, and a game gone from the launcher stays as not

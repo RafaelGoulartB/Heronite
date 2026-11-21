@@ -89,6 +89,7 @@ fn game(g: &Value, data: &Path, flatpak: bool, home: &Path) -> Option<Game> {
         banner: file(data.join("banners").join(format!("{id}.png"))),
         prefix: Some(expand(&text("prefix"), home)).filter(|p| windows && !p.is_empty()),
         runs_from: None,
+        transfer: None,
         id,
     })
 }
