@@ -95,28 +95,33 @@ pub const CINEMA_GOLD: &str = "#e8cf9a";
 /// filters in a pill at the top and the Library's grid of every game; its game page
 /// is Showcase over the art, without glass; Y opens the game's actions.
 pub fn cinema() -> ConsoleTheme {
-    from_classic("cinema", n_!("Cinema"), n_!("The game's art full screen with its logo, a row of large covers and shelves of games below it."), |t| {
-        t.tabs = vec![
-            TabSpec::new(n_!("Installed"), Layout::Cinema, "installed"),
-            TabSpec::new(n_!("All games"), Layout::Cinema, "all"),
-            TabSpec::new(n_!("Recently played"), Layout::Cinema, "recent"),
-            TabSpec::new(n_!("Favourites"), Layout::Cinema, "favourites"),
-            TabSpec::new(n_!("Library"), Layout::Grid, "all"),
-        ];
-        t.hero.title = HeroTitle::Logo;
-        t.hero.overview = false;
-        t.tiles.corners = Corners::Soft;
-        t.tiles.size = TileSize::Large;
-        t.tiles.badges = Badges::Off;
-        t.interface.tab_bar = TabBar::Top;
-        t.interface.status_icons = false;
-        t.interface.font = ConsoleFont::System;
-        t.interface.accent = CINEMA_GOLD.into();
-        t.controls.hints = Hints::Always;
-        t.game_page = GamePage::Showcase;
-        t.layouts.showcase_glass = false;
-        t.layouts.spotlight_cards = false;
-    })
+    from_classic(
+        "cinema",
+        n_!("Cinema"),
+        n_!("The game's art full screen with its logo, a row of large covers and shelves of games below it."),
+        |t| {
+            t.tabs = vec![
+                TabSpec::new(n_!("Installed"), Layout::Cinema, "installed"),
+                TabSpec::new(n_!("All games"), Layout::Cinema, "all"),
+                TabSpec::new(n_!("Recently played"), Layout::Cinema, "recent"),
+                TabSpec::new(n_!("Favourites"), Layout::Cinema, "favourites"),
+                TabSpec::new(n_!("Library"), Layout::Grid, "all"),
+            ];
+            t.hero.title = HeroTitle::Logo;
+            t.hero.overview = false;
+            t.tiles.corners = Corners::Soft;
+            t.tiles.size = TileSize::Large;
+            t.tiles.badges = Badges::Off;
+            t.interface.tab_bar = TabBar::Top;
+            t.interface.status_icons = false;
+            t.interface.font = ConsoleFont::System;
+            t.interface.accent = CINEMA_GOLD.into();
+            t.controls.hints = Hints::Always;
+            t.game_page = GamePage::Showcase;
+            t.layouts.showcase_glass = false;
+            t.layouts.spotlight_cards = false;
+        },
+    )
 }
 
 /// Cinema with the tab "Not played yet" in the place of the Library and its
