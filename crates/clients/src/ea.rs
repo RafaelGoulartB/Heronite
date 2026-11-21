@@ -146,8 +146,7 @@ fn game(candidate: &Candidate) -> Option<ClientGame> {
         .title
         .or_else(|| candidate.display_name.clone())
         .or_else(|| candidate.folder.file_name().map(|n| n.to_string_lossy().into_owned()))?;
-    // One argument for the launch side: the link has `&` and `?` in it.
-    let launch = format!("\"origin2://game/launch?offerIds={}&autoDownload=1\"", installer.content_ids.join(","));
+    let launch = launch_link(&installer.content_ids);
     Some(ClientGame { id, title, folder: Some(candidate.folder.clone()), launch })
 }
 
@@ -161,12 +160,30 @@ struct Installer {
 fn parse_installer(xml: &str) -> Installer {
     let mut content_ids: Vec<String> = Vec::new();
     for id in elements(xml, "contentID").iter().filter_map(Element::text) {
-        // The id goes into a link inside quotes.
-        if !id.contains(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '&' | ',')) && !content_ids.contains(&id) {
+        if usable_content_id(&id) && !content_ids.contains(&id) {
             content_ids.push(id);
         }
     }
     Installer { content_ids, title: title_of(xml) }
+}
+
+/// A content id that can go into the launch link (which is quoted, and
+/// lists the ids with commas).
+pub(crate) fn usable_content_id(id: &str) -> bool {
+    !id.is_empty() && !id.contains(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '&' | ','))
+}
+
+/// The content ids in an EA launch link (`origin2://game/launch?offerIds=a,b&…`).
+pub(crate) fn linked_ids(launch: &str) -> impl Iterator<Item = &str> {
+    let ids = launch.split_once("offerIds=").map(|(_, rest)| rest.split(['&', '"']).next().unwrap_or("")).unwrap_or("");
+    ids.split(',').map(str::trim).filter(|s| !s.is_empty())
+}
+
+/// What the EA app is asked to start the game with content ids `ids` (the
+/// base game's first).
+pub(crate) fn launch_link(ids: &[String]) -> String {
+    // One argument for the launch side: the link has `&` and `?` in it.
+    format!("\"origin2://game/launch?offerIds={}&autoDownload=1\"", ids.join(","))
 }
 
 /// `<gameTitle locale="en_US">`, or the first `<gameTitle>`, or (newer

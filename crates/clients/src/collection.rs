@@ -91,19 +91,54 @@ fn refresh(entry: &mut Map<String, Value>, fresh: &GameInfo) {
 /// changed, or the number of games did). Writes nothing when nothing
 /// changed.
 pub fn sync(paths: &DataPaths, client: Client, games: &[ClientGame]) -> Result<Report> {
-    let removed = ClientPrefs::load(paths).removed.remove(&client).unwrap_or_default();
+    let mut prefs = ClientPrefs::load(paths);
+    let removed = prefs.removed.remove(&client).unwrap_or_default();
+    // Only once the account's library was read: without it, the games are
+    // named as they always were.
+    let account_read = prefs.owned.contains_key(&client);
+    let metas: LocalMetaFile = json_store::read(&paths.local_meta())?;
+    let own: HashSet<String> = games.iter().map(|g| app_name(client, &g.id)).collect();
     let mut names: Vec<(String, &ClientGame)> = Vec::new();
     for game in games.iter().filter(|g| !g.id.trim().is_empty()) {
-        let app = app_name(client, &game.id);
+        let mut app = app_name(client, &game.id);
+        // A game the account brought in (`crate::owned`) under another of
+        // the ids the installed copy lists becomes that entry, installed;
+        // one the user took out under such a name stays out.
+        if account_read && !metas.games.contains_key(&app) && !removed.contains(&app) {
+            let ids: Vec<&str> = crate::ea::linked_ids(&game.launch).collect();
+            let taken_out = ids.iter().map(|id| app_name(client, id)).filter(|a| !own.contains(a)).find(|a| removed.contains(a));
+            let adopted = metas.games.values().find(|m| {
+                m.source == client.id()
+                    && !own.contains(&m.app_name)
+                    && !names.iter().any(|(a, _)| *a == m.app_name)
+                    && m.store_game_id.as_deref().is_some_and(|id| ids.contains(&id))
+            });
+            if let Some(a) = taken_out {
+                app = a;
+            } else if let Some(m) = adopted {
+                app = m.app_name.clone();
+            }
+        }
         if !names.iter().any(|(a, _)| *a == app) {
             names.push((app, game));
         }
     }
     let present: BTreeSet<String> = names.iter().map(|(a, _)| a.clone()).collect();
+    // An installed EA game the user took out stays out of the account's
+    // import under every id its copy lists, not only the one it had.
+    let hidden: BTreeSet<String> = if client == Client::Ea {
+        names
+            .iter()
+            .filter(|(a, _)| removed.contains(a))
+            .flat_map(|(_, g)| crate::ea::linked_ids(&g.launch).map(|id| app_name(client, id)).collect::<Vec<_>>())
+            .filter(|a| !own.contains(a) || removed.contains(a))
+            .collect()
+    } else {
+        BTreeSet::new()
+    };
     let fresh: Vec<(GameInfo, &ClientGame)> = names.iter().filter(|(a, _)| !removed.contains(a)).map(|(a, g)| (entry(a, g), *g)).collect();
     let wanted: HashSet<&str> = fresh.iter().map(|(i, _)| i.app_name.as_str()).collect();
 
-    let metas: LocalMetaFile = json_store::read(&paths.local_meta())?;
     let ours: HashSet<String> = metas.games.values().filter(|m| m.source == client.id()).map(|m| m.app_name.clone()).collect();
     let statuses = heronite_data::status::load_statuses(paths).unwrap_or_else(|_| heronite_data::status::default_statuses());
     let mut changed: BTreeSet<String> = BTreeSet::new();
@@ -173,6 +208,9 @@ pub fn sync(paths: &DataPaths, client: Client, games: &[ClientGame]) -> Result<R
     // when the Collection did or the client has another number of games.
     let touched = report != Report::default();
     json_store::update_if_changed::<ClientPrefs, _>(&paths.clients(), |prefs| {
+        if !hidden.is_empty() {
+            prefs.removed_owned.entry(client).or_default().extend(hidden.iter().cloned());
+        }
         if let Some(list) = prefs.removed.get_mut(&client) {
             list.retain(|a| present.contains(a));
             if list.is_empty() {
@@ -233,10 +271,25 @@ pub fn remove(paths: &DataPaths, client: Client) -> Result<usize> {
 }
 
 /// The user took `app_name` (an entry of `client`) out of the Collection:
-/// the sync leaves it out from now on (`ClientPrefs::removed`).
-pub fn mark_removed(paths: &DataPaths, client: Client, app_name: &str) -> Result<()> {
+/// the sync leaves it out from now on (`ClientPrefs::removed`), and the
+/// EA account's library never brings it back (`ClientPrefs::removed_owned`),
+/// under any id its installed copy (one of `installed`, what the client
+/// has) lists.
+pub fn mark_removed(paths: &DataPaths, client: Client, app_name: &str, installed: &[ClientGame]) -> Result<()> {
+    let mut owned_names = vec![app_name.to_string()];
+    if client == Client::Ea {
+        let names = |g: &ClientGame| -> Vec<String> { crate::ea::linked_ids(&g.launch).map(|id| self::app_name(client, id)).collect() };
+        if let Some(copy) = installed.iter().map(names).find(|n| n.iter().any(|a| a == app_name)) {
+            // Not another installed game's own name: that one the user kept.
+            let others: HashSet<String> = installed.iter().map(|g| self::app_name(client, &g.id)).filter(|a| a != app_name).collect();
+            owned_names.extend(copy.into_iter().filter(|a| !others.contains(a)));
+        }
+    }
     json_store::update_if_changed::<ClientPrefs, _>(&paths.clients(), |prefs| {
         prefs.removed.entry(client).or_default().insert(app_name.to_string());
+        if client == Client::Ea {
+            prefs.removed_owned.entry(client).or_default().extend(owned_names);
+        }
         Ok(())
     })
 }
@@ -368,8 +421,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
         let games = [game("1", "One"), game("2", "Two")];
-        mark_removed(&paths, Client::Ea, "ea_2").unwrap();
-        mark_removed(&paths, Client::Ea, "ea_9").unwrap();
+        mark_removed(&paths, Client::Ea, "ea_2", &[]).unwrap();
+        mark_removed(&paths, Client::Ea, "ea_9", &[]).unwrap();
         assert_eq!(sync(&paths, Client::Ea, &games).unwrap(), Report { added: 1, updated: 0 });
         let lib = Library::load(&paths).unwrap();
         assert!(lib.get("sideload_ea_1").is_some() && lib.get("sideload_ea_2").is_none());
@@ -388,10 +441,10 @@ mod tests {
     fn marking_a_game_twice_writes_once() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
-        mark_removed(&paths, Client::Rockstar, "rockstar_gta5").unwrap();
+        mark_removed(&paths, Client::Rockstar, "rockstar_gta5", &[]).unwrap();
         let before = json_store::mtime(&paths.clients());
         pause();
-        mark_removed(&paths, Client::Rockstar, "rockstar_gta5").unwrap();
+        mark_removed(&paths, Client::Rockstar, "rockstar_gta5", &[]).unwrap();
         assert_eq!(json_store::mtime(&paths.clients()), before);
         assert!(ClientPrefs::load(&paths).removed[&Client::Rockstar].contains("rockstar_gta5"));
     }
