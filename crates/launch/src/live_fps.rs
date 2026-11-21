@@ -232,6 +232,9 @@ fn base_now(live: &LiveFps) -> String {
 /// `<program>.conf` for a Linux one; then `MangoHud.conf`, the user's before
 /// the system's (`/etc`, which MangoHud reads first, as Heronite did before).
 /// None: the user's `MangoHud.conf`, so one saved while the game runs counts.
+/// Picked once, at launch. `game_program` is what the plan starts: for a
+/// script (`start.sh`) MangoHud's own names are the binary's, so the shared
+/// files count then.
 fn user_config(game_program: Option<&str>, probe: &dyn Probe) -> PathBuf {
     let config = probe.env_var("XDG_CONFIG_HOME").filter(|d| !d.is_empty()).unwrap_or_else(|| format!("{}/.config", probe.home()));
     let dir = Path::new(&config).join("MangoHud");
@@ -491,7 +494,10 @@ mod tests {
             let LiveFps::MangoHud { base, base_file, .. } = live else { unreachable!() };
             (base, base_file.unwrap())
         };
-        assert_eq!(base(None), (String::new(), user.join("MangoHud.conf")), "none yet: the user's, once saved");
+        // The system's config, when this machine has one, comes before none.
+        if !Path::new("/etc/MangoHud.conf").exists() {
+            assert_eq!(base(None), (String::new(), user.join("MangoHud.conf")), "none yet: the user's, once saved");
+        }
         std::fs::write(user.join("MangoHud.conf"), "shared\n").unwrap();
         std::fs::write(user.join("wine-Control.conf"), "control\n").unwrap();
         assert_eq!(base(Some(r"Binaries\Win64\Control.EXE")).0, "control\n", "a Windows game's own, named as MangoHud does");
