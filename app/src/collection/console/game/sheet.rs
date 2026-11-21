@@ -37,10 +37,11 @@ const WIDTH: f32 = 440.;
 const MARGIN: f32 = 18.;
 const RADIUS: f32 = 26.;
 
-/// The rows the sheet shows: the main ones of the game's actions, the
-/// player's screenshots when there are some (`shots`), then "Full page".
+/// The rows the sheet shows: the main ones of the game's actions (with
+/// "Change pictures…"), the player's screenshots when there are some
+/// (`shots`), then "Full page".
 fn sheet_rows(all: Vec<Row>, shots: usize) -> Vec<Row> {
-    let mut rows: Vec<Row> = ["primary", "status", "favourite", "settings", "achievements"]
+    let mut rows: Vec<Row> = ["primary", "status", "favourite", "settings", "x:pictures", "achievements"]
         .into_iter()
         .filter_map(|id| all.iter().find(|r| r.id.as_ref() == id).cloned())
         .collect();
@@ -236,11 +237,12 @@ mod tests {
             Row::action("achievements", "Achievements"),
             Row::header("Manage"),
             Row::action("x:ludusavi", "Back up"),
+            Row::action("x:pictures", "Change pictures"),
         ];
         let ids: Vec<_> = sheet_rows(all.clone(), 0).iter().map(|r| r.id.to_string()).collect();
-        assert_eq!(ids, ["primary", "favourite", "achievements", "full"]);
+        assert_eq!(ids, ["primary", "favourite", "x:pictures", "achievements", "full"]);
         // The player's screenshots, when there are some, before "Full page".
         let ids: Vec<_> = sheet_rows(all, 3).iter().map(|r| r.id.to_string()).collect();
-        assert_eq!(ids, ["primary", "favourite", "achievements", "shots", "full"]);
+        assert_eq!(ids, ["primary", "favourite", "x:pictures", "achievements", "shots", "full"]);
     }
 }
