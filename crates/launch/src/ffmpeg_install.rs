@@ -25,10 +25,11 @@ use std::process::Command;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use crate::legendary_install::{part_file, sha256_of};
-use crate::net::{Cancel, Net, CANCELLED};
 use heronite_data::ffmpeg::{self, Tool, DOWNLOADED_RELEASE};
 use heronite_data::DataPaths;
+
+use crate::legendary_install::{part_file, sha256_of};
+use crate::net::{Cancel, Net, CANCELLED};
 
 const REPO: &str = "shaka-project/static-ffmpeg-binaries";
 /// What the download of each program costs, for the UI.

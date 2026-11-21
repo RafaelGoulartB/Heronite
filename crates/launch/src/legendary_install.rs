@@ -28,8 +28,9 @@ pub fn download_url(asset: &str) -> String {
     LEGENDARY.download_url(asset)
 }
 
-/// The legendary this app runs: an existing one (settings, data folder,
-/// `PATH`), else a fresh download into the data folder. Blocking.
+/// The legendary this app runs: an existing one (settings, the data
+/// folder's copy while it is the pinned release, `PATH`), else a fresh
+/// download into the data folder. Blocking.
 pub fn ensure(paths: &DataPaths, probe: &dyn Probe, net: &dyn Net, cancel: Cancel) -> Result<PathBuf, String> {
     LEGENDARY.ensure(paths, probe, net, cancel)
 }
