@@ -245,7 +245,9 @@ fn opt_row(o: &Opt, cx: &Ctx) -> Row {
 
 /// Whether the option `id` matters for the tabs the theme has.
 pub fn applies(id: &str, theme: &ConsoleTheme) -> bool {
-    opt(id).is_none_or(|o| o.on.is_empty() || o.on.iter().any(|l| theme.uses(*l)))
+    // Spotlight's page sections are also the Showcase game page's.
+    let showcase = theme.game_page == GamePage::Showcase && id.starts_with("layouts.spotlight_sections.");
+    showcase || opt(id).is_none_or(|o| o.on.is_empty() || o.on.iter().any(|l| theme.uses(*l)))
 }
 
 /// Whether a tab of the theme shows shelves (a layout with them).
