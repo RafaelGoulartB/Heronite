@@ -900,6 +900,15 @@ impl CollectionView {
         }
     }
 
+    /// Settings → Library shows the switch and the hidden games as they are
+    /// now (after the PIN was typed, set or turned off).
+    pub(super) fn mirror_hidden_lock(&self, cx: &mut Context<Self>) {
+        let Some(view) = self.pages.settings.clone() else { return };
+        let Ok(view) = view.downcast::<pages::settings::SettingsPage>() else { return };
+        let on = self.ui.show_hidden;
+        view.update(cx, |p, cx| p.hidden_lock_changed(on, cx));
+    }
+
     /// Gives the Statistics page the current library (it skips the work
     /// when the library did not change).
     pub(super) fn offer_stats_data(&self, cx: &mut Context<Self>) {

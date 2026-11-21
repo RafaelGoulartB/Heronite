@@ -62,7 +62,8 @@ fn load(paths: &DataPaths, include_hidden: bool) -> anyhow::Result<Loaded> {
 impl QuickLauncher {
     pub fn new(query: &str, keys: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let data_paths = DataPaths::detect();
-        let ui = UiState::load(&AppPaths::for_data(&data_paths));
+        let app_paths = AppPaths::for_data(&data_paths);
+        let ui = UiState::load(&app_paths);
         // The open window's history may be newer than the file.
         let recent = crate::system::main_view(cx)
             .and_then(|v| v.upgrade())
@@ -110,7 +111,7 @@ impl QuickLauncher {
             opened: std::time::Instant::now(),
             pending_enter: None,
             load_failed: false,
-            include_hidden: ui.show_hidden,
+            include_hidden: crate::services::hidden_lock::shown(ui.show_hidden, &app_paths),
             debug_keys: keys,
             _subs: subs,
         };

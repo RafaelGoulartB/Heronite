@@ -1673,6 +1673,9 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   `HERONITE_DEBUG_DIALOG=settings|statuses|gamesettings:<tab>|onboarding[:<step>]|achievements` (extend the match in
   `CollectionView::render` for new dialogs; `settings:<section>` opens that Settings section,
   `onboarding:<step>` "Getting started" where that step lives: `steam`, `stores` or `emulators` open its games view, `appearance` its look view, any other step the three cards).
+  `hidden-pin:<unlock|set|change|remove>` opens the PIN pad of hidden games (`dialogs/hidden_pin/`);
+  `HERONITE_DEBUG_PIN=<digits>[,enter]…` types into it, one step every 0.6 s (another word waits a step). Its PIN goes
+  to `<data folder>.heronite/config/hidden-lock.json` of a data copy.
   `scripts/shot.sh` sets `HERONITE_NO_ONBOARDING=1`: "Getting started" does not open by itself on a new state folder.
   Settings → Metadata (`pages/settings/metadata/`): `HERONITE_DEBUG_METADATA_OPEN=<source id>[,<source id>…]` opens
   those sources' rows (`advanced`: "Order for one field") and scrolls to the last; with `HERONITE_DEBUG_PAGE=settings:metadata`.

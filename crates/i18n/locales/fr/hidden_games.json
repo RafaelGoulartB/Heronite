@@ -1,0 +1,19 @@
+{
+  "A PIN has 4 to 8 digits.": "Un code PIN compte de 4 à 8 chiffres.",
+  "Change the PIN": "Changer le code PIN",
+  "Choose a PIN of 4 to 8 digits. Heronite asks for it before it shows hidden games.": "Choisissez un code PIN de 4 à 8 chiffres. Heronite le demande avant d'afficher les jeux masqués.",
+  "Enter the PIN again to confirm it.": "Saisissez à nouveau le code PIN pour le confirmer.",
+  "Enter the new PIN, 4 to 8 digits.": "Saisissez le nouveau code PIN, de 4 à 8 chiffres.",
+  "Enter your PIN to show the hidden games.": "Saisissez votre code PIN pour afficher les jeux masqués.",
+  "Enter your PIN. Hidden games then show with the switch alone.": "Saisissez votre code PIN. Les jeux masqués s'affichent ensuite avec le seul interrupteur.",
+  "Enter your current PIN.": "Saisissez votre code PIN actuel.",
+  "Hidden games": "Jeux masqués",
+  "Locked by the PIN": "Verrouillés par le code PIN",
+  "Save PIN": "Enregistrer le code PIN",
+  "Set a PIN": "Définir un code PIN",
+  "The two PINs differ. Choose the new PIN again.": "Les deux codes PIN diffèrent. Choisissez à nouveau le nouveau code PIN.",
+  "Too many wrong PINs. Try again in {seconds} s.": "Trop de codes PIN erronés. Réessayez dans {seconds} s.",
+  "Turn off the PIN": "Désactiver le code PIN",
+  "Turn on \"Show hidden games\" and enter the PIN to see them here.": "Activez « Afficher les jeux masqués » et saisissez le code PIN pour les voir ici.",
+  "Wrong PIN. Try again.": "Code PIN erroné. Réessayez."
+}

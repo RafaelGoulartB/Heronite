@@ -28,6 +28,7 @@ pub mod epic_modify;
 pub mod extensions;
 pub mod game_links;
 pub mod game_settings;
+pub mod hidden_pin;
 pub mod hltb_match;
 pub mod launch_problem;
 pub mod launch_state;
@@ -134,6 +135,9 @@ pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool 
 /// A key other than Esc, offered to the open dialog before the Collection
 /// sees it. True when the dialog used it ("Review matches": ↑ ↓, Enter, S).
 pub fn handle_key(view: &AnyView, ev: &KeyDownEvent, window: &mut Window, cx: &mut App) -> bool {
+    if let Ok(d) = view.clone().downcast::<hidden_pin::HiddenPinDialog>() {
+        return d.update(cx, |d, cx| d.on_key(ev, cx));
+    }
     if let Ok(d) = view.clone().downcast::<metadata_review::MetadataReview>() {
         return d.update(cx, |d, cx| d.on_key(ev, window, cx));
     }

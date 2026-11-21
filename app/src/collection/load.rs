@@ -67,7 +67,8 @@ thread_local! {
 pub fn preload_library(cx: &App) {
     let data_paths = DataPaths::detect();
     let app_paths = heronite_data::AppPaths::for_data(&data_paths);
-    let include_hidden = heronite_data::ui_state::UiState::load(&app_paths).show_hidden;
+    let saved = heronite_data::ui_state::UiState::load(&app_paths).show_hidden;
+    let include_hidden = crate::services::hidden_lock::shown(saved, &app_paths);
     let (paths, cache) = (data_paths.clone(), app_paths.cache);
     let task = cx.background_spawn(async move { load_all(&paths, &cache, include_hidden) });
     PRELOAD.with(|p| *p.borrow_mut() = Some(Preload { root: data_paths.root, include_hidden, task }));

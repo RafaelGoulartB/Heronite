@@ -11,7 +11,7 @@ use super::{Clear, SettingsPage, Snapshot};
 use crate::icons::Icon;
 use crate::pages::{caption_with, empty_row, icon_action};
 use crate::theme;
-use crate::ui::controls::{action_button, caption, card, row, toggle_row, ButtonKind};
+use crate::ui::controls::{action_button, caption, card, icon_badge, row, row_lead, toggle_row, ButtonKind};
 use crate::ui::fields::{meta_text, select_field};
 use crate::ui::icon;
 
@@ -47,8 +47,21 @@ impl SettingsPage {
         .into_any_element()])
     }
 
-    /// Caption with "Unhide all", the card of hidden games and its pager.
+    /// Caption with "Unhide all", the card of hidden games and its pager;
+    /// behind a PIN not typed yet, a line saying how to see them.
     fn render_hidden(&mut self, snap: &Snapshot, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        if snap.locked {
+            let locked = row_lead(
+                icon_badge(Icon::Lock),
+                tr!("Locked by the PIN"),
+                Some(tr!("Turn on \"Show hidden games\" and enter the PIN to see them here.")),
+                div(),
+            );
+            return vec![
+                list_caption(tr!("Hidden games").into(), div()).into_any_element(),
+                card([locked.into_any_element()]).into_any_element(),
+            ];
+        }
         let mut rows: Vec<AnyElement> = Vec::new();
         let range = self.library.hidden_pg.range(snap.hidden.len());
         for (i, (app, title)) in snap.hidden.iter().enumerate().skip(range.start).take(range.len()) {

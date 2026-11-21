@@ -305,7 +305,15 @@ impl CollectionView {
         });
         let data_paths = DataPaths::detect();
         let app_paths = AppPaths::for_data(&data_paths);
-        let ui = UiState::load(&app_paths);
+        let mut ui = UiState::load(&app_paths);
+        // A switch left on stays off until the PIN is typed, in the file too
+        // (Settings and the quick launcher read it).
+        if ui.show_hidden && !crate::services::hidden_lock::open(&app_paths) {
+            ui.show_hidden = false;
+            if let Err(err) = ui.save(&app_paths) {
+                log::warn!("saving ui state: {err:#}");
+            }
+        }
         let drawer_closed = !ui.grid_open_on_select;
         // Interface / Collection-art appearance (this app's own file, tiny).
         crate::theme::set_appearance(heronite_data::appearance::Appearance::load(&app_paths));
