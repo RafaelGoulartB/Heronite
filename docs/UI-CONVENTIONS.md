@@ -1250,7 +1250,13 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   (about a third of the screen) that keeps the focused cover whole in view (`row_offset`, from the row's fixed
   geometry), ringed in the theme's champagne gold (`presets::CINEMA_GOLD`, its accent). While the focus moves along
   the row the game's block steps aside so the art shows whole; 400 ms after it rests it comes back (`motion::reveal`:
-  the logo, then the rest; a return replays it, the same game never does). Tabs Installed, All games, Recently played
+  the logo, then the rest; a return replays it, the same game never does). Under the row, the theme's shelves over the
+  tab's games (`console_shelves`, less the shelf the row already is): smaller covers, a title with its count over a thin
+  champagne rule, a cut shelf ending with "View all" (A opens the Library with the same filters); on the home only the
+  first one's title peeks in above the hints. ↓ goes down to them: the view glides so the focused shelf sits near the
+  top (`Geo::view_offset`, from fixed heights), the row and the game's block fade out, the art steps back and the
+  shelves passing under the hints fade into the dark; ↑ ↓ between shelves, ← → along one (LT / RT a page), ↑ from the
+  first back to the row and its block; the art follows the focused cover. Tabs Installed, All games, Recently played
   (`recent`: played games) and Favourites (the most recently played first), then Library (a Grid of every game), as a
   centred gold pill between LB and RB; tabs that would come within 48 px of the clock show around the current one with
   a muted "+N" for the others. On the right only the clock (and the shared activity pill while something runs), the
