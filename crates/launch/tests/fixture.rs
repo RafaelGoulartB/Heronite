@@ -160,13 +160,13 @@ fn installed_games_get_sensible_plans() {
         }
     }
 
-    // Epic: legendary with the Heroic config dir.
+    // Epic: the game's program through Wine, completed by Epic at launch.
     if let Some(r) = by("Calluna") {
         match &r.plan {
-            LaunchPlan::Legendary { process, .. } => {
-                assert_eq!(process.command.env["LEGENDARY_CONFIG_PATH"], root.join("legendaryConfig/legendary").to_string_lossy());
-                assert_eq!(&process.command.args[..2], ["launch", "Calluna"]);
-                assert!(process.command.args.contains(&"--no-wine".to_string()) || process.command.args.contains(&"--wine".to_string()));
+            LaunchPlan::Wine { process, .. } => {
+                let launch = process.epic.as_ref().expect("an Epic launch");
+                assert_eq!(launch.app_name, "Calluna");
+                assert!(launch.exe_index.is_some());
                 assert_eq!(process.command.env["WINEPREFIX"], "/home/rafa/Games/Heroic/Prefixes/Control");
             }
             LaunchPlan::Unavailable(reason) => println!("Calluna unavailable here: {reason}"),

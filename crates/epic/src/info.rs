@@ -1,5 +1,6 @@
-//! Install information (`legendary info --json`), selective downloads (SDL)
-//! and the per-game overrides published by the legendary API.
+//! Install information (what `legendary info --json` printed, built by
+//! [`heronite_epic_api::info`]), selective downloads (SDL) and the per-game
+//! overrides published by the legendary API.
 
 use std::time::Duration;
 
@@ -10,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::cache_store::CacheStore;
-use crate::cmd::Legendary;
+use crate::client::Epic;
 
 /// A DLC the account owns for a game (`game.owned_dlc`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -19,7 +20,7 @@ pub struct Dlc {
     pub title: String,
 }
 
-/// Parsed view over the output of `legendary info <app> --json`.
+/// Parsed view over the install information (`legendary info <app> --json`'s shape).
 #[derive(Debug, Clone)]
 pub struct InstallInfo(pub Value);
 
@@ -82,43 +83,34 @@ impl InstallInfo {
     }
 }
 
-/// `getInstallInfo`: the cached info (6 hours) or `legendary info`, retried a
-/// few times when the manifest is missing.
-pub fn install_info(data_paths: &DataPaths, legendary: &Legendary, app_name: &str, platform: &str) -> Result<InstallInfo> {
+/// `getInstallInfo`: the cached info (6 hours), else fresh from Epic (the
+/// account's entitlements, the catalog, the build's manifest). Blocking,
+/// network.
+pub fn install_info(data_paths: &DataPaths, epic: &Epic, app_name: &str, platform: &str) -> Result<InstallInfo> {
     let cache = CacheStore::install_info(data_paths);
     if let Some(cached) = cache.get(app_name).filter(|c| c.get("manifest").is_some_and(|m| !m.is_null())) {
         log::debug!("Using cached install info for {app_name}");
         return Ok(InstallInfo(cached));
     }
-    let mut last = String::new();
-    for attempt in 1..=3 {
-        let out = legendary.run(&["info", app_name, "--json", "--platform", platform], &[])?;
-        match parse_info_output(&out.stdout) {
-            Some(info) if info.get("manifest").is_some_and(|m| !m.is_null()) => {
-                cache.set(app_name, info.clone())?;
-                return Ok(InstallInfo(info));
-            }
-            _ => {
-                last = out.error_lines();
-                log::warn!("Install info for {app_name} does not include manifest data (attempt {attempt})");
-                if attempt < 3 {
-                    std::thread::sleep(Duration::from_millis(700));
-                }
-            }
-        }
+    let session = epic.session()?;
+    let info = heronite_epic_api::info::fetch(&epic.client, &epic.config_dir, Some(&session), app_name, platform, false)
+        .map_err(|e| anyhow!(tr!("Failed to get install info for {app_name}: {error}", app_name, error = format!("{e:#}"))))?;
+    if info.get("manifest").is_some_and(|m| !m.is_null()) {
+        cache.set(app_name, info.clone())?;
+        return Ok(InstallInfo(info));
     }
-    if last.is_empty() {
-        bail!(tr!("Failed to get install info for {app_name}", app_name))
-    } else {
-        bail!(tr!("Failed to get install info for {app_name}: {error}", app_name, error = last))
-    }
+    bail!(tr!("Failed to get install info for {app_name}", app_name))
 }
 
-/// The JSON object in `legendary info --json`'s stdout (tolerates log lines
-/// before it).
-pub fn parse_info_output(stdout: &str) -> Option<Value> {
-    let start = stdout.find('{')?;
-    serde_json::from_str(stdout[start..].trim()).ok()
+/// The program and arguments an installed game wants run before it starts:
+/// from its install record (no network), else from its install information.
+pub fn prerequisites(data_paths: &DataPaths, epic: &Epic, app_name: &str, platform: &str) -> Result<Option<(String, String)>> {
+    if let Some(pre) = heronite_epic_api::installed::get(&epic.config_dir, app_name).and_then(|g| g.prereq_info) {
+        let text = |k: &str| pre.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
+        let path = text("path");
+        return Ok((!path.is_empty()).then(|| (path, text("args"))));
+    }
+    Ok(install_info(data_paths, epic, app_name, platform)?.prerequisites())
 }
 
 /// Component the user can pick (selective download).
@@ -205,7 +197,7 @@ pub fn game_sdl(data_paths: &DataPaths, app_name: &str) -> Vec<Sdl> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::testing::{fake_tool, legendary_of, Reply};
+    use crate::download::testing::{serve_build, sign_in_and_own, Server};
     use serde_json::json;
 
     fn sample() -> Value {
@@ -237,33 +229,33 @@ mod tests {
     }
 
     #[test]
-    fn output_with_leading_log_lines_parses() {
-        let v = parse_info_output("[cli] INFO: x\n{\"manifest\": {}}").unwrap();
-        assert!(v.get("manifest").is_some());
-        assert!(parse_info_output("no json").is_none());
-    }
-
-    #[test]
     fn info_is_fetched_once_and_cached() {
         let dir = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(dir.path().join("h"));
-        let tool = fake_tool(dir.path()).on(&["info", "--json"], Reply::new().out(&sample().to_string()));
-        let lg = legendary_of(&tool, dir.path());
-        let a = install_info(&data_paths, &lg, "Calluna", "Windows").unwrap();
-        assert_eq!(a.download_size(), 27783660544.);
-        let b = install_info(&data_paths, &lg, "Calluna", "Windows").unwrap();
-        assert_eq!(b.disk_size(), 45010292103.);
-        assert_eq!(tool.calls(), ["info Calluna --json --platform Windows"]);
+        let cfg = data_paths.legendary_config_dir();
+        let server = Server::start();
+        sign_in_and_own(&cfg, "Calluna", "Control");
+        serve_build(&server, "Calluna", "1", &[("Control.exe", b"MZ")]);
+        server.route("/entitlement/api/account/acc/entitlements", 200, "[]");
+        server.route("/launcher/api/public/assets/Windows", 200, "[]");
+        server.route("/catalog/api/shared/namespace/ns/bulk/items", 200, "{}");
+        let epic = server.epic(&cfg);
+        let a = install_info(&data_paths, &epic, "Calluna", "Windows").unwrap();
+        assert_eq!(a.disk_size(), 2.);
+        let asked = server.seen.lock().unwrap().len();
+        let b = install_info(&data_paths, &epic, "Calluna", "Windows").unwrap();
+        assert_eq!(b.disk_size(), 2.);
+        assert_eq!(server.seen.lock().unwrap().len(), asked, "the second answer is the cached one");
     }
 
     #[test]
-    fn missing_manifest_is_an_error_after_retries() {
+    fn info_of_a_game_not_in_the_library_is_an_error() {
         let dir = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(dir.path().join("h"));
-        let tool = fake_tool(dir.path()).otherwise(Reply::new().out(r#"{"game": {}}"#).err("ERROR: not owned"));
-        let err = install_info(&data_paths, &legendary_of(&tool, dir.path()), "x", "Windows").unwrap_err().to_string();
-        assert!(err.contains("not owned"), "{err}");
-        assert_eq!(tool.calls().len(), 3);
+        let server = Server::start();
+        sign_in_and_own(&data_paths.legendary_config_dir(), "Calluna", "Control");
+        let err = install_info(&data_paths, &server.epic(&data_paths.legendary_config_dir()), "x", "Windows").unwrap_err().to_string();
+        assert!(err.contains("Failed to get install info for x"), "{err}");
     }
 
     #[test]

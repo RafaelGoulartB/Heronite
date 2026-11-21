@@ -36,8 +36,8 @@ impl CollectionView {
     fn diagnose_exit_with(&mut self, app_name: &str, ended: Ended, log: Option<PathBuf>, toast: bool, cx: &mut Context<Self>) {
         let Some(exit) = ended.exit.filter(|_| ended.failed()) else { return };
         let Some(game) = self.lib.as_ref().and_then(|l| l.games.iter().find(|g| g.app_name == app_name)).cloned() else { return };
-        // legendary refused the saved Epic sign-in and deleted it: the log
-        // holds only its traceback, so ask to log in instead.
+        // Epic refused the saved sign-in, which was forgotten: ask to log in
+        // instead.
         if self.runtime.needs_epic_sign_in(&game) {
             self.epic.pending = Some(super::epic::Request::SignedOut(game.key.clone()));
             cx.notify();

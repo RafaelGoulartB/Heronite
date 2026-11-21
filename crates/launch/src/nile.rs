@@ -12,8 +12,8 @@ use crate::args::split_windows_args;
 use crate::emulators::node_dirname;
 #[cfg(not(windows))]
 use crate::env::join;
+use crate::epic::{cached_umu_id, known_fixes_env, known_fixes_steps};
 use crate::host::{run_mode, unavailable_reason, Os, RunMode};
-use crate::legendary::{cached_umu_id, known_fixes_env, known_fixes_steps};
 use crate::plan::{windows_plan, FirstLaunch, LaunchOptions, LaunchPlan, PlanContext, SetupStep, WineRuntime};
 use crate::probe::Probe;
 use crate::settings::GameSettings;

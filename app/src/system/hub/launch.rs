@@ -121,7 +121,7 @@ pub fn play_game(cx: &mut App, game: Arc<CollectionGame>) {
         maybe_exit_idle(cx);
         return;
     }
-    // `--no-gui` skips legendary's version check (Heroic does the same).
+    // `--no-gui` skips Epic's update check (Heroic does the same).
     let result = if game.runner == "legendary" { runtime.play_skip_version_check(&game) } else { runtime.play(&game) };
     match result {
         Ok(()) => {

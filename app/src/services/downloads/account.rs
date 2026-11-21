@@ -1,9 +1,9 @@
 //! Epic login and logout.
 
 use gpui_kit::*;
-use heronite_epic::cmd::Legendary;
 use heronite_epic::library;
 use heronite_epic::user;
+use heronite_epic::Epic;
 use heronite_i18n::tr;
 
 use super::library_file::read_stats;
@@ -22,10 +22,10 @@ impl Downloads {
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
-                    let lg = Legendary::locate_or_install(&data_paths)?;
-                    let info = user::login(&data_paths, &lg, &input)?;
+                    let epic = Epic::new(&data_paths);
+                    let info = user::login(&data_paths, &epic, &input)?;
                     // Heroic refreshes the library right after logging in.
-                    let refresh = library::refresh(&data_paths, &lg);
+                    let refresh = library::refresh(&data_paths, &epic);
                     anyhow::Ok((info, refresh.ok(), library::updates_available(&data_paths), read_stats(&data_paths)))
                 })
                 .await;
@@ -57,12 +57,7 @@ impl Downloads {
         self.logging_out = true;
         let data_paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let res = cx
-                .background_spawn(async move {
-                    let lg = Legendary::locate(&data_paths)?;
-                    user::logout(&data_paths, &lg)
-                })
-                .await;
+            let res = cx.background_spawn(async move { user::logout(&data_paths, &Epic::new(&data_paths)) }).await;
             this.update(cx, |this, cx| {
                 this.logging_out = false;
                 match res {

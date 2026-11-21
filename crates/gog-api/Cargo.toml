@@ -1,0 +1,28 @@
+[package]
+name = "heronite-gog-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "GOG protocol: sign-in, builds and depot manifests (v1 and v2), secure links, chunks, redistributables, Linux installers, cloud saves"
+
+[dependencies]
+heronite-data = { path = "../data" }
+heronite-i18n = { path = "../i18n" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+anyhow = "1"
+log = "0.4"
+parking_lot = "0.12"
+ureq = "3"
+flate2 = "1"
+md-5 = "0.10"
+sha2 = "0.10"
+hex = "0.4"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+percent-encoding = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

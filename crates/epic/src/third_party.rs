@@ -2,12 +2,13 @@
 //! Port of Heroic's `legendary/thirdParty.ts` and `installEA` /
 //! `installUbisoft`.
 //!
-//! legendary cannot download these games. On Linux Heroic's "install" only
+//! Epic does not serve these games' files. On Linux Heroic's "install" only
 //! fetches the store's installer into `tools/redist/legendary` and records
 //! the game in `third-party-installed.json` (`[[appName, platform], ...]`,
 //! `JSON.stringify` without spaces). The first launch then runs that
-//! installer in the game's prefix (`heronite_launch::first_launch`) and
-//! `legendary launch --origin|--ubisoft` opens the game through the store app.
+//! installer in the game's prefix (`heronite_launch::first_launch`), and the
+//! launch opens the game through the store app with its link
+//! (`heronite_launch::epic_launch`).
 
 use std::fs;
 use std::io::{Read, Write};

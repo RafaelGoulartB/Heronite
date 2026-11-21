@@ -167,7 +167,7 @@ impl CollectionView {
                 "queue progress fila progresso downloads",
             ));
         }
-        // EA app / Ubisoft Connect keep their games: legendary cannot import,
+        // EA app / Ubisoft Connect keep their games: Heronite cannot import,
         // update, verify or move them (Heroic hides these too).
         if !game.store_installed() {
             // Otherwise it is in the Install submenu (`install_options`).

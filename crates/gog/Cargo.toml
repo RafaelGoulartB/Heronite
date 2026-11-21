@@ -3,7 +3,7 @@ name = "heronite-gog"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "GOG store through gogdl and the GOG web APIs (login, library, install, update, first-launch setup)"
+description = "GOG store, natively, and the GOG web APIs (login, library, install, update, repair, cloud saves, first-launch setup)"
 
 [dependencies]
 heronite-data = { path = "../data" }
@@ -11,11 +11,14 @@ heronite-platform = { path = "../platform" }
 heronite-i18n = { path = "../i18n" }
 heronite-launch = { path = "../launch" }
 heronite-epic = { path = "../epic" }
+heronite-depot = { path = "../depot" }
+heronite-gog-api = { path = "../gog-api" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 anyhow = "1"
 log = "0.4"
 ureq = "3"
+hex = "0.4"
 
 # Windows' own save folders (Saved Games, AppData...).
 [target.'cfg(windows)'.dependencies]
@@ -24,6 +27,8 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_
 [dev-dependencies]
 heronite-data = { path = "../data", features = ["testing"] }
 tempfile = "3"
+md-5 = "0.10"
+flate2 = "1"
 
 [lints]
 workspace = true

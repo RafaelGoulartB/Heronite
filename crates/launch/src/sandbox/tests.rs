@@ -316,34 +316,31 @@ fn prefix_tools_run_in_the_sandbox() {
 // Epic games run through Wine on Linux only (natively on Windows).
 #[cfg(unix)]
 #[test]
-fn epic_games_get_the_sandbox_inside_legendarys_wrapper() {
+fn epic_games_run_in_the_sandbox() {
     let s = windows_settings(json!({"enabled": true}));
     let g = GameInfo {
         runner: "legendary".into(),
         app_name: "Calluna".into(),
         title: "Calluna".into(),
         is_installed: true,
-        install: InstallInfo { install_path: Some("/home/u/Games/Calluna".into()), platform: Some("Windows".into()), ..Default::default() },
+        install: InstallInfo {
+            install_path: Some("/home/u/Games/Calluna".into()),
+            platform: Some("Windows".into()),
+            executable: Some("Calluna.exe".into()),
+            ..Default::default()
+        },
         ..Default::default()
     };
-    let p = probe().with_path("/home/u/Games/Calluna").with_path("/hr/tools/bin/legendary").with_bin("legendary", "/usr/bin/legendary");
+    let p = probe().with_path("/home/u/Games/Calluna").with_path("/home/u/Games/Calluna/Calluna.exe");
     let plan = build_plan_with_settings(&ctx(), &p, &g, None, &s, &LaunchOptions::default());
-    let LaunchPlan::Legendary { process, .. } = &plan else { panic!("{plan:?}") };
+    let LaunchPlan::Wine { process, .. } = &plan else { panic!("{plan:?}") };
+    assert!(is_wrapped(&process.command), "{:?}", process.command);
     let args = &process.command.args;
-    let wrapper = &args[args.iter().position(|a| a == "--wrapper").unwrap() + 1];
-    let words = shlex::split(wrapper).unwrap();
-    assert_eq!(words[..2], ["/bin/sh", "-c"]);
-    assert_eq!(words[3..], [NAME_FOR_TESTS, "/p/GE/proton", "waitforexitandrun"]);
-    assert!(words[2].contains("--ro-bind-try /home/u/Games/Calluna /home/u/Games/Calluna"));
+    assert!(args[1].contains("--ro-bind-try /home/u/Games/Calluna /home/u/Games/Calluna"));
+    assert_eq!(args[2..], [NAME_FOR_TESTS, "/p/GE/proton", "waitforexitandrun", "/home/u/Games/Calluna/Calluna.exe"]);
+    // Epic's arguments go after the program, inside the sandbox.
+    assert_eq!(process.epic.as_ref().unwrap().exe_index, Some(5));
     assert!(process.sandboxed && process.stop.commands.is_empty());
-    // legendary splits the wrapper with Python's shlex: same words.
-    let py = std::process::Command::new("python3")
-        .args(["-c", "import json, shlex, sys; print(json.dumps(shlex.split(sys.argv[1])))", wrapper])
-        .output();
-    if let Some(out) = py.ok().filter(|o| o.status.success()) {
-        let python: Vec<String> = serde_json::from_slice(&out.stdout).unwrap();
-        assert_eq!(python, words);
-    }
 }
 
 #[test]

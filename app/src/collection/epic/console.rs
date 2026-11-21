@@ -30,7 +30,7 @@ impl CollectionView {
         if queued {
             rows.push(Row::action("epic:downloads", tr!("Show in Downloads")).icon(Icon::Downloading));
         }
-        // EA app / Ubisoft Connect keep their games: legendary cannot import,
+        // EA app / Ubisoft Connect keep their games: Heronite cannot import,
         // update, verify or move them (Heroic hides these too).
         if !game.store_installed() {
             if !flags.third_party {

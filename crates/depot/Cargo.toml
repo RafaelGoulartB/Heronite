@@ -1,0 +1,26 @@
+[package]
+name = "heronite-depot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Store-agnostic game download engine: parallel chunk downloads assembled into files, resume, verify, delta updates"
+
+[dependencies]
+heronite-data = { path = "../data" }
+heronite-i18n = { path = "../i18n" }
+heronite-platform = { path = "../platform" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+anyhow = "1"
+log = "0.4"
+parking_lot = "0.12"
+crossbeam-channel = "0.5"
+sha1_smol = "1"
+sha2 = "0.10"
+md-5 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

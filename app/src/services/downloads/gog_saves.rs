@@ -5,14 +5,13 @@ use futures::channel::mpsc::unbounded;
 use futures::StreamExt;
 use gpui_kit::*;
 use heronite_epic::ops::OpResult;
-use heronite_gog::cmd::Gogdl;
 use heronite_gog::saves::{self, SyncMode};
 use heronite_i18n::tr;
 
 use super::{Downloads, DownloadsEvent};
 
 impl Downloads {
-    /// Syncs the saves of a GOG game and shows gogdl's log in a message.
+    /// Syncs the saves of a GOG game and shows what was done in a message.
     pub fn gog_sync_saves(&mut self, app_name: &str, title: &str, mode: SyncMode, cx: &mut Context<Self>) {
         let (app, title) = (app_name.to_string(), title.to_string());
         let (tx, mut rx) = unbounded::<String>();
@@ -22,7 +21,7 @@ impl Downloads {
             false,
             cx,
             move |data_paths, _, _| {
-                let result = Gogdl::locate_or_install(data_paths).and_then(|gogdl| saves::sync(data_paths, &gogdl, &app, mode));
+                let result = saves::sync(data_paths, &app, mode);
                 match result {
                     Ok(text) => {
                         let _ = tx.unbounded_send(text);

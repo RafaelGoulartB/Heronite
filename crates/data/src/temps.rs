@@ -186,6 +186,16 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn private_files_are_never_readable_by_others() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("user.json");
+        write_atomic(&p, b"{}", Some(0o600)).unwrap();
+        assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o777, 0o600);
+    }
+
     #[test]
     fn write_atomic_replaces_and_leaves_no_temp() {
         let dir = tempfile::tempdir().unwrap();

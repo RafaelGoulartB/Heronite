@@ -101,8 +101,7 @@ pub fn attach(plan: &mut LaunchPlan, ctx: &PlanContext, probe: &dyn Probe, game:
         }
         return;
     }
-    // Legendary runs umu itself as a wrapper and passes its environment on.
-    if joins_container && (umu_game || matches!(plan, LaunchPlan::Legendary { .. })) {
+    if joins_container && umu_game {
         if let Some(process) = plan.process_mut() {
             process.command.env.insert(UMU_NSENTER.into(), "1".into());
         }

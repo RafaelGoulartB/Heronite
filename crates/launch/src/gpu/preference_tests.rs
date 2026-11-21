@@ -168,8 +168,9 @@ fn only_programs_heronite_starts_itself_get_the_preference() {
     let mut handed = LaunchPlan::Native(ProcessPlan { handoff: Some(Handoff::default()), ..Default::default() });
     attach_on(&mut handed, &g, true);
     assert_eq!(handed.process().unwrap().gpu_preference, None);
-    // Epic games: legendary names the program, which gets it.
-    let mut epic = LaunchPlan::Legendary { process: ProcessPlan::default(), app_name: "x".into() };
+    // Epic games: Epic's launch completes the program, which gets it.
+    let epic_launch = Some(crate::epic_launch::EpicLaunch::default());
+    let mut epic = LaunchPlan::Native(ProcessPlan { epic: epic_launch, ..Default::default() });
     attach_on(&mut epic, &g, true);
     assert_eq!(epic.process().unwrap().gpu_preference, Some(Preference::HighPerformance));
     // An emulator runs every game of its system.

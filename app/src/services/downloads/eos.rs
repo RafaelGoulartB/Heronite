@@ -5,9 +5,9 @@ use std::time::SystemTime;
 
 use gpui_kit::*;
 use heronite_data::DataPaths;
-use heronite_epic::cmd::Legendary;
 use heronite_epic::eos_overlay::{self, PrefixFolder};
 use heronite_epic::ops::OpResult;
+use heronite_epic::Epic;
 use heronite_i18n::tr;
 
 use super::{Downloads, DownloadsEvent, EosGame, EosStatus};
@@ -54,21 +54,18 @@ impl Downloads {
     }
 
     /// Reads the overlay state; `check` also looks up the latest version
-    /// (which may ask legendary, so it only runs when the page is open).
+    /// (which may ask Epic, so it only runs when the page is open).
     pub fn eos_reload(&mut self, check: bool, cx: &mut Context<Self>) {
         let data_paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let (status, latest, enabled) = cx
                 .background_spawn(async move {
                     let status = eos_overlay::status(&data_paths);
-                    let lg = Legendary::locate(&data_paths).ok();
-                    let latest = match &lg {
-                        Some(lg) if check && status.installed => eos_overlay::latest_version(&data_paths, lg),
-                        _ => String::new(),
-                    };
+                    let epic = Epic::new(&data_paths);
+                    let latest = if check && status.installed { eos_overlay::latest_version(&data_paths, &epic) } else { String::new() };
                     // Windows: one switch for every game (the Epic Games
                     // Launcher's own overlay counts too).
-                    let enabled = lg.filter(|_| check && global()).map(|lg| eos_overlay::is_enabled(&lg, None));
+                    let enabled = (check && global()).then(|| eos_overlay::is_enabled(&epic, None));
                     (status, latest, enabled)
                 })
                 .await;
@@ -90,7 +87,7 @@ impl Downloads {
         .detach();
     }
 
-    /// "Check for updates": `legendary status`, then the latest version.
+    /// "Check for updates": the latest version, asked of Epic.
     pub fn eos_check_updates(&mut self, cx: &mut Context<Self>) {
         if self.eos.checking {
             return;
@@ -101,9 +98,9 @@ impl Downloads {
         cx.spawn(async move |this, cx| {
             let latest = cx
                 .background_spawn(async move {
-                    let lg = Legendary::locate(&data_paths).ok()?;
-                    eos_overlay::update_info(&data_paths, &lg);
-                    Some(eos_overlay::latest_version(&data_paths, &lg))
+                    let epic = Epic::new(&data_paths);
+                    eos_overlay::update_info(&data_paths, &epic);
+                    Some(eos_overlay::latest_version(&data_paths, &epic))
                 })
                 .await;
             this.update(cx, |this, cx| {
@@ -206,14 +203,13 @@ impl Downloads {
                             PrefixFolder::Valid(prefix) => Some(Path::new(prefix).join("user.reg")),
                             _ => None,
                         };
-                        // Before asking legendary: a change while it runs is seen next time.
+                        // Before reading the prefix: a change meanwhile is seen next time.
                         let stamp = EosStamp::read(&data_paths, &app, registry.as_deref());
                         let state = match folder {
                             PrefixFolder::NotApplicable => EosGame::Unavailable,
                             PrefixFolder::Invalid => EosGame::Disabled,
                             PrefixFolder::Valid(prefix) => {
-                                let enabled =
-                                    Legendary::locate(&data_paths).map(|lg| eos_overlay::is_enabled(&lg, Some(&prefix))).unwrap_or(false);
+                                let enabled = eos_overlay::is_enabled(&Epic::new(&data_paths), Some(&prefix));
                                 if enabled {
                                     EosGame::Enabled
                                 } else {

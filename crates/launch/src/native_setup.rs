@@ -123,7 +123,7 @@ impl Prep<'_> {
         let mut incomplete = false;
         let mut steps = fl.post_install.clone();
         if let Some(store) = store {
-            // gogdl may download the redistributables first: it can take a while.
+            // The redistributables may be downloaded first: it can take a while.
             if fl.runner == "gog" {
                 self.notice(Notice::info("Getting the game's installers...", tr!("Getting the game's installers...")));
             }

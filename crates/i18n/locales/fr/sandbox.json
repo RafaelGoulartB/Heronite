@@ -23,7 +23,6 @@
   "No network and no home folder: the game sees the system read-only, its prefix and its folder": "Sans réseau ni dossier personnel : le jeu voit le système en lecture seule, son préfixe et son dossier",
   "Off until a game needs one. Each lets one thing through: turn on only what makes this game work.": "Désactivées jusqu’à ce qu’un jeu en ait besoin. Chaque exception autorise un accès : activez uniquement ce qui est nécessaire à ce jeu.",
   "Open its home folder": "Ouvrir son dossier personnel",
-  "Outside the sandbox, as before: your scripts before and after launch, cloud saves and the store's own tools (legendary, gogdl, nile).": "Hors du sandbox, comme auparavant : vos scripts avant et après le lancement, les sauvegardes cloud et les outils propres aux boutiques (legendary, gogdl, nile).",
   "Risk: {risk}": "Risque : {risk}",
   "Run in a sandbox": "Exécuter dans un sandbox",
   "Sandbox": "Sandbox",
@@ -45,5 +44,6 @@
   "{n} other games use this prefix. What this game installs in it reaches them, and they run outside the sandbox unless it is on for them too. A prefix of its own keeps it apart.": "{n} autres jeux utilisent ce préfixe. Ce que ce jeu y installe les affecte aussi, et ils s’exécutent hors du sandbox sauf s’il est également activé pour eux. Un préfixe dédié les sépare.",
   "{path} did not start: the game's sandbox was not found": "{path} n’a pas démarré : le sandbox du jeu est introuvable",
   "the sandbox's home folders": "les dossiers personnels du sandbox",
-  "In the sandbox: what follows heronite-sandbox starts inside it. Programs alongside the game join it.": "Dans le sandbox : ce qui suit heronite-sandbox y démarre. Les programmes qui accompagnent le jeu le rejoignent."
+  "In the sandbox: what follows heronite-sandbox starts inside it. Programs alongside the game join it.": "Dans le sandbox : ce qui suit heronite-sandbox y démarre. Les programmes qui accompagnent le jeu le rejoignent.",
+  "Outside the sandbox, as before: your scripts before and after launch, cloud saves, the stores' sign-in and Amazon Games' own tool (nile).": "En dehors du bac à sable, comme avant : vos scripts avant et après le lancement, les sauvegardes cloud, la connexion aux boutiques et l’outil propre d’Amazon Games (nile)."
 }

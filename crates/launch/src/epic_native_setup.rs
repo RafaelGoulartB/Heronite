@@ -48,7 +48,7 @@ impl Prep<'_> {
     /// See the module docs. `epic` gives the prerequisites; `client_installed`
     /// says whether a link scheme has a program (the store app is there).
     pub fn epic_native_first_launch(&self, fl: &FirstLaunch, epic: Option<&dyn EpicSetup>) -> Flow {
-        self.epic_native_first_launch_with(fl, epic, &crate::legendary_windows::link_handler_installed, &SystemElevate)
+        self.epic_native_first_launch_with(fl, epic, &crate::epic_launch::link_handler_installed, &SystemElevate)
     }
 
     pub(crate) fn epic_native_first_launch_with(

@@ -30,8 +30,8 @@ use heronite_data::ffmpeg::{self, Tool, DOWNLOADED_RELEASE};
 use heronite_data::DataPaths;
 use sha2::{Digest, Sha256};
 
-use crate::legendary_install::part_file;
 use crate::net::{Cancel, Net, CANCELLED};
+use crate::store_tools::part_file;
 
 const REPO: &str = "shaka-project/static-ffmpeg-binaries";
 /// What the download of each program costs, for the UI.

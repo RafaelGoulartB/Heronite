@@ -14,7 +14,7 @@ use crate::services::downloads::Store;
 /// Extra search words (English and Portuguese).
 fn keywords(store: Store) -> &'static str {
     match store {
-        Store::Gog => "gog galaxy gogdl account login library conta entrar biblioteca",
+        Store::Gog => "gog galaxy account login library conta entrar biblioteca",
         Store::Amazon => "amazon prime gaming nile account login library conta entrar biblioteca",
     }
 }

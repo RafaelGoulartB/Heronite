@@ -47,7 +47,6 @@
   "Uninstall from Steam…": "Désinstaller depuis Steam…",
   "You own it on Steam too": "Vous le possédez aussi sur Steam",
   "Your Steam library": "Votre bibliothèque Steam",
-  "Games are downloaded and verified with gogdl. After you log in, your whole GOG library shows in your Collection, and you install games from there.": "Les jeux sont téléchargés et vérifiés avec gogdl. Après votre connexion, toute votre bibliothèque GOG apparaît dans votre Collection, d’où vous pouvez installer les jeux.",
   "Games are downloaded and verified with nile. After you log in, your whole Amazon Games library, including the Prime Gaming games you claimed, shows in your Collection, and you install games from there.": "Les jeux sont téléchargés et vérifiés avec nile. Après votre connexion, toute votre bibliothèque Amazon Games, y compris les jeux Prime Gaming que vous avez récupérés, apparaît dans votre Collection, d’où vous pouvez installer les jeux.",
   "Steam was not found on this PC. Install Steam and sign in, then open it to read your library.": "Steam est introuvable sur ce PC. Installez Steam et connectez-vous, puis ouvrez-le pour lire votre bibliothèque.",
   "Steam was not found on this PC. Install Steam and sign in, then open it: Heronite reads your library by itself.": "Steam est introuvable sur ce PC. Installez Steam et connectez-vous, puis ouvrez-le : Heronite lit votre bibliothèque automatiquement.",
@@ -91,5 +90,6 @@
   "Reading your Steam library is off. Turn it on in the Stores, on the Steam page.": "La lecture de votre bibliothèque Steam est désactivée. Activez-la dans Boutiques, sur la page Steam.",
   "{n} Steam game is running and stays. Remove it once it closes.": "{n} jeu Steam est en cours d’exécution et reste. Retirez-le une fois fermé.",
   "{n} Steam games are running and stay. Remove them once they close.": "{n} jeux Steam sont en cours d’exécution et restent. Retirez-les une fois fermés.",
-  "Could not tell which games are running.": "Impossible de savoir quels jeux sont en cours d’exécution."
+  "Could not tell which games are running.": "Impossible de savoir quels jeux sont en cours d’exécution.",
+  "Heronite downloads and verifies the games itself, from GOG's servers. After you log in, your whole GOG library shows in your Collection, and you install games from there.": "Heronite télécharge et vérifie lui-même les jeux, depuis les serveurs de GOG. Une fois connecté, toute votre bibliothèque GOG apparaît dans votre Collection, d’où vous installez les jeux."
 }

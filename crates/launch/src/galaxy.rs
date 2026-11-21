@@ -63,8 +63,8 @@ const DUMMY_ASSET: &str = "dummy-service.zip";
 /// How long one Wine command of the prefix setup may take (they take a
 /// few seconds; a hung Wine is ended, and the setup runs again next time).
 const WINE_TIMEOUT: Duration = Duration::from_secs(45);
-/// How long a launch waits for [`GalaxyAccount::login`] (gogdl refreshes
-/// the tokens in a second or two; a bad network may hang it).
+/// How long a launch waits for [`GalaxyAccount::login`] (refreshing the
+/// tokens takes a second or two; a bad network may hang it).
 pub const LOGIN_LIMIT: Duration = Duration::from_secs(30);
 /// How long a launch waits for Comet's first download (about 15 MB); past
 /// it the game starts without Comet, and the download goes on for the next
@@ -91,8 +91,8 @@ impl std::fmt::Debug for GalaxyLogin {
 /// store crates depend on this one.
 pub trait GalaxyAccount: Send + Sync {
     /// The signed-in account with fresh tokens; `Ok(None)` when Comet is
-    /// turned off or nobody is signed in to GOG. Blocking: gogdl may
-    /// refresh the tokens, and should be given up on after [`LOGIN_LIMIT`].
+    /// turned off or nobody is signed in to GOG. Blocking: the tokens may
+    /// be refreshed, and should be given up on after [`LOGIN_LIMIT`].
     fn login(&self) -> Result<Option<GalaxyLogin>, String>;
 }
 

@@ -230,7 +230,6 @@
   "Refresh": "Actualiser",
   "Release date": "Date de sortie",
   "Source": "Source",
-  "The legendary binary was not found": "Le binaire legendary est introuvable",
   "Game folder not found: {folder}": "Dossier du jeu introuvable : {folder}",
   "To run {program} from the game folder, write ./{program}": "Pour exécuter {program} depuis le dossier du jeu, saisissez ./{program}",
   "{program} is not in the game folder": "{program} ne se trouve pas dans le dossier du jeu",

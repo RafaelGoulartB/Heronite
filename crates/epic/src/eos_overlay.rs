@@ -1,32 +1,24 @@
-//! The EOS Overlay through `legendary eos-overlay ...` (port of
-//! `legendary/eos_overlay/eos_overlay.ts`). The overlay is installed into
-//! `<data>/tools/eos_overlay`; on Linux it is enabled per Wine prefix.
-//! legendary keeps its state in `overlay_install.json` and
-//! `overlay_version.json` of its config folder; they are only read here.
+//! The EOS Overlay (port of `legendary/eos_overlay/eos_overlay.ts`),
+//! natively ([`heronite_epic_api::eos`]). The overlay is installed into
+//! `<data>/tools/eos_overlay`; on Linux it is enabled per Wine prefix, on
+//! Windows for the user. Its record is legendary's `overlay_install.json`,
+//! its latest version `overlay_version.json`, in legendary's config folder.
 
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 
 use heronite_data::game_config;
 use heronite_data::DataPaths;
+use heronite_depot as depot;
+use heronite_epic_api::eos;
 use heronite_i18n::tr;
-use regex::Regex;
 use serde_json::Value;
 
-use crate::cmd::{Cancel, Legendary};
-use crate::ops::{home, OpResult};
-use crate::progress::ProgressParser;
+use crate::client::Epic;
+use crate::cmd::Cancel;
+use crate::ops::{home, DownloadSettings, OpResult};
 
 /// `eosOverlayAppName`: the id Heroic gives the overlay in its status maps.
-pub const APP_NAME: &str = "98bc04bc842e4906993fd6d6644ffb8d";
-
-fn installed_file(data_paths: &DataPaths) -> PathBuf {
-    data_paths.legendary_config_dir().join("overlay_install.json")
-}
-
-fn version_file(data_paths: &DataPaths) -> PathBuf {
-    data_paths.legendary_config_dir().join("overlay_version.json")
-}
+pub const APP_NAME: &str = eos::APP_NAME;
 
 /// Where the overlay is installed by default (`toolsPath/eos_overlay`).
 pub fn default_install_path(data_paths: &DataPaths) -> PathBuf {
@@ -42,147 +34,161 @@ pub struct Status {
 
 /// `getStatus`.
 pub fn status(data_paths: &DataPaths) -> Status {
-    let file = installed_file(data_paths);
-    if !file.exists() {
-        return Status::default();
-    }
-    let doc: Value = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
-    let text = |k: &str| doc.get(k).and_then(Value::as_str).map(str::to_string);
-    let install_path = text("install_path");
-    if install_path.as_deref().is_some_and(|p| Path::new(p) != default_install_path(data_paths)) {
+    let Some(ig) = eos::installed(&data_paths.legendary_config_dir()) else { return Status::default() };
+    if Path::new(&ig.install_path) != default_install_path(data_paths) {
         log::warn!("EOS Overlay is not installed in default location, permission issues might arise");
     }
-    Status { installed: true, version: text("version"), install_path }
+    let some = |s: String| Some(s).filter(|s| !s.is_empty());
+    Status { installed: true, version: some(ig.version), install_path: some(ig.install_path) }
 }
 
-/// `updateInfo`: `legendary status` refreshes `overlay_version.json` (it does
-/// nothing without the overlay installed).
-pub fn update_info(data_paths: &DataPaths, legendary: &Legendary) {
+/// `updateInfo`: refreshes the latest version (`overlay_version.json`) when
+/// the overlay is installed. Blocking, network.
+pub fn update_info(data_paths: &DataPaths, epic: &Epic) {
     if !status(data_paths).installed {
         return;
     }
-    if let Err(err) = legendary.run(&["status"], &[]) {
+    if let Err(err) = eos::latest_version(&epic.client, &epic.config_dir) {
         log::warn!("Updating EOS Overlay information: {err:#}");
     }
 }
 
-/// `getLatestVersion`: the build version from `overlay_version.json`
-/// (refreshing it first when the file does not exist). Empty when unknown.
-pub fn latest_version(data_paths: &DataPaths, legendary: &Legendary) -> String {
-    let file = version_file(data_paths);
-    if !file.exists() {
-        if !status(data_paths).installed {
-            return String::new();
-        }
-        update_info(data_paths, legendary);
-        if !file.exists() {
-            log::error!("EOS Overlay information not found after manual update. User is probably not logged in anymore");
-            return String::new();
-        }
+/// `getLatestVersion`: the latest build version (asked of Epic at most once
+/// a day). Empty when unknown or when the overlay is not installed.
+pub fn latest_version(data_paths: &DataPaths, epic: &Epic) -> String {
+    if !status(data_paths).installed {
+        return String::new();
     }
-    std::fs::read_to_string(&file)
-        .ok()
-        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-        .and_then(|v| v.pointer("/data/buildVersion").and_then(Value::as_str).map(str::to_string))
-        .unwrap_or_default()
+    eos::latest_version(&epic.client, &epic.config_dir).unwrap_or_else(|err| {
+        log::error!("EOS Overlay information: {err:#}");
+        String::new()
+    })
 }
 
-fn failed(out: &crate::cmd::Output) -> OpResult {
-    let why = out.error_lines();
-    OpResult {
-        ok: false,
-        aborted: false,
-        warning: false,
-        message: if why.is_empty() { tr!("legendary exited with {code}", code = format!("{:?}", out.code)) } else { why },
-    }
-}
-
-/// `install`: first asks legendary for the download size (without `-y`, so it
-/// stops at the question), then installs (or updates) with `-y` reporting the
-/// progress as a percentage.
-pub fn install(data_paths: &DataPaths, legendary: &Legendary, cancel: &std::sync::Arc<Cancel>, on_percent: &dyn Fn(f32)) -> OpResult {
-    static SIZE: OnceLock<Regex> = OnceLock::new();
-    let size_re = SIZE.get_or_init(|| Regex::new(r"Download size: ([\d.]+) MiB").expect("valid regex"));
-    let path = default_install_path(data_paths).to_string_lossy().into_owned();
-
-    let probe = Cancel::new();
-    let mut download_size = 0.0f64;
-    let asked = legendary.run_streaming(&["eos-overlay", "install", "--path", &path], &[], &probe, |line| {
-        if let Some(c) = size_re.captures(line) {
-            download_size = c[1].parse::<f64>().unwrap_or(0.) * 1024. * 1024.;
-            probe.request();
-        }
-    });
-    if let Err(err) = asked {
-        return OpResult { ok: false, aborted: false, warning: false, message: format!("{err:#}") };
-    }
+/// `install`: installs (or updates) the overlay, reporting the percent.
+/// Blocking, network.
+pub fn install(data_paths: &DataPaths, epic: &Epic, cancel: &std::sync::Arc<Cancel>, on_percent: &dyn Fn(f32)) -> OpResult {
     if cancel.is_requested() {
-        return OpResult { ok: false, aborted: true, warning: false, message: tr!("Cancelled").into() };
+        return OpResult::cancelled();
     }
-
-    let mut parser = ProgressParser::new(Some(download_size));
-    let out = legendary.run_streaming(&["eos-overlay", "install", "-y", "--path", &path], &[], cancel, |line| {
-        if let Some(p) = parser.feed(line) {
-            on_percent(p.percent as f32);
-        }
-    });
-    match out {
-        Err(err) => OpResult { ok: false, aborted: false, warning: false, message: format!("{err:#}") },
-        Ok(out) if out.aborted => OpResult { ok: false, aborted: true, warning: false, message: tr!("Cancelled").into() },
-        Ok(out) if out.success() => OpResult { ok: true, aborted: false, warning: false, message: tr!("EOS Overlay installed").into() },
-        Ok(out) => failed(&out),
+    let path = default_install_path(data_paths);
+    let prepared = match eos::prepare_install(&epic.client, &epic.config_dir, &path) {
+        Ok(p) => p,
+        Err(err) => return OpResult::err(tr!("Could not install the EOS Overlay: {error}", error = format!("{err:#}"))),
+    };
+    let settings = DownloadSettings::load(data_paths);
+    let outcome = crate::download::install_overlay(epic, &prepared, &settings, cancel, &mut |p| on_percent(p.percent() as f32));
+    match outcome {
+        Err(_) | Ok(depot::Outcome::Cancelled) if cancel.is_requested() => OpResult::cancelled(),
+        Ok(depot::Outcome::Cancelled) => OpResult::cancelled(),
+        Err(err) => OpResult::err(tr!("Could not install the EOS Overlay: {error}", error = format!("{err:#}"))),
+        Ok(depot::Outcome::Done) => match eos::finish_install(&epic.config_dir, &prepared.record) {
+            Ok(()) => OpResult::ok(tr!("EOS Overlay installed")),
+            Err(err) => OpResult::err(format!("{err:#}")),
+        },
     }
 }
 
 /// `remove` (the caller asks the user first).
-pub fn remove(legendary: &Legendary) -> OpResult {
-    match legendary.run(&["eos-overlay", "remove", "-y"], &[]) {
-        Err(err) => OpResult { ok: false, aborted: false, warning: false, message: format!("{err:#}") },
-        Ok(out) if out.success() => OpResult { ok: true, aborted: false, warning: false, message: tr!("EOS Overlay uninstalled").into() },
-        Ok(out) => failed(&out),
+pub fn remove(epic: &Epic) -> OpResult {
+    match eos::remove(&epic.config_dir) {
+        Ok(()) => OpResult::ok(tr!("EOS Overlay uninstalled")),
+        Err(err) => OpResult::err(format!("{err:#}")),
     }
 }
 
-fn prefix_args<'a>(action: &'a str, prefix: Option<&'a str>) -> Vec<&'a str> {
-    let mut args = vec!["eos-overlay", action];
-    if let Some(p) = prefix {
-        args.extend(["--prefix", p]);
-    }
-    args
-}
-
-/// `enable` for a valid prefix folder (see [`prefix_folder`]).
-pub fn enable(legendary: &Legendary, prefix: Option<&str>) -> OpResult {
-    switch(legendary, "enable", prefix, tr!("EOS Overlay enabled"))
-}
-
-/// `disable` for a valid prefix folder.
-pub fn disable(legendary: &Legendary, prefix: Option<&str>) -> OpResult {
-    switch(legendary, "disable", prefix, tr!("EOS Overlay disabled"))
-}
-
-fn switch(legendary: &Legendary, action: &str, prefix: Option<&str>, done: &str) -> OpResult {
-    match legendary.run(&prefix_args(action, prefix), &[]) {
-        Err(err) => OpResult { ok: false, aborted: false, warning: false, message: format!("{err:#}") },
-        Ok(out) if out.success() => OpResult { ok: true, aborted: false, warning: false, message: done.into() },
-        Ok(out) => failed(&out),
+/// `enable` for a valid prefix folder (see [`prefix_folder`]); `None`: for
+/// the user on Windows.
+pub fn enable(epic: &Epic, prefix: Option<&str>) -> OpResult {
+    let Some(ig) = eos::installed(&epic.config_dir) else { return OpResult::err(tr!("The EOS Overlay is not installed")) };
+    let overlay = PathBuf::from(&ig.install_path);
+    let done = match prefix {
+        Some(p) => eos::enable_in_prefix(Path::new(p), &overlay),
+        None => windows_registry::set(&eos::windows_values(&overlay)),
+    };
+    match done {
+        Ok(()) => OpResult::ok(tr!("EOS Overlay enabled")),
+        Err(err) => OpResult::err(format!("{err:#}")),
     }
 }
 
-/// `isEnabled` (`info`): legendary prints `Overlay enabled: Yes|No`.
-pub fn is_enabled(legendary: &Legendary, prefix: Option<&str>) -> bool {
-    match legendary.run(&prefix_args("info", prefix), &[]) {
-        Ok(out) => parse_enabled(&format!("{}\n{}", out.stdout, out.stderr)),
-        Err(err) => {
-            log::warn!("Checking if EOS Overlay is enabled: {err:#}");
-            false
+/// `disable` for a valid prefix folder; `None`: for the user on Windows.
+pub fn disable(epic: &Epic, prefix: Option<&str>) -> OpResult {
+    let done = match prefix {
+        Some(p) => eos::disable_in_prefix(Path::new(p)),
+        None => {
+            let overlay = eos::installed(&epic.config_dir).map(|g| PathBuf::from(g.install_path)).unwrap_or_default();
+            windows_registry::delete(&eos::windows_values(&overlay))
         }
+    };
+    match done {
+        Ok(()) => OpResult::ok(tr!("EOS Overlay disabled")),
+        Err(err) => OpResult::err(format!("{err:#}")),
     }
 }
 
-/// Whether `legendary eos-overlay info` says the overlay is enabled.
-pub fn parse_enabled(output: &str) -> bool {
-    output.lines().any(|l| l.contains("Overlay enabled") && l.contains("Yes"))
+/// `isEnabled`: the prefix's (or, `None`, the user's) registry points at
+/// an overlay install.
+pub fn is_enabled(_epic: &Epic, prefix: Option<&str>) -> bool {
+    match prefix {
+        Some(p) => eos::enabled_in_prefix(Path::new(p)),
+        None => windows_registry::overlay_path().is_some_and(|p| eos::is_overlay_install(&p)),
+    }
+}
+
+/// The overlay's values in the Windows registry of the user, through
+/// `reg.exe` (as legendary writes them). Elsewhere there is no such
+/// registry: setting fails, reading finds nothing.
+mod windows_registry {
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    use anyhow::{bail, Result};
+    use heronite_epic_api::eos::{RegValue, WINDOWS_KEY};
+
+    fn reg(args: &[&str]) -> Result<std::process::Output> {
+        if !cfg!(windows) {
+            bail!("the Windows registry is only on Windows");
+        }
+        let mut cmd = Command::new("reg");
+        cmd.args(args);
+        heronite_platform::process::new_helper_group(&mut cmd);
+        Ok(cmd.output()?)
+    }
+
+    pub fn set(values: &[RegValue]) -> Result<()> {
+        for v in values {
+            let out = match v {
+                RegValue::String { key, name, value } => {
+                    reg(&["add", &format!(r"HKCU\{key}"), "/v", name, "/t", "REG_SZ", "/d", value, "/f"])?
+                }
+                RegValue::Dword { key, name, value } => {
+                    reg(&["add", &format!(r"HKCU\{key}"), "/v", name, "/t", "REG_DWORD", "/d", &value.to_string(), "/f"])?
+                }
+            };
+            if !out.status.success() {
+                bail!("reg add: {}", String::from_utf8_lossy(&out.stderr).trim());
+            }
+        }
+        Ok(())
+    }
+
+    pub fn delete(values: &[RegValue]) -> Result<()> {
+        for v in values {
+            let (RegValue::String { key, name, .. } | RegValue::Dword { key, name, .. }) = v;
+            // A value that is not there is fine.
+            reg(&["delete", &format!(r"HKCU\{key}"), "/v", name, "/f"])?;
+        }
+        Ok(())
+    }
+
+    /// `OverlayPath` of the user, when set.
+    pub fn overlay_path() -> Option<PathBuf> {
+        let out = reg(&["query", &format!(r"HKCU\{WINDOWS_KEY}"), "/v", "OverlayPath"]).ok()?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        let line = text.lines().find(|l| l.trim_start().starts_with("OverlayPath"))?;
+        line.split_once("REG_SZ").map(|(_, v)| PathBuf::from(v.trim())).filter(|p| !p.as_os_str().is_empty())
+    }
 }
 
 /// What the Wine prefix of a game gives the overlay commands.
@@ -214,9 +220,7 @@ pub fn prefix_folder(data_paths: &DataPaths, app_name: &str) -> PrefixFolder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::testing::{fake_tool, legendary_of, Reply};
-    use std::sync::Arc;
-    use std::time::Duration;
+    use crate::download::testing::{serve_overlay, Server};
 
     fn fixture() -> (tempfile::TempDir, DataPaths) {
         let dir = tempfile::tempdir().unwrap();
@@ -229,7 +233,11 @@ mod tests {
     fn status_reads_the_install_file() {
         let (_d, data_paths) = fixture();
         assert_eq!(status(&data_paths), Status::default());
-        std::fs::write(installed_file(&data_paths), r#"{"version": "1.1.9", "install_path": "/x/eos_overlay", "managed": true}"#).unwrap();
+        std::fs::write(
+            data_paths.legendary_config_dir().join("overlay_install.json"),
+            r#"{"version": "1.1.9", "install_path": "/x/eos_overlay", "managed": true}"#,
+        )
+        .unwrap();
         let s = status(&data_paths);
         assert!(s.installed);
         assert_eq!(s.version.as_deref(), Some("1.1.9"));
@@ -237,79 +245,51 @@ mod tests {
     }
 
     #[test]
-    fn latest_version_comes_from_the_version_file() {
+    fn the_overlay_installs_switches_in_a_prefix_and_goes() {
         let (d, data_paths) = fixture();
-        let tool = fake_tool(d.path());
-        let lg = legendary_of(&tool, d.path());
-        // Not installed: nothing to ask.
-        assert_eq!(latest_version(&data_paths, &lg), "");
-        assert!(tool.calls().is_empty());
-        std::fs::write(installed_file(&data_paths), r#"{"version": "1"}"#).unwrap();
-        // Installed but no version file: `legendary status` is asked (and a
-        // missing file afterwards means unknown).
-        assert_eq!(latest_version(&data_paths, &lg), "");
-        assert_eq!(tool.calls(), ["status"]);
-        std::fs::write(version_file(&data_paths), r#"{"data": {"buildVersion": "1.2.0"}}"#).unwrap();
-        assert_eq!(latest_version(&data_paths, &lg), "1.2.0");
-    }
-
-    #[test]
-    fn install_asks_the_size_first_then_installs_with_progress() {
-        let (d, data_paths) = fixture();
-        let progress = Reply::new()
-            .out("[DLManager] INFO: = Progress: 50.00% (1/2), Running for 00:00:01, ETA: 00:00:01")
-            .out("[DLManager] INFO:  - Downloaded: 5.00 MiB, Written: 5.00 MiB")
-            .out("[DLManager] INFO:  + Download\t- 5.00 MiB/s (raw) / 5.00 MiB/s (decompressed)")
-            .out("[DLManager] INFO:  + Disk\t- 5.00 MiB/s (write) / 0.00 MiB/s (read)");
-        let asks = Reply::new().out("[DLManager] INFO: Download size: 10.00 MiB (Compression savings: 1.0%)").sleep(Duration::from_secs(5));
-        let tool = fake_tool(d.path()).on(&["-y"], progress).otherwise(asks);
+        let server = Server::start();
+        serve_overlay(&server, "1.2.0");
+        let epic = server.epic(&data_paths.legendary_config_dir());
+        // Not installed: no version to ask for.
+        assert_eq!(latest_version(&data_paths, &epic), "");
         let seen = std::sync::Mutex::new(Vec::new());
-        let r = install(&data_paths, &legendary_of(&tool, d.path()), &Cancel::new(), &|p| seen.lock().unwrap().push(p));
+        let r = install(&data_paths, &epic, &Cancel::new(), &|p| seen.lock().unwrap().push(p));
         assert!(r.ok, "{}", r.message);
-        let path = default_install_path(&data_paths).to_string_lossy().into_owned();
-        assert_eq!(tool.calls(), [format!("eos-overlay install --path {path}"), format!("eos-overlay install -y --path {path}")]);
-        assert_eq!(*seen.lock().unwrap(), [50.0f32]);
+        assert_eq!(seen.lock().unwrap().last(), Some(&100.0f32));
+        let s = status(&data_paths);
+        assert_eq!(s.version.as_deref(), Some("1.2.0"));
+        assert!(eos::is_overlay_install(&default_install_path(&data_paths)));
+        assert_eq!(latest_version(&data_paths, &epic), "1.2.0");
+
+        // Switching it in a Wine prefix (only Unix hosts run Wine; a prefix
+        // maps host paths through `Z:`).
+        if cfg!(unix) {
+            let prefix = d.path().join("pfx");
+            std::fs::create_dir_all(&prefix).unwrap();
+            std::fs::write(prefix.join("user.reg"), "WINE REGISTRY Version 2\n;; All keys relative to \\User\\S-1-5-21-0-0-0-1000\n\n")
+                .unwrap();
+            let p = prefix.to_str();
+            assert!(!is_enabled(&epic, p));
+            assert!(enable(&epic, p).ok);
+            assert!(is_enabled(&epic, p));
+            assert!(disable(&epic, p).ok);
+            assert!(!is_enabled(&epic, p));
+        }
+
+        assert!(remove(&epic).ok);
+        assert!(!status(&data_paths).installed && !default_install_path(&data_paths).exists());
     }
 
     #[test]
-    fn install_can_be_cancelled_and_reports_errors() {
-        let (d, data_paths) = fixture();
-        let tool = fake_tool(d.path()).otherwise(Reply::new().out("Download size: 1.00 MiB").err("[cli] ERROR: boom").exit(1));
-        let lg = legendary_of(&tool, d.path());
-        let r = install(&data_paths, &lg, &Cancel::new(), &|_| {});
-        assert!(!r.ok && r.message.contains("boom"), "{}", r.message);
-
-        let cancel: Arc<Cancel> = Cancel::new();
+    fn a_cancelled_install_says_so() {
+        let (_d, data_paths) = fixture();
+        let server = Server::start();
+        let cancel: std::sync::Arc<Cancel> = Cancel::new();
         cancel.request();
-        let r = install(&data_paths, &lg, &cancel, &|_| {});
-        assert!(r.aborted);
-    }
-
-    #[test]
-    fn enable_disable_remove_and_info_arguments() {
-        let (d, _heroic) = fixture();
-        let tool = fake_tool(d.path()).otherwise(Reply::new().out("[cli] INFO: Overlay enabled: Yes"));
-        let lg = legendary_of(&tool, d.path());
-        assert!(enable(&lg, Some("/pfx")).ok);
-        assert!(disable(&lg, None).ok);
-        assert!(remove(&lg).ok);
-        assert!(is_enabled(&lg, Some("/pfx")));
-        // Windows: the overlay is on for every game at once (no prefix).
-        assert!(is_enabled(&lg, None));
-        assert_eq!(
-            tool.calls(),
-            [
-                "eos-overlay enable --prefix /pfx",
-                "eos-overlay disable",
-                "eos-overlay remove -y",
-                "eos-overlay info --prefix /pfx",
-                "eos-overlay info"
-            ]
-        );
-        let no = fake_tool(&d.path().join("no")).otherwise(Reply::new().out("[cli] INFO: Overlay enabled: No"));
-        assert!(!is_enabled(&legendary_of(&no, d.path()), None));
-        let none = fake_tool(&d.path().join("none")).otherwise(Reply::new().out("[cli] INFO: No Legendary-managed installation found."));
-        assert!(!is_enabled(&legendary_of(&none, d.path()), None));
+        assert!(install(&data_paths, &server.epic(&data_paths.legendary_config_dir()), &cancel, &|_| {}).aborted);
+        // Epic does not answer: an error to read.
+        let r = install(&data_paths, &server.epic(&data_paths.legendary_config_dir()), &Cancel::new(), &|_| {});
+        assert!(!r.ok && !r.aborted && r.message.contains("EOS Overlay"), "{}", r.message);
     }
 
     #[test]

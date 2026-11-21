@@ -105,7 +105,7 @@ fn meta_line(el: &DmElement) -> String {
 /// prefixes, lines joined.
 fn failure_reason(error: &str) -> String {
     let strip = |line: &str| {
-        // legendary: `[DLManager] ERROR: text`.
+        // legendary's, in older history entries: `[DLManager] ERROR: text`.
         let line = line.strip_prefix('[').and_then(|l| l.split_once("] ")).map_or(line, |(_, rest)| rest);
         ["ERROR: ", "CRITICAL: "].iter().find_map(|p| line.strip_prefix(p)).unwrap_or(line).trim().to_string()
     };

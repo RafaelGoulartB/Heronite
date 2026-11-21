@@ -3,13 +3,15 @@ name = "heronite-epic"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Epic Games Store through legendary (login, library, install, update, cloud saves) compatible with Heronite's data files"
+description = "Epic Games Store (login, library, install, update, cloud saves) in legendary's data files, on heronite-epic-api"
 
 [dependencies]
 heronite-data = { path = "../data" }
 heronite-platform = { path = "../platform" }
 heronite-i18n = { path = "../i18n" }
 heronite-launch = { path = "../launch" }
+heronite-epic-api = { path = "../epic-api" }
+heronite-depot = { path = "../depot" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 anyhow = "1"
@@ -20,6 +22,7 @@ parking_lot = "0.12"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 
 [dev-dependencies]
+sha1_smol = "1"
 heronite-data = { path = "../data", features = ["testing"] }
 tempfile = "3"
 

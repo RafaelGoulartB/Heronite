@@ -25,11 +25,16 @@ pub fn is_expired(err: &anyhow::Error) -> bool {
     err.chain().any(|e| e.is::<SessionExpired>())
 }
 
-/// What legendary logs when Epic refuses the stored login (legendary deletes
-/// its `user.json` then). A network failure ("HTTP request for login
-/// failed") is not one of them.
-pub fn legendary_expired(output: &str) -> bool {
-    let text = output.to_ascii_lowercase();
+/// Whether the message of a failed Epic operation (a download's error, kept
+/// in the queue's history as text) says the sign-in expired: the text of
+/// [`SessionExpired`], or what legendary logged when Epic refused the stored
+/// login (older history entries). A network failure ("HTTP request for
+/// login failed") is not one of them.
+pub fn expired_message(message: &str) -> bool {
+    if message.contains(&SessionExpired.to_string()) {
+        return true;
+    }
+    let text = message.to_ascii_lowercase();
     ["stored credentials are no longer valid", "invalid_refresh_token", "invalid_grant"].iter().any(|p| text.contains(p))
 }
 
@@ -47,10 +52,11 @@ mod tests {
     }
 
     #[test]
-    fn legendary_messages() {
-        assert!(legendary_expired("[Core] ERROR: Stored credentials are no longer valid! Please login again."));
-        assert!(legendary_expired("errors.com.epicgames.account.auth_token.invalid_refresh_token"));
-        assert!(!legendary_expired("[Core] ERROR: HTTP request for login failed: ConnectionError(), please try again later."));
-        assert!(!legendary_expired("[cli] ERROR: Login failed, cannot continue!"));
+    fn expired_messages() {
+        assert!(expired_message(&format!("{:#}", anyhow!(SessionExpired).context("Installing Control"))));
+        assert!(expired_message("[Core] ERROR: Stored credentials are no longer valid! Please login again."));
+        assert!(expired_message("errors.com.epicgames.account.auth_token.invalid_refresh_token"));
+        assert!(!expired_message("[Core] ERROR: HTTP request for login failed: ConnectionError(), please try again later."));
+        assert!(!expired_message("[cli] ERROR: Login failed, cannot continue!"));
     }
 }

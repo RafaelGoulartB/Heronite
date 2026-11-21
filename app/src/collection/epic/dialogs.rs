@@ -361,7 +361,7 @@ impl CollectionView {
         self.open_dialog(view, cx);
     }
 
-    /// Play while signed out of Epic: legendary cannot start the game
+    /// Play while signed out of Epic: the game cannot start signed in
     /// without the account, so log in again (the Epic Games page) or start
     /// it offline this once.
     pub(super) fn epic_open_signed_out(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {

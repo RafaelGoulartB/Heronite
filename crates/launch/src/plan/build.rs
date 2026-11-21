@@ -40,7 +40,7 @@ pub fn build_plan_with_settings(
     }
     let mut plan = match game.runner.as_str() {
         "sideload" => build_sideload(ctx, probe, game, meta, settings, opts),
-        "legendary" => crate::legendary::build(ctx, probe, game, settings, opts),
+        "legendary" => crate::epic::build(ctx, probe, game, settings, opts),
         "gog" => crate::gog::build(ctx, probe, game, settings, opts),
         "nile" => crate::nile::build(ctx, probe, game, settings, opts),
         other => LaunchPlan::Unavailable(tr!("Launching {other} games is not supported yet", other)),

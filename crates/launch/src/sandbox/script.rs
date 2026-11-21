@@ -3,7 +3,7 @@
 //! the wrappers before it change it: gamescope gives the game its own
 //! display, and controllers come and go between launches.
 //!
-//! One line, without newlines: legendary gets it inside `--wrapper`.
+//! One line, without newlines, so it fits among the wrappers of a command.
 
 use super::mounts::{Access, Mounts, SHADER_CACHES, SYSTEM};
 use super::{Bwrap, Sandbox};

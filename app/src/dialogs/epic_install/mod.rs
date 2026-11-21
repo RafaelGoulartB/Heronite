@@ -1,6 +1,6 @@
 //! Install dialog of an Epic game (port of Heroic's `InstallModal` ->
 //! `DownloadDialog` / `ImportDialog`): install path with free space, sizes
-//! from `legendary info`, DLC and selective-download (SDL) choices, Wine
+//! from the install info, DLC and selective-download (SDL) choices, Wine
 //! settings on Linux, and "Import Game" for an existing install. EA app /
 //! Ubisoft Connect games get Heroic's `ThirdPartyDialog` instead: a notice and
 //! the Wine settings.
@@ -13,11 +13,11 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::game_config;
 use heronite_data::{AppPaths, DataPaths};
-use heronite_epic::cmd::Legendary;
 use heronite_epic::disk::{self, DiskSpace};
 use heronite_epic::info::{self, Dlc, InstallInfo, Sdl};
 use heronite_epic::third_party::{self, Provider};
 use heronite_epic::util::{file_size, remove_special_characters};
+use heronite_epic::Epic;
 use heronite_i18n::tr;
 use heronite_wine::WineInstallation;
 use serde_json::Value;
@@ -41,7 +41,7 @@ pub struct EpicInstallDialog {
     /// Managed by a store app: `Err(name)` when Heroic does not support it.
     third_party: Option<Result<Provider, String>>,
     platform: String,
-    /// `legendary info` result (None while loading).
+    /// The install info (None while loading).
     info: Option<InstallInfo>,
     info_error: Option<String>,
     path: Entity<InputState>,
@@ -99,7 +99,7 @@ impl EpicInstallDialog {
         let prefix = new_input(window, cx, &suggested_prefix, "");
         let import_path = new_input(window, cx, "", "");
         let third_party = third_party::managed_by(&game);
-        // legendary can neither download nor import these games.
+        // Epic serves no files of these games: they can be neither downloaded nor imported.
         let mode = if third_party.is_some() { Mode::Install } else { mode };
         let mut this = Self {
             data_paths,
@@ -167,12 +167,7 @@ impl EpicInstallDialog {
     fn load_info(&mut self, cx: &mut Context<Self>) {
         let (data_paths, app, platform) = (self.data_paths.clone(), self.app_name.clone(), self.platform.clone());
         cx.spawn(async move |this, cx| {
-            let res = cx
-                .background_spawn(async move {
-                    let lg = Legendary::locate(&data_paths)?;
-                    info::install_info(&data_paths, &lg, &app, &platform)
-                })
-                .await;
+            let res = cx.background_spawn(async move { info::install_info(&data_paths, &Epic::new(&data_paths), &app, &platform) }).await;
             this.update(cx, |this, cx| {
                 match res {
                     Ok(i) => this.apply_info(i),
@@ -242,8 +237,8 @@ impl EpicInstallDialog {
         self.space.as_ref().map(|s| s.free.saturating_sub(self.reserved) as f64)
     }
 
-    /// Too little room: the button says "Force install", which tells
-    /// legendary to skip its own free space check.
+    /// Too little room: the button says "Force install", which skips
+    /// the download's own free space check.
     fn not_enough(&self) -> bool {
         self.third_party.is_none() && self.info.is_some() && self.free_after_queue().is_some_and(|free| free < self.disk_bytes())
     }

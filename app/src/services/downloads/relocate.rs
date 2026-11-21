@@ -4,8 +4,8 @@
 
 use gpui_kit::*;
 use heronite_amazon::cmd::Nile;
-use heronite_epic::cmd::Legendary;
 use heronite_epic::ops as epic_ops;
+use heronite_epic::Epic;
 use heronite_i18n::tr;
 
 use super::stores::{done, failed};
@@ -29,10 +29,7 @@ impl Downloads {
                 "nile" => {
                     heronite_amazon::ops::relocate(paths, &app, &folder).map_or_else(failed, |_| done(tr!("Install location changed")))
                 }
-                _ => match Legendary::locate(paths) {
-                    Ok(lg) => epic_ops::relocate(paths, &lg, &app, &folder),
-                    Err(err) => failed(err),
-                },
+                _ => epic_ops::relocate(paths, &Epic::new(paths), &app, &folder),
             },
             |_, _, _| {},
         );
@@ -52,10 +49,7 @@ impl Downloads {
                 "nile" => Nile::locate(paths)
                     .and_then(|n| heronite_amazon::ops::forget(paths, &n, &app))
                     .map_or_else(failed, |_| done(tr!("Removed from the installed games"))),
-                _ => match Legendary::locate(paths) {
-                    Ok(lg) => epic_ops::force_uninstall(paths, &lg, &app),
-                    Err(err) => failed(err),
-                },
+                _ => epic_ops::force_uninstall(paths, &Epic::new(paths), &app),
             },
             |_, _, _| {},
         );

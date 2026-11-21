@@ -60,8 +60,8 @@ pub struct LaunchOptions {
     pub extra_args: Vec<String>,
     /// legendary `--skip-version-check`.
     pub skip_version_check: bool,
-    /// legendary `--offline` for this launch only, whatever `offlineMode`
-    /// says: no Epic sign-in and no update check.
+    /// Offline for this launch only, whatever `offlineMode` says: no Epic
+    /// sign-in and no update check.
     pub offline: bool,
     /// legendary `--override-exe` for an alternative executable.
     pub alt_exe: Option<String>,

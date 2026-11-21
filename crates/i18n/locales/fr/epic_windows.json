@@ -14,11 +14,11 @@
   "Play opens the game in {store}, which installs and runs it: sign in to {store} there. When {store} is not on this PC, its installer is downloaded and runs the first time you play.": "Jouer ouvre le jeu dans {store}, qui l’installe et l’exécute : connectez-vous à {store} dans cette application. Si {store} n’est pas sur ce PC, son programme d’installation est téléchargé et exécuté la première fois que vous jouez.",
   "The game has an update: update it, or choose \"Play anyway\".": "Une mise à jour du jeu est disponible : installez-la ou choisissez « Jouer quand même ».",
   "Use the overlay in games": "Utiliser l’overlay dans les jeux",
-  "legendary could not start the game: {error}": "legendary n’a pas pu lancer le jeu : {error}",
-  "legendary did not answer in time. Check the internet connection and try again.": "legendary n’a pas répondu à temps. Vérifiez votre connexion Internet et réessayez.",
   "{client} opens this game, and it is not installed. Install {client}, then play again.": "{client} ouvre ce jeu, mais n’est pas installé. Installez {client}, puis relancez le jeu.",
   "{client} starts the game": "{client} lance le jeu",
   "{n} game taken in from the Epic Games Launcher": "{n} jeu importé depuis Epic Games Launcher",
   "{n} games taken in from the Epic Games Launcher": "{n} jeux importés depuis Epic Games Launcher",
-  "{title} could not be taken in from the Epic Games Launcher: {error}": "Impossible d’importer {title} depuis Epic Games Launcher : {error}"
+  "{title} could not be taken in from the Epic Games Launcher: {error}": "Impossible d’importer {title} depuis Epic Games Launcher : {error}",
+  "Epic Games could not start the game: {error}": "Epic Games n’a pas pu lancer le jeu : {error}",
+  "Epic Games did not answer in time. Check the internet connection and try again.": "Epic Games n’a pas répondu à temps. Vérifiez votre connexion Internet et réessayez."
 }

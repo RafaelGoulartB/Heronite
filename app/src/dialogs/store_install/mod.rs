@@ -1,5 +1,5 @@
 //! Install / import dialog of a GOG or Amazon Games game: install folder with
-//! free space, platform and language (GOG), DLCs, sizes from gogdl / nile, and
+//! free space, platform and language (GOG), DLCs, sizes from GOG / nile, and
 //! the Wine settings on Linux. "Import game" adds a copy that is already on disk.
 
 mod console;
@@ -13,7 +13,6 @@ use heronite_data::game_config;
 use heronite_data::DataPaths;
 use heronite_epic::disk::{self, DiskSpace};
 use heronite_epic::util::{file_size, remove_special_characters};
-use heronite_gog::cmd::Gogdl;
 use heronite_gog::info::{Dlc, InstallInfo as GogInfo};
 use heronite_i18n::Lang;
 use heronite_wine::WineInstallation;
@@ -260,10 +259,7 @@ impl StoreInstallDialog {
             let res = cx
                 .background_spawn(async move {
                     match store {
-                        Store::Gog => {
-                            let gogdl = Gogdl::locate_or_install(&data_paths)?;
-                            heronite_gog::info::install_info(&data_paths, &gogdl, &app, &platform).map(Loaded::Gog)
-                        }
+                        Store::Gog => heronite_gog::info::install_info(&data_paths, &app, &platform).map(Loaded::Gog),
                         Store::Amazon => {
                             let nile = Nile::locate_or_install(&data_paths)?;
                             heronite_amazon::info::install_info(&data_paths, &nile, &app).map(Loaded::Amazon)
@@ -371,8 +367,8 @@ impl StoreInstallDialog {
     }
 
     /// Free space left for this game once the downloads queued before it are
-    /// in. A shortage is only shown: gogdl and nile check the space
-    /// themselves and cannot be told to skip it (no "Force install" here).
+    /// in. A shortage is only shown: GOG's download and nile check the space
+    /// themselves (no "Force install" here).
     fn free_after_queue(&self) -> Option<f64> {
         self.space.as_ref().map(|s| s.free.saturating_sub(self.reserved) as f64)
     }

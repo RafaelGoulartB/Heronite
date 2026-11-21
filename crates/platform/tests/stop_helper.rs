@@ -37,7 +37,7 @@ mod windows {
 
     pub fn main() {
         match std::env::args().nth(1).as_deref() {
-            // A tool that saves its work on Ctrl+C (legendary, gogdl).
+            // A tool that saves its work on Ctrl+C.
             Some("--wait-for-ctrl-c") => {
                 // SAFETY: a handler that only sets a flag.
                 unsafe { SetConsoleCtrlHandler(Some(on_ctrl), 1) };

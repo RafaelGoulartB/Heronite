@@ -8,12 +8,12 @@
 //! On the first start (the data folder does not exist yet) the parts of
 //! Heroic's config folder this app uses are copied in: library, Collection,
 //! playtime, game settings, Epic login (`legendaryConfig`), Wine tools and
-//! caches, plus the game logs and the legendary binary of the Heronite
-//! install. Absolute paths into Heroic's folder (Wine builds in `tools/`) are
-//! rewritten to the new one: as they are, and as JSON writes a Windows path
-//! (each `\` doubled). Heroic for Windows keeps the same folder in
-//! `%APPDATA%\heroic`. Heroic's files are only read, so Heroic keeps
-//! working on its own and the two apps never touch each other's data again.
+//! caches, plus the game logs. Absolute paths into Heroic's folder (Wine
+//! builds in `tools/`) are rewritten to the new one: as they are, and as
+//! JSON writes a Windows path (each `\` doubled). Heroic for Windows keeps
+//! the same folder in `%APPDATA%\heroic`. Heroic's files are only read, so
+//! Heroic keeps working on its own and the two apps never touch each other's
+//! data again.
 //!
 //! The copy goes to a sibling staging folder that is renamed into place at
 //! the end: an interrupted copy leaves no half data folder behind.
@@ -66,35 +66,16 @@ pub struct Source {
     pub logs: Option<PathBuf>,
     /// This app's launcher logs from before the data folder existed.
     pub launcher_logs: Option<PathBuf>,
-    /// legendary binaries to copy into `tools/bin`, first existing wins.
-    pub legendary: Vec<PathBuf>,
 }
 
 impl Source {
     /// The real locations on this machine.
     pub fn detect(app: &AppPaths) -> Option<Self> {
         let heroic = dirs::config_dir()?.join("heroic");
-        let mut legendary = vec![heroic.join("tools/bin").join(format!("legendary{}", std::env::consts::EXE_SUFFIX))];
-        if cfg!(windows) {
-            // Electron's logs folder; legendary is fetched by the store
-            // tools' update when Heroic's has none.
-            let logs = Some(heroic.join("logs"));
-            return Some(Self { heroic, logs, launcher_logs: Some(app.config.join("logs")), legendary });
-        }
-        let arch = if std::env::consts::ARCH == "aarch64" { "arm64" } else { "x64" };
-        let rel = format!("resources/app.asar.unpacked/build/bin/{arch}/linux/legendary");
-        if let Some(home) = dirs::home_dir() {
-            legendary.push(home.join(".local/opt/Heronite").join(&rel));
-        }
-        for base in ["/opt/Heronite", "/opt/Heroic", "/usr/lib/heroic"] {
-            legendary.push(Path::new(base).join(&rel));
-        }
-        Some(Self {
-            heroic,
-            logs: dirs::state_dir().map(|s| s.join("Heroic/logs")),
-            launcher_logs: Some(app.config.join("logs")),
-            legendary,
-        })
+        let launcher_logs = Some(app.config.join("logs"));
+        // Electron's logs folder on Windows.
+        let logs = if cfg!(windows) { Some(heroic.join("logs")) } else { dirs::state_dir().map(|s| s.join("Heroic/logs")) };
+        Some(Self { heroic, logs, launcher_logs })
     }
 }
 
@@ -113,7 +94,6 @@ pub struct Report {
     pub bytes: u64,
     /// Text files whose paths into Heroic's folder were rewritten.
     pub rewritten: usize,
-    pub legendary: Option<PathBuf>,
     pub ui_state: bool,
 }
 
@@ -203,15 +183,6 @@ fn fill(source: &Source, staging: &Path, target: &Path) -> Result<Report> {
     if let Some(dir) = source.launcher_logs.as_deref().filter(|d| d.is_dir()) {
         copy_any(dir, &staging.join("logs/launcher"), &mut report)?;
     }
-    let bin = DataPaths::at(staging).legendary_bin();
-    if !bin.exists() {
-        if let Some(found) = source.legendary.iter().find(|p| p.is_file()) {
-            fs::create_dir_all(bin.parent().unwrap())?;
-            fs::copy(found, &bin).with_context(|| format!("copying {}", found.display()))?;
-            set_executable(&bin)?;
-            report.legendary = Some(found.clone());
-        }
-    }
     // Files hold the folder as Heroic saw it: the given path or, when it goes
     // through a symlink, the real one.
     let mut olds = vec![source.heroic.clone()];
@@ -252,17 +223,6 @@ fn copy_any(from: &Path, to: &Path, report: &mut Report) -> io::Result<()> {
         report.bytes += fs::copy(from, to)?;
         report.files += 1;
     }
-    Ok(())
-}
-
-#[cfg(unix)]
-fn set_executable(path: &Path) -> io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755))
-}
-
-#[cfg(not(unix))]
-fn set_executable(_: &Path) -> io::Result<()> {
     Ok(())
 }
 
@@ -413,7 +373,7 @@ mod tests {
 
         let data = DataPaths::at(dir.path().join(r"Roaming\heronite\data"));
         let app = AppPaths { config: dir.path().join(r"Roaming\heronite\config"), cache: dir.path().join(r"Local\heronite\cache") };
-        let source = Source { heroic: heroic.clone(), logs: Some(heroic.join("logs")), launcher_logs: None, legendary: vec![] };
+        let source = Source { heroic: heroic.clone(), logs: Some(heroic.join("logs")), launcher_logs: None };
         let report = migrate(&source, &data, &app).unwrap();
 
         let root = &data.root;
@@ -457,17 +417,10 @@ mod tests {
         write(&logs.join("heroic.log"), "heroic's own");
         let launcher_logs = dir.path().join("config/heronite-rs/logs");
         write(&launcher_logs.join("heronite-rs-2026-10-01.log"), "ours");
-        let legendary = dir.path().join("opt/legendary");
-        write(&legendary, "#!/bin/sh");
 
         let data = DataPaths::at(dir.path().join("share/heronite-rs"));
         let app = AppPaths { config: dir.path().join("cfg"), cache: dir.path().join("cache") };
-        let source = Source {
-            heroic: heroic.clone(),
-            logs: Some(logs),
-            launcher_logs: Some(launcher_logs),
-            legendary: vec![dir.path().join("missing"), legendary.clone()],
-        };
+        let source = Source { heroic: heroic.clone(), logs: Some(logs), launcher_logs: Some(launcher_logs) };
         let report = migrate(&source, &data, &app).unwrap();
 
         let root = &data.root;
@@ -479,8 +432,6 @@ mod tests {
         assert!(root.join("logs/games/G_sideload/launch.log").exists());
         assert!(!root.join("logs/heroic.log").exists());
         assert!(root.join("logs/launcher/heronite-rs-2026-10-01.log").exists());
-        assert!(data.legendary_bin().exists());
-        assert_eq!(report.legendary.as_deref(), Some(legendary.as_path()));
         // Paths into Heroic's folder now point into the data folder; binaries are untouched.
         let want = root.join("tools/proton/GE/proton").to_string_lossy().into_owned();
         assert!(fs::read_to_string(data.global_config()).unwrap().contains(&want));
@@ -505,7 +456,7 @@ mod tests {
         std::os::unix::fs::symlink(&real, &link).unwrap();
         let data = DataPaths::at(dir.path().join("share/heronite-rs"));
         let app = AppPaths { config: dir.path().join("cfg"), cache: dir.path().join("cache") };
-        let source = Source { heroic: link, logs: None, launcher_logs: None, legendary: vec![] };
+        let source = Source { heroic: link, logs: None, launcher_logs: None };
         assert_eq!(migrate(&source, &data, &app).unwrap().rewritten, 1);
         let want = format!(r#"{{"bin":"{}/tools/w"}}"#, data.root.display());
         assert_eq!(fs::read_to_string(data.global_config()).unwrap(), want);
@@ -520,7 +471,7 @@ mod tests {
         // The target's parent is a file: the staging folder cannot be made.
         write(&dir.path().join("share"), "not a folder");
         let app = AppPaths { config: dir.path().join("cfg"), cache: dir.path().join("cache") };
-        let source = Source { heroic, logs: None, launcher_logs: None, legendary: vec![] };
+        let source = Source { heroic, logs: None, launcher_logs: None };
         assert!(migrate(&source, &data, &app).is_err());
         assert!(!data.root.exists());
     }

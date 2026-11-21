@@ -1,31 +1,38 @@
-//! Epic Games Store through the `legendary` CLI (port of Heroic's
-//! `backend/storeManagers/legendary/**` and the download queue). Everything
-//! here is blocking: call it from worker threads.
+//! The Epic Games Store (port of Heroic's `backend/storeManagers/legendary/**`
+//! and the download queue), on [`heronite_epic_api`] (Epic's services and
+//! legendary's files) and [`heronite_depot`] (downloads). Everything here is
+//! blocking: call it from worker threads.
 //!
-//! * [`cmd`]: running legendary (binary lookup, env, streaming, cancel).
+//! * [`client`]: [`Epic`], the handle every operation goes through.
 //! * [`user`]: login / logout and the account kept in `store/config.json`.
-//! * [`library`]: `legendary list`, `store_cache/legendary_library.json`,
+//! * [`library`]: refreshing the library, `store_cache/legendary_library.json`,
 //!   update detection.
-//! * [`info`]: `legendary info`, selective downloads, API overrides.
+//! * [`info`]: install information, selective downloads, API overrides.
+//! * [`download`]: installs, updates and repairs written by heronite-depot.
 //! * [`ops`]: install / update / repair / uninstall / move / import.
 //! * [`moves`]: the resumable install move and its journal.
 //! * [`queue`], [`manager`]: the download queue (`store/download-manager.json`).
-//! * [`progress`]: legendary's download progress lines.
+//! * [`progress`]: what the queue shows of a download (and the progress
+//!   lines of nile).
 //! * [`saves`]: cloud saves.
 //! * [`playtime`]: Epic's play time for the games never played here.
 //! * [`session`]: a sign-in that expired, for every store.
 //! * [`autoupdate`]: which updates `autoUpdateGames` may queue now.
-//! * [`eos_overlay`]: the EOS Overlay (`legendary eos-overlay`).
+//! * [`eos_overlay`]: the EOS Overlay.
 //! * [`third_party`]: games of the EA app and Ubisoft Connect.
 //! * [`egl`]: games the Epic Games Launcher installed (Windows).
+//! * [`cmd`]: what nile left when it finished, and [`cmd::Cancel`].
 //!
-//! legendary's own files (`legendaryConfig/legendary/**`) are only ever
-//! written by legendary; `third-party-installed.json` there is Heroic's.
+//! The account, library and installs stay in legendary's files
+//! (`legendaryConfig/legendary/**`), in its formats, so installs made with
+//! legendary carry over; `third-party-installed.json` there is Heroic's.
 
 pub mod autoupdate;
 pub mod cache_store;
+pub mod client;
 pub mod cmd;
 pub mod disk;
+pub mod download;
 pub mod egl;
 pub mod eos_overlay;
 pub mod info;
@@ -42,3 +49,5 @@ pub mod session;
 pub mod third_party;
 pub mod user;
 pub mod util;
+
+pub use client::Epic;

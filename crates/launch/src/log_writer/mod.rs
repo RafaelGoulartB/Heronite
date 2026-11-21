@@ -26,7 +26,8 @@ mod paths;
 pub use format::{format_line, GameLogType, Level};
 pub use game_log::{GameLog, END_OF_LOG, MAX_LOG_BYTES};
 pub use header::{
-    command_line_for_log, launch_log_switches, merged_settings, settings_for_log, write_disabled_notice, write_launch_header, HeaderInfo,
+    command_line_for_log, hide_sign_in, launch_log_switches, merged_settings, settings_for_log, without_sign_in, write_disabled_notice,
+    write_launch_header, HeaderInfo,
 };
 pub use launcher_log::{prune_launcher_logs, LauncherLogger, KEEP_LAUNCHER_LOGS, MAX_LAUNCHER_LOG_BYTES};
 pub use paths::{old_path, LogPaths};

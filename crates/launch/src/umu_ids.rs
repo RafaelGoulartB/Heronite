@@ -205,7 +205,6 @@ pub fn update_if_needed(paths: &DataPaths, net: &dyn Net) -> Result<bool, String
 pub fn attach(plan: &mut LaunchPlan, ctx: &PlanContext, keys: GameKeys) {
     let process = match plan {
         LaunchPlan::Wine { process, runtime: WineRuntime::Umu, .. } => process,
-        LaunchPlan::Legendary { process, .. } if process.through_umu => process,
         _ => return,
     };
     if let Some(r) = resolve(&ctx.umu_database, ctx.umu_ids.as_ref(), keys) {

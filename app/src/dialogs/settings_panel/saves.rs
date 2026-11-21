@@ -1,4 +1,4 @@
-//! "Cloud saves" tab: Epic (legendary: saves folder, manual sync, autosync) and
+//! "Cloud saves" tab: Epic (saves folder, manual sync, autosync) and
 //! GOG (the folders GOG lists, manual sync through the download service, autosync).
 
 use gpui_kit::prelude::*;

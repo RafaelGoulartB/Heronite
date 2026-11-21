@@ -1,20 +1,20 @@
 //! Helpers for tests of other crates (the `testing` feature, turned on by
 //! their `[dev-dependencies]`).
 //!
-//! [`FakeTool`]: a stand-in for legendary, gogdl, nile or any command-line
+//! [`FakeTool`]: a stand-in for nile or any command-line
 //! tool, the same on every system. It is a small program
 //! (`testing/fake_tool.rs`, built once with `rustc` into the temp folder)
 //! copied where the test wants the tool, which replays what the test told it
 //! for the arguments it gets and logs its calls:
 //!
 //! ```ignore
-//! let tool = FakeTool::new(dir, "legendary")
-//!     .record_env("LEGENDARY_CONFIG_PATH")
-//!     .on(&["info"], Reply::new().out(r#"{"game": {}}"#))
+//! let tool = FakeTool::new(dir, "nile")
+//!     .record_env("NILE_CONFIG_PATH")
+//!     .on(&["library"], Reply::new().out("[]"))
 //!     .otherwise(Reply::new().err("[cli] ERROR: boom").exit(1));
-//! let lg = Legendary::with_bin(tool.bin(), dir.join("cfg"));
+//! let nile = Nile::with_bin(tool.bin(), &paths);
 //! // ... run the code under test ...
-//! assert_eq!(tool.calls(), ["info Calluna --json", "install Calluna"]);
+//! assert_eq!(tool.calls(), ["library sync", "install Game"]);
 //! ```
 
 use std::path::{Path, PathBuf};

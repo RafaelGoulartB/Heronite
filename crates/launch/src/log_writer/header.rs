@@ -101,12 +101,36 @@ pub fn command_line_for_log(cmd: &crate::plan::Command) -> String {
         let pair = format!("{k}={shown}");
         parts.push(shlex::try_quote(&pair).map(|c| c.into_owned()).unwrap_or(pair));
     }
-    let args = cmd.args.iter().map(|a| match a.split_once('=') {
-        Some((key, _)) if key.eq_ignore_ascii_case("-AUTH_PASSWORD") => format!("{key}=<hidden>"),
-        _ => a.clone(),
-    });
-    parts.push(crate::plan::Command { args: args.collect(), env: Default::default(), ..cmd.clone() }.display());
+    parts.push(crate::plan::Command { env: Default::default(), ..without_sign_in(cmd) }.display());
     parts.join(" ")
+}
+
+/// `cmd` with the Epic sign-in of its arguments hidden: the code of
+/// `-AUTH_PASSWORD=<code>` and of `AUTH_PASSWORD=<code>` in a store link's
+/// query (`link2ea://...?AUTH_PASSWORD=<code>&...`), for anything written
+/// to a log.
+pub fn without_sign_in(cmd: &crate::plan::Command) -> crate::plan::Command {
+    crate::plan::Command { args: cmd.args.iter().map(|a| hide_sign_in(a)).collect(), ..cmd.clone() }
+}
+
+/// `arg` with the value of every `AUTH_PASSWORD=` in it replaced, up to
+/// the next `&`, `"` or space.
+pub fn hide_sign_in(arg: &str) -> String {
+    const KEY: &str = "auth_password=";
+    let lower = arg.to_ascii_lowercase();
+    let mut out = String::with_capacity(arg.len());
+    let mut at = 0;
+    while let Some(found) = lower[at..].find(KEY) {
+        let value = at + found + KEY.len();
+        out.push_str(&arg[at..value]);
+        let end = arg[value..].find(['&', '"', ' ']).map_or(arg.len(), |e| value + e);
+        if end > value {
+            out.push_str("<hidden>");
+        }
+        at = end;
+    }
+    out.push_str(&arg[at..]);
+    out
 }
 
 /// What the header of a launch log is made of.
@@ -150,6 +174,26 @@ pub fn write_disabled_notice(log: &GameLog) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn the_epic_sign_in_never_reaches_a_log() {
+        assert_eq!(hide_sign_in("-AUTH_PASSWORD=abc123"), "-AUTH_PASSWORD=<hidden>");
+        assert_eq!(hide_sign_in("-auth_password=abc"), "-auth_password=<hidden>");
+        assert_eq!(
+            hide_sign_in("link2ea://launchgame/Ori?AUTH_PASSWORD=abc&AUTH_TYPE=exchangecode&epicuserid=acc"),
+            "link2ea://launchgame/Ori?AUTH_PASSWORD=<hidden>&AUTH_TYPE=exchangecode&epicuserid=acc"
+        );
+        assert_eq!(hide_sign_in("uplay://launch/635?AUTH_PASSWORD=abc"), "uplay://launch/635?AUTH_PASSWORD=<hidden>");
+        assert_eq!(hide_sign_in("-AUTH_PASSWORD="), "-AUTH_PASSWORD=");
+        assert_eq!(hide_sign_in("-epicapp=Calluna"), "-epicapp=Calluna");
+        let cmd = crate::plan::Command {
+            program: "wine".into(),
+            args: vec!["start".into(), "link2ea://launchgame/X?AUTH_PASSWORD=secretcode&a=1".into()],
+            ..Default::default()
+        };
+        assert!(!command_line_for_log(&cmd).contains("secretcode"));
+        assert!(!without_sign_in(&cmd).display().contains("secretcode"));
+    }
 
     #[test]
     fn switches_follow_global_disable_and_game_verbose() {

@@ -13,7 +13,7 @@ pub const KEY: &str = "lastUsedLaunchOption";
 pub enum LaunchOption {
     /// The game with extra arguments.
     Basic { name: String, parameters: String },
-    /// An installed DLC that is a program of its own: legendary launches it
+    /// An installed DLC that is a program of its own: it is launched
     /// instead of the game.
     Dlc { app_name: String, title: String },
 }
