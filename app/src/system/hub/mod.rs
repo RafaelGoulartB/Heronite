@@ -137,6 +137,12 @@ pub fn running_games(cx: &App) -> std::collections::HashSet<String> {
     cx.try_global::<Hub>().map(|h| h.0.borrow().running.keys().cloned().collect()).unwrap_or_default()
 }
 
+/// The pid of the running game `app_name` started by this process, once
+/// known.
+pub fn game_pid(cx: &App, app_name: &str) -> Option<u32> {
+    cx.try_global::<Hub>().and_then(|h| h.0.borrow().runtime.pid_of(app_name))
+}
+
 /// The open window's Collection, without bringing the window up.
 pub fn main_view(cx: &App) -> Option<WeakEntity<CollectionView>> {
     cx.try_global::<Hub>().and_then(|h| h.0.borrow().window.as_ref().map(|w| w.view.clone()))

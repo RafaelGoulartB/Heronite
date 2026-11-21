@@ -373,8 +373,8 @@ pub fn summon_console(cx: &mut App) {
     let existed = has_window(cx);
     apply_window_flags(cx, true, false, false);
     // A window that raises itself may be refused (Hyprland ignores it unless
-    // `focus_on_activate` is on): Hyprland is asked directly. Elsewhere this
-    // does nothing.
+    // `focus_on_activate` is on): the window manager is asked directly
+    // (Hyprland, Sway, X11). Elsewhere this does nothing.
     #[cfg(target_os = "linux")]
     if existed {
         cx.background_spawn(async {

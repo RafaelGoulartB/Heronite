@@ -76,5 +76,7 @@ pub mod shortcut;
 pub mod system;
 #[cfg(windows)]
 pub mod tray;
+#[cfg(windows)]
+pub mod window_focus;
 
 pub use features::{supported, Feature};

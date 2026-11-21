@@ -137,6 +137,11 @@ pub(crate) struct GameBits {
     pub hidden: bool,
     /// ISO timestamp (sorts as text); `None` = never played.
     pub last_played: Option<String>,
+    /// It has a store page (`details_url`): the quick launcher offers it.
+    pub store_page: bool,
+    /// Its status (`CompletionStatus::id`), which the quick launcher's
+    /// status choices leave out.
+    pub status_id: String,
     /// The preview pane's facts (`None` in tests).
     pub card: Option<std::rc::Rc<GameCard>>,
 }
@@ -782,7 +787,7 @@ pub(super) fn game_entry(g: &GameRow) -> Entry {
         favourite: g.favourite,
         hidden: g.hidden,
         last_played: g.last_played.map(str::to_string),
-        card: None,
+        ..Default::default()
     });
     e
 }

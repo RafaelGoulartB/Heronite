@@ -180,7 +180,14 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             },
             tr!("Open it and type a few letters of a game, a page or a setting."),
         ))
-        .child(step(enter_play, tr!("Enter plays the game, or stops it while it runs.")))
+        .child(step(
+            enter_play,
+            if crate::collection::palette::launcher::can_focus_games() {
+                tr!("Enter plays the game, or goes back to it while it runs.")
+            } else {
+                tr!("Enter plays the game, or lists its actions while it runs.")
+            },
+        ))
         .child(step(shift_enter, tr!("Shift Enter shows the game in Heronite; → lists its actions.")))
         .child(step(
             icon(Icon::OpenInNew, px(16.), theme::text_dim()).into_any_element(),

@@ -21,7 +21,9 @@ pub(super) fn run(act: Act, id: &str, bits: Option<GameBits>, lib: Option<Arc<Li
     let game = |key: &str| lib.as_ref().and_then(|l| l.get(key)).cloned();
     match chosen(&act, bits.as_ref()) {
         Chosen::InApp(act) => in_app(act, id, true, cx),
-        Chosen::Favourite(_) | Chosen::Hide(_) if crate::system::has_window(cx) => in_app(act, id, false, cx),
+        Chosen::Favourite(_) | Chosen::Hide(_) | Chosen::Status(..) if crate::system::has_window(cx) => in_app(act, id, false, cx),
+        // The launcher's view handles it (it may show the game's actions).
+        Chosen::BackToGame(_) => {}
         Chosen::Play(key) => {
             remember(id, paths, cx);
             if let Some(g) = game(&key) {
@@ -42,6 +44,24 @@ pub(super) fn run(act: Act, id: &str, bits: Option<GameBits>, lib: Option<Arc<Li
                     tell(e);
                 }
             });
+        }
+        Chosen::StorePage(key) => {
+            remember(id, paths, cx);
+            let Some(url) = game(&key).and_then(|g| heronite_data::details_url::details_url(&g)) else { return };
+            super::background(cx, move || {
+                if let Err(e) = heronite_platform::shell::open(&url) {
+                    tell(tr!("Could not open {url}: {err}", url, err = e.to_string()));
+                }
+            });
+        }
+        Chosen::Status(key, status) => {
+            remember(id, paths, cx);
+            if let Some(g) = game(&key) {
+                if let Err(e) = set_status(paths, lib.as_deref(), &g, &status) {
+                    let message = tr!("Could not change status: {err}", err = format!("{e:#}"));
+                    super::background(cx, move || tell(message));
+                }
+            }
         }
         Chosen::Favourite(key) | Chosen::Hide(key) => {
             remember(id, paths, cx);
@@ -99,11 +119,43 @@ fn remember(id: &str, paths: &DataPaths, cx: &mut App) {
     }
 }
 
+/// The copies of `game` a change of the Collection is made to: all of them
+/// while they are grouped (as the Collection does).
+fn copies<'a>(paths: &DataPaths, lib: &'a Library, game: &CollectionGame) -> Vec<&'a Arc<CollectionGame>> {
+    let grouped = UiState::load(&AppPaths::for_data(paths)).group_copies;
+    if grouped {
+        lib.copies_of(&game.key)
+    } else {
+        lib.get(&game.key).into_iter().collect()
+    }
+}
+
+/// Sets the status of `game` (and its copies while they are grouped), with
+/// no window open, as the Collection's "Status:" does.
+fn set_status(paths: &DataPaths, lib: Option<&Library>, game: &CollectionGame, status_id: &str) -> anyhow::Result<()> {
+    let one = [game];
+    let games: Vec<&CollectionGame> = match lib {
+        Some(lib) => copies(paths, lib, game).into_iter().map(|g| g.as_ref()).collect(),
+        None => one.to_vec(),
+    };
+    let writes: Vec<_> = games
+        .iter()
+        .map(|g| {
+            let extras = heronite_data::status::SetStatusExtras {
+                runner: Some(g.runner.clone()),
+                title: Some(g.title.clone()),
+                playnite_id: g.meta.as_ref().map(|m| m.playnite_id.clone()),
+            };
+            (g.app_name.clone(), status_id.to_string(), extras)
+        })
+        .collect();
+    heronite_data::status::set_games_status(paths, &writes)
+}
+
 /// Favourite or hide `game` (and its copies while they are grouped), as it
 /// is not now; with no window open.
 fn toggle_list(paths: &DataPaths, lib: &Library, game: &CollectionGame, favourite: bool) -> anyhow::Result<()> {
-    let grouped = UiState::load(&AppPaths::for_data(paths)).group_copies;
-    let games: Vec<&Arc<CollectionGame>> = if grouped { lib.copies_of(&game.key) } else { lib.get(&game.key).into_iter().collect() };
+    let games = copies(paths, lib, game);
     let on = if favourite { !game.favourite } else { !game.hidden };
     let writes: Vec<_> = games.iter().map(|g| (g.app_name.clone(), g.title.clone(), on)).collect();
     if favourite {
