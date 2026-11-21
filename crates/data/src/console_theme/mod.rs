@@ -834,7 +834,7 @@ impl Default for ConsolePrefs {
             last_tab: 0,
             kept_filters: KeptFilters::default(),
             controller: ControllerPrefs::default(),
-            extra: Map::new(),
+            extra: Map::from_iter([(MIGRATED.to_string(), Value::from(MIGRATIONS.to_vec()))]),
         }
     }
 }
@@ -948,14 +948,14 @@ fn upgrade_cinema(p: &mut ConsolePrefs) {
     }
 }
 
-/// Minimal as it shipped (its game page the Sheet, floating over the
-/// carousel) opens the game's page full screen now, as the preset does.
-/// A Minimal whose game page was changed to another one keeps it.
 /// The once-only migrations already done (`migrated` in `console.json`): a
 /// value they change is one the user can pick again afterwards, and it must
 /// then stay. Marked whatever theme is in use, so switching to the theme
 /// later never rewrites a choice either.
 const MIGRATED: &str = "migrated";
+/// Every once-only migration: prefs that start from the defaults (no file,
+/// or one that does not read) are already on today's presets.
+const MIGRATIONS: [&str; 3] = ["minimal-showcase", "arcade-covers", "living-room-badges"];
 
 /// Whether `name` runs now (it is then marked as done).
 fn first_time(p: &mut ConsolePrefs, name: &str) -> bool {
@@ -971,6 +971,9 @@ fn first_time(p: &mut ConsolePrefs, name: &str) -> bool {
     true
 }
 
+/// Minimal as it shipped (its game page the Sheet, floating over the
+/// carousel) opens the game's page full screen now, as the preset does.
+/// A Minimal whose game page was changed to another one keeps it.
 fn upgrade_minimal(p: &mut ConsolePrefs) {
     if !first_time(p, "minimal-showcase") {
         return;

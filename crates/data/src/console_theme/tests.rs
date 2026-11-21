@@ -325,7 +325,7 @@ fn pulse_with_its_first_tabs_takes_its_new_home() {
     old.tabs = vec![TabSpec::new("Games", Layout::Spotlight, "all"), TabSpec::new("Library", Layout::Grid, "all")];
     old.interface.tab_bar = TabBar::Names;
     old.interface.accent = "pink".into();
-    ConsolePrefs { theme: old, ..ConsolePrefs::default() }.save(&paths).unwrap();
+    ConsolePrefs { theme: old, extra: Map::new(), ..ConsolePrefs::default() }.save(&paths).unwrap();
     let p = ConsolePrefs::load(&paths);
     assert_eq!(p.theme.tabs, presets::pulse().tabs);
     assert_eq!(p.theme.interface.tab_bar, TabBar::Top);
@@ -357,7 +357,7 @@ fn a_saved_minimal_opens_the_showcase_unless_its_game_page_was_changed() {
     let as_shipped = |page: GamePage| {
         let mut theme = presets::minimal();
         theme.game_page = page;
-        let mut p = ConsolePrefs { theme, ..ConsolePrefs::default() };
+        let mut p = ConsolePrefs { theme, extra: Map::new(), ..ConsolePrefs::default() };
         upgrade_minimal(&mut p);
         p.theme.game_page
     };
@@ -390,7 +390,7 @@ fn arcade_shows_covers_beside_the_names_instead_of_logos() {
     let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
     let mut old = presets::arcade();
     old.layouts.wheel_items = WheelItems::Logo;
-    ConsolePrefs { theme: old, ..ConsolePrefs::default() }.save(&paths).unwrap();
+    ConsolePrefs { theme: old, extra: Map::new(), ..ConsolePrefs::default() }.save(&paths).unwrap();
     assert_eq!(ConsolePrefs::load(&paths).theme.layouts.wheel_items, WheelItems::Name);
 }
 
@@ -401,7 +401,7 @@ fn living_room_drops_the_new_badges() {
     let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
     let mut old = presets::living_room();
     old.tiles.badges = Badges::All;
-    ConsolePrefs { theme: old, ..ConsolePrefs::default() }.save(&paths).unwrap();
+    ConsolePrefs { theme: old, extra: Map::new(), ..ConsolePrefs::default() }.save(&paths).unwrap();
     assert_eq!(ConsolePrefs::load(&paths).theme.tiles.badges, Badges::Running);
 }
 
@@ -411,7 +411,7 @@ fn a_migration_runs_once_so_the_user_can_pick_the_old_value_again() {
     let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
     let mut old = presets::living_room();
     old.tiles.badges = Badges::All;
-    ConsolePrefs { theme: old, ..ConsolePrefs::default() }.save(&paths).unwrap();
+    ConsolePrefs { theme: old, extra: Map::new(), ..ConsolePrefs::default() }.save(&paths).unwrap();
     // The first load moves the built-in theme on.
     let mut p = ConsolePrefs::load(&paths);
     assert_eq!(p.theme.tiles.badges, Badges::Running);
@@ -430,4 +430,15 @@ fn a_migration_runs_once_so_the_user_can_pick_the_old_value_again() {
     p.theme.layouts.wheel_items = WheelItems::Logo;
     p.save(&paths).unwrap();
     assert_eq!(ConsolePrefs::load(&paths).theme.layouts.wheel_items, WheelItems::Logo);
+}
+
+#[test]
+fn prefs_that_start_from_the_defaults_keep_an_old_value_picked_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+    // No file yet: the defaults, then the user picks the Sheet page on Minimal.
+    let mut p = ConsolePrefs::load(&paths);
+    p.theme.game_page = GamePage::Sheet;
+    p.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).theme.game_page, GamePage::Sheet);
 }
