@@ -205,6 +205,10 @@ pub(crate) fn settle(paths: &DataPaths, home: &Path, games: &[(String, &Game, &T
     let actions: HashMap<String, Vec<Action>> = heronite_data::game_actions::load(paths);
     for (app, _, t) in games.iter().filter(|(app, _, t)| !t.actions.is_empty() && !actions.contains_key(&key(app))) {
         note("actions", heronite_data::game_actions::save(paths, &key(app), &t.actions));
+        // Playnite asks which play action to start: so does Play here.
+        if t.actions.iter().any(Action::plays) {
+            note("actions", heronite_data::game_actions::set_ask_on_play(paths, &key(app), true));
+        }
     }
 
     let service = heronite_metadata::MetadataService::new(paths.clone());
