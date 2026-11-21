@@ -579,6 +579,7 @@ pub fn add_discovered(paths: &DataPaths, items: &[DetectedEmulator]) -> Result<V
                 launch_kind: item.launch_kind.clone(),
                 flatpak_id: item.flatpak_id.clone(),
                 playnite_id: None,
+                ludusavi_entry: None,
                 profiles,
                 extra: Default::default(),
             },
