@@ -98,7 +98,7 @@ pub(super) enum Link {
 /// On the home, how much of the page's first sections shows above the
 /// body's bottom, and the room between the row and the buttons of a game
 /// without a logo, design px.
-pub(super) const PEEK_SHOWS: f32 = 230.;
+pub(super) const PEEK_SHOWS: f32 = 150.;
 const NO_LOGO_GAP: f32 = 48.;
 
 /// The sizes the page is laid out with, design px.
