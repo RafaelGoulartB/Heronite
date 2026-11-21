@@ -80,6 +80,42 @@ struct Pad {
     y: (i32, i32),
     sx: f32,
     sy: f32,
+    kind: Kind,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    /// Read by its own kernel driver (a DualSense, an Xbox controller).
+    Physical,
+    /// The pad Steam Input makes for a controller it reads itself.
+    SteamCopy,
+    /// A Steam Deck or Steam Controller: its node goes quiet while Steam
+    /// reads it (`hid-steam`), so it copies nothing.
+    Valve,
+}
+
+const VALVE: u16 = 0x28de;
+/// Steam Input's virtual pad (SDL's `SDL_IsJoystickSteamVirtualGamepad`).
+const STEAM_COPY: u16 = 0x11ff;
+
+/// Whether `pad` is Steam's copy of a physical controller open too, so its
+/// presses are left out (read twice, they move the panel two places). Steam
+/// reads the controller through `hidraw`, and its own evdev node still
+/// reports every press. Without one (a Steam Deck while Steam runs), Steam's
+/// pads are the only ones that work.
+fn shadowed(pad: &Pad, pads: &HashMap<usize, Pad>) -> bool {
+    pad.kind == Kind::SteamCopy && any_physical(pads)
+}
+
+fn any_physical(pads: &HashMap<usize, Pad>) -> bool {
+    pads.values().any(|p| p.kind == Kind::Physical)
+}
+
+/// The controllers the overlay shows, without [`shadowed`] copies.
+fn listed(pads: &HashMap<usize, Pad>) -> Vec<Controller> {
+    let mut list: Vec<Controller> = pads.values().filter(|p| !shadowed(p, pads)).map(|p| p.info.clone()).collect();
+    list.sort_by(|a, b| a.id.cmp(&b.id));
+    list
 }
 
 fn run(opts: Options, rx: Receiver<Cmd>, mut wake: UnixStream, mut on_event: impl FnMut(Event)) {
@@ -94,15 +130,27 @@ fn run(opts: Options, rx: Receiver<Cmd>, mut wake: UnixStream, mut on_event: imp
     loop {
         if last_scan.elapsed() >= RESCAN {
             last_scan = Instant::now();
+            let physical_before = any_physical(&pads);
             let (changed, removed) = scan(&mut pads, &mut seen, &mut next_id, &core);
             for id in removed {
                 let out = core.removed(id, pads.len());
                 apply(out, &mut pads, &mut core, &mut on_event);
             }
+            // A physical controller came: Steam's pads are copies from now
+            // on. Forget what they hold (a direction would repeat forever),
+            // and their stick: its moves go unread until they count again.
+            if !physical_before && any_physical(&pads) {
+                let copies: Vec<usize> = pads.iter().filter(|(_, p)| p.kind == Kind::SteamCopy).map(|(id, _)| *id).collect();
+                for id in copies {
+                    if let Some(p) = pads.get_mut(&id) {
+                        (p.sx, p.sy) = (0., 0.);
+                    }
+                    let out = core.removed(id, pads.len());
+                    apply(out, &mut pads, &mut core, &mut on_event);
+                }
+            }
             if changed {
-                let mut list: Vec<Controller> = pads.values().map(|p| p.info.clone()).collect();
-                list.sort_by(|a, b| a.id.cmp(&b.id));
-                on_event(Event::Controllers(list));
+                on_event(Event::Controllers(listed(&pads)));
             }
         }
         let now = Instant::now();
@@ -153,9 +201,7 @@ fn run(opts: Options, rx: Receiver<Cmd>, mut wake: UnixStream, mut on_event: imp
                         seen.retain(|_, v| *v != Some(id));
                         let out = core.removed(id, pads.len());
                         apply(out, &mut pads, &mut core, &mut on_event);
-                        let mut list: Vec<Controller> = pads.values().map(|p| p.info.clone()).collect();
-                        list.sort_by(|a, b| a.id.cmp(&b.id));
-                        on_event(Event::Controllers(list));
+                        on_event(Event::Controllers(listed(&pads)));
                     }
                 }
             }
@@ -191,6 +237,10 @@ fn read_pad(id: usize, pads: &mut HashMap<usize, Pad>, core: &mut Core) -> Optio
         Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Some(out),
         Err(_) => return None,
     };
+    // Read (so that `poll` does not wake for them again) and left out.
+    if shadowed(&pads[&id], pads) {
+        return Some(out);
+    }
     let now = Instant::now();
     let mut stick_moved = false;
     let mut dropped = false;
@@ -283,6 +333,14 @@ fn apply_grabs(grabs: Vec<Grab>, pads: &mut HashMap<usize, Pad>, core: &mut Core
         match g {
             Grab::Hold(id) => {
                 let busy = grab(pads.get_mut(&id), true).is_err_and(|e| e.raw_os_error() == Some(libc::EBUSY));
+                // The game may read the controller through Steam's copy: a
+                // chord must not reach it there either.
+                if pads.get(&id).is_some_and(|p| p.kind == Kind::Physical) {
+                    let copies: Vec<usize> = pads.iter().filter(|(_, p)| shadowed(p, pads)).map(|(id, _)| *id).collect();
+                    for copy in copies {
+                        let _ = grab(pads.get_mut(&copy), true);
+                    }
+                }
                 // Another program holds the controller (another launcher, a
                 // second Heronite, an input remapper): it gets the Guide
                 // release, not us. Left held, the Guide would turn every later
@@ -292,6 +350,7 @@ fn apply_grabs(grabs: Vec<Grab>, pads: &mut HashMap<usize, Pad>, core: &mut Core
                     apply_grabs(core.lost_guide(id).grabs, pads, core);
                 }
             }
+            // Steam's copies too: the game may read the controller there.
             Grab::HoldAll => pads.values_mut().for_each(|p| {
                 let _ = grab(Some(p), true);
             }),
@@ -375,14 +434,14 @@ fn scan(
 /// opens every input node once.
 pub fn list_controllers() -> Vec<Controller> {
     let Ok(dir) = std::fs::read_dir("/dev/input") else { return Vec::new() };
-    let mut out: Vec<Controller> = dir
+    let pads: HashMap<usize, Pad> = dir
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("event")))
-        .filter_map(|p| open_pad(&p).ok().flatten().map(|pad| pad.info))
+        .filter_map(|p| open_pad(&p).ok().flatten())
+        .enumerate()
         .collect();
-    out.sort_by(|a, b| a.id.cmp(&b.id));
-    out
+    listed(&pads)
 }
 
 const BTN_SOUTH: u16 = 0x130;
@@ -417,9 +476,14 @@ fn open_pad(path: &Path) -> io::Result<Option<Pad>> {
         }
     }
     let id = dev.input_id();
+    let kind = match (id.vendor(), id.product()) {
+        (VALVE, STEAM_COPY) => Kind::SteamCopy,
+        (VALVE, _) => Kind::Valve,
+        _ => Kind::Physical,
+    };
     let bluetooth = (id.bus_type().0 == BUS_BLUETOOTH).then(|| dev.unique_name().unwrap_or_default().to_uppercase()).filter(|m| is_mac(m));
     let info = Controller { name: dev.name().unwrap_or("Controller").to_string(), id: ControllerId::Evdev(path.to_path_buf()), bluetooth };
-    Ok(Some(Pad { dev, info, x, y, sx: 0., sy: 0. }))
+    Ok(Some(Pad { dev, info, x, y, sx: 0., sy: 0., kind }))
 }
 
 fn set_nonblocking(dev: &evdev::raw_stream::RawDevice) -> io::Result<()> {
@@ -488,5 +552,91 @@ mod tests {
         assert_eq!(map_key(0x2c0), None);
         assert!(is_mac("aa:bb:cc:dd:ee:ff"));
         assert!(!is_mac("usb-0000:00:14.0-1/input0"));
+    }
+
+    /// A fake controller with a d-pad (`/dev/uinput` must be writable).
+    fn fake_pad(name: &str, vendor: u16, product: u16) -> evdev::uinput::VirtualDevice {
+        let mut keys = evdev::AttributeSet::<evdev::KeyCode>::new();
+        keys.insert(evdev::KeyCode::new(BTN_SOUTH));
+        let hat = |axis| evdev::UinputAbsSetup::new(evdev::AbsoluteAxisCode(axis), evdev::AbsInfo::new(0, -1, 1, 0, 0, 0));
+        evdev::uinput::VirtualDevice::builder()
+            .unwrap()
+            .name(name)
+            .input_id(evdev::InputId::new(evdev::BusType::BUS_USB, vendor, product, 1))
+            .with_keys(&keys)
+            .unwrap()
+            .with_absolute_axis(&hat(ABS_HAT0X))
+            .unwrap()
+            .with_absolute_axis(&hat(ABS_HAT0Y))
+            .unwrap()
+            .build()
+            .unwrap()
+    }
+
+    /// Steam Input copies a DualSense into a virtual Xbox pad and both
+    /// report each press: the overlay must take it once (discussion #399),
+    /// and still read each of them alone, and Steam's copy of a Steam Deck
+    /// (whose own node goes quiet). Run with no other controller connected.
+    #[test]
+    #[ignore = "creates controllers through /dev/uinput"]
+    fn steam_input_copy_is_read_once() {
+        let names = ["Heronite test DualSense", "Heronite test Steam pad", "Heronite test Steam Deck"];
+        for (dualsense, steam, deck) in [(true, true, false), (true, false, false), (false, true, false), (false, true, true)] {
+            let mut pads = Vec::new();
+            if dualsense {
+                pads.push(fake_pad(names[0], 0x054c, 0x0ce6));
+            }
+            if steam {
+                pads.push(fake_pad(names[1], VALVE, STEAM_COPY));
+            }
+            // Created, never pressed: Steam silences it.
+            let _deck = deck.then(|| fake_pad(names[2], VALVE, 0x1205));
+            let (tx, rx) = channel();
+            let opts = Options {
+                screenshot: false,
+                screenshot_button: Button::RB,
+                volume: false,
+                moment: false,
+                replay: false,
+                console_hold: false,
+            };
+            let watcher = Watcher::start(opts, move |ev| {
+                let _ = tx.send(ev);
+            })
+            .unwrap();
+            watcher.open();
+            // Until every fake pad is open (udev may give access a moment
+            // after the node appears: the thread tries again on its scan).
+            let deadline = Instant::now() + Duration::from_secs(10);
+            let wanted = if dualsense { names[0] } else { names[1] };
+            loop {
+                match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+                    Ok(Event::Controllers(list)) => {
+                        let ours: Vec<&str> = list.iter().map(|c| c.name.as_str()).filter(|n| names.contains(n)).collect();
+                        if ours.contains(&wanted) {
+                            // The other one may open on the next scan.
+                            std::thread::sleep(RESCAN + Duration::from_millis(500));
+                            break;
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(_) => panic!("the fake controllers never showed up"),
+                }
+            }
+            let press = |v| evdev::InputEvent::new(evdev::EventType::ABSOLUTE.0, ABS_HAT0Y, v);
+            for pad in &mut pads {
+                pad.emit(&[press(1)]).unwrap();
+            }
+            for pad in &mut pads {
+                pad.emit(&[press(0)]).unwrap();
+            }
+            std::thread::sleep(Duration::from_millis(300));
+            let downs = rx.try_iter().filter(|e| *e == Event::Press(Button::Down)).count();
+            assert_eq!(downs, 1, "DualSense {dualsense}, Steam's pad {steam}, Steam Deck {deck}");
+            if dualsense && steam {
+                let listed: Vec<String> = list_controllers().into_iter().map(|c| c.name).filter(|n| names.contains(&n.as_str())).collect();
+                assert_eq!(listed, [names[0]]);
+            }
+        }
     }
 }
