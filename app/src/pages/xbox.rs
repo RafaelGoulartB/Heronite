@@ -450,7 +450,7 @@ impl XboxPage {
 
     fn render_console(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let rows = self.console_rows(cx);
-        let list = self.console_list.render("xbox-console", &rows, true);
+        let list = self.console_list.render_cards("xbox-console", &rows, true);
         div()
             .relative()
             .flex()
@@ -469,16 +469,7 @@ impl XboxPage {
                     .child(div().flex_1())
                     .child(kit::clock()),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h_0()
-                    .px(u(46.))
-                    .pb(u(16.))
-                    .child(div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(list.flex_1().min_h_0())),
-            )
+            .child(div().flex().flex_col().flex_1().min_h_0().px(u(46.)).pb(u(16.)).child(list))
             .into_any_element()
     }
 }

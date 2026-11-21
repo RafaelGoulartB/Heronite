@@ -3,12 +3,14 @@
 //! and Playnite on Windows ([`Launcher::here`]). Which launchers the user turned the
 //! import on for is `local_library/launcher-imports.json`.
 //!
-//! Lutris, Bottles, Faugus and Playnite keep starting their games: the
-//! entries hold the command that asks them to ([`LAUNCH_KIND`]). Heroic's
-//! games added by hand are copied as this app's own and start here.
+//! Lutris, Bottles and Faugus keep starting their games: the entries hold
+//! the command that asks them to ([`LAUNCH_KIND`]). Heroic's games added by
+//! hand and Playnite's that can start without it are copied as this app's
+//! own and start here; Playnite starts the rest.
 //!
 //! The folders and Wine prefixes of those games belong to their launcher
-//! ([`managed_paths`]): uninstalling a game added here never deletes them.
+//! ([`managed_paths`]), Playnite's brought over too: uninstalling a game
+//! never deletes them.
 //! The same goes for the prefix and the games of a store client
 //! ([`crate::clients`]) and the games of the Xbox app ([`crate::xbox`]).
 
@@ -155,6 +157,9 @@ pub fn managed_paths(paths: &DataPaths, home: &str) -> Vec<Managed> {
                 LAUNCH_KIND => Launcher::from_source(&m.source)?.name(),
                 clients::LAUNCH_KIND => Client::from_id(&m.source)?.name(),
                 xbox::LAUNCH_KIND => xbox::NAME,
+                // Brought over from Playnite: its folder (often one of many
+                // ROMs) is still Playnite's too.
+                _ if m.source == Launcher::Playnite.id() => Launcher::Playnite.name(),
                 _ => return None,
             };
             Some((m.app_name.as_str(), (owner, m)))
@@ -268,17 +273,24 @@ mod tests {
         let paths = DataPaths::at(dir.path());
         write_collection(
             &paths,
-            serde_json::json!({"games": [{"app_name": "lutris_7", "install": {"install_path": "/home/u/Games/heroes/"}}]}),
+            serde_json::json!({"games": [
+                {"app_name": "lutris_7", "install": {"install_path": "/home/u/Games/heroes/"}},
+                {"app_name": "playnite_1", "install": {"install_path": "/home/u/ROMs/ps1"}}]}),
             serde_json::json!({"games": {
                 "lutris_7": {"appName": "lutris_7", "runner": "sideload", "source": "lutris", "launchKind": "launcher", "title": "Heroes III",
                              "heroniteLauncherPrefix": "/home/u/Prefixes/heroes"},
+                "playnite_1": {"appName": "playnite_1", "runner": "sideload", "source": "playnite", "launchKind": "emulator", "title": "Castlevania"},
                 "by_hand": {"appName": "by_hand", "runner": "sideload", "source": "lutris", "launchKind": "executable", "title": "By hand"}}}),
         );
         let managed = managed_paths(&paths, "/home/u");
         let kept: Vec<_> = managed.iter().map(|m| (m.path.to_str().unwrap(), m.owner, m.app_name.as_str(), m.title.as_str())).collect();
         assert_eq!(
             kept,
-            [("/home/u/Games/heroes", "Lutris", "lutris_7", "Heroes III"), ("/home/u/Prefixes/heroes", "Lutris", "lutris_7", "Heroes III")]
+            [
+                ("/home/u/Games/heroes", "Lutris", "lutris_7", "Heroes III"),
+                ("/home/u/Prefixes/heroes", "Lutris", "lutris_7", "Heroes III"),
+                ("/home/u/ROMs/ps1", "Playnite", "playnite_1", "Castlevania"),
+            ]
         );
         assert_eq!(managed_by(&managed, Path::new("/home/u/Games/heroes/drive_c")).map(|m| m.owner), Some("Lutris"));
         assert_eq!(managed_by(&managed, Path::new("/home/u/Games/other")), None);

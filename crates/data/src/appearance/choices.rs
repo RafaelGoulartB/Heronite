@@ -170,6 +170,17 @@ choice! {
 }
 
 choice! {
+    /// How a cover fills its place in the grid and the Focus view.
+    CoverFit {
+        /// Cropped to the Cover aspect, filling the place.
+        Crop = "crop",
+        /// The whole picture in its own shape, centred in the place: the
+        /// box art of a console game stays uncut.
+        Whole = "whole",
+    } default Crop
+}
+
+choice! {
     /// How a game's categories show on its cover, when they show
     /// ([`super::Appearance::cover_categories`]).
     CategoryStyle {

@@ -66,6 +66,7 @@ pub fn field_label(field: &str) -> &'static str {
         "coverSquare" => tr!("Cover \u{b7} Square"),
         "coverWide" => tr!("Cover \u{b7} Wide"),
         "hero" => tr!("Background"),
+        "logo" => tr!("Logo"),
         heronite_data::settings::STORE_MEDIA => tr!("Store media"),
         _ => "",
     }
@@ -88,6 +89,7 @@ fn format_value(md: Option<&CollectionGameMetadata>, field: &str) -> String {
         "coverSquare" => m.cover_square_url.clone().unwrap_or_default(),
         "coverWide" => m.cover_wide_url.clone().unwrap_or_default(),
         "hero" => m.hero_url.clone().unwrap_or_default(),
+        "logo" => m.logo_url.clone().unwrap_or_default(),
         "developers" => join(&m.developers),
         "publishers" => join(&m.publishers),
         "genres" => join(&m.genres),
@@ -104,7 +106,7 @@ fn format_value(md: Option<&CollectionGameMetadata>, field: &str) -> String {
 
 /// A field drawn as a picture.
 fn is_picture(field: &str) -> bool {
-    matches!(field, "cover" | "coverSquare" | "coverWide" | "hero")
+    matches!(field, "cover" | "coverSquare" | "coverWide" | "hero" | "logo")
 }
 
 /// The pick that keeps what the game has.
@@ -301,6 +303,16 @@ impl MetadataDialog {
         }
         let src = self.images.update(cx, |im, _| im.get(&format!("md:{url}"), chain, w, h));
         picture(src).w(px(w)).h(px(h)).rounded(px(4.))
+    }
+
+    /// A small logo of `url`, whole on console mode's background.
+    fn logo_thumb(&mut self, url: &str, w: f32, h: f32, cx: &mut Context<Self>) -> Div {
+        let chain = chain_for_url(&self.ctx.data_paths, self.ctx.lib.settings.screenshots_folder(), url);
+        if chain.is_empty() {
+            return self.thumb(url, w, h, cx);
+        }
+        let src = self.images.update(cx, |im, _| im.get_logo(&format!("md-logo:{url}"), chain, w, h));
+        crate::dialogs::art_images::logo_picture(src).w(px(w)).h(px(h)).rounded(px(4.)).p(px(4.))
     }
 
     /// The game's cover, title and where it comes from.

@@ -65,8 +65,23 @@ pub fn users(state: &FamilyState) -> String {
         .join(" \u{b7} ")
 }
 
-/// The aspect notice before a download: "238 games have no square cover…".
-pub fn lacking(f: CoverFamily, n: usize) -> String {
+/// The aspect notice before a download: "238 games have no square cover…";
+/// `whole`: the views that draw the family show the stand-in whole.
+pub fn lacking(f: CoverFamily, n: usize, whole: bool) -> String {
+    if whole {
+        return match f {
+            CoverFamily::Wide => trn!(
+                n,
+                "{n} game has no wide cover. It shows its background or tall cover, whole, until one is downloaded.",
+                "{n} games have no wide cover. They show their background or tall cover, whole, until one is downloaded."
+            ),
+            _ => trn!(
+                n,
+                "{n} game has no square cover. It shows its tall cover, whole, until one is downloaded.",
+                "{n} games have no square cover. They show their tall cover, whole, until one is downloaded."
+            ),
+        };
+    }
     match f {
         CoverFamily::Wide => trn!(
             n,
@@ -89,8 +104,21 @@ pub fn downloading(f: CoverFamily, n: usize) -> String {
     }
 }
 
-/// Settings → Metadata, under the families: "238 games show a cropped square cover".
-pub fn cropped(f: CoverFamily, n: usize) -> String {
+/// Settings → Metadata, under the families: "238 games show a cropped square cover";
+/// `whole`: the views that draw the family show them whole ([`shown_whole`]).
+pub fn cropped(f: CoverFamily, n: usize, whole: bool) -> String {
+    if whole {
+        return match f {
+            CoverFamily::Wide => trn!(
+                n,
+                "{n} game shows its background or tall cover instead of a wide one",
+                "{n} games show their background or tall cover instead of a wide one"
+            ),
+            _ => {
+                trn!(n, "{n} game shows its tall cover instead of a square one", "{n} games show their tall cover instead of a square one")
+            }
+        };
+    }
     match f {
         CoverFamily::Wide => trn!(n, "{n} game shows a cropped wide cover", "{n} games show a cropped wide cover"),
         _ => trn!(n, "{n} game shows a cropped square cover", "{n} games show a cropped square cover"),
@@ -103,4 +131,16 @@ pub fn no_source(f: CoverFamily) -> &'static str {
         CoverFamily::Wide => tr!("No source that gives wide covers is on."),
         _ => tr!("No source that gives square covers is on."),
     }
+}
+
+/// "Cover fit" → "Whole cover": a cover of another shape is shown whole, not
+/// cropped, and the sentences say so.
+pub fn whole_covers() -> bool {
+    crate::theme::appearance().whole_covers()
+}
+
+/// The covers of `state`'s family are shown whole: "Whole cover" is on and
+/// only the desktop draws them (Console mode's tiles always crop).
+pub fn shown_whole(state: &FamilyState) -> bool {
+    whole_covers() && state.in_use() && !state.used_by.iter().any(|u| matches!(u, FamilyUser::Console { .. }))
 }

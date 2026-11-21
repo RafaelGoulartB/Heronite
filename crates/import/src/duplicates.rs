@@ -80,10 +80,12 @@ fn is_mine(g: &CollectionGame) -> bool {
         && !g.game.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("browser"))
 }
 
-/// The game of Lutris, Bottles or Faugus behind `g`, when it is one still installed.
+/// The game of Lutris, Bottles, Faugus or Playnite behind `g` (one brought
+/// over from Playnite too), when it is one still installed.
 fn launcher_of(g: &CollectionGame) -> Option<Launcher> {
     let m = g.meta.as_ref()?;
-    (g.installed && m.launch_kind == LAUNCH_KIND).then(|| Launcher::from_source(&m.source)).flatten()
+    let theirs = m.launch_kind == LAUNCH_KIND || m.source == Launcher::Playnite.id();
+    (g.installed && theirs).then(|| Launcher::from_source(&m.source)).flatten()
 }
 
 fn same_or_inside(path: &Path, dir: &Path) -> bool {
@@ -211,6 +213,7 @@ mod tests {
         let home = "/home/u";
         collection::sync(
             &paths,
+            std::path::Path::new("/home/u"),
             Launcher::Lutris,
             &[
                 lutris("7", "Heroes of Might & Magic III", "/home/u/Games/homm3", Some("/home/u/Games/homm3")),
@@ -266,6 +269,7 @@ mod tests {
         let home = "/home/u";
         collection::sync(
             &paths,
+            std::path::Path::new("/home/u"),
             Launcher::Lutris,
             &[
                 lutris("1", "Hollow Knight", "/g/Hollow Knight", Some("/g/Prex")),
@@ -294,6 +298,39 @@ mod tests {
         // m1: only the shared prefix, so no pair. m2: Hollow Knight's own
         // folder. m3: two launcher games named Celeste, so no telling which.
         assert_eq!(pairs, [("m2".to_string(), "lutris_1".to_string(), Why::Folder)]);
+    }
+
+    /// A game brought over from Playnite (it starts here) still pairs with
+    /// the same game added by hand.
+    #[cfg(unix)]
+    #[test]
+    fn a_game_brought_over_from_playnite_pairs_too() {
+        use crate::transfer::{Start, Transfer};
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("data"));
+        let start = Start::Program { path: "/g/Hades/Hades.exe".into(), args: String::new(), working_dir: None };
+        let transfer = Transfer {
+            start,
+            details: Default::default(),
+            library: "/playnite/library".into(),
+            favourite: false,
+            hidden: false,
+            stars: None,
+            status: None,
+            notes: None,
+            added: None,
+            categories: vec![],
+            actions: vec![],
+        };
+        let hades = Game { transfer: Some(Box::new(transfer)), ..lutris("1", "Hades", "/g/Hades", None) };
+        collection::sync(&paths, std::path::Path::new("/home/u"), Launcher::Playnite, &[hades], &BTreeSet::new()).unwrap();
+        add_mine(&paths, &[("m1", "My Hades", "/g/Hades/Hades.exe")]);
+        let lib = Library::load_with(&paths, true).unwrap();
+        let pairs: Vec<_> = find(&lib, &paths, "/home/u", &BTreeSet::new())
+            .iter()
+            .map(|d| (d.mine.app_name.clone(), d.theirs.app_name.clone(), d.launcher, d.why))
+            .collect();
+        assert_eq!(pairs, [("m1".to_string(), "playnite_1".to_string(), Launcher::Playnite, Why::Folder)]);
     }
 
     #[test]

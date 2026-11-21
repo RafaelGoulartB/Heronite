@@ -70,7 +70,7 @@ use crate::providers::{metadata_from_playnite_game, PlayniteGame, PlayniteSource
 use crate::sources::rows::TestResults;
 use crate::sources::{self, ids, Shared, SourceRegistry};
 use crate::steam::{self, SteamAppDetails, SteamState};
-use crate::store::{as_runner, get_game_metadata, list_game_metadata, upsert_game_metadata};
+use crate::store::{as_runner, get_game_metadata, list_game_metadata};
 use crate::types::*;
 use crate::{covers, web_images};
 
@@ -207,37 +207,67 @@ impl MetadataService {
         game: &PlayniteGame,
         library_path: &std::path::Path,
     ) -> Result<CollectionGameMetadata> {
+        self.seed_playnite_games(&[(app_name, runner, game, library_path)])?;
         let runner = as_runner(runner);
-        let existing = get_game_metadata(&self.paths, runner, app_name)?;
-        if let Some(e) = existing.as_ref().filter(|e| !e.field_sources.is_empty()) {
-            return Ok(e.clone());
-        }
+        Ok(get_game_metadata(&self.paths, runner, app_name)?.unwrap_or_else(|| crate::util::blank_metadata(app_name, runner)))
+    }
+
+    /// [`Self::seed_playnite_metadata`] for many games `(app name, runner,
+    /// game, library folder)`: one read and one write of the records, however
+    /// many games a first import brings.
+    pub fn seed_playnite_games(&self, games: &[(&str, &str, &PlayniteGame, &std::path::Path)]) -> Result<()> {
+        let all = crate::store::get_all_game_metadata(&self.paths)?;
         let settings = self.metadata_settings();
-        let from_playnite = MetadataCandidate::new(
-            "playnite",
-            metadata_from_playnite_game(app_name, runner, game, library_path),
-            Some(MatchedBy::SourceId),
-        );
-        let usable = Self::usable(&settings, std::slice::from_ref(&from_playnite));
-        let Some((_, from_playnite)) = usable.first() else {
-            return Ok(existing.unwrap_or_else(|| crate::util::blank_metadata(app_name, runner)));
-        };
-        let mut merged = merge_metadata(MergeArgs {
-            app_name,
-            runner,
-            current: existing.as_ref(),
-            candidates: &[MergeCandidate { source: "playnite", metadata: from_playnite }],
-            priority: &self.sources().field_orders(&settings),
-            overwrite_existing: false,
-            preserve_manual: true,
-            field_picks: None,
-            fields: None,
-        });
-        NameRules::load(&self.paths).apply_metadata(&mut merged);
-        for field in existing.as_ref().map(crate::record::locked_fields).unwrap_or_default() {
-            crate::merge::copy_field(existing.as_ref(), &mut merged, &field);
+        let priority = self.sources().field_orders(&settings);
+        let names = NameRules::load(&self.paths);
+        let mut seeded = Vec::new();
+        for (app_name, runner, game, library_path) in games {
+            let runner = as_runner(runner);
+            let existing = all.get(&heronite_data::library::metadata_key(runner, app_name));
+            if existing.is_some_and(|e| !e.field_sources.is_empty()) {
+                continue;
+            }
+            let from_playnite = MetadataCandidate::new(
+                "playnite",
+                metadata_from_playnite_game(app_name, runner, game, library_path),
+                Some(MatchedBy::SourceId),
+            );
+            let usable = Self::usable(&settings, std::slice::from_ref(&from_playnite));
+            let Some((_, from_playnite)) = usable.first() else { continue };
+            let mut merged = merge_metadata(MergeArgs {
+                app_name,
+                runner,
+                current: existing,
+                candidates: &[MergeCandidate { source: "playnite", metadata: from_playnite }],
+                priority: &priority,
+                overwrite_existing: false,
+                preserve_manual: true,
+                field_picks: None,
+                fields: None,
+            });
+            names.apply_metadata(&mut merged);
+            for field in existing.map(crate::record::locked_fields).unwrap_or_default() {
+                crate::merge::copy_field(existing, &mut merged, &field);
+            }
+            // Links are not a merged field: Playnite's are kept when there are none.
+            if merged.websites.is_empty() {
+                merged.websites = from_playnite.websites.clone();
+            }
+            seeded.push(self.persist_images(merged, false));
         }
-        upsert_game_metadata(&self.paths, self.persist_images(merged, false))
+        if seeded.is_empty() {
+            return Ok(());
+        }
+        heronite_data::json_store::update::<heronite_data::models::MetadataFile, _>(&self.paths.metadata(), |file| {
+            for md in seeded {
+                let key = heronite_data::library::metadata_key(&md.runner, &md.app_name);
+                // A fetch stored while the pictures were copied wins.
+                if file.games.get(&key).is_none_or(|e| e.field_sources.is_empty()) {
+                    file.games.insert(key, md);
+                }
+            }
+            Ok(())
+        })
     }
 
     /// `updateCollectionGameDetails`.
@@ -325,20 +355,49 @@ impl MetadataService {
     }
 
     /// The art picker's image search: SteamGridDB's art when it is on and an
-    /// API key is set (not for transparent images, which it does not have)
-    /// and the web's (when on), apart. A failing SteamGridDB only leaves its part empty; the web's
+    /// API key is set (not for transparent images, which it does not have,
+    /// but for its logos) and the web's (when on), apart. A failing SteamGridDB only leaves its part empty; the web's
     /// results leave out the images SteamGridDB already gave. `kind` names
     /// the cover family ([`ArtKind::cover`]): SteamGridDB gives grids of
     /// that shape and the web search favours it.
     pub fn search_art_images(&self, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
-        let key = if transparent { None } else { covers::steamgrid_key_if_on(&self.paths) };
+        self.search_art_images_of(None, query, kind, transparent)
+    }
+
+    /// [`search_art_images`](Self::search_art_images) for `game`: while the
+    /// query is for its title, SteamGridDB's art is of the SteamGridDB game it
+    /// was matched with, else of its Steam app id, before a search by title.
+    pub fn search_game_images(&self, game: &MetadataApplyArgs, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
+        self.search_art_images_of(Some(game), query, kind, transparent)
+    }
+
+    /// What the SteamGridDB search knows of `game`: its title, Steam app id
+    /// and the SteamGridDB game its record was surely matched with (not a
+    /// fuzzy title guess, which a Steam id beats).
+    fn steamgrid_hint(&self, game: &MetadataApplyArgs) -> covers::SteamGridHint {
+        let current = get_game_metadata(&self.paths, &game.runner, &game.app_name).ok().flatten();
+        let view = self.source_game(&self.sources(), game, current.as_ref());
+        let steamgrid_id = current
+            .as_ref()
+            .and_then(|md| crate::record::source_match(md, ids::STEAMGRIDDB))
+            .filter(|m| m.is_sure())
+            .and_then(|m| m.id.parse().ok());
+        covers::SteamGridHint { title: game.title.clone(), steam_app_id: view.steam_app_id, steamgrid_id }
+    }
+
+    fn search_art_images_of(&self, game: Option<&MetadataApplyArgs>, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
+        let key = if transparent && kind != ArtKind::Logo { None } else { covers::steamgrid_key_if_on(&self.paths) };
         let title = web_images::title_of_query(query);
+        let hint = key.as_ref().and(game).map(|g| self.steamgrid_hint(g));
+        // Adult pictures only where the settings keep them.
+        let adult = key.is_some() && self.metadata_settings().allow_adult_covers;
         let (sgdb, web) = std::thread::scope(|s| {
             let sgdb = s.spawn(|| match key.as_deref() {
-                Some(key) if !title.is_empty() => covers::steamgrid_images(&self.http, key, &title, kind).unwrap_or_else(|e| {
-                    log::warn!("SteamGridDB image search failed for \"{title}\": {e:#}");
-                    Vec::new()
-                }),
+                Some(key) if !title.is_empty() => covers::steamgrid_images(&self.http, key, &title, hint.as_ref(), kind, adult)
+                    .unwrap_or_else(|e| {
+                        log::warn!("SteamGridDB image search failed for \"{title}\": {e:#}");
+                        Vec::new()
+                    }),
                 _ => Vec::new(),
             });
             let web = self.search_web_images_shaped(query, transparent, kind.family());

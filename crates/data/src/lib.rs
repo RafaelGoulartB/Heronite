@@ -36,6 +36,7 @@ pub mod game_links;
 pub mod heronite_ui_import;
 pub mod hltb;
 pub mod install_size;
+pub mod interface_gpu;
 pub mod journal;
 pub mod language;
 pub mod launch_presets;

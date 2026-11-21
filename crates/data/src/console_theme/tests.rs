@@ -67,6 +67,36 @@ fn presets_are_valid_and_unique() {
 }
 
 #[test]
+fn classic_is_the_unlisted_base_and_cinema_is_listed() {
+    let ids: Vec<_> = presets::all().into_iter().map(|t| t.id).collect();
+    assert_eq!(ids, ["minimal", "pulse", "cinema", "arcade", "hub", "living-room"]);
+    assert!(presets::by_id("classic").is_none());
+    let cinema = presets::cinema();
+    assert_eq!(cinema.tabs.iter().map(|t| t.source.as_str()).collect::<Vec<_>>(), ["installed", "all", "recent", "favourites", "all"]);
+    assert!(cinema.tabs[..4].iter().all(|t| t.layout == Layout::Cinema));
+    assert_eq!(cinema.tabs[4].layout, Layout::Grid);
+    assert_eq!(cinema.nav.a_button, AButton::default(), "A and X are the user's choice");
+    assert!(!cinema.layouts.showcase_glass && presets::pulse().layouts.showcase_glass);
+}
+
+#[test]
+fn the_built_in_classic_and_first_cinema_become_cinema_unless_changed() {
+    for old in [presets::classic(), presets::first_cinema(), presets::second_cinema(), presets::five_tab_cinema()] {
+        // Saved and read back, as a console.json is.
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+        ConsolePrefs { theme: old.clone(), based_on: old.id.clone(), ..ConsolePrefs::default() }.save(&paths).unwrap();
+        let p = ConsolePrefs::load(&paths);
+        assert_eq!((p.theme, p.based_on.as_str()), (presets::cinema(), "cinema"), "{}", old.id);
+        // Changed by the user: its values stay.
+        let changed = ConsoleTheme { shelf_limit: 7, ..old.clone() };
+        let mut p = ConsolePrefs { theme: changed.clone(), based_on: old.id.clone(), ..ConsolePrefs::default() };
+        upgrade_cinema(&mut p);
+        assert_eq!(p.theme, changed);
+    }
+}
+
+#[test]
 fn prefs_and_store_on_disk() {
     let dir = tempfile::tempdir().unwrap();
     let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
@@ -229,6 +259,19 @@ fn kept_filters_read_leniently() {
 }
 
 #[test]
+fn the_carousel_starts_on_installed_and_a_saved_pill_keeps_its_games() {
+    // New: Installed. A pill saved before Installed came first keeps what it
+    // showed (the number names the filter, not its place in the row).
+    assert_eq!(KeptFilters::default().carousel, CAROUSEL_INSTALLED);
+    let fresh: ConsolePrefs = lenient(json!({ "keptFilters": { "sort": 0 } })).unwrap();
+    assert_eq!(fresh.kept_filters.carousel, CAROUSEL_INSTALLED);
+    for saved in 0..4 {
+        let p: ConsolePrefs = lenient(json!({ "keptFilters": { "carousel": saved } })).unwrap();
+        assert_eq!(p.kept_filters.carousel, saved);
+    }
+}
+
+#[test]
 fn the_controller_options_leave_the_theme_and_keep_what_was_chosen() {
     let dir = tempfile::tempdir().unwrap();
     let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
@@ -237,18 +280,24 @@ fn the_controller_options_leave_the_theme_and_keep_what_was_chosen() {
         std::fs::write(paths.console_prefs(), v.to_string()).unwrap();
     };
     // New: automatic both.
-    assert_eq!(ConsolePrefs::default().controller, ControllerPrefs { glyphs: Glyphs::Auto, confirm: ConfirmButton::Auto });
+    assert_eq!(ConsolePrefs::default().controller, ControllerPrefs { glyphs: Glyphs::Auto, confirm: ConfirmButton::Auto, desktop: true });
     // A file from before: the east button stays the confirm button; a
     // theme's Xbox or PlayStation drawing becomes automatic, the keyboard's stays.
     write(json!({ "theme": { "controls": { "glyphs": "playstation", "swapAb": true, "hints": "off" } } }));
     let p = ConsolePrefs::load(&paths);
-    assert_eq!(p.controller, ControllerPrefs { glyphs: Glyphs::Auto, confirm: ConfirmButton::East });
+    assert_eq!(p.controller, ControllerPrefs { glyphs: Glyphs::Auto, confirm: ConfirmButton::East, desktop: true });
     assert_eq!(p.theme.controls.hints, Hints::Off);
     write(json!({ "theme": { "controls": { "glyphs": "keyboard" } } }));
-    assert_eq!(ConsolePrefs::load(&paths).controller, ControllerPrefs { glyphs: Glyphs::Keyboard, confirm: ConfirmButton::Auto });
+    assert_eq!(
+        ConsolePrefs::load(&paths).controller,
+        ControllerPrefs { glyphs: Glyphs::Keyboard, confirm: ConfirmButton::Auto, desktop: true }
+    );
     // Once saved, its own key wins over what the theme had.
     write(json!({ "controller": { "glyphs": "nintendo", "confirm": "south" }, "theme": { "controls": { "swapAb": true } } }));
-    assert_eq!(ConsolePrefs::load(&paths).controller, ControllerPrefs { glyphs: Glyphs::Nintendo, confirm: ConfirmButton::South });
+    assert_eq!(
+        ConsolePrefs::load(&paths).controller,
+        ControllerPrefs { glyphs: Glyphs::Nintendo, confirm: ConfirmButton::South, desktop: true }
+    );
     // A theme no longer carries them.
     let text = presets::pulse().to_json().unwrap();
     assert!(!text.contains("glyphs") && !text.contains("swapAb"), "{text}");
@@ -272,4 +321,130 @@ fn the_sound_style_and_volume_are_repaired() {
     assert_eq!((c.sound_style, c.sound_volume), (SoundStyle::Soft, SOUND_VOLUME.0));
     let text = json!({ "format": 1, "controls": { "soundVolume": 200 } }).to_string();
     assert_eq!(ConsoleTheme::from_json(&text).unwrap().normalized().controls.sound_volume, SOUND_VOLUME.1);
+}
+
+#[test]
+fn pulse_with_its_first_tabs_takes_its_new_home() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+    let mut old = presets::pulse();
+    old.tabs = vec![TabSpec::new("Games", Layout::Spotlight, "all"), TabSpec::new("Library", Layout::Grid, "all")];
+    old.interface.tab_bar = TabBar::Names;
+    old.interface.accent = "pink".into();
+    ConsolePrefs { theme: old, extra: Map::new(), ..ConsolePrefs::default() }.save(&paths).unwrap();
+    let p = ConsolePrefs::load(&paths);
+    assert_eq!(p.theme.tabs, presets::pulse().tabs);
+    assert_eq!(p.theme.interface.tab_bar, TabBar::Top);
+    assert_eq!(p.theme.interface.accent, "pink", "the user's own changes stay");
+
+    assert_eq!(p.theme.tabs[0].source, "installed", "Installed comes first");
+    assert_eq!(p.kept_filters.sort, SORT_LAST_PLAYED, "played last first");
+
+    // The four filters it had for a while take the same home.
+    let mut filters = presets::pulse();
+    filters.tabs = vec![
+        TabSpec::new("All games", Layout::Spotlight, "all"),
+        TabSpec::new("Installed", Layout::Spotlight, "installed"),
+        TabSpec::new("Favourites", Layout::Spotlight, "favourites"),
+        TabSpec::new("Not played yet", Layout::Spotlight, "status:not-played"),
+    ];
+    ConsolePrefs { theme: filters, ..ConsolePrefs::default() }.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).theme.tabs, presets::pulse().tabs);
+
+    // Tabs the user changed are theirs.
+    let mut mine = presets::pulse();
+    mine.tabs = vec![TabSpec::new("Games", Layout::Spotlight, "all")];
+    ConsolePrefs { theme: mine.clone(), ..ConsolePrefs::default() }.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).theme.tabs, mine.tabs);
+}
+
+#[test]
+fn a_saved_minimal_opens_the_showcase_unless_its_game_page_was_changed() {
+    let as_shipped = |page: GamePage| {
+        let mut theme = presets::minimal();
+        theme.game_page = page;
+        let mut p = ConsolePrefs { theme, extra: Map::new(), ..ConsolePrefs::default() };
+        upgrade_minimal(&mut p);
+        p.theme.game_page
+    };
+    assert_eq!(as_shipped(GamePage::Sheet), GamePage::Showcase);
+    assert_eq!(as_shipped(GamePage::Hero), GamePage::Hero);
+    assert_eq!(presets::minimal().game_page, GamePage::Showcase);
+}
+
+#[test]
+fn a_saved_five_tab_cinema_that_set_a_to_play_moves_on_with_the_default_buttons() {
+    // As a console.json read: id "cinema", the five tabs with "Not played
+    // yet", `nav.aButton: play` written by an earlier copy of the preset.
+    let mut old = presets::five_tab_cinema();
+    old.nav.a_button = AButton::Play;
+    let dir = tempfile::tempdir().unwrap();
+    let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+    ConsolePrefs { theme: old, based_on: "cinema".into(), ..ConsolePrefs::default() }.save(&paths).unwrap();
+    let text = std::fs::read_to_string(paths.console_prefs()).unwrap();
+    assert!(text.contains("\"aButton\": \"play\"") && text.contains("status:not-played"));
+    let p = ConsolePrefs::load(&paths);
+    assert_eq!(p.theme, presets::cinema());
+    assert_eq!(p.theme.nav.a_button, AButton::Details);
+    assert!(!p.theme.tabs.iter().any(|t| t.source == "status:not-played"));
+}
+
+#[test]
+fn arcade_shows_covers_beside_the_names_instead_of_logos() {
+    assert_eq!(presets::arcade().layouts.wheel_items, WheelItems::Name);
+    let dir = tempfile::tempdir().unwrap();
+    let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+    let mut old = presets::arcade();
+    old.layouts.wheel_items = WheelItems::Logo;
+    ConsolePrefs { theme: old, extra: Map::new(), ..ConsolePrefs::default() }.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).theme.layouts.wheel_items, WheelItems::Name);
+}
+
+#[test]
+fn living_room_drops_the_new_badges() {
+    assert_eq!(presets::living_room().tiles.badges, Badges::Running);
+    let dir = tempfile::tempdir().unwrap();
+    let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+    let mut old = presets::living_room();
+    old.tiles.badges = Badges::All;
+    ConsolePrefs { theme: old, extra: Map::new(), ..ConsolePrefs::default() }.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).theme.tiles.badges, Badges::Running);
+}
+
+#[test]
+fn a_migration_runs_once_so_the_user_can_pick_the_old_value_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+    let mut old = presets::living_room();
+    old.tiles.badges = Badges::All;
+    ConsolePrefs { theme: old, extra: Map::new(), ..ConsolePrefs::default() }.save(&paths).unwrap();
+    // The first load moves the built-in theme on.
+    let mut p = ConsolePrefs::load(&paths);
+    assert_eq!(p.theme.tiles.badges, Badges::Running);
+    // The user turns every badge back on: it stays through the next start.
+    p.theme.tiles.badges = Badges::All;
+    p.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).theme.tiles.badges, Badges::All);
+    // The same for Minimal's page and Arcade's logos.
+    let mut p = ConsolePrefs::load(&paths);
+    p.theme = presets::minimal();
+    p.theme.game_page = GamePage::Sheet;
+    p.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).theme.game_page, GamePage::Sheet);
+    let mut p = ConsolePrefs::load(&paths);
+    p.theme = presets::arcade();
+    p.theme.layouts.wheel_items = WheelItems::Logo;
+    p.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).theme.layouts.wheel_items, WheelItems::Logo);
+}
+
+#[test]
+fn prefs_that_start_from_the_defaults_keep_an_old_value_picked_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+    // No file yet: the defaults, then the user picks the Sheet page on Minimal.
+    let mut p = ConsolePrefs::load(&paths);
+    p.theme.game_page = GamePage::Sheet;
+    p.save(&paths).unwrap();
+    assert_eq!(ConsolePrefs::load(&paths).theme.game_page, GamePage::Sheet);
 }

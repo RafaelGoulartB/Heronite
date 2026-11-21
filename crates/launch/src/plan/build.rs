@@ -212,7 +212,8 @@ fn executable_plan(
     }
 }
 
-/// A Windows program on Windows: started as it is, from its folder. Linux's
+/// A Windows program on Windows: started as it is, from its folder (or the
+/// one the game names, [`heronite_data::sideload::WORKING_DIR_KEY`]). Linux's
 /// wrappers, runtimes and sandbox have no counterpart there, so settings
 /// brought from Linux (a restored backup) are left aside; the game's
 /// arguments and environment variables still apply. The session follows
@@ -229,7 +230,8 @@ pub(crate) fn windows_plan(
         return LaunchPlan::Unavailable(tr!("Executable not found: {executable}", executable));
     }
     let path = std::path::Path::new(executable);
-    let folder = path.parent().map(|d| d.to_string_lossy().into_owned()).filter(|d| !d.is_empty());
+    let own = heronite_data::sideload::working_dir_of(game).filter(|d| probe.exists(d)).map(str::to_owned);
+    let folder = own.or_else(|| path.parent().map(|d| d.to_string_lossy().into_owned()).filter(|d| !d.is_empty()));
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let mut env = setup_wrapper_env_vars(&game.app_name, runner);
     env.extend(settings.env_options.iter().cloned());

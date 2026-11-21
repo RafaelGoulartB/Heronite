@@ -1,59 +1,86 @@
-//! Spotlight: one game at a time over its art, like a console's home. A row
-//! of icons along the top (the first shelf, then "All games"): the focused
-//! one at the left edge, larger, with its name beside it ([`row`]). Below,
-//! the game's logo (or name) with its action buttons and, under them, cards
-//! with what matters (playtime, How Long To Beat, journal) that peek in at
-//! the bottom; going down to them slides the whole screen up and dims the
-//! art. ← → move along the row; A or ↓ go down to the buttons, ↓ again to
-//! the cards; ↑ or B come back; X plays from anywhere.
+//! Spotlight: a console's home whose game page goes on below it. Along the
+//! top, the tab's games as a row of square icons ([`row`]), the focused one
+//! larger with its name beside it; below, the game's logo, Play / Options / ♥,
+//! its facts (playtime, last played, platform, release) and genres, and a
+//! strip of its store screenshots peeking at the bottom.
 //!
-//! The row's position, the room for the name, the focus ring and the slide
-//! to the cards each follow a spring stepped every frame ([`motion::Follow`]),
-//! so a held direction glides instead of stepping.
+//! Going down from the row, the whole screen rises (the row and the tabs
+//! fade, the art darkens) into the page ([`page`]): the store's screenshots,
+//! the player's own in a card, About this game beside Achievements, Details
+//! (with link buttons) and How Long To Beat, the cards (playtime, How Long To
+//! Beat, journal) and More like this, each when the theme's
+//! `spotlightSections` keeps it and the game has something for it. ↑ ↓ move
+//! between sections, ← → inside one; B goes back up to the buttons, then to
+//! the row; X plays from anywhere.
+//!
+//! The row's position, its focus ring, the page's rise and the strips'
+//! slides each follow a spring stepped every frame ([`motion::Follow`]), so
+//! a held direction glides instead of stepping.
+//!
+//! `HERONITE_DEBUG_SPOTLIGHT=<zone>[:<n>]` opens the page on a section
+//! (`actions`, `media`, `viewer`, `about`, `sheet`, `achievements`, `links`,
+//! `cards`, `shots`, `related`, `hltb`), on the `n`th game of the row (or the
+//! first whose name holds `n`, on the first tab that has it), for screenshots.
 
+mod bar;
+mod page;
 mod parts;
 mod row;
+mod viewer;
+
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{Layout, Size3, SpotActions, TabSpec};
+use heronite_data::console_theme::{AButton, GamePage, HeroTitle, Layout, SpotActions, TabSpec};
+use heronite_data::details_url::details_url;
 use heronite_data::CollectionGame;
 use heronite_i18n::{tr, trn};
 
+pub(in crate::collection::console) use bar::{spotlight_clock, spotlight_tabs, spotlight_tabs_in};
+use page::{HltbCard, Link, Mid, Move, Shape, Zone, SIDE};
+
+use super::super::super::focus::{hltb_hours, hltb_marker, hltb_note_text, HLTB_COLOURS};
+use super::super::super::vm::{DetailField, DetailValue};
 use super::super::super::CollectionView;
-use super::super::hero::{played_line, HeroMotion, HeroSize};
-use super::super::sources::{by_last_played, keys};
+use super::super::hero::{fitted_title, logo_element, HeroSize};
+use super::{cinema, top_recent};
 use crate::collection::focus_left::STAR;
 use crate::console::kit::{self, u};
 use crate::console::look;
-use crate::console::motion::{self, Follow, FrameClock};
-use crate::console::pointer::{self, Clickable};
+use crate::console::motion::{self, Axis, Follow, FrameClock, Glide};
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
-use parts::{button, card, BUTTON_H, CARD_H};
+use parts::{button, card, ring, section_title, BUTTON_H};
 
-/// Games in the row of icons.
-const ROW_GAMES: usize = 10;
-/// The left edge of the row, the logo and the cards (in line with the tabs), design px.
-const SIDE: f32 = 46.;
-/// Room under the buttons: at least this, design px, and this part of the
-/// room between the row and the cards, so the logo sits a little under the
-/// middle rather than on the cards.
-const MAIN_PAD: f32 = 34.;
-const MAIN_LIFT: f32 = 0.26;
-/// The least room for the logo and the buttons between the row and the
-/// cards; a shorter window shows no cards, design px.
-const MAIN_MIN: f32 = 250.;
-/// How much of the cards shows under the buttons until the focus goes down to them, design px.
-const PEEK: f32 = 44.;
-/// Under the cards while they have the focus: clear of a floating hint bar, design px.
-const CARDS_BOTTOM: f32 = 78.;
-const CARDS_GAP: f32 = 18.;
-/// The heights that have room for the overview, design px.
-const OVERVIEW_FROM: f32 = 400.;
+/// Games in the row of icons (the most recently played first).
+const ROW_GAMES: usize = 40;
+/// Height of the shell's top bar, design px (the page rises into it).
+const TOP_BAR: f32 = 76.;
 /// How the row glides: a touch under critical damping, ~280 ms.
 const GLIDE: SpringConfig = SpringConfig::new(260., 30., 1.);
+/// How the page rises and falls: slow and soft, without overshoot.
+const RISE: SpringConfig = SpringConfig::new(95., 19.5, 1.);
+/// Most store screenshots in the strip.
+const STORE_SHOTS: usize = 10;
+/// Most covers in More like this.
+const RELATED: usize = 9;
+
+/// The debug section asked for, until it is shown once.
+static DEBUG_DONE: AtomicBool = AtomicBool::new(false);
+
+/// What a page of these sections belongs to: a Spotlight tab (the row of
+/// icons above it), or the full-screen game page (`GamePage::Showcase`: the
+/// game alone, its sections on glass).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(in crate::collection::console) enum Host {
+    Tab(usize),
+    Game,
+}
+
+/// Room above the game page's head (no row, no top bar), design px.
+const GAME_TOP: f32 = 54.;
 
 /// A button of the actions row.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -61,23 +88,27 @@ enum SpotAct {
     Play,
     Status,
     Favourite,
-    More,
+    Options,
 }
 
 /// The buttons the theme gives the actions row, in order.
 fn actions() -> &'static [SpotAct] {
     match look::theme().layouts.spotlight_actions {
-        SpotActions::Full => &[SpotAct::Play, SpotAct::Status, SpotAct::Favourite, SpotAct::More],
-        SpotActions::Play => &[SpotAct::Play, SpotAct::More],
+        SpotActions::Full => &[SpotAct::Play, SpotAct::Options, SpotAct::Status, SpotAct::Favourite],
+        SpotActions::Play => &[SpotAct::Play, SpotAct::Options, SpotAct::Favourite],
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
-enum Zone {
-    #[default]
-    Row,
-    Actions,
-    Cards,
+/// Something of the page a click focuses (or uses, when it has the focus).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Spot {
+    Action(usize),
+    Media(usize),
+    About,
+    Mid(Mid, usize),
+    Card(usize),
+    Shot(usize),
+    Related(usize),
 }
 
 pub(crate) struct Nav {
@@ -85,23 +116,39 @@ pub(crate) struct Nav {
     /// Icon of the row; past the games it is the "All games" tile.
     index: usize,
     action: usize,
+    /// The focus along each section.
+    media: usize,
+    mid: Mid,
+    link: usize,
     card: usize,
+    shot: usize,
+    related: usize,
     /// The side the last move along the row came from (-1 left, 1 right):
     /// the logo slides in from it.
     from: f32,
     /// The row's position (the focused index, fractional while it glides).
     pos: Follow,
-    /// Width of the focused game's name, design px.
-    name_w: Follow,
     /// The focus ring on the row (1) or below it (0).
     ring: Follow,
-    /// 1 while the cards have the focus (the screen slid up).
-    depth: Follow,
-    /// 1 while a floating hint bar covers the cards that peek in (they step back).
-    veil: Follow,
+    /// How far the screen has risen, design px.
+    rise: Follow,
+    /// How far the media strip, the user's screenshots and More like this have slid, design px.
+    strips: [Follow; 3],
     clock: FrameClock,
     /// Shown once: the springs start where they are heading.
     shown: bool,
+    /// The page as last drawn.
+    shape: Shape,
+    /// The store screenshot open full screen.
+    viewer: Option<usize>,
+    /// About this game's whole text is open (its scroll).
+    sheet: Option<Glide>,
+    /// How far the page has risen last frame (0 on the row, 1 at the buttons and below).
+    lift: f32,
+    /// About's text of a game, flattened once.
+    about: Option<(SharedString, SharedString)>,
+    /// When the page's game last changed (for the debug log of what arrives when).
+    since: Option<std::time::Instant>,
 }
 
 impl Default for Nav {
@@ -110,15 +157,69 @@ impl Default for Nav {
             zone: Zone::Row,
             index: 0,
             action: 0,
+            media: 0,
+            mid: Mid::default(),
+            link: 0,
             card: 0,
+            shot: 0,
+            related: 0,
             from: 0.,
             pos: Follow::new(0.),
-            name_w: Follow::new(0.),
             ring: Follow::new(1.),
-            depth: Follow::new(0.),
-            veil: Follow::new(0.),
+            rise: Follow::new(0.),
+            strips: [Follow::new(0.), Follow::new(0.), Follow::new(0.)],
             clock: FrameClock::default(),
             shown: false,
+            shape: Shape::default(),
+            viewer: None,
+            sheet: None,
+            lift: 0.,
+            about: None,
+            since: None,
+        }
+    }
+}
+
+impl Nav {
+    /// How far the page has risen (for the top bar).
+    pub(super) fn lift(&self) -> f32 {
+        self.lift
+    }
+
+    /// The row has the focus (the wheel moves along it).
+    pub(super) fn on_row(&self) -> bool {
+        self.zone == Zone::Row && self.viewer.is_none() && self.sheet.is_none()
+    }
+
+    /// The focus along `zone` (← →).
+    fn along(&mut self, zone: Zone) -> Option<&mut usize> {
+        match zone {
+            Zone::Media => Some(&mut self.media),
+            Zone::Cards => Some(&mut self.card),
+            Zone::Shots => Some(&mut self.shot),
+            Zone::Related => Some(&mut self.related),
+            _ => None,
+        }
+    }
+
+    /// Keeps the focus on what the page has now.
+    fn settle(&mut self) {
+        let zones = self.shape.zones();
+        if !zones.contains(&self.zone) {
+            self.zone = Zone::Actions;
+        }
+        for z in [Zone::Media, Zone::Cards, Zone::Shots, Zone::Related] {
+            let n = self.shape.count(z);
+            if let Some(at) = self.along(z) {
+                *at = (*at).min(n.saturating_sub(1));
+            }
+        }
+        if self.zone == Zone::Side && !self.shape.mid_has(self.mid) {
+            self.mid = [Mid::Ach, Mid::Link, Mid::Hltb].into_iter().find(|m| self.shape.mid_has(*m)).unwrap_or_default();
+        }
+        self.link = self.link.min(self.shape.links.len().saturating_sub(1));
+        if self.viewer.is_some_and(|i| i >= self.shape.store.len()) {
+            self.viewer = None;
         }
     }
 }
@@ -129,150 +230,389 @@ pub(super) struct Look {
     off: (f32, f32),
     on: (f32, f32),
     pos: f32,
-    name_w: f32,
-    /// The width the name is heading for (it is laid out at it).
-    name_target: f32,
     ring: f32,
-    depth: f32,
-    veil: f32,
 }
 
-impl Nav {
-    /// Moves the springs a frame towards the focus.
-    fn animate(&mut self, name_w: f32, off: (f32, f32), on: (f32, f32), hints: bool, window: &mut Window) -> Look {
-        let targets = [
-            (&mut self.pos, self.index as f32),
-            (&mut self.name_w, name_w),
-            (&mut self.ring, if self.zone == Zone::Row { 1. } else { 0. }),
-            (&mut self.depth, if self.zone == Zone::Cards { 1. } else { 0. }),
-            (&mut self.veil, if hints { 1. } else { 0. }),
-        ];
-        for (f, t) in targets {
-            if self.shown {
-                f.go(t);
-            } else {
-                f.snap(t);
-            }
+/// The text of About this game: the store's description as paragraphs,
+/// else the overview.
+fn about_text(f: &crate::collection::vm::FocusVm) -> Option<SharedString> {
+    if let Some(blocks) = &f.overview_html {
+        let paras: Vec<String> = blocks
+            .iter()
+            .filter_map(|b| match b {
+                crate::collection::html::Block::Heading(s) | crate::collection::html::Block::Para(s) => {
+                    Some(s.iter().map(|x| x.text.as_str()).collect::<String>())
+                }
+                crate::collection::html::Block::ListItem(s) => {
+                    Some(format!("\u{2022} {}", s.iter().map(|x| x.text.as_str()).collect::<String>()))
+                }
+                crate::collection::html::Block::Image { .. } => None,
+            })
+            .map(|t| t.split_whitespace().collect::<Vec<_>>().join(" "))
+            .filter(|t| !t.is_empty())
+            .collect();
+        if !paras.is_empty() {
+            return Some(paras.join("\n").into());
         }
-        self.shown = true;
-        let dt = self.clock.dt();
-        let moving = self.pos.step(GLIDE, dt)
-            | self.name_w.step(GLIDE, dt)
-            | self.ring.step(motion::SOFT, dt)
-            | self.depth.step(motion::GENTLE, dt)
-            | self.veil.step(motion::SOFT, dt);
-        self.clock.done(moving, window);
-        Look {
-            off,
-            on,
-            pos: self.pos.value,
-            name_w: self.name_w.value.max(0.),
-            name_target: name_w,
-            ring: self.ring.value.clamp(0., 1.),
-            depth: self.depth.value.clamp(0., 1.),
-            veil: self.veil.value.clamp(0., 1.),
-        }
+    }
+    f.overview.clone().filter(|o| !o.trim().is_empty())
+}
+
+/// A detail's value as one line.
+fn detail_text(v: &DetailValue) -> String {
+    match v {
+        DetailValue::Text(t) => t.to_string(),
+        DetailValue::Chips { values, .. } => values.iter().map(|s| s.as_ref()).collect::<Vec<_>>().join(", "),
+        DetailValue::Folder { path, .. } => path.to_string(),
     }
 }
 
-/// The room of the screen, design px.
-struct Room {
-    /// Under the top bar (and the hint bar when it does not float).
-    body: f32,
-    row: f32,
-    /// The window has room for the cards (and the theme wants them).
-    cards: bool,
-    /// Under the cards while they have the focus.
-    cards_bottom: f32,
+/// The section the debug hook asks for (`HERONITE_DEBUG_SPOTLIGHT`), and the game of the row.
+fn debug_target() -> Option<(String, Option<String>)> {
+    if DEBUG_DONE.load(Ordering::Relaxed) {
+        return None;
+    }
+    let v = crate::env::value("HERONITE_DEBUG_SPOTLIGHT")?;
+    let (zone, game) = v.split_once(':').map_or((v.as_str(), None), |(z, g)| (z, Some(g.to_string())));
+    Some((zone.to_string(), game))
 }
 
 impl CollectionView {
-    /// The games of the row: the first enabled shelf, else the latest played.
+    /// The games of the row: the tab's, the most recently played first.
     fn spotlight_keys(&self, spec: &TabSpec) -> Vec<SharedString> {
-        let mut found = match self.console_shelves(&spec.source).into_iter().next() {
-            Some(shelf) => shelf.keys,
-            None => {
-                let games = self.console_games(&spec.source);
-                keys(by_last_played(games.iter().map(|g| g.as_ref()).collect()))
+        let games = self.console_games(&spec.source);
+        top_recent(&games, ROW_GAMES).into_iter().map(|g| SharedString::from(g.key.clone())).collect()
+    }
+
+    /// Whether the focused game's store media are wanted: a Spotlight tab or
+    /// the Showcase game page is on screen and the theme shows its media.
+    pub(in crate::collection) fn console_wants_store_media(&self) -> bool {
+        let theme = look::theme();
+        let page = matches!(self.console.screen, super::super::Screen::Game(_)) && theme.game_page == GamePage::Showcase;
+        (page || self.console_shown_tab().1.layout == Layout::Spotlight) && theme.layouts.spotlight_sections.media
+    }
+
+    /// What the page of `g` has, laid out for a view `view` design px wide.
+    /// `logo`: the game's logo is on screen (else nothing takes its place:
+    /// the head starts with what comes under it).
+    /// `body_h`: the height of the screen under the top bar (and a hint bar
+    /// that takes room), design px.
+    #[allow(clippy::too_many_arguments)]
+    fn spotlight_shape(&mut self, g: &CollectionGame, view: f32, body_h: f32, host: Host, logo: bool, cx: &mut Context<Self>) -> Shape {
+        let theme = look::theme();
+        let sections = theme.layouts.spotlight_sections.clone();
+        let key = SharedString::from(g.key.clone());
+        let mut s = Shape { key: key.clone(), ..Shape::default() };
+        // While this game's store media are asked for, the last page's strip
+        // keeps its place (empty), so nothing jumps when they come.
+        let prev = &self.spot_nav(host).shape;
+        // (The same game's page keeps holding them until they are known.)
+        let same = prev.key == key;
+        let prev_media = if !same || (prev.store.is_empty() && !prev.media_shots) { prev.media } else { 0 };
+        let own_shots = self.game_shot_count_of(&key);
+        if sections.media {
+            if let Some(m) = self.store_media_of(&key) {
+                s.store = m.screenshots.iter().take(STORE_SHOTS).map(|x| x.full.clone()).collect();
+            }
+            s.media = s.store.len();
+            if s.media == 0 && self.store_media_pending(&key) {
+                s.media = prev_media;
+            }
+            // Without store media the strip shows the user's screenshots,
+            // unless their own card shows them already.
+            if s.media == 0 && own_shots > 0 && !sections.screenshots {
+                s.media = own_shots;
+                s.media_shots = true;
+            }
+        }
+        if sections.screenshots && !s.media_shots {
+            s.shots = own_shots;
+        }
+        let focus = self.focus.clone().filter(|f| f.key == key);
+        let text = if sections.about {
+            let nav = &mut self.spot_nav(host);
+            match (&nav.about, &focus) {
+                (Some((k, t)), _) if *k == key => Some(t.clone()),
+                (_, Some(f)) => {
+                    let t = about_text(f);
+                    if let Some(t) = &t {
+                        nav.about = Some((key.clone(), t.clone()));
+                    }
+                    t
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+        s.ach = sections.achievements && self.spotlight_ach_counts(g, cx).is_some();
+        // A game with a source of achievements still being read holds the card's place.
+        if sections.achievements && !s.ach && self.spotlight_ach_pending(g, cx) {
+            (s.ach, s.ach_wait) = (true, true);
+        }
+        if sections.details {
+            s.details = self.spotlight_details(g).len();
+            s.links = self.spotlight_links(g);
+            s.hltb = match focus.as_ref().map(|f| (&f.hltb, f.hltb_checked)) {
+                Some((Some(h), _)) => HltbCard::Times { note: hltb_note_text(h).is_some(), link: h.link.as_ref().map(|l| l.to_string()) },
+                Some((None, true)) => HltbCard::Missing,
+                _ => HltbCard::None,
+            };
+        }
+        if theme.layouts.spotlight_cards {
+            s.cards = self.spotlight_cards(g).len();
+        }
+        if sections.related {
+            if let Some(f) = &focus {
+                let mut seen = std::collections::HashSet::new();
+                s.related = f
+                    .related
+                    .iter()
+                    .flat_map(|r| r.games.iter())
+                    .filter(|r| r.key != key && seen.insert(r.key.clone()))
+                    .map(|r| r.key.clone())
+                    .take(RELATED)
+                    .collect();
+            }
+        }
+        let width = page::page_width(view);
+        if let Some(t) = &text {
+            s.about = true;
+            s.fit_about(t.chars().count(), page::left_width(width));
+        }
+        let (_, on) = row::icon_sizes(self.cover_aspect);
+        let top = if host == Host::Game { GAME_TOP } else { row::row_height(on) };
+        // No logo: the home keeps a small box for the name; Cinema's page
+        // measures its own head.
+        let logo_h = if logo {
+            page::logo_h(theme.hero.size)
+        } else if host == Host::Game {
+            0.
+        } else {
+            page::NAME_H
+        };
+        // The game page keeps a line under the facts (Showcase's genre
+        // chips, Cinema's genres); the console home has none.
+        s.chips = host == Host::Game;
+        // Cinema's page: its head is one column of its own, measured from its parts.
+        if host == Host::Game && !theme.layouts.showcase_glass {
+            s.head = cinema::page_head_h(logo_h, parts::BUTTON_H);
+        }
+        // The home's peek sits at the bottom of its body.
+        if host != Host::Game {
+            s.pin = body_h;
+        }
+        s.layout(top, logo_h, width, page::COVER_W * self.cover_aspect);
+        // The game page ends clear of the hint bar under it.
+        if host == Host::Game {
+            s.geo.end += HINT_ROOM;
+        }
+        s
+    }
+
+    /// How many of the user's screenshots `key` has (they are listed for the focused game).
+    fn game_shot_count_of(&self, key: &SharedString) -> usize {
+        if self.shots.game.as_ref() == Some(key) {
+            self.shots.items.len()
+        } else {
+            0
+        }
+    }
+
+    /// Developer, publisher, size, store, score and time to beat, as far as known.
+    fn spotlight_details(&self, g: &CollectionGame) -> Vec<(Icon, SharedString, String)> {
+        let Some(f) = self.focus.as_ref().filter(|f| f.key.as_ref() == g.key) else { return Vec::new() };
+        let field =
+            |field: DetailField| f.details.iter().find(|d| d.field == field).map(|d| detail_text(&d.value)).filter(|t| !t.is_empty());
+        let mut rows: Vec<(Icon, SharedString, String)> = Vec::new();
+        if let Some(t) = field(DetailField::Developer) {
+            rows.push((Icon::Build, tr!("Developer").into(), t));
+        }
+        if let Some(t) = field(DetailField::Publisher) {
+            rows.push((Icon::Storefront, tr!("Publisher").into(), t));
+        }
+        if let Some(size) = f.install_size.as_ref().filter(|s| f.installed && !s.is_empty() && s.as_ref() != "0") {
+            rows.push((Icon::FaHardDrive, tr!("Size on disk").into(), size.to_string()));
+        }
+        let place = if f.installed { tr!("Installed") } else { tr!("Not installed") };
+        rows.push((Icon::Folder, tr!("Store").into(), format!("{} \u{b7} {place}", f.library)));
+        if let Some(score) = f.score.filter(|s| *s > 0.) {
+            let from = f.score_source.as_ref().map_or(String::new(), |s| format!(" \u{b7} {s}"));
+            rows.push((Icon::Star, tr!("Critic score").into(), format!("{score:.0}/100{from}")));
+        }
+        rows
+    }
+
+    /// The link buttons under Details: the install folder and the store
+    /// page, as far as the game has them (How Long To Beat has its card).
+    fn spotlight_links(&self, g: &CollectionGame) -> Vec<Link> {
+        let mut links = Vec::new();
+        if g.installed {
+            links.push(Link::Folder);
+        }
+        if details_url(g).is_some() {
+            links.push(Link::Store);
+        }
+        links
+    }
+
+    /// The game's achievements: unlocked, total, and whether all are.
+    fn spotlight_ach_counts(&self, g: &CollectionGame, cx: &mut Context<Self>) -> Option<(usize, usize, bool)> {
+        if !crate::services::achievements::enabled() {
+            return None;
+        }
+        let service = crate::services::achievements::get(cx);
+        let service = service.read(cx);
+        let set = service.entry(&crate::services::achievements::key_of(&g.runner, &g.app_name))?.primary()?;
+        (set.total() > 0).then(|| (set.unlocked(), set.total(), set.is_complete()))
+    }
+
+    /// Whether the game's achievements are still being read for the first time.
+    fn spotlight_ach_pending(&self, g: &CollectionGame, cx: &mut Context<Self>) -> bool {
+        if !crate::services::achievements::enabled() {
+            return false;
+        }
+        let service = crate::services::achievements::get(cx);
+        let service = service.read(cx);
+        // A game with no source of achievements has none to wait for.
+        if heronite_achievements::targets_with(g, &service.prefs()).is_empty() {
+            return false;
+        }
+        match service.entry(&crate::services::achievements::key_of(&g.runner, &g.app_name)) {
+            None => true,
+            // Not one of its sources answered yet.
+            Some(e) => e.primary().is_none() && e.problems.is_empty() && e.order.iter().all(|s| e.game.checked_at(*s).is_none()),
+        }
+    }
+
+    /// The icons of the latest unlocks (at most three), `size` design px.
+    fn spotlight_ach_icons(&mut self, g: &CollectionGame, size: f32, cx: &mut Context<Self>) -> Vec<Option<ImageSource>> {
+        let urls: Vec<String> = {
+            let service = crate::services::achievements::get(cx);
+            let service = service.read(cx);
+            match service.entry(&crate::services::achievements::key_of(&g.runner, &g.app_name)).and_then(|e| e.primary()) {
+                Some(set) => set.recent().into_iter().take(3).map(|a| a.icon_now().to_string()).collect(),
+                None => Vec::new(),
             }
         };
-        found.truncate(ROW_GAMES);
-        found
+        let scale = kit::scale() * 1.5;
+        urls.iter().map(|u| self.achievement_icon(u, size, scale)).collect()
     }
 
-    fn spotlight_room(&self, window: &Window) -> Room {
-        let float = super::hints_float(Layout::Spotlight);
-        let body = super::body_height(window, self.hints_visible() && !float);
-        let (_, on) = row::icon_sizes(self.cover_aspect);
-        let row = row::row_height(on);
-        let cards = look::theme().layouts.spotlight_cards && body - row - PEEK >= MAIN_MIN;
-        Room { body, row, cards, cards_bottom: if float { CARDS_BOTTOM } else { 24. } }
-    }
-
-    /// The buttons of the actions row for `g`, then when it was last played.
-    fn spotlight_actions(&self, g: &CollectionGame, zone: Zone, at: usize) -> Div {
-        let wide = look::theme().layouts.spotlight_actions == SpotActions::Play;
+    /// The buttons of the actions row for `g`.
+    fn spotlight_actions(&self, g: &CollectionGame, focused: Option<usize>) -> Div {
         let (label, play_icon) = self.primary_state(g);
-        // A click: to the buttons (↓ from the row, ↑ from the cards), ← → to this one, A.
-        let (lead, start) = match zone {
-            Zone::Row => (vec![Pad::Down], 0),
-            Zone::Actions => (Vec::new(), at),
-            Zone::Cards => (vec![Pad::Up], at),
-        };
         let buttons = actions().iter().enumerate().map(|(i, act)| {
-            let on = zone == Zone::Actions && at == i;
+            let on = focused == Some(i);
             let id = ("spot-act", i);
-            let mut pads = lead.clone();
-            pads.extend(pointer::along(start, i, Pad::Left, Pad::Right));
-            pads.push(Pad::A);
-            let button = match act {
-                SpotAct::Play => button(id, on, play_icon, Some(label.into()), None, wide),
+            let el = match act {
+                SpotAct::Play => button(id, on, play_icon, Some(label.into()), None, true),
+                SpotAct::Options => button(id, on, Icon::MoreHoriz, Some(tr!("Options").into()), None, false),
                 SpotAct::Status => {
                     let name = self.console_status(g).map_or_else(|| tr!("Status").to_string(), |(name, _)| name);
                     button(id, on, Icon::Flag, Some(name.into()), None, false)
                 }
-                SpotAct::Favourite => button(id, on, Icon::Favorite, None, g.favourite.then(|| rgb(STAR)), false),
-                SpotAct::More => button(id, on, Icon::MoreHoriz, None, None, false),
+                SpotAct::Favourite if g.favourite => button(id, on, Icon::Favorite, None, Some(rgb(STAR)), false),
+                SpotAct::Favourite => button(id, on, Icon::FavoriteBorder, None, None, false),
             };
-            div().flex_none().on_pads(pads).child(button)
+            div()
+                .flex_none()
+                .on_mouse_down(MouseButton::Left, self.cover_click(move |this| this.spotlight_focus(Spot::Action(i))))
+                .child(el)
         });
-        let when = div().ml(u(10.)).text_size(u(15.)).text_color(theme::text_muted()).whitespace_nowrap().child(played_line(g, true));
-        div().flex().items_center().gap(u(14.)).mt(u(18.)).h(u(BUTTON_H)).children(buttons).child(when)
+        div().flex().items_center().gap(u(12.)).h(u(BUTTON_H)).children(buttons)
     }
 
-    /// The focused game's logo (or name) and buttons, or what "All games" opens.
-    fn spotlight_main(&mut self, game: Option<&CollectionGame>, nav: (Zone, usize, f32), room: f32, window: &Window) -> AnyElement {
-        let Some(g) = game else {
-            let total = self.lib.as_ref().map_or(0, |l| l.games.len());
-            let main = div()
-                .flex()
-                .flex_col()
-                .gap(u(8.))
-                .child(kit::title(tr!("All games"), 54.))
-                .child(div().text_size(u(17.)).text_color(theme::text_muted()).child(trn!(total, "{n} game", "{n} games")))
-                .child(kit::body_text(tr!("Press A to see them all.")));
-            return motion::enter_from("spot-main-all", main, 300, 16. * nav.2, 0., 0.25);
+    /// Moves the focus to `spot` (a click); `false` when it was there already.
+    fn spotlight_focus(&mut self, spot: Spot) -> bool {
+        let host = self.spot_host();
+        let nav = &mut self.spot_nav(host);
+        let before = (nav.zone, nav.action, nav.media, nav.mid, nav.link, nav.card, nav.shot, nav.related);
+        match spot {
+            Spot::Action(i) => (nav.zone, nav.action) = (Zone::Actions, i),
+            Spot::Media(i) => (nav.zone, nav.media) = (Zone::Media, i),
+            Spot::About => nav.zone = Zone::About,
+            Spot::Mid(m, i) => (nav.zone, nav.mid, nav.link) = (Zone::Side, m, if m == Mid::Link { i } else { nav.link }),
+            Spot::Card(i) => (nav.zone, nav.card) = (Zone::Cards, i),
+            Spot::Shot(i) => (nav.zone, nav.shot) = (Zone::Shots, i),
+            Spot::Related(i) => (nav.zone, nav.related) = (Zone::Related, i),
+        }
+        before != (nav.zone, nav.action, nav.media, nav.mid, nav.link, nav.card, nav.shot, nav.related)
+    }
+
+    /// The click of something of the page.
+    fn spot_click(&self, spot: Spot) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static {
+        self.cover_click(move |this| this.spotlight_focus(spot))
+    }
+
+    /// Applies `HERONITE_DEBUG_SPOTLIGHT` once the page has the section.
+    fn spotlight_debug(&mut self, host: Host, found: &[SharedString], cx: &mut Context<Self>) {
+        let Some((zone, game)) = debug_target() else { return };
+        // The game: its place in the row, or a part of its name (waiting
+        // for a tab that has it, LB / RB).
+        let at = game.map(|g| match g.parse::<usize>() {
+            Ok(n) => (n < found.len()).then_some(n),
+            Err(_) => {
+                let g = g.to_lowercase();
+                found.iter().position(|k| self.lib.as_ref().and_then(|l| l.get(k)).is_some_and(|x| x.title_lower.contains(&g)))
+            }
+        });
+        let nav = &mut self.spot_nav(host);
+        match at {
+            Some(None) => return,
+            Some(Some(n)) if nav.index != n => {
+                if !nav.shown {
+                    nav.index = n;
+                    nav.pos.snap(n as f32);
+                }
+                return;
+            }
+            _ => {}
+        }
+        let Some((z, mid)) = Zone::parse(&zone) else {
+            DEBUG_DONE.store(true, Ordering::Relaxed);
+            return;
         };
-        let theme = look::theme();
-        let (logo_w, logo_h) = match theme.hero.size {
-            Size3::Small => (420., 84.),
-            Size3::Medium => (440., 112.),
-            Size3::Large => (540., 160.),
-        };
-        let size = HeroSize {
-            title: match theme.hero.size {
-                Size3::Small => 42.,
-                Size3::Medium => 52.,
-                Size3::Large => 60.,
-            },
-            logo: (logo_w, logo_h),
-            max_w: 680.,
-            overview: if room >= OVERVIEW_FROM { 200 } else { 0 },
-        };
-        let key = SharedString::from(g.key.clone());
-        let how = HeroMotion { slide: (16. * nav.2, 0.), fit_title: true, ..HeroMotion::default() };
-        let hero = self.console_hero_with(Some(&key), size, how, window);
-        div().flex().flex_col().child(hero).child(self.spotlight_actions(g, nav.0, nav.1)).into_any_element()
+        if !nav.shape.zones().contains(&z) {
+            return;
+        }
+        if let Some(m) = mid {
+            if !nav.shape.mid_has(m) {
+                return;
+            }
+            nav.mid = m;
+        }
+        nav.zone = z;
+        match zone.as_str() {
+            "viewer" if !nav.shape.media_shots => nav.viewer = Some(0),
+            "sheet" => nav.sheet = Some(Glide::new(Axis::Y)),
+            _ => {}
+        }
+        DEBUG_DONE.store(true, Ordering::Relaxed);
+        cx.notify();
+    }
+
+    /// Which page of sections the presses and clicks go to now.
+    fn spot_host(&self) -> Host {
+        match self.console.screen {
+            super::super::Screen::Game(_) => Host::Game,
+            _ => Host::Tab(self.console_shown_tab().0),
+        }
+    }
+
+    /// The focus of the page of `host`.
+    fn spot_nav(&mut self, host: Host) -> &mut Nav {
+        match host {
+            Host::Tab(tab) => &mut self.tab_nav(tab).spotlight,
+            Host::Game => &mut self.console.game.showcase,
+        }
+    }
+
+    fn spot_nav_ref(&self, host: Host) -> Option<&Nav> {
+        match host {
+            Host::Tab(tab) => self.console.tab_navs.get(tab).map(|n| &n.spotlight),
+            Host::Game => Some(&self.console.game.showcase),
+        }
     }
 
     pub(super) fn render_spotlight(&mut self, tab: usize, spec: &TabSpec, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -280,82 +620,900 @@ impl CollectionView {
         if found.is_empty() {
             return super::no_games();
         }
+        self.render_spot_page(Host::Tab(tab), &found, window, cx)
+    }
+
+    /// The page of `host` for the games `found` (the row's; the game page's one).
+    pub(in crate::collection::console) fn render_spot_page(
+        &mut self,
+        host: Host,
+        found: &[SharedString],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let game_page = host == Host::Game;
+        let bar = if game_page { 0. } else { TOP_BAR };
         let n = found.len();
-        let room = self.spotlight_room(window);
-        let nav = &mut self.tab_nav(tab).spotlight;
-        nav.index = nav.index.min(n);
-        if nav.index == n {
-            nav.zone = Zone::Row;
+        let k = kit::scale();
+        let size = crate::ui::content_size(window);
+        let (view_w, view_h) = (f32::from(size.width) / k, f32::from(size.height) / k);
+        if !game_page {
+            self.spotlight_debug(host, found, cx);
         }
-        if nav.zone == Zone::Cards && !room.cards {
-            nav.zone = Zone::Actions;
-        }
-        let (zone, index, from) = (nav.zone, nav.index, nav.from);
-        let action = nav.action.min(actions().len() - 1);
+        let nav = &mut self.spot_nav(host);
+        nav.index = if game_page { 0 } else { nav.index.min(n) };
+        let index = nav.index;
         let game_key = found.get(index).cloned();
         self.console_focus_game(Some(game_key.clone().unwrap_or_else(|| found[0].clone())), cx);
         let game = game_key.as_ref().and_then(|k| self.lib.as_ref()?.get(k)).cloned();
-
-        let name_w = row::name_width(&self.spotlight_name(&found, index), window);
+        let shape = match &game {
+            Some(g) => {
+                let logo = self.spot_has_logo(g, view_w, host, window);
+                let body_h = super::body_height(window, self.hints_visible() && !super::hints_float(Layout::Spotlight));
+                self.spotlight_shape(g, view_w, body_h, host, logo, cx)
+            }
+            None => Shape::default(),
+        };
         let (off, on) = row::icon_sizes(self.cover_aspect);
-        let hints = super::hints_float(Layout::Spotlight) && self.hints_visible();
-        let look = self.tab_nav(tab).spotlight.animate(name_w, off, on, hints, window);
-        let cards = game.as_ref().filter(|_| room.cards).map(|g| self.spotlight_cards(g)).unwrap_or_default();
-        let card_at = self.tab_nav(tab).spotlight.card.min(cards.len().saturating_sub(1));
+        let nav = &mut self.spot_nav(host);
+        if nav.shape.key != shape.key {
+            nav.since = Some(std::time::Instant::now());
+        }
+        let parts = |s: &Shape| (s.ach, s.ach_wait, s.store.len(), s.details, s.links.len(), s.hltb.clone(), s.media, s.shots, s.about);
+        if parts(&nav.shape) != parts(&shape) || nav.shape.key != shape.key {
+            log::debug!(
+                "spotlight {} +{}ms: ach {} (waiting {}) store {} details {} links {} hltb {:?} media {} shots {} about {}",
+                shape.key,
+                nav.since.map_or(0, |t| t.elapsed().as_millis()),
+                shape.ach,
+                shape.ach_wait,
+                shape.store.len(),
+                shape.details,
+                shape.links.len(),
+                shape.hltb,
+                shape.media,
+                shape.shots,
+                shape.about
+            );
+        }
+        nav.shape = shape.clone();
+        if game.is_none() {
+            nav.zone = Zone::Row;
+        }
+        nav.settle();
+        // The game page has no row: its focus starts on the buttons.
+        if game_page && nav.zone == Zone::Row {
+            nav.zone = Zone::Actions;
+        }
+        let zone = nav.zone;
+
+        // The springs, a frame towards the focus. The game page rests at
+        // its top on the buttons.
+        let first = shape.rise(Zone::Actions, nav.mid, view_h, bar).max(1.);
+        let rise_to = match game {
+            Some(_) if game_page && zone == Zone::Actions => 0.,
+            Some(_) => shape.rise(zone, nav.mid, view_h, bar).max(0.),
+            None => 0.,
+        };
+        let width = shape.geo.left;
+        let strip_to = [
+            page::strip_offset(nav.media, shape.media, page::TILE_W, page::TILE_W + page::STRIP_GAP, width),
+            0.,
+            page::strip_offset(nav.related, shape.related.len(), page::COVER_W, page::COVER_W + page::STRIP_GAP, width),
+        ];
+        let targets = [(nav.index as f32, 0usize), (if zone == Zone::Row { 1. } else { 0. }, 1), (rise_to, 2)];
+        for (t, i) in targets {
+            let f = match i {
+                0 => &mut nav.pos,
+                1 => &mut nav.ring,
+                _ => &mut nav.rise,
+            };
+            if nav.shown {
+                f.go(t);
+            } else {
+                f.snap(t);
+            }
+        }
+        for (f, t) in nav.strips.iter_mut().zip(strip_to) {
+            if nav.shown {
+                f.go(t);
+            } else {
+                f.snap(t);
+            }
+        }
+        nav.shown = true;
+        let dt = nav.clock.dt();
+        let mut moving = nav.pos.step(GLIDE, dt) | nav.ring.step(motion::SOFT, dt) | nav.rise.step(RISE, dt);
+        for f in nav.strips.iter_mut() {
+            moving |= f.step(motion::GENTLE, dt);
+        }
+        nav.clock.done(moving, window);
+        let rise = nav.rise.value.max(0.);
+        // How far the page has risen: on the game page from its top.
+        let (lift, deep) = if game_page {
+            ((rise / 160.).clamp(0., 1.), ((rise - 160.) / 160.).clamp(0., 1.))
+        } else {
+            ((rise / first).clamp(0., 1.), ((rise - first) / 160.).clamp(0., 1.))
+        };
+        nav.lift = lift;
+        let strips = [nav.strips[0].value, nav.strips[1].value, nav.strips[2].value];
+        let look = Look { off, on, pos: nav.pos.value, ring: nav.ring.value.clamp(0., 1.) };
+        let from = nav.from;
+        let focus = Focus {
+            zone,
+            action: nav.action.min(actions().len() - 1),
+            media: nav.media,
+            mid: nav.mid,
+            link: nav.link,
+            card: nav.card,
+            shot: nav.shot,
+            related: nav.related,
+            // What comes in after the logo waits only what is left of its
+            // pause: a part that arrives later (store media, achievements)
+            // just fades in.
+            glass: game_page && look::theme().layouts.showcase_glass,
+            rules: game_page && !look::theme().layouts.showcase_glass,
+            rest_hold: REST_HOLD.saturating_sub(nav.since.map_or(u128::MAX, |t| t.elapsed().as_millis()).min(u128::from(REST_HOLD)) as u64),
+        };
+        let viewer = nav.viewer;
+        let sheet = nav.sheet.clone();
 
         // The presses that bring the focus back up to the row (for its clicks).
         let to_row = match zone {
             Zone::Row => Vec::new(),
-            Zone::Actions => vec![Pad::Up],
-            Zone::Cards => vec![Pad::Up, Pad::Up],
+            Zone::Actions => vec![Pad::B],
+            _ => vec![Pad::B, Pad::B],
         };
-        let row = self.spotlight_row(&found, index, &look, &to_row, window);
-        let main_h = room.body - room.row - if cards.is_empty() { 0. } else { PEEK };
-        let pad = MAIN_PAD.max(main_h * MAIN_LIFT);
-        let main = self.spotlight_main(game.as_deref(), (zone, action, from), main_h - pad, window);
-        // The cards peek in under the buttons; with the focus on them the
-        // whole screen slides up until they sit clear of the bottom.
-        let (cards_h, shift) = if cards.is_empty() { (0., 0.) } else { (CARD_H + room.cards_bottom, CARD_H + room.cards_bottom - PEEK) };
-        let depth = look.depth;
-        let cards_row = (!cards.is_empty()).then(|| {
-            div()
-                .flex_none()
-                .flex()
-                .gap(u(CARDS_GAP))
-                .h(u(cards_h))
-                .px(u(SIDE))
-                .opacity((0.55 + 0.45 * depth) * (1. - 0.8 * look.veil * (1. - depth)))
-                .children(cards.iter().enumerate().map(|(i, c)| {
-                    // A click: ↓ to the cards, ← → to this one; A on the focused one.
-                    let mut pads = match zone {
-                        Zone::Row => vec![Pad::Down, Pad::Down],
-                        Zone::Actions => vec![Pad::Down],
-                        Zone::Cards => Vec::new(),
-                    };
-                    pads.extend(pointer::along(card_at, i, Pad::Left, Pad::Right));
-                    div().flex_none().on_pads(pointer::focus_or_activate(pads)).child(card(i, zone == Zone::Cards && i == card_at, c))
-                }))
-        });
-        // The art darkens from the bottom as the cards come up.
-        let dim = (depth > 0.005).then(|| {
-            div().absolute().inset_0().bg(linear_gradient(
+        let mut page = div().absolute().left_0().right_0().top(u(-rise)).h(u(shape.geo.end.max(view_h)));
+        if lift < 0.99 && !game_page {
+            let row = self.spotlight_row(found, index, &look, &to_row, window);
+            page = page.child(div().absolute().top_0().left_0().right_0().opacity(1. - lift).child(row));
+        }
+        match &game {
+            Some(g) => {
+                page = page.children(self.spotlight_head(g, &shape, &focus, strips[0], window));
+                if lift > 0.01 || game_page {
+                    page = page.children(self.spotlight_below(g, &shape, &focus, strips, None, window, cx));
+                } else {
+                    // On the row each column's first section peeks in at the
+                    // bottom, as the page going on below (no focus until it
+                    // is reached; the store strip is part of the head).
+                    let first = shape.first_left().filter(|z| *z != Zone::Media);
+                    let peek =
+                        div().absolute().inset_0().children(self.spotlight_below(g, &shape, &focus, strips, Some(first), window, cx));
+                    page =
+                        page.child(reveal(SharedString::from(format!("spot-peek-{}", shape.key)), peek, focus.rest_hold, REST_FADE, None));
+                }
+            }
+            None => page = page.child(self.spotlight_all_games(from)),
+        }
+        // The art darkens as the page rises, more deeper in it (as much as on
+        // the home on a game page without glass: nothing else carries the text).
+        let bare = focus.rules;
+        let dim = (lift > 0.005).then(|| {
+            div().absolute().top(u(-bar)).left_0().right_0().h(u(view_h)).bg(linear_gradient(
                 0.,
-                linear_color_stop(kit::dim(0.62 * depth), 0.),
-                linear_color_stop(kit::dim(0.), 0.9),
+                // Lighter on the game page: its glass panels carry the text.
+                linear_color_stop(kit::dim(if game_page && !bare { 0.15 * lift + 0.15 * deep } else { 0.35 * lift + 0.4 * deep }), 0.),
+                linear_color_stop(kit::dim(if game_page && !bare { 0.1 * lift + 0.12 * deep } else { 0.18 * lift + 0.3 * deep }), 1.),
             ))
         });
-        let column = div()
-            .absolute()
-            .left_0()
-            .right_0()
-            .top(u(-shift * depth))
-            .h(u(room.row + main_h + cards_h))
+        // Deep in the page, what rises past the top fades into the dark.
+        let top_fade = (deep > 0.005).then(|| {
+            div().absolute().top(u(-bar)).left_0().right_0().h(u(110.)).bg(linear_gradient(
+                180.,
+                linear_color_stop(kit::dim(0.75 * deep), 0.),
+                linear_color_stop(kit::dim(0.), 1.),
+            ))
+        });
+        // On the row only a hint of the page shows: the first sections fade
+        // out into the art itself (it is drawn again over them, from
+        // transparent to whole), which stays to the bottom edge with only a
+        // light shade behind the hints. (Not on the game page: its glass
+        // panels run to the edge.)
+        let veil = (!game_page && (shape.first_left().is_some() || shape.has_side()) && lift < 0.99).then(|| {
+            let top = shape.geo.media + page::TILE_H * 0.3 - rise;
+            let end = view_h - bar;
+            // No art (a plain background): the peek fades into the background's colour.
+            let band = self.console_art_band(super::super::Scrim::Home, top, PEEK_FADE, bar, (view_w, view_h)).unwrap_or_else(|| {
+                let (mut clear, solid) = (theme::console_bg(), theme::console_bg());
+                clear.a = 0.;
+                div()
+                    .absolute()
+                    .inset_0()
+                    .child(div().absolute().top(u(top)).left_0().right_0().h(u(PEEK_FADE)).bg(linear_gradient(
+                        180.,
+                        linear_color_stop(clear, 0.),
+                        linear_color_stop(solid, 1.),
+                    )))
+                    .child(div().absolute().top(u(top + PEEK_FADE)).left_0().right_0().h(u((end - top - PEEK_FADE).max(0.))).bg(solid))
+            });
+            div().absolute().inset_0().opacity(1. - lift).child(band).child(
+                div().absolute().top(u(end - HINT_SHADE)).left_0().right_0().h(u(HINT_SHADE)).bg(linear_gradient(
+                    180.,
+                    linear_color_stop(kit::dim(0.), 0.),
+                    linear_color_stop(kit::dim(0.32), 1.),
+                )),
+            )
+        });
+        // Cinema's page: what reaches the bottom fades into the dark over its
+        // last 60 px and is dark under the hint bar (no hard edge).
+        let foot = focus.rules.then(|| {
+            let dark = kit::dim(0.94);
+            div()
+                .absolute()
+                .left_0()
+                .right_0()
+                .bottom(u(-HINT_ROOM))
+                .h(u(60. + HINT_ROOM))
+                .flex()
+                .flex_col()
+                .child(div().h(u(60.)).bg(linear_gradient(0., linear_color_stop(dark, 0.), linear_color_stop(kit::dim(0.), 1.))))
+                .child(div().flex_1().bg(dark))
+        });
+        let mut root = div().relative().size_full().children(dim).child(page).children(veil).children(top_fade).children(foot);
+        if let (Some(i), false) = (viewer, shape.media_shots) {
+            root = root.child(self.spotlight_viewer(&shape.store, i, window));
+        } else if let Some(scroll) = &sheet {
+            let title = game.as_ref().map_or(String::new(), |g| g.title.clone());
+            let text = self.spot_nav(host).about.as_ref().filter(|(k, _)| *k == shape.key).map(|(_, t)| t.clone());
+            if let Some(text) = text {
+                root = root.child(self.spotlight_about_sheet(&title, &text, scroll, window));
+            }
+        } else if let Some(v) = self.shot_viewer() {
+            let hints = self.shot_viewer_hints().unwrap_or_default();
+            let layer = div().relative().size_full().child(v).child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .right_0()
+                    .bottom_0()
+                    .child(kit::hint_bar(&hints).bg(transparent_black()).border_color(transparent_black())),
+            );
+            root = root.child(kit::window_layer(window, layer));
+        }
+        root.into_any_element()
+    }
+
+    /// What the "All games" icon opens, in place of a game's head.
+    fn spotlight_all_games(&self, from: f32) -> AnyElement {
+        let total = self.lib.as_ref().map_or(0, |l| l.games.len());
+        let (_, on) = row::icon_sizes(self.cover_aspect);
+        let main = div()
             .flex()
             .flex_col()
-            .child(row.opacity(1. - depth))
-            .child(div().flex_none().h(u(main_h)).px(u(SIDE)).pb(u(pad)).flex().flex_col().justify_end().overflow_hidden().child(main))
-            .children(cards_row);
-        div().relative().size_full().overflow_hidden().children(dim).child(column).into_any_element()
+            .gap(u(8.))
+            .child(kit::title(tr!("All games"), 54.))
+            .child(div().text_size(u(17.)).text_color(theme::text_muted()).child(trn!(total, "{n} game", "{n} games")))
+            .child(kit::body_text(tr!("Press A to see them all.")));
+        placed(row::row_height(on) + 40., motion::enter_from("spot-main-all", main.relative(), 300, 16. * from, 0., 0.25))
+    }
+
+    /// The logo (or name), the buttons, the facts and genres, and the media strip.
+    fn spotlight_head(&mut self, g: &CollectionGame, shape: &Shape, f: &Focus, strip_x: f32, window: &Window) -> Vec<AnyElement> {
+        if f.rules {
+            return self.cinema_page_head(g, shape, f, strip_x, window);
+        }
+        let geo = shape.geo;
+        // The logo's own request (as `spot_has_logo` makes it), not the box's
+        // height: without a logo that box holds only the name.
+        let size = HeroSize { title: 54., logo: (600., page::logo_h(look::theme().hero.size)), max_w: 760., overview: 0 };
+        // The logo, else the name in type, smaller when long, on two lines at most.
+        let logo = (look::theme().hero.title == HeroTitle::Logo)
+            .then(|| self.console_logo(&SharedString::from(g.key.clone()), size.logo.0, size.logo.1, false, window))
+            .flatten();
+        // No logo: the name in type, large on Showcase's page and with a
+        // theme that asks for text, else small on one line so the head isn't
+        // empty.
+        let text = look::theme().hero.title != HeroTitle::Logo || f.glass;
+        let has_logo = logo.is_some();
+        let name = match logo {
+            Some(src) => logo_element(src, size.logo.0, size.logo.1, window),
+            None if text => kit::title(g.title.clone(), fitted_title(size.title, g.title.chars().count())).line_clamp(2).into_any_element(),
+            None => kit::title(g.title.clone(), page::NAME_SIZE).line_clamp(1).into_any_element(),
+        };
+        let key = &g.key;
+        // A logo sits on the box's foot; the small name in its middle.
+        let small_name = !has_logo && !text;
+        let logo = div()
+            .absolute()
+            .top(u(geo.logo))
+            .left(u(SIDE))
+            .w(u(760.))
+            .h(u(geo.logo_h))
+            .flex()
+            .when(small_name, |d| d.items_center())
+            .when(!small_name, |d| d.items_end())
+            .child(reveal(
+                SharedString::from(format!("spot-logo-{key}")),
+                div().relative().child(name),
+                LOGO_HOLD,
+                LOGO_FADE,
+                Some((LOGO_SLIDE, LOGO_SLIDE_MS)),
+            ));
+        let actions = (f.zone == Zone::Actions).then_some(f.action);
+        let rest = div()
+            .relative()
+            .flex()
+            .flex_col()
+            .child(self.spotlight_actions(g, actions))
+            .child(div().mt(u(18.)).child(self.spotlight_facts(g)))
+            .when(shape.chips, |d| d.child(div().mt(u(10.)).child(parts::genre_chips(g))));
+        let rest = placed(geo.buttons, reveal(SharedString::from(format!("spot-rest-{key}")), rest, f.rest_hold, REST_FADE, None));
+        let mut out = vec![logo.into_any_element(), rest];
+        if shape.media > 0 {
+            out.push(self.spotlight_media(shape, f, strip_x, window));
+        }
+        out
+    }
+
+    /// Cinema's page head: the home's block (the logo or the name, the facts
+    /// between champagne rules, the genres as words) at the page's left edge,
+    /// Play / Options / ♥ under it, all from that edge; then the strip.
+    /// It keeps the head's room (`Geo`): the block and the buttons end
+    /// where the chips would.
+    fn cinema_page_head(&mut self, g: &CollectionGame, shape: &Shape, f: &Focus, strip_x: f32, window: &Window) -> Vec<AnyElement> {
+        let geo = shape.geo;
+        let key = &g.key;
+        let logo_h = page::logo_h(look::theme().hero.size);
+        let block = self.cinema_block(g, &format!("cinema-page-{key}"), LOGO_SLIDE, geo.width.min(760.), logo_h, window);
+        let actions = (f.zone == Zone::Actions).then_some(f.action);
+        let buttons = div().relative().flex().child(self.spotlight_actions(g, actions));
+        let buttons = reveal(SharedString::from(format!("cinema-page-buttons-{key}")), buttons, f.rest_hold, REST_FADE, None);
+        // A soft shade of its own behind it, as on the home.
+        let shade_h = geo.logo_h + 150.;
+        let shade =
+            div().absolute().top(u(geo.logo)).left(u(SIDE)).w(u(geo.width)).h(u(shade_h)).child(cinema::block_shade(geo.width, shade_h));
+        // At the page's left edge, everything from it.
+        let head = div()
+            .absolute()
+            .top(u(geo.logo))
+            .left(u(SIDE))
+            .max_w(u(geo.width))
+            .flex()
+            .flex_col()
+            .items_start()
+            .gap(u(16.))
+            .child(block)
+            .child(buttons);
+        let mut out = vec![shade.into_any_element(), head.into_any_element()];
+        if shape.media > 0 {
+            out.push(self.spotlight_media(shape, f, strip_x, window));
+        }
+        out
+    }
+
+    /// Whether the page's head has a logo on screen for `g` (the same request
+    /// the head makes), or shows the name in its place; else the home keeps
+    /// only a small box for the name and Cinema's page its name line. A logo
+    /// that arrives later comes in then, with its fade.
+    fn spot_has_logo(&mut self, g: &CollectionGame, view: f32, host: Host, window: &Window) -> bool {
+        let theme = look::theme();
+        let glass = host == Host::Game && theme.layouts.showcase_glass;
+        if theme.hero.title != HeroTitle::Logo || glass {
+            return true;
+        }
+        let key = SharedString::from(g.key.clone());
+        let h = page::logo_h(theme.hero.size);
+        if host == Host::Game {
+            // Cinema's page: its block's own request.
+            let w = cinema::LOGO.0.min(page::page_width(view).min(760.));
+            self.console_logo(&key, w, h, true, window).is_some()
+        } else {
+            self.console_logo(&key, 600., h, false, window).is_some()
+        }
+    }
+
+    /// The media strip: the store's screenshots, else the user's.
+    fn spotlight_media(&mut self, shape: &Shape, f: &Focus, strip_x: f32, window: &Window) -> AnyElement {
+        let geo = shape.geo;
+        let dpr = window.scale_factor();
+        let k = kit::scale();
+        let (w, h) = (page::TILE_W, page::TILE_H);
+        let step = w + page::STRIP_GAP;
+        let first = (strip_x / step).floor().max(0.) as usize;
+        let last = ((strip_x + geo.left) / step).ceil() as usize + 2;
+        let mut tiles = Vec::new();
+        for i in first..shape.media.min(last) {
+            let on = f.zone == Zone::Media && f.media == i;
+            let face = if shape.media_shots {
+                self.shot_thumb(i, w, h, false).into_any_element()
+            } else {
+                let thumb = self.store_media_of(&shape.key).and_then(|m| m.screenshots.get(i).map(|s| s.thumb.clone()));
+                let src = thumb.and_then(|t| viewer::store_image(self, &t, (w * k * dpr) as u32, (h * k * dpr) as u32, 120 - i as i32));
+                div()
+                    .size_full()
+                    .rounded(u(12.))
+                    .overflow_hidden()
+                    .bg(kit::ink(0.08))
+                    .children(src.map(|s| img(s).size_full().object_fit(ObjectFit::Cover)))
+                    .into_any_element()
+            };
+            tiles.push(
+                page_tile(("spot-media", i), i as f32 * step, w, h, 12., on, face)
+                    .on_mouse_down(MouseButton::Left, self.spot_click(Spot::Media(i))),
+            );
+        }
+        reveal(
+            SharedString::from(format!("spot-strip-{}", shape.key)),
+            strip(geo.media, geo.left, h, strip_x, tiles),
+            f.rest_hold,
+            REST_FADE,
+            None,
+        )
+    }
+
+    /// The sections under the head, while the page has risen; `only`: on the
+    /// row, the sidebar and only that one of the left column (none: `None`).
+    #[allow(clippy::too_many_arguments)]
+    fn spotlight_below(
+        &mut self,
+        g: &CollectionGame,
+        shape: &Shape,
+        f: &Focus,
+        strips: [f32; 3],
+        only: Option<Option<Zone>>,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let geo = shape.geo;
+        let shows = |z: Zone| only.is_none_or(|o| o == Some(z));
+        let mut out = Vec::new();
+        out.extend(self.spotlight_mid(g, shape, f, !shows(Zone::About), cx));
+        if shape.cards > 0 && shows(Zone::Cards) {
+            let cards = self.spotlight_cards(g);
+            let row =
+                div().absolute().top(u(geo.cards)).left(u(SIDE)).flex().gap(u(18.)).children(cards.iter().enumerate().map(|(i, c)| {
+                    div().flex_none().on_mouse_down(MouseButton::Left, self.spot_click(Spot::Card(i))).child(card(
+                        i,
+                        f.zone == Zone::Cards && f.card == i,
+                        c,
+                    ))
+                }));
+            out.push(row.into_any_element());
+        }
+        if shape.shots > 0 && shows(Zone::Shots) {
+            out.push(self.spotlight_shots(shape, f));
+        }
+        if !shape.related.is_empty() && shows(Zone::Related) {
+            let w = page::COVER_W;
+            let h = w * self.cover_aspect;
+            let step = w + page::STRIP_GAP;
+            let dpr = window.scale_factor();
+            let k = kit::scale();
+            let tiles: Vec<Div> = shape
+                .related
+                .iter()
+                .enumerate()
+                .map(|(i, key)| {
+                    let src = self.cover(key, w * k, h * k, dpr, 110 - i as i32);
+                    let title = self.lib.as_ref().and_then(|l| l.get(key)).map_or(String::new(), |g| g.title.clone());
+                    let face = div()
+                        .size_full()
+                        .rounded(u(10.))
+                        .overflow_hidden()
+                        .bg(kit::ink(0.08))
+                        .child(match src {
+                            Some(s) => img(s).size_full().object_fit(ObjectFit::Cover).into_any_element(),
+                            None => div()
+                                .size_full()
+                                .p(u(8.))
+                                .flex()
+                                .items_end()
+                                .text_size(u(12.))
+                                .text_color(theme::text_primary())
+                                .child(title)
+                                .into_any_element(),
+                        })
+                        .into_any_element();
+                    page_tile(("spot-related", i), i as f32 * step, w, h, 10., f.zone == Zone::Related && f.related == i, face)
+                        .on_mouse_down(MouseButton::Left, self.spot_click(Spot::Related(i)))
+                })
+                .collect();
+            let strip = strip(0., geo.left, h, strips[2], tiles);
+            out.push(titled(geo.related, geo.left, tr!("More like this"), strip));
+        }
+        out
+    }
+
+    /// The user's screenshots: a titled glass card with as many thumbnails
+    /// as fit, the last one saying "+N" over it for the rest (A on it opens
+    /// the viewer there, ← → go on through all of them).
+    fn spotlight_shots(&mut self, shape: &Shape, f: &Focus) -> AnyElement {
+        let (w, h, pad, gap) = (page::SHOT_W, page::SHOT_H, page::SHOTS_PAD, page::STRIP_GAP);
+        let shown = shape.shots_shown;
+        let rest = shape.shots.saturating_sub(shown.saturating_sub(1));
+        let tiles: Vec<AnyElement> = (0..shown)
+            .map(|i| {
+                let thumb = self.shot_thumb(i, w, h, false);
+                let more = (i + 1 == shown && shape.shots > shown).then(|| {
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .rounded(u(12.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(kit::dim(0.55))
+                        .text_size(u(20.))
+                        .font_weight(theme::W_BOLD)
+                        .text_color(white())
+                        .child(format!("+{rest}"))
+                });
+                let face = div().relative().size_full().child(thumb).children(more).into_any_element();
+                page_tile(("spot-shot", i), pad + i as f32 * (w + gap), w, h, 12., f.zone == Zone::Shots && f.shot == i, face)
+                    .top(u(pad))
+                    .on_mouse_down(MouseButton::Left, self.spot_click(Spot::Shot(i)))
+                    .into_any_element()
+            })
+            .collect();
+        let card_w = shown as f32 * (w + gap) - gap + 2. * pad;
+        let card = div()
+            .relative()
+            .w(u(card_w))
+            .h(u(h + 2. * pad))
+            .rounded(u(18.))
+            .when(!f.rules, |d| d.bg(parts::glass(0.38)).border_1().border_color(kit::ink(0.1)))
+            .children(tiles);
+        div()
+            .absolute()
+            .top(u(shape.geo.shots))
+            .left(u(SIDE))
+            .flex()
+            .flex_col()
+            .child(section_title(tr!("Screenshots")))
+            .child(card)
+            .into_any_element()
+    }
+
+    /// About this game on the left; Achievements and Details on the right.
+    /// `side_only`: the sidebar alone (what peeks in on the row).
+    fn spotlight_mid(&mut self, g: &CollectionGame, shape: &Shape, f: &Focus, side_only: bool, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let geo = shape.geo;
+        let about_w = geo.left;
+        let on = |m: Mid| f.zone == Zone::Side && f.mid == m;
+        let mut left = div().w(u(about_w)).flex().flex_col();
+        if shape.about {
+            let text = self
+                .console
+                .tab_navs
+                .iter()
+                .map(|n| &n.spotlight)
+                .chain(std::iter::once(&self.console.game.showcase))
+                .find_map(|n| n.about.as_ref().filter(|(k, _)| *k == shape.key).map(|(_, t)| t.clone()))
+                .unwrap_or_default();
+            left = left.child(section_title(tr!("About this game"))).child(
+                div()
+                    .text_size(u(page::ABOUT_SIZE))
+                    .line_height(u(page::LINE_H))
+                    .text_color(theme::text_primary())
+                    .line_clamp(shape.about_lines)
+                    .child(text),
+            );
+            if shape.about_more {
+                let focused = f.zone == Zone::About;
+                let more = motion::spring("spot-more", div().relative().flex_none().h(u(page::MORE_H)), motion::SOFT, focused, |d, k| {
+                    let t = k.clamp(0., 1.);
+                    let fill: Hsla = motion::mix(parts::glass(0.4), theme::console_focus(), t).into();
+                    d.child(div().absolute().inset_0().rounded_full().bg(fill).border_1().border_color(kit::ink(0.14 * (1. - t)))).child(
+                        div()
+                            .relative()
+                            .h_full()
+                            .flex()
+                            .items_center()
+                            .px(u(16.))
+                            .text_size(u(13.))
+                            .font_weight(theme::W_BOLD)
+                            .text_color(motion::mix(theme::text_primary(), theme::console_on_focus(), t))
+                            .child(tr!("Read more")),
+                    )
+                });
+                left = left
+                    .child(div().mt(u(12.)).flex().child(div().on_mouse_down(MouseButton::Left, self.spot_click(Spot::About)).child(more)));
+            }
+        }
+        let mut column = div().w(u(page::COLUMN_W)).flex().flex_col().gap(u(26.));
+        if shape.ach {
+            column = column.child(div().flex().flex_col().child(section_title(tr!("Achievements"))).child(self.spotlight_ach_card(
+                g,
+                on(Mid::Ach),
+                cx,
+            )));
+        }
+        let details = self.spotlight_details(g);
+        if !details.is_empty() || !shape.links.is_empty() {
+            let rows = details.into_iter().enumerate().map(|(i, (ic, label, value))| {
+                div()
+                    .flex()
+                    .items_center()
+                    .h(u(page::DETAIL_H))
+                    .when(i > 0, |d| d.border_t_1().border_color(kit::ink(0.1)))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(u(9.))
+                            .w(u(150.))
+                            .flex_none()
+                            .text_size(u(12.5))
+                            .text_color(theme::text_muted())
+                            .child(crate::ui::icon(ic, u(13.), theme::text_muted()))
+                            .child(label),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(u(12.5))
+                            .font_weight(theme::W_BOLD)
+                            .text_color(kit::strong())
+                            .child(value),
+                    )
+            });
+            let links = div().flex().gap(u(8.)).mt(u(14.)).children(shape.links.iter().enumerate().map(|(i, l)| {
+                let label: SharedString = match l {
+                    Link::Folder => tr!("Open folder").into(),
+                    Link::Store => tr!("Store page").into(),
+                };
+                let focused = f.zone == Zone::Side && f.mid == Mid::Link && f.link == i;
+                let base = div().relative().flex_none().h(u(page::LINK_H)).min_w(u(120.));
+                // Over the bare art (Cinema's page): a quiet pill, the focus colour when focused.
+                let bare = f.rules;
+                let el = motion::spring(("spot-link", i), base, motion::SOFT, focused, move |d, k| {
+                    let t = k.clamp(0., 1.);
+                    let idle = if bare { parts::glass(0.4).opacity(0.) } else { parts::glass(0.4) };
+                    let fill: Hsla = motion::mix(idle, theme::console_focus(), t).into();
+                    let edge = if bare { kit::ink(0.3 * (1. - t)) } else { kit::ink(0.14 * (1. - t)) };
+                    d.child(
+                        div().absolute().inset_0().rounded_full().when(!bare, |d| d.rounded(u(9.))).bg(fill).border_1().border_color(edge),
+                    )
+                    .child(
+                        div()
+                            .relative()
+                            .h_full()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .px(u(14.))
+                            .text_size(u(12.5))
+                            .font_weight(theme::W_BOLD)
+                            .whitespace_nowrap()
+                            .text_color(motion::mix(theme::text_primary(), theme::console_on_focus(), t))
+                            .child(label),
+                    )
+                });
+                div().on_mouse_down(MouseButton::Left, self.spot_click(Spot::Mid(Mid::Link, i))).child(el)
+            }));
+            column = column.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .child(section_title(tr!("Details")))
+                    .children(rows)
+                    .when(!shape.links.is_empty(), |d| d.child(links)),
+            );
+        }
+        if shape.hltb != HltbCard::None {
+            let focused = f.zone == Zone::Side && f.mid == Mid::Hltb;
+            column = column.child(
+                div().flex().flex_col().child(section_title(tr!("How Long To Beat"))).child(self.spotlight_hltb_card(shape, focused)),
+            );
+        }
+        let mut out = Vec::new();
+        if shape.about && !side_only {
+            out.push(div().absolute().top(u(geo.about)).left(u(SIDE)).child(glass_panel(left, f)).into_any_element());
+        }
+        // The sidebar, beside the left column from its first section down (under it when stacked).
+        if shape.has_side() {
+            // Beside the left column, or in its place when it has nothing.
+            let x = if shape.first_left().is_some() && !geo.stacked { SIDE + geo.left + page::COLUMN_GAP } else { SIDE };
+            out.push(div().absolute().top(u(geo.side)).left(u(x)).child(glass_panel(column, f)).into_any_element());
+        }
+        out
+    }
+
+    /// The How Long To Beat card, as the desktop's section draws it: the bar of
+    /// the three times with where the player is along it, the times under
+    /// it and how the game was matched; or that it has no times.
+    fn spotlight_hltb_card(&self, shape: &Shape, focused: bool) -> AnyElement {
+        let bare = !look::theme().layouts.showcase_glass;
+        let h = self.focus.as_ref().filter(|f| f.key == shape.key).and_then(|f| f.hltb.clone());
+        let base = div().relative().w_full().h(u(match (&shape.hltb, &h) {
+            (HltbCard::Times { note, .. }, Some(_)) => page::HLTB_H + if *note { page::HLTB_NOTE_H } else { 0. },
+            _ => page::HLTB_MISSING_H,
+        }));
+        let content = match h {
+            Some(h) => {
+                let seg = |c: u32| div().flex_1().min_w_0().h_full().rounded_full().bg(rgb(c));
+                let marker = hltb_marker(&h).map(|m| {
+                    div()
+                        .absolute()
+                        .top(u(-3.))
+                        .left(relative(m))
+                        .ml(u(-6.))
+                        .w(u(12.))
+                        .h(u(14.))
+                        .rounded(u(5.))
+                        .bg(kit::strong())
+                        .border_2()
+                        .border_color(rgb(0x1a1c20))
+                        .shadow(kit::shadow(0.45, 1., 4.))
+                });
+                let bar = div()
+                    .relative()
+                    .flex()
+                    .gap(u(3.))
+                    .h(u(8.))
+                    .child(seg(HLTB_COLOURS[0]))
+                    .child(seg(HLTB_COLOURS[1]))
+                    .child(seg(HLTB_COLOURS[2]))
+                    .children(marker);
+                let stat = |label: &'static str, v: Option<f32>| {
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap(u(5.))
+                        .child(div().text_size(u(11.)).text_color(theme::text_muted()).whitespace_nowrap().child(label))
+                        .child(
+                            div()
+                                .w_full()
+                                .flex()
+                                .justify_center()
+                                .py(u(5.))
+                                .rounded(u(8.))
+                                .when(!bare, |d| d.bg(kit::ink(0.1)))
+                                .text_size(u(13.))
+                                .font_weight(theme::W_BOLD)
+                                .text_color(kit::strong())
+                                .child(hltb_hours(v)),
+                        )
+                };
+                let note =
+                    hltb_note_text(&h).map(|n| div().mt(u(8.)).text_size(u(11.)).text_color(theme::text_muted()).truncate().child(n));
+                div()
+                    .relative()
+                    .size_full()
+                    .flex()
+                    .flex_col()
+                    .px(u(if bare { 0. } else { 16. }))
+                    .pt(u(16.))
+                    .child(bar)
+                    .child(
+                        div()
+                            .mt(u(14.))
+                            .flex()
+                            .gap(u(8.))
+                            .child(stat(tr!("Main Story"), h.main))
+                            .child(stat(tr!("Main + Extras"), h.extra))
+                            .child(stat(tr!("Completionist"), h.complete)),
+                    )
+                    .children(note)
+            }
+            None => div()
+                .relative()
+                .size_full()
+                .flex()
+                .items_center()
+                .px(u(if bare { 0. } else { 16. }))
+                .text_size(u(12.5))
+                .text_color(theme::text_muted())
+                .child(tr!("HowLongToBeat has no times for this game.")),
+        };
+        let el = motion::spring("spot-hltb", base, motion::SOFT, focused, move |d, k| {
+            let t = k.clamp(0., 1.);
+            // Over the bare art (Cinema's page) no card: the focus ring alone.
+            d.when(!bare, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .rounded(u(14.))
+                        .bg(kit::ink(0.06 + 0.06 * t))
+                        .border_1()
+                        .border_color(kit::ink(0.16 + 0.1 * t)),
+                )
+            })
+            .child(content)
+            .when(t > 0.01, |d| d.child(ring(14., t)))
+        });
+        div().on_mouse_down(MouseButton::Left, self.spot_click(Spot::Mid(Mid::Hltb, 0))).child(el).into_any_element()
+    }
+
+    /// The Achievements card: a trophy, unlocked of total, a bar, the latest unlocks.
+    fn spotlight_ach_card(&mut self, g: &CollectionGame, focused: bool, cx: &mut Context<Self>) -> AnyElement {
+        let bare = !look::theme().layouts.showcase_glass;
+        let counts = self.spotlight_ach_counts(g, cx);
+        let known = counts.is_some();
+        let (unlocked, total, complete) = counts.unwrap_or((0, 0, false));
+        let icons = self.spotlight_ach_icons(g, 40., cx);
+        let gold: Rgba = theme::achievement_gold();
+        let pct = (unlocked * 100).checked_div(total).unwrap_or(0);
+        let note = if complete { tr!("All achievements").to_string() } else { tr!("{percent}% complete", percent = pct) };
+        let trophy = div()
+            .flex_none()
+            .size(u(46.))
+            .rounded_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(if complete { Hsla { a: 0.18, ..gold.into() } } else { kit::ink(0.1) })
+            .child(crate::ui::icon(Icon::Trophy, u(24.), if complete { gold } else { theme::text_primary() }));
+        let recent = div().flex().gap(u(6.)).children(icons.into_iter().map(|src| {
+            div()
+                .size(u(40.))
+                .rounded(u(8.))
+                .overflow_hidden()
+                .bg(kit::ink(0.1))
+                .children(src.map(|s| img(s).size_full().object_fit(ObjectFit::Cover)))
+        }));
+        let content = move |t: f32| {
+            div()
+                .relative()
+                .size_full()
+                .flex()
+                .items_center()
+                .gap(u(14.))
+                .px(u(if bare { 0. } else { 16. }))
+                .child(trophy)
+                // Still being read: the card holds its place, empty.
+                .when(known, |d| {
+                    d.child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .gap(u(3.))
+                            .child(
+                                div()
+                                    .text_size(u(17.))
+                                    .font_weight(theme::W_BOLD)
+                                    .text_color(kit::strong())
+                                    .child(format!("{unlocked}/{total}")),
+                            )
+                            .child(div().text_size(u(12.)).text_color(theme::text_muted()).child(if t > 0.5 {
+                                tr!("View all").to_string()
+                            } else {
+                                note.clone()
+                            }))
+                            .when(!complete, |d| {
+                                d.child(
+                                    div().mt(u(3.)).h(u(4.)).w(u(140.)).rounded_full().bg(kit::ink(0.15)).child(
+                                        div()
+                                            .h_full()
+                                            .w(relative((pct as f32 / 100.).clamp(0.02, 1.)))
+                                            .rounded_full()
+                                            .bg(theme::console_focus()),
+                                    ),
+                                )
+                            }),
+                    )
+                })
+                .child(recent)
+        };
+        let base = div().relative().w_full().h(u(page::ACH_H));
+        let el = motion::spring("spot-ach", base, motion::SOFT, focused, move |d, k| {
+            let t = k.clamp(0., 1.);
+            // Over the bare art (Cinema's page) no card: the focus ring alone.
+            d.when(!bare, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .rounded(u(14.))
+                        .bg(kit::ink(0.06 + 0.06 * t))
+                        .border_1()
+                        .border_color(kit::ink(0.16 + 0.1 * t)),
+                )
+            })
+            .child(content(t))
+            .when(t > 0.01, |d| d.child(ring(14., t)))
+        });
+        div().on_mouse_down(MouseButton::Left, self.spot_click(Spot::Mid(Mid::Ach, 0))).child(el).into_any_element()
     }
 
     pub(super) fn spotlight_pad(&mut self, tab: usize, spec: &TabSpec, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
@@ -363,17 +1521,52 @@ impl CollectionView {
         if found.is_empty() {
             return false;
         }
+        self.spot_page_pad(Host::Tab(tab), &found, pad, window, cx)
+    }
+
+    /// A press on the page of `host` (`false`: the owner's to use, B leaving it).
+    pub(in crate::collection::console) fn spot_page_pad(
+        &mut self,
+        host: Host,
+        found: &[SharedString],
+        pad: Pad,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let game_page = host == Host::Game;
         let n = found.len();
         let wrap = look::theme().nav.wrap;
-        let nav = &self.tab_nav(tab).spotlight;
+        // What is open over the page takes every press.
+        let nav = &mut self.spot_nav(host);
+        if let Some(i) = nav.viewer {
+            let count = nav.shape.store.len().max(1);
+            match pad {
+                Pad::Left | Pad::Right => {
+                    let next = super::step(i, count, pad.dir(), true);
+                    nav.viewer = Some(next);
+                    nav.media = next;
+                }
+                Pad::A | Pad::B => nav.viewer = None,
+                _ => {}
+            }
+            return true;
+        }
+        if let Some(scroll) = nav.sheet.clone() {
+            if !Self::spotlight_sheet_pad(&scroll, pad) {
+                nav.sheet = None;
+            }
+            return true;
+        }
+        if self.shot_viewer_pad(pad) {
+            return true;
+        }
+        let nav = &self.spot_nav(host);
         let index = nav.index.min(n);
         let game = found.get(index).cloned();
-        let zone = if game.is_some() { nav.zone } else { Zone::Row };
-        let cards = match game.as_ref().filter(|_| self.spotlight_room(window).cards).and_then(|k| self.lib.as_ref()?.get(k)) {
-            Some(g) => self.spotlight_cards(g).len(),
-            None => 0,
-        };
-        if pad == Pad::Y {
+        // On the row A and X do what the theme's `nav.aButton` says.
+        // ("All games", past the games, opens on A either way.)
+        let pad = if game_page || nav.zone != Zone::Row || game.is_none() { pad } else { row_pad(pad, play_first()) };
+        if pad == Pad::Y && !game_page {
             self.open_console_filters(window, cx);
             return true;
         }
@@ -383,10 +1576,21 @@ impl CollectionView {
                 return true;
             }
         }
-        let nav = &mut self.tab_nav(tab).spotlight;
+        let nav = &mut self.spot_nav(host);
         nav.index = index;
-        nav.zone = zone;
-        match (zone, pad) {
+        // Presses faster than frames: the page of a game not drawn yet has
+        // only its buttons.
+        let drawn = game.as_ref() == Some(&nav.shape.key);
+        if game_page && nav.zone == Zone::Row {
+            nav.zone = Zone::Actions;
+        }
+        if game.is_none() {
+            nav.zone = Zone::Row;
+        } else if !drawn && !matches!(nav.zone, Zone::Row | Zone::Actions) {
+            nav.zone = Zone::Actions;
+        }
+        let zones = if drawn { nav.shape.zones() } else { vec![Zone::Row, Zone::Actions] };
+        match (nav.zone, pad) {
             (Zone::Row, Pad::Left | Pad::Right) => {
                 let to = super::step(index, n + 1, pad.dir(), wrap);
                 if to != index {
@@ -400,33 +1604,101 @@ impl CollectionView {
             }
             // "All games".
             (Zone::Row, Pad::A) => self.console_open_library(window, cx),
+            (Zone::Row, _) => return false,
             (Zone::Actions, Pad::Left) => nav.action = nav.action.saturating_sub(1),
             (Zone::Actions, Pad::Right) => nav.action = (nav.action + 1).min(actions().len() - 1),
-            (Zone::Actions, Pad::Up) => nav.zone = Zone::Row,
-            (Zone::Actions, Pad::Down) if cards > 0 => {
-                nav.zone = Zone::Cards;
-                nav.card = nav.card.min(cards - 1);
-            }
+            // The game page has nothing above its buttons: B leaves it.
+            (Zone::Actions, Pad::Up) if game_page => {}
+            (Zone::Actions, Pad::B) if game_page => return false,
+            (Zone::Actions, Pad::Up | Pad::B) => nav.zone = Zone::Row,
             (Zone::Actions, Pad::A) => {
                 let (Some(key), at) = (game, nav.action) else { return true };
-                self.spotlight_act(&key, actions()[at.min(actions().len() - 1)], window, cx);
+                self.spotlight_act(host, &key, actions()[at.min(actions().len() - 1)], window, cx);
             }
-            (Zone::Cards, Pad::Left) => nav.card = nav.card.saturating_sub(1),
-            (Zone::Cards, Pad::Right) => nav.card = (nav.card + 1).min(cards.saturating_sub(1)),
-            (Zone::Cards, Pad::Up) => nav.zone = Zone::Actions,
-            (Zone::Cards, Pad::A) => {
-                if let Some(k) = game {
-                    self.open_game_page(k);
+            // ↓ from the buttons: the left column's first section, else the sidebar.
+            (Zone::Actions, Pad::Down) => {
+                if let Some(z) = zones.get(2).copied() {
+                    nav.zone = z;
                 }
             }
-            (Zone::Actions | Zone::Cards, Pad::B) => nav.zone = Zone::Row,
+            (_, Pad::B) => nav.zone = Zone::Actions,
+            (z, Pad::Up | Pad::Down | Pad::Left | Pad::Right) => {
+                let along = nav.along(z).map_or(0, |a| *a);
+                match nav.shape.step(z, nav.mid, nav.link, along, pad) {
+                    Move::To(to, mid, link) => (nav.zone, nav.mid, nav.link) = (to, mid, link),
+                    Move::Along(i) => {
+                        if let Some(at) = nav.along(z) {
+                            *at = i;
+                        }
+                    }
+                    Move::Stay => {}
+                }
+            }
+            (z, Pad::A) => {
+                let Some(key) = game else { return true };
+                self.spotlight_open(host, found, &key, z, window, cx);
+            }
             _ => return false,
         }
         true
     }
 
+    /// A on something of the page (`zone` has the focus).
+    fn spotlight_open(
+        &mut self,
+        host: Host,
+        found: &[SharedString],
+        key: &SharedString,
+        zone: Zone,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let nav = &mut self.spot_nav(host);
+        match zone {
+            Zone::Media if nav.shape.media_shots => {
+                let i = nav.media;
+                self.shot_open(i, window, cx);
+            }
+            Zone::Media => nav.viewer = Some(nav.media),
+            Zone::Shots => {
+                let i = nav.shot;
+                self.shot_open(i, window, cx);
+            }
+            Zone::About => nav.sheet = Some(Glide::new(Axis::Y)),
+            Zone::Side => match nav.mid {
+                Mid::Ach => self.open_console_achievements(key.clone(), cx),
+                Mid::Link => {
+                    let Some(link) = nav.shape.links.get(nav.link).cloned() else { return };
+                    match link {
+                        Link::Folder => self.open_install_folder(key, cx),
+                        Link::Store => self.open_details(key, cx),
+                    }
+                }
+                Mid::Hltb => {
+                    if let HltbCard::Times { link: Some(url), .. } = nav.shape.hltb.clone() {
+                        self.open_url(url, cx);
+                    }
+                }
+            },
+            Zone::Cards => self.open_game_page(key.clone()),
+            Zone::Related => {
+                let Some(other) = nav.shape.related.get(nav.related).cloned() else { return };
+                // In the row: the row goes to it; else its game page.
+                match found.iter().position(|k| *k == other) {
+                    Some(i) => {
+                        nav.from = if i > nav.index { 1. } else { -1. };
+                        nav.index = i;
+                        nav.zone = Zone::Row;
+                    }
+                    None => self.open_game_page(other),
+                }
+            }
+            Zone::Row | Zone::Actions => {}
+        }
+    }
+
     /// A on a button of the actions row.
-    fn spotlight_act(&mut self, key: &SharedString, action: SpotAct, window: &mut Window, cx: &mut Context<Self>) {
+    fn spotlight_act(&mut self, host: Host, key: &SharedString, action: SpotAct, window: &mut Window, cx: &mut Context<Self>) {
         match action {
             SpotAct::Play => self.install_or_play(key, window, cx),
             SpotAct::Status => {
@@ -445,23 +1717,221 @@ impl CollectionView {
                 }
                 self.toggle_favourite(cx);
             }
-            SpotAct::More => self.open_game_page(key.clone()),
+            // The game page lists the game's actions in a sheet over itself.
+            SpotAct::Options if host == Host::Game => self.open_showcase_options(),
+            SpotAct::Options => self.open_game_page(key.clone()),
         }
     }
 
     pub(super) fn spotlight_hints(&self, tab: usize, spec: &TabSpec) -> Vec<Hint> {
-        let nav = self.console.tab_navs.get(tab).map(|n| &n.spotlight);
-        let found = self.spotlight_keys(spec);
-        let game = found.get(nav.map_or(0, |n| n.index)).and_then(|k| self.lib.as_ref()?.get(k));
+        self.spot_page_hints(Host::Tab(tab), &self.spotlight_keys(spec))
+    }
+
+    /// The hints of the page of `host`.
+    pub(in crate::collection::console) fn spot_page_hints(&self, host: Host, found: &[SharedString]) -> Vec<Hint> {
+        let Some(nav) = self.spot_nav_ref(host) else { return Vec::new() };
+        if nav.viewer.is_some() {
+            return vec![hint(Btn::LeftRight, tr!("Browse")), hint(Btn::B, tr!("Close"))];
+        }
+        if nav.sheet.is_some() {
+            return vec![hint(Btn::B, tr!("Close"))];
+        }
+        if let Some(h) = self.shot_viewer_hints() {
+            return h;
+        }
+        let game = found.get(nav.index).and_then(|k| self.lib.as_ref()?.get(k));
         let primary = game.map_or(tr!("Play"), |g| self.primary_label(g));
-        let mut h = match nav.map(|n| n.zone).filter(|_| game.is_some()) {
-            Some(Zone::Actions | Zone::Cards) => {
-                vec![hint(Btn::A, tr!("Select")), hint(Btn::X, primary), hint(Btn::B, tr!("Back"))]
-            }
-            _ if game.is_some() => vec![hint(Btn::A, tr!("Actions")), hint(Btn::X, primary), hint(Btn::Y, tr!("Search"))],
-            _ => vec![hint(Btn::A, tr!("Open")), hint(Btn::Y, tr!("Search"))],
+        // The row with A to play (`nav.aButton`): A plays, X opens the buttons.
+        if nav.zone == Zone::Row && game.is_some() && play_first() {
+            let mut h = vec![hint(Btn::A, primary), hint(Btn::X, tr!("Actions")), hint(Btn::Y, tr!("Search"))];
+            h.extend(self.console_tab_hints());
+            return h;
+        }
+        let a = match nav.zone {
+            Zone::Row if game.is_some() => tr!("Actions"),
+            Zone::Row => tr!("Open"),
+            Zone::Actions => tr!("Select"),
+            Zone::Media | Zone::Shots => tr!("View"),
+            Zone::About => tr!("Read more"),
+            Zone::Side | Zone::Cards | Zone::Related => tr!("Open"),
         };
-        h.extend(self.console_tab_hints());
+        let mut h = vec![hint(Btn::A, a)];
+        if game.is_some() {
+            h.push(hint(Btn::X, primary));
+        }
+        if nav.zone == Zone::Row {
+            h.push(hint(Btn::Y, tr!("Search")));
+            h.extend(self.console_tab_hints());
+        } else {
+            h.push(hint(Btn::B, tr!("Back")));
+        }
         h
+    }
+}
+
+/// The focus, copied for a frame's drawing.
+struct Focus {
+    zone: Zone,
+    action: usize,
+    media: usize,
+    mid: Mid,
+    link: usize,
+    card: usize,
+    shot: usize,
+    related: usize,
+    /// The game page: sections on frosted glass.
+    glass: bool,
+    /// The game page without glass (Cinema): sections over the darkened art,
+    /// a thin rule over each.
+    rules: bool,
+    /// The pause left before the parts under the logo fade in, ms.
+    rest_hold: u64,
+}
+
+/// A tile of a strip at `x` (`w`×`h`, corners `radius`): focused, it grows a
+/// touch and wears the ring.
+fn page_tile(id: (&'static str, usize), x: f32, w: f32, h: f32, radius: f32, focused: bool, face: AnyElement) -> Div {
+    let base = div().relative().size_full();
+    let el = motion::spring(id, base, motion::SOFT, focused, move |d, k| {
+        let t = k.clamp(0., 1.);
+        d.child(div().size_full().rounded(u(radius)).shadow(kit::shadow(0.4 + 0.2 * t, 6. + 6. * t, 16. + 12. * t)).child(face))
+            .when(t > 0.01, |d| d.child(ring(radius, t)))
+    });
+    div().absolute().left(u(x)).top_0().w(u(w)).h(u(h)).child(el)
+}
+
+/// The theme's A plays the game (`nav.aButton`), X opening its details.
+fn play_first() -> bool {
+    look::theme().nav.a_button == AButton::Play
+}
+
+/// A press on the row as the row's own handling reads it (A opens the
+/// buttons, X plays): with `play_first`, A and X trade places.
+fn row_pad(pad: Pad, play_first: bool) -> Pad {
+    match (pad, play_first) {
+        (Pad::A, true) => Pad::X,
+        (Pad::X, true) => Pad::A,
+        _ => pad,
+    }
+}
+
+/// `el` at `top` on the page's left edge. A slide-in (`motion::enter_from`)
+/// sets the `top` / `left` of what it moves, ending at 0: it must move a
+/// `relative` element inside this one, never the placed element itself, or
+/// the element ends at the page's top, over the row.
+fn placed(top: f32, el: AnyElement) -> AnyElement {
+    div().absolute().top(u(top)).left(u(SIDE)).child(el).into_any_element()
+}
+
+/// A new game's logo (or name): hidden at once, it holds, then fades in while
+/// it slides in from the left; the buttons, facts, genres and strip fade in
+/// after it, in place (ms, design px).
+const LOGO_HOLD: u64 = 300;
+const LOGO_FADE: u64 = 450;
+const LOGO_SLIDE: f32 = -30.;
+const LOGO_SLIDE_MS: u64 = 550;
+const REST_HOLD: u64 = 150;
+const REST_FADE: u64 = 300;
+
+/// `el` coming in for a new game (`id` names it: a new id replays it):
+/// hidden, then after `hold` ms it fades in over `fade` ms (ease-out) and,
+/// with `slide` (from design px, over ms), slides into place with a cubic
+/// ease-out. Reduced motion keeps the fade alone; no motion shows it at once.
+fn reveal(id: SharedString, el: Div, hold: u64, fade: u64, slide: Option<(f32, u64)>) -> AnyElement {
+    if !motion::on() {
+        return el.into_any_element();
+    }
+    let slide = slide.filter(|_| !motion::reduced());
+    let total = hold + fade.max(slide.map_or(0, |(_, ms)| ms));
+    el.with_animation(id, Animation::new(std::time::Duration::from_millis(total)), move |el, t| {
+        let ms = t * total as f32 - hold as f32;
+        let f = (ms / fade as f32).clamp(0., 1.);
+        let el = el.opacity(1. - (1. - f) * (1. - f));
+        match slide {
+            Some((dx, slide_ms)) => {
+                let k = (ms / slide_ms as f32).clamp(0., 1.);
+                el.left(u(dx * (1. - k).powi(3)))
+            }
+            None => el,
+        }
+    })
+    .into_any_element()
+}
+
+/// How far a glass panel reaches around what it holds, design px (outside
+/// its place: the layout's heights stay the same).
+const GLASS_PAD: f32 = 18.;
+
+/// `el` on a panel of frosted glass (the game page's look): a translucent
+/// fill, a thin edge and the theme's soft corners, reaching a little around
+/// it; as is without `glass`.
+fn glass_panel(el: Div, f: &Focus) -> Div {
+    if !f.glass {
+        return el;
+    }
+    let radius = (look::tile_radius() * 2.).max(12.);
+    div()
+        .ml(u(-GLASS_PAD))
+        .mt(u(-GLASS_PAD))
+        .p(u(GLASS_PAD))
+        .rounded(u(radius + 6.))
+        .bg(parts::glass(0.34))
+        .border_1()
+        .border_color(kit::ink(0.1))
+        .child(el)
+}
+
+/// Room the game page keeps under its end for the hint bar, design px.
+const HINT_ROOM: f32 = 60.;
+
+/// On the row, how tall the fade of the page's first sections into the art
+/// is, and the light shade behind the hints, design px.
+const PEEK_FADE: f32 = 110.;
+const HINT_SHADE: f32 = 120.;
+
+/// Room around a strip's tiles for the focus ring, design px.
+const STRIP_ROOM: f32 = 26.;
+
+/// A strip at `top` (`width` wide, tiles `h` tall) slid by `x`; it keeps
+/// room around the tiles for the focus ring.
+fn strip(top: f32, width: f32, h: f32, x: f32, tiles: Vec<Div>) -> Div {
+    let room = STRIP_ROOM;
+    div()
+        .absolute()
+        .top(u(top - room))
+        .left(u(SIDE - room))
+        .w(u(width + 2. * room))
+        .h(u(h + 2. * room))
+        .overflow_hidden()
+        .child(div().absolute().top(u(room)).left(u(room - x)).h(u(h)).w(u(width + x + 400.)).children(tiles))
+}
+
+/// A section at `top` with its title over `body` (placed inside at the title's foot).
+fn titled(top: f32, width: f32, title: &str, body: Div) -> AnyElement {
+    div()
+        .absolute()
+        .top(u(top))
+        .left_0()
+        .right_0()
+        .h(u(parts::TITLE_H + 400.))
+        .child(div().absolute().top_0().left(u(SIDE)).w(u(width)).child(section_title(title)))
+        .child(div().absolute().top(u(parts::TITLE_H)).left_0().right_0().child(body))
+        .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::row_pad;
+    use crate::console::Pad;
+
+    #[test]
+    fn a_plays_on_the_row_when_the_theme_says_so() {
+        // Details (the default): as pressed, A opening the buttons, X playing.
+        assert_eq!(row_pad(Pad::A, false), Pad::A);
+        assert_eq!(row_pad(Pad::X, false), Pad::X);
+        // Play: A plays, X opens the buttons; the rest is left alone.
+        assert_eq!(row_pad(Pad::A, true), Pad::X);
+        assert_eq!(row_pad(Pad::X, true), Pad::A);
+        assert_eq!(row_pad(Pad::Down, true), Pad::Down);
     }
 }

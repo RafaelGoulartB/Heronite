@@ -1,6 +1,9 @@
 //! The built-in console themes. [`minimal`] is the one a new install uses
 //! ([`DEFAULT`]); `classic` is the base the others start from (and what a
-//! theme file's missing keys read as), each changing what makes it different. Their names and descriptions are English keys translated
+//! theme file's missing keys read as), each changing what makes it different.
+//! Classic itself is no longer listed: [`cinema`] took its shelves (a
+//! console.json still on the built-in Classic or the first Cinema moves to it,
+//! see `upgrade_cinema`). Their names and descriptions are English keys translated
 //! where they are shown (`n_!` marks them for the translation coverage test).
 
 use heronite_i18n::n_;
@@ -45,7 +48,8 @@ pub fn default_shelves() -> Vec<ShelfSpec> {
     on.into_iter().map(|k| ShelfSpec::new(k, true)).chain(off.into_iter().map(|k| ShelfSpec::new(k, false))).collect()
 }
 
-/// The base of every theme: shelves on Home, a cover grid in Library, the sidebar menu.
+/// The base of every theme: shelves on Home, a cover grid in Library, the
+/// sidebar menu. Not listed among the built-in themes (see [`all`]).
 pub fn classic() -> ConsoleTheme {
     ConsoleTheme {
         format: FORMAT,
@@ -68,6 +72,7 @@ pub fn classic() -> ConsoleTheme {
         game_page: GamePage::Classic,
         menu: MenuOptions { style: MenuStyle::Sidebar, side: Side::Left, items: default_menu() },
         layouts: LayoutOptions::default(),
+        launch: LaunchOptions::default(),
         extra: Map::new(),
     }
 }
@@ -81,10 +86,79 @@ fn from_classic(id: &str, name: &str, description: &str, edit: impl FnOnce(&mut 
     t
 }
 
-/// The game's art full screen with its logo large, chips of facts, one row
-/// of portrait covers and the tabs along the bottom.
+/// The champagne-gold of [`cinema`]'s focus.
+pub const CINEMA_GOLD: &str = "#e8cf9a";
+
+/// The game's key art full screen, its logo large with its facts and genres
+/// centred under it, one row of large covers along the bottom (the logo and
+/// facts step aside while the row moves), a champagne-gold focus; tabs of
+/// filters in a pill at the top and the Library's grid of every game; its game page
+/// is Showcase over the art, without glass; Y opens the game's actions.
 pub fn cinema() -> ConsoleTheme {
-    from_classic("cinema", n_!("Cinema"), n_!("The game's art full screen, its logo large, a row of covers and the tabs below."), |t| {
+    from_classic(
+        "cinema",
+        n_!("Cinema"),
+        n_!("The game's art full screen with its logo, a row of large covers and shelves of games below it."),
+        |t| {
+            t.tabs = vec![
+                TabSpec::new(n_!("Installed"), Layout::Cinema, "installed"),
+                TabSpec::new(n_!("All games"), Layout::Cinema, "all"),
+                TabSpec::new(n_!("Recently played"), Layout::Cinema, "recent"),
+                TabSpec::new(n_!("Favourites"), Layout::Cinema, "favourites"),
+                TabSpec::new(n_!("Library"), Layout::Grid, "all"),
+            ];
+            t.hero.title = HeroTitle::Logo;
+            t.hero.overview = false;
+            t.tiles.corners = Corners::Soft;
+            t.tiles.size = TileSize::Large;
+            t.tiles.badges = Badges::Off;
+            t.interface.tab_bar = TabBar::Top;
+            t.interface.status_icons = false;
+            t.interface.font = ConsoleFont::System;
+            t.interface.accent = CINEMA_GOLD.into();
+            t.controls.hints = Hints::Always;
+            t.game_page = GamePage::Showcase;
+            t.layouts.showcase_glass = false;
+            t.layouts.spotlight_cards = false;
+        },
+    )
+}
+
+/// Cinema with the tab "Not played yet" in the place of the Library and its
+/// status icons (a console.json still on it moves to [`cinema`]; an earlier
+/// copy of it also set A to play, which [`cinema`] leaves to the user).
+pub(super) fn five_tab_cinema() -> ConsoleTheme {
+    let mut t = cinema();
+    t.description = "The game's art full screen with its logo, and a row of large covers below it.".into();
+    t.tabs[4] = TabSpec::new(n_!("Not played yet"), Layout::Cinema, "status:not-played");
+    t.interface.status_icons = true;
+    t
+}
+
+/// The Cinema of shelves under the game (a console.json still on it moves to [`cinema`]).
+pub(super) fn second_cinema() -> ConsoleTheme {
+    from_classic("cinema", n_!("Cinema"), "The game's art full screen with its logo, and shelves of covers below it.", |t| {
+        t.tabs = vec![
+            TabSpec::new(n_!("Installed"), Layout::Cinema, "installed"),
+            TabSpec::new(n_!("All games"), Layout::Cinema, "all"),
+            TabSpec::new(n_!("Favourites"), Layout::Cinema, "favourites"),
+            TabSpec::new(n_!("Library"), Layout::Grid, "all"),
+        ];
+        t.hero.title = HeroTitle::Logo;
+        t.hero.overview = false;
+        t.hero.fact_style = FactStyle::Chips;
+        t.tiles.corners = Corners::Soft;
+        t.interface.tab_bar = TabBar::Names;
+        t.interface.status_icons = false;
+        t.controls.hints = Hints::Auto;
+        t.game_page = GamePage::Hero;
+    })
+}
+
+/// Cinema as it first shipped: one row of covers, the tabs along the bottom
+/// (a console.json still on it moves to [`cinema`]).
+pub(super) fn first_cinema() -> ConsoleTheme {
+    from_classic("cinema", n_!("Cinema"), "The game's art full screen, its logo large, a row of covers and the tabs below.", |t| {
         t.tabs = vec![
             TabSpec::new(n_!("All games"), Layout::Cinema, "all"),
             TabSpec::new(n_!("Installed games"), Layout::Cinema, "installed"),
@@ -101,24 +175,37 @@ pub fn cinema() -> ConsoleTheme {
     })
 }
 
-/// A console's home screen: a row of square icons on top (the focused one
-/// grows, its name beside it), the game's art and logo, a wide Play button
-/// and cards; the tabs as plain names.
+/// A console's home screen: tabs of filters in pills, a row of square icons
+/// on top (the focused one grows, its name under it), the game's art and
+/// logo, a wide Play button, its facts and screenshots, and its page below
+/// (about, achievements, details, more like this); Options opens a sheet.
 pub fn pulse() -> ConsoleTheme {
-    from_classic("pulse", n_!("Pulse"), n_!("A console home: icons on top, the game's art and logo, a wide Play button and cards."), |t| {
-        t.tabs = vec![TabSpec::new(n_!("Games"), Layout::Spotlight, "all"), TabSpec::new(n_!("Library"), Layout::Grid, "all")];
-        t.hero.title = HeroTitle::Logo;
-        t.hero.facts = false;
-        t.hero.overview = false;
-        t.hero.size = Size3::Large;
-        t.tiles.shape = TileShape::Square;
-        t.tiles.corners = Corners::Soft;
-        t.interface.tab_bar = TabBar::Names;
-        t.interface.font = ConsoleFont::System;
-        t.controls.hints = Hints::Auto;
-        t.layouts.spotlight_actions = SpotActions::Play;
-        t.layouts.grid_panel = GridPanel::Right;
-    })
+    from_classic(
+        "pulse",
+        n_!("Pulse"),
+        n_!("A console home: icons on top, the game's art and logo, a wide Play button and its page below."),
+        |t| {
+            t.tabs = vec![
+                TabSpec::new(n_!("Installed"), Layout::Spotlight, "installed"),
+                TabSpec::new(n_!("All games"), Layout::Spotlight, "all"),
+                TabSpec::new(n_!("Favourites"), Layout::Spotlight, "favourites"),
+                TabSpec::new(n_!("Library"), Layout::Grid, "all"),
+            ];
+            t.hero.title = HeroTitle::Logo;
+            t.hero.facts = false;
+            t.hero.overview = false;
+            t.hero.size = Size3::Large;
+            t.tiles.shape = TileShape::Square;
+            t.tiles.corners = Corners::Soft;
+            t.interface.tab_bar = TabBar::Top;
+            t.interface.font = ConsoleFont::System;
+            t.controls.hints = Hints::Auto;
+            t.layouts.spotlight_actions = SpotActions::Play;
+            t.layouts.spotlight_cards = false;
+            t.layouts.grid_panel = GridPanel::Right;
+            t.game_page = GamePage::Sheet;
+        },
+    )
 }
 
 /// Only covers: a carousel over the blurred cover, no hints or badges.
@@ -133,32 +220,39 @@ pub fn minimal() -> ConsoleTheme {
         t.background.dim = 20;
         t.tiles.size = TileSize::Large;
         t.layouts.carousel_reflect = true;
-        t.game_page = GamePage::Sheet;
+        // Its game page shows How Long To Beat and the rest in its sections.
+        t.layouts.spotlight_cards = false;
+        t.layouts.spotlight_actions = SpotActions::Play;
+        t.game_page = GamePage::Showcase;
     })
 }
 
-/// An arcade cabinet: a wheel of logos over the game's art, deep purple
-/// and pink, square corners and spaced capitals.
+/// An arcade cabinet: a wheel of games (each with its cover) over the
+/// game's art, deep purple and pink, square corners and spaced capitals.
 pub fn arcade() -> ConsoleTheme {
-    from_classic("arcade", n_!("Arcade"), n_!("A wheel of logos over the art, in neon colours, like an arcade cabinet."), |t| {
-        t.tabs = vec![TabSpec::new(n_!("Games"), Layout::Wheel, "all"), TabSpec::new(n_!("Library"), Layout::Grid, "all")];
-        t.layouts.wheel_items = WheelItems::Logo;
-        t.hero.title = HeroTitle::Logo;
-        t.background.dim = 30;
-        t.tiles.corners = Corners::Square;
-        t.tiles.focus = FocusStyle::Glow;
-        t.interface.headings = Headings::Spaced;
-        t.interface.font = ConsoleFont::Rubik;
-        t.interface.accent = "pink".into();
-        t.colors = ColourOptions {
-            background: "#0d0221".into(),
-            panel: "#1a0b3a".into(),
-            text: "#f5f0ff".into(),
-            muted: "#b9a8e0".into(),
-            focus_text: String::new(),
-            on: "#2de2e6".into(),
-        };
-    })
+    from_classic(
+        "arcade",
+        n_!("Arcade"),
+        n_!("A wheel of games with their covers over the art, in neon colours, like an arcade cabinet."),
+        |t| {
+            t.tabs = vec![TabSpec::new(n_!("Games"), Layout::Wheel, "all"), TabSpec::new(n_!("Library"), Layout::Grid, "all")];
+            t.hero.title = HeroTitle::Logo;
+            t.background.dim = 30;
+            t.tiles.corners = Corners::Square;
+            t.tiles.focus = FocusStyle::Glow;
+            t.interface.headings = Headings::Spaced;
+            t.interface.font = ConsoleFont::Rubik;
+            t.interface.accent = "pink".into();
+            t.colors = ColourOptions {
+                background: "#0d0221".into(),
+                panel: "#1a0b3a".into(),
+                text: "#f5f0ff".into(),
+                muted: "#b9a8e0".into(),
+                focus_text: String::new(),
+                on: "#2de2e6".into(),
+            };
+        },
+    )
 }
 
 /// A dashboard of tiles first, the library and the installed games after,
@@ -195,16 +289,16 @@ pub fn living_room() -> ConsoleTheme {
         t.hero.overview = false;
         t.tiles.shape = TileShape::Landscape;
         t.tiles.corners = Corners::Soft;
-        t.tiles.badges = Badges::All;
         t.interface.accent = "green".into();
         t.interface.font = ConsoleFont::System;
         t.layouts.grid_panel = GridPanel::Right;
     })
 }
 
-/// Every built-in theme, the default ([`minimal`]) first.
+/// Every built-in theme listed, the default ([`minimal`]) first (not the
+/// base, [`classic`]).
 pub fn all() -> Vec<ConsoleTheme> {
-    vec![minimal(), classic(), cinema(), pulse(), arcade(), hub(), living_room()]
+    vec![minimal(), pulse(), cinema(), arcade(), hub(), living_room()]
 }
 
 pub fn by_id(id: &str) -> Option<ConsoleTheme> {

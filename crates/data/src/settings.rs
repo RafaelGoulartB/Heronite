@@ -25,7 +25,7 @@ const MAX_SCREENSHOT_CACHE_LIMIT_MB: f64 = 10_000.0;
 pub const DEFAULT_THEME: &str = "midnightMirage";
 pub const DEFAULT_CAPTURE_ACCELERATOR: &str = "F10";
 
-pub const METADATA_FIELDS: [&str; 14] = [
+pub const METADATA_FIELDS: [&str; 15] = [
     "description",
     "releaseDate",
     "developers",
@@ -40,6 +40,7 @@ pub const METADATA_FIELDS: [&str; 14] = [
     "ageRatings",
     "cover",
     "hero",
+    "logo",
 ];
 
 /// The fields of the cover families beside the tall one (`cover`), see
@@ -49,7 +50,7 @@ pub const METADATA_FIELDS: [&str; 14] = [
 pub const FAMILY_COVER_FIELDS: [&str; 2] = ["coverSquare", "coverWide"];
 
 /// Every field the merge knows: [`METADATA_FIELDS`], then [`FAMILY_COVER_FIELDS`].
-pub const ALL_FIELDS: [&str; 16] = [
+pub const ALL_FIELDS: [&str; 17] = [
     "description",
     "releaseDate",
     "developers",
@@ -64,6 +65,7 @@ pub const ALL_FIELDS: [&str; 16] = [
     "ageRatings",
     "cover",
     "hero",
+    "logo",
     "coverSquare",
     "coverWide",
 ];
@@ -97,7 +99,7 @@ pub const ADDED_SOURCES: [&str; 2] = ["launchbox", "libretro"];
 pub const DEFAULT_LISTED_EXTENSIONS: [&str; 1] = ["vndb"];
 
 /// `DEFAULT_FIELD_PRIORITY`. Uses only [`SOURCE_IDS`], but for the square
-/// and wide covers, which SteamGridDB gives too, and for the covers
+/// and wide covers and the logo, which SteamGridDB gives too, and for the covers
 /// libretro-thumbnails gives (a pictures source, like SteamGridDB: not in
 /// [`SOURCE_IDS`]). The LaunchBox Games Database and libretro-thumbnails
 /// come last: they fill what the others left empty (and move ahead for the
@@ -112,7 +114,7 @@ pub fn default_field_priority(field: &str) -> Vec<String> {
         "gameModes" => &["igdb", "launchbox"],
         "platforms" => &["igdb", "store", "playnite", "lutris", "launchbox"],
         "features" => &["igdb", "steam", "playnite"],
-        "criticScore" => &["igdb", "steam", "launchbox"],
+        "criticScore" => &["igdb", "steam", "playnite", "launchbox"],
         // Both are read: the first fills the boards it has, the next the rest.
         "ageRatings" => &["igdb", "steam"],
         "cover" => &["igdb", "steam", "lutris", "playnite", "store", "launchbox", "libretro"],
@@ -121,6 +123,10 @@ pub fn default_field_priority(field: &str) -> Vec<String> {
         // Official art first (Steam's header, the store's wide box art,
         // LaunchBox's landscape boxes), then SteamGridDB's.
         "coverWide" => &["steam", "store", "launchbox", "steamgriddb", "libretro"],
+        // Pictures sources only. The official logos of Steam and the stores
+        // come before this field when console mode picks one
+        // (`crate::console_art`).
+        "logo" => &["steamgriddb", "launchbox", "libretro"],
         // Steam first: its trailers; the others have screenshots only.
         STORE_MEDIA => &["steam", "igdb", "store", "launchbox", "libretro"],
         _ => &[],

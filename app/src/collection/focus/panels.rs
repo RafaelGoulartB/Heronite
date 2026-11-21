@@ -145,7 +145,8 @@ pub(super) fn details_panel(
     p
 }
 
-fn format_hours(v: Option<f32>) -> SharedString {
+/// "12h 30m" for a HowLongToBeat time, "—" without one.
+pub(in crate::collection) fn format_hours(v: Option<f32>) -> SharedString {
     let Some(v) = v.filter(|v| *v > 0.) else { return "—".into() };
     let total = (v * 60.).round() as i64;
     let (h, m) = (total / 60, total % 60);
@@ -159,13 +160,28 @@ fn format_hours(v: Option<f32>) -> SharedString {
 /// How the game was matched, under the times, when it is worth a look (the
 /// actions are in the title's menu).
 fn hltb_note(h: &HltbVm) -> Option<Div> {
-    let note = match (&h.name, h.close, h.manual) {
+    let note = hltb_note_text(h)?;
+    Some(div().mt(px(12.)).text_size(px(12.)).text_color(theme::ink_a(0.52)).child(note))
+}
+
+/// The words of [`hltb_note`]: how the game was matched, when it is worth a look.
+pub(in crate::collection) fn hltb_note_text(h: &HltbVm) -> Option<String> {
+    Some(match (&h.name, h.close, h.manual) {
         (_, _, true) => tr!("Match picked by you").to_string(),
         (Some(name), true, _) => tr!("Matched by a similar name: {name}", name = name.as_ref()),
         (None, true, _) => tr!("Matched by a similar name").to_string(),
         _ => return None,
-    };
-    Some(div().mt(px(12.)).text_size(px(12.)).text_color(theme::ink_a(0.52)).child(note))
+    })
+}
+
+/// The colours of the bar's parts: main story, main + extras, completionist.
+pub(in crate::collection) const HLTB_COLOURS: [u32; 3] = [0x2aa9a0, 0x5b6ef5, 0x43b35c];
+
+/// Where the player's time sits along the bar (0..=1, the longest time at
+/// its end), `None` before any play or without times.
+pub(in crate::collection) fn hltb_marker(h: &HltbVm) -> Option<f32> {
+    let max = h.complete.unwrap_or(0.).max(h.extra.unwrap_or(0.)).max(h.main.unwrap_or(0.));
+    (max > 0. && h.played_hours > 0.).then(|| (h.played_hours / max).min(1.))
 }
 
 /// The game was looked up and HowLongToBeat has no times for it.
@@ -174,8 +190,7 @@ pub(super) fn hltb_missing_panel() -> Div {
 }
 
 pub(super) fn hltb_panel(h: &HltbVm) -> Div {
-    let max = h.complete.unwrap_or(0.).max(h.extra.unwrap_or(0.)).max(h.main.unwrap_or(0.));
-    let marker = (max > 0. && h.played_hours > 0.).then(|| (h.played_hours / max).min(1.));
+    let marker = hltb_marker(h);
     let seg = |c: u32| div().flex_1().min_w_0().h_full().rounded_full().bg(rgb(c));
     let bar = div()
         .relative()
@@ -184,9 +199,9 @@ pub(super) fn hltb_panel(h: &HltbVm) -> Div {
         .h(px(12.))
         .mt(px(5.6))
         .mb(px(16.))
-        .child(seg(0x2aa9a0))
-        .child(seg(0x5b6ef5))
-        .child(seg(0x43b35c))
+        .child(seg(HLTB_COLOURS[0]))
+        .child(seg(HLTB_COLOURS[1]))
+        .child(seg(HLTB_COLOURS[2]))
         .children(marker.map(|m| {
             div().absolute().top(px(-3.)).left(relative(m)).ml(px(-7.)).w(px(14.)).h(px(18.)).rounded(px(6.)).bg(rgb(0x1a1c20)).shadow(
                 vec![BoxShadow {
@@ -297,9 +312,14 @@ pub(super) fn related_panel(
                 }
             }
         });
-    for game in &g.games {
+    let covers: Vec<Option<ImageSource>> = g.games.iter().map(|game| cover_for(&game.cover_key)).collect();
+    // "Whole cover": the row's covers of a family share a height.
+    let shelf = super::super::whole_cover::on()
+        .then(|| super::super::whole_cover::Shelf::of(covers.iter().map(Option::as_ref), RELATED_COVER_W, RELATED_COVER_H));
+    for (game, src) in g.games.iter().zip(covers) {
         let key = game.key.clone();
         let cb = on_select.clone();
+        let (box_w, box_h) = shelf.map_or((RELATED_COVER_W, RELATED_COVER_H), |s| s.cover_box(src.as_ref()));
         row = row.child(
             div()
                 .id(SharedString::from(format!("rel-{tab}-{key}")))
@@ -310,20 +330,22 @@ pub(super) fn related_panel(
                 .cursor_pointer()
                 .on_click(move |_, w, cx| cb(key.clone(), w, cx))
                 .child(
-                    div()
-                        .w(px(RELATED_COVER_W))
-                        .h(px(RELATED_COVER_H))
-                        .rounded(px(6.))
-                        .overflow_hidden()
-                        .bg(theme::ink_a(0.06))
-                        .shadow(vec![BoxShadow {
-                            color: theme::shadow_a(0.45),
-                            offset: point(px(0.), px(8.)),
-                            blur_radius: px(20.),
-                            spread_radius: px(0.),
-                            inset: false,
-                        }])
-                        .children(cover_for(&game.cover_key).map(|src| img(src).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover))),
+                    div().flex().items_center().justify_center().w(px(RELATED_COVER_W)).h(px(RELATED_COVER_H)).child(
+                        div()
+                            .w(px(box_w))
+                            .h(px(box_h))
+                            .rounded(px(6.))
+                            .overflow_hidden()
+                            .bg(theme::ink_a(0.06))
+                            .shadow(vec![BoxShadow {
+                                color: theme::shadow_a(0.45),
+                                offset: point(px(0.), px(8.)),
+                                blur_radius: px(20.),
+                                spread_radius: px(0.),
+                                inset: false,
+                            }])
+                            .children(src.map(|src| img(src).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover))),
+                    ),
                 )
                 .child(div().mt(px(7.)).text_size(px(12.)).text_color(theme::ink_a(0.88)).truncate().child(game.title.clone()))
                 .child(

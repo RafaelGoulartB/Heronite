@@ -345,6 +345,25 @@ pub fn exe_path(pid: u32) -> Option<PathBuf> {
     Some(PathBuf::from(std::ffi::OsString::from_wide(&buf[..len as usize])))
 }
 
+/// The family name of the package `pid` runs from (`<name>_<publisher id>`,
+/// the part of a Microsoft Store app's id before `!`), whatever folder its
+/// program is in. `None` for a program that is not from a package, or a
+/// process that cannot be read.
+pub fn package_family(pid: u32) -> Option<String> {
+    use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+    use windows_sys::Win32::Storage::Packaging::Appx::{GetPackageFamilyName, PACKAGE_FAMILY_NAME_MAX_LENGTH};
+    let h = open(pid, PROCESS_QUERY_LIMITED_INFORMATION)?;
+    let mut buf = [0u16; PACKAGE_FAMILY_NAME_MAX_LENGTH as usize + 1];
+    let mut len = buf.len() as u32;
+    // SAFETY: `buf` holds `len` UTF-16 units; the call writes at most that many.
+    if unsafe { GetPackageFamilyName(h.0, &mut len, buf.as_mut_ptr()) } != ERROR_SUCCESS {
+        return None;
+    }
+    // `len` counts the closing NUL.
+    let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+    Some(String::from_utf16_lossy(&buf[..end]))
+}
+
 /// The arguments `pid` was started with, its program first, split the way
 /// Windows programs split them. `None` when the process cannot be read
 /// (another user's, or gone).
@@ -473,5 +492,8 @@ mod tests {
         let exe = exe_path(me).unwrap();
         assert_eq!(exe, std::env::current_exe().unwrap());
         assert!(start_time(me).unwrap() > 0);
+        // A test program is not from a package; a gone process has none.
+        assert_eq!(package_family(me), None);
+        assert_eq!(package_family(u32::MAX - 1), None);
     }
 }

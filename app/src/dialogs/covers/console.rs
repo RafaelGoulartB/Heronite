@@ -130,7 +130,9 @@ impl CoversDialog {
         let idle = self.busy.is_none() && self.kept(self.slot);
         let custom = self.kind().of_art(&self.art).is_some_and(|u| !u.is_empty());
         let mut rows = vec![
-            Row::action("file", tr!("Choose a file\u{2026}")).icon(Icon::FolderOpen).enabled(idle),
+            Row::action("file", if self.slot == Slot::Background { tr!("Image or video\u{2026}") } else { tr!("Choose a file\u{2026}") })
+                .icon(Icon::FolderOpen)
+                .enabled(idle),
             Row::action("reset", tr!("Reset")).icon(Icon::Replay).enabled(idle && custom).desc(tr!("Back to what the sources gave")),
         ];
         let counts = self.source_counts();
@@ -288,8 +290,10 @@ impl CoversDialog {
         if self.fake.is_none() {
             let urls: Vec<String> = {
                 let found = self.found();
-                let unsized_ =
-                    listed.iter().filter_map(|i| found.get(*i)).filter(|f| resolution_label(f.image.width, f.image.height).is_none());
+                let unsized_ = listed
+                    .iter()
+                    .filter_map(|i| found.get(*i))
+                    .filter(|f| !f.image.animated && resolution_label(f.image.width, f.image.height).is_none());
                 unsized_.map(|f| f.image.image_url.clone()).collect()
             };
             self.sizes.update(cx, |s, cx| s.ask(urls, cx));

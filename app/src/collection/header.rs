@@ -31,6 +31,8 @@ pub(super) enum Menu {
     Update,
     /// The Steam pill's restart (`steam_pill.rs`).
     Steam,
+    /// The ffmpeg pill's install (`ffmpeg_pill.rs`).
+    Ffmpeg,
     /// The metadata pill's update (`metadata_pill.rs`).
     Metadata,
     /// The active view mode's options (`view_mode.rs`); opens on click only.
@@ -267,6 +269,7 @@ impl CollectionView {
                         .children(chips.into_iter().map(|chip| chip.occlude())),
                     ),
             )
+            .children(self.ffmpeg_pill(cx))
             .children(self.steam_pill(cx))
             .children(self.update_pill(cx))
             .children(self.downloads_pill(window, cx))

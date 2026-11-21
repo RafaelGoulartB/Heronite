@@ -46,7 +46,7 @@ impl CollectionView {
     /// status flyout; `HERONITE_DEBUG_MENU_CATEGORIES=1` for the categories
     /// one, `HERONITE_DEBUG_MENU_MANAGE=1` for Manage installation's,
     /// `HERONITE_DEBUG_MENU_SAVES=1` for the saves', `HERONITE_DEBUG_MENU_METADATA=1`
-    /// for a selection's Metadata one), `HERONITE_DEBUG_DROPDOWN=view|nav|downloads|update|display` opens a header menu
+    /// for a selection's Metadata one), `HERONITE_DEBUG_DROPDOWN=view|nav|downloads|update|display|display-covers` opens a header menu
     /// (`facets`, `categories`, `stores` or `view:<text>`: the View menu with
     /// that search typed; `views`: its views in edit mode; `views-select`:
     /// their select open; `more-group` / `more-sort` / `more-filters`: the "More" list of
@@ -141,8 +141,13 @@ impl CollectionView {
                 "downloads" => Some(Menu::Downloads),
                 "update" => Some(Menu::Update),
                 "steam" => Some(Menu::Steam),
+                "ffmpeg" => Some(Menu::Ffmpeg),
                 "metadata" => Some(Menu::Metadata),
                 "display" => Some(Menu::Display),
+                "display-covers" => {
+                    self.view_look.open_covers();
+                    Some(Menu::Display)
+                }
                 m if m.starts_with("quick-") => quick_menu(&m[6..]).map(Menu::Quick),
                 _ if query.is_some() => Some(Menu::View),
                 _ => None,
@@ -338,7 +343,12 @@ impl CollectionView {
             "metadata" | "gamesettings" | "gamesettings:details" | "gamesettings:launch" | "webimage" | "wizard" | "review" | "covers" => {
                 self.open_metadata_debug(which.as_str(), window, cx)
             }
-            w if w.starts_with("wizard:") || w.starts_with("metadata:") || w.starts_with("review:") || w.starts_with("covers:") => {
+            w if w.starts_with("wizard:")
+                || w.starts_with("metadata:")
+                || w.starts_with("review:")
+                || w.starts_with("covers:")
+                || w.starts_with("webimage:") =>
+            {
                 self.open_metadata_debug(w, window, cx)
             }
             // "Get more sources" (`sources:<id>` picks that entry) and the

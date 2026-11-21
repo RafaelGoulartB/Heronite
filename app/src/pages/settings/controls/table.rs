@@ -682,6 +682,66 @@ fn overlay_off_banner(cx: &mut Context<SettingsPage>) -> AnyElement {
         .into_any_element()
 }
 
+/// "Use the controller on the desktop" is off: the tab's buttons wait for it.
+fn desktop_off_banner(cx: &mut Context<SettingsPage>) -> AnyElement {
+    let warn: Hsla = theme::warning().into();
+    div()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .gap(px(10.))
+        .px(px(16.))
+        .py(px(10.))
+        .border_t_1()
+        .border_color(theme::row_separator())
+        .bg(warn.opacity(0.07))
+        .child(icon(Icon::Warning, px(14.), theme::warning()))
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(220.))
+                .text_size(px(12.5))
+                .line_height(px(17.))
+                .text_color(theme::text_primary())
+                .child(tr!("The controller is off on the desktop: these buttons wait for it.")),
+        )
+        .child(
+            button_sm("controls-desktop-on", ButtonKind::Primary, tr!("Turn it on"))
+                .on_click(cx.listener(|d, _, _, cx| super::change_controller(d, cx, |p| p.desktop = true))),
+        )
+        .into_any_element()
+}
+
+/// On the desktop: fixed, the keys they stand for beside them
+/// (`collection/desktop_pad.rs`).
+fn desktop(d: &SettingsPage) -> Vec<Line> {
+    let read = |action: &'static str, part: Part, pad: Div, key: Option<Div>| {
+        let mut l = Line::new(action, Some(part));
+        l.also = pair(part);
+        l.pad = pad.into_any_element();
+        l.key = key.map(|k| k.into_any_element()).unwrap_or_else(dash);
+        l
+    };
+    let (confirm, back) = confirm_parts();
+    vec![
+        read(tr!("Move"), Part::DPad, glyph(tr!("D-pad")), Some(key_cap(tr!("Arrows")))),
+        read(tr!("Confirm · play"), confirm, glyph(confirm.cap()), Some(key_cap("Enter"))),
+        read(tr!("Back · close"), back, glyph(back.cap()), Some(key_cap("Esc"))),
+        read(tr!("Search everything"), Part::Y, glyph("Y"), Some(key_caps("Ctrl+K"))),
+        read(tr!("The game's actions"), Part::X, glyph("X"), None),
+        {
+            let mut pages = read(tr!("Page before / after"), Part::RB, glyphs(&["LB", "RB"]), None);
+            if console_button(d) == ConsoleButton::Bumpers {
+                pages.note = Some(tr!("Not while LB + RB enter console mode").to_string());
+            }
+            pages
+        },
+        read(tr!("Move the pointer"), Part::RStick, glyph(tr!("R stick")), None),
+        read(tr!("Click · right-click"), Part::RT, glyphs(&["RT", "LT"]), None),
+        read(tr!("Scroll"), Part::LStick, glyph(tr!("L stick")), None),
+    ]
+}
+
 /// During a game: the overlay's Guide chords and the keys beside them.
 fn in_game(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Vec<Line> {
     let p = d.overlay.prefs.clone();
@@ -957,6 +1017,18 @@ pub(super) fn tab_of(label: &str) -> Option<Show> {
     const TABS: &[(Show, &[&str])] = &[
         (Show::InGame, &["Open the overlay", "Take a screenshot", "Save the replay", "Mark a moment", "Volume up / down"]),
         (Show::Outside, &["Enter console mode"]),
+        (
+            Show::Desktop,
+            &[
+                "Confirm · play",
+                "Search everything",
+                "The game's actions",
+                "Page before / after",
+                "Move the pointer",
+                "Click · right-click",
+                "Scroll",
+            ],
+        ),
         (Show::Overlay, &["Select", "Back · close", "Mark a moment in Notes", "Close the overlay"]),
         (Show::Console, &["Search and filters", "Jump by letter", "Open the game page", "Play", "Back · sidebar"]),
     ];
@@ -1006,6 +1078,12 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
             in_game(d, cx)
         }
         Show::Outside => outside(d, cx),
+        Show::Desktop => {
+            if !crate::console::look::controls().desktop {
+                table = table.child(desktop_off_banner(cx));
+            }
+            desktop(d)
+        }
         Show::Overlay => overlay_open(d, cx),
         Show::Console => console(d, cx),
     };

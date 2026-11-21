@@ -6,8 +6,8 @@ use gpui_kit::component::slider::Slider;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::{
-    Accent, Appearance, BackgroundSource, CategoryStyle, Corners, CoverHover, CoverLabel, Density, FontChoice, HomeBackground, Motion,
-    Section, StartView, Theme,
+    Accent, Appearance, BackgroundSource, CategoryStyle, Corners, CoverFit, CoverHover, CoverLabel, Density, FontChoice, HomeBackground,
+    Motion, Section, StartView, Theme,
 };
 use heronite_i18n::tr;
 
@@ -65,6 +65,20 @@ pub(super) fn density_items() -> [(Density, &'static str); 2] {
 
 pub(super) fn corner_items() -> [(Corners, &'static str); 3] {
     [(Corners::Square, tr!("Square")), (Corners::Soft, tr!("Soft")), (Corners::Round, tr!("Round"))]
+}
+
+pub(super) fn fit_items() -> [(CoverFit, &'static str); 2] {
+    [(CoverFit::Crop, tr!("Crop")), (CoverFit::Whole, tr!("Whole cover"))]
+}
+
+/// "Cover fit", under the Cover aspect it applies to.
+pub(super) fn fit_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    row(
+        tr!("Cover fit"),
+        Some(tr!("Whole cover shows each cover in its own shape, never cut: console box art stays whole.")),
+        choice("cover-fit", &fit_items(), d.appearance.ui.cover_fit, cx, |a, v| a.cover_fit = v),
+    )
+    .into_any_element()
 }
 
 pub(super) fn hover_items() -> [(CoverHover, &'static str); 3] {
@@ -623,6 +637,47 @@ pub(super) fn picture_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> A
         _ => {}
     }
     with_sub_rows(picture, rows)
+}
+
+/// "Animated backgrounds" (off by default): what moves, and why one stays
+/// still while it is on.
+pub(super) fn animated_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    let a = d.appearance.ui;
+    let on = a.animated_backgrounds;
+    let switch = toggle_row(
+        "bg-animated",
+        tr!("Animated backgrounds"),
+        Some(tr!(
+            "Plays a background that is a video or an animated picture: your own picture, a game's background, or one marked Animated in Covers → Background. Off, it shows its first frame. Pauses while a game runs or Heronite is in the background."
+        )),
+        on,
+    )
+    .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.animated_backgrounds = !on)))
+    .into_any_element();
+    let mut why_still = Vec::new();
+    if on && a.motion != Motion::Full {
+        why_still.push(tr!("Animations are not on Full (Text and motion), so backgrounds stay still."));
+    }
+    if on && !d.appearance.ffmpeg {
+        why_still.push(tr!("ffmpeg, which plays them, was not found, so backgrounds stay still."));
+    }
+    let notes = why_still
+        .into_iter()
+        .map(|text| {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .py(px(8.))
+                .text_size(px(12.))
+                .line_height(px(16.))
+                .text_color(theme::text_dim())
+                .child(crate::ui::icon(Icon::InfoOutlined, px(14.), theme::text_dim()))
+                .child(text)
+                .into_any_element()
+        })
+        .collect();
+    with_sub_rows(switch, notes)
 }
 
 /// The Collection background picture row's "With no game selected" choice,

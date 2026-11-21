@@ -34,7 +34,8 @@ pub(super) fn content(p: &mut Pic) -> Div {
     let layer = div().absolute().inset_0();
     match p.t.game_page {
         GamePage::Classic => classic(p, layer.child(p.cover_all().bg(p.shade(0.55)))),
-        GamePage::Hero => hero(p, layer.child(p.scrim_left(0.6)).child(p.scrim_bottom(0.7))),
+        // Showcase draws as Hero: the art, the name, the buttons and what is below.
+        GamePage::Hero | GamePage::Showcase => hero(p, layer.child(p.scrim_left(0.6)).child(p.scrim_bottom(0.7))),
         GamePage::Tabs => tabs(p, layer.child(p.cover_all().bg(p.shade(0.62)))),
         GamePage::Sheet => layouts::content(p),
     }

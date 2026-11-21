@@ -57,6 +57,9 @@ pub enum ImageKind {
     /// "Screenshot - Gameplay" (the store media's screenshots). An index
     /// built before has none until the database is downloaded again.
     Screenshot = 5,
+    /// "Clear Logo": the title on a transparent background. An index built
+    /// before has none until the database is downloaded again.
+    ClearLogo = 6,
 }
 
 /// Gameplay screenshots kept of one game at most.
@@ -70,12 +73,15 @@ impl ImageKind {
             "Fanart - Background" => Self::Background,
             "Square" => Self::Square,
             "Screenshot - Gameplay" => Self::Screenshot,
+            "Clear Logo" => Self::ClearLogo,
             _ => return None,
         })
     }
 
     fn from_code(n: u8) -> Option<Self> {
-        [Self::BoxFront, Self::BoxFrontReconstructed, Self::Background, Self::Square, Self::Screenshot].into_iter().find(|k| *k as u8 == n)
+        [Self::BoxFront, Self::BoxFrontReconstructed, Self::Background, Self::Square, Self::Screenshot, Self::ClearLogo]
+            .into_iter()
+            .find(|k| *k as u8 == n)
     }
 }
 

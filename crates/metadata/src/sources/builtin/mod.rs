@@ -4,7 +4,7 @@
 use std::sync::{Arc, LazyLock};
 
 use heronite_data::models::CollectionGameMetadata;
-use heronite_data::settings::{METADATA_FIELDS, STORE_MEDIA};
+use heronite_data::settings::STORE_MEDIA;
 use heronite_data::source_prefs::ids::{HOW_LONG_TO_BEAT, PROTONDB, STEAMGRIDDB, STEAM_TAGS, WEB_IMAGES};
 use heronite_i18n::n_;
 use parking_lot::RwLock;
@@ -47,6 +47,24 @@ const PC_GAMES: &str = "pcGames";
 /// Steam's option (on by default): PC games with no Steam id are looked up
 /// by their exact title.
 const BY_NAME: &str = "byName";
+
+/// Every field of the record but the logo, which IGDB does not have.
+const IGDB_FIELDS: [&str; 14] = [
+    "description",
+    "releaseDate",
+    "developers",
+    "publishers",
+    "genres",
+    "themes",
+    "gameModes",
+    "platforms",
+    "series",
+    "features",
+    "criticScore",
+    "ageRatings",
+    "cover",
+    "hero",
+];
 
 /// The service's state the adapters share with its other entry points
 /// (IGDB token and queue, Steam caches, parsed store libraries, Playnite).
@@ -128,7 +146,7 @@ fn descriptors() -> Vec<SourceDescriptor> {
                 ),
                 key("clientSecret", n_!("Client secret"), OptionKind::Secret, None, None),
             ],
-            ..source(IGDB, "IGDB", Details, &METADATA_FIELDS)
+            ..source(IGDB, "IGDB", Details, &IGDB_FIELDS)
         },
         SourceDescriptor {
             applies_to: AppliesTo::HasSteamId,
@@ -175,8 +193,8 @@ fn descriptors() -> Vec<SourceDescriptor> {
             searchable: true,
             ..source(LUTRIS, "Lutris", Details, &["description", "releaseDate", "genres", "platforms", "cover", "hero"])
         },
-        // Kept in saved priorities (Heronite's data) but not offered: nothing
-        // feeds this source here yet (no Playnite dump is set).
+        // Not offered: it is asked only once, when a game comes over from
+        // Playnite (`MetadataService::seed_playnite_metadata`).
         SourceDescriptor {
             finds_by: vec![SourceId],
             network: false,
@@ -196,6 +214,7 @@ fn descriptors() -> Vec<SourceDescriptor> {
                     "platforms",
                     "series",
                     "features",
+                    "criticScore",
                     "cover",
                     "hero",
                 ],
@@ -250,6 +269,7 @@ fn descriptors() -> Vec<SourceDescriptor> {
                     "hero",
                     "coverSquare",
                     "coverWide",
+                    "logo",
                 ],
             )
         },
@@ -263,7 +283,7 @@ fn descriptors() -> Vec<SourceDescriptor> {
                 Some(n_!("Optional. Get a key at steamgriddb.com/profile/preferences/api")),
                 Some("https://www.steamgriddb.com/profile/preferences/api"),
             )],
-            ..source(STEAMGRIDDB, "SteamGridDB", Pictures, &["cover", "hero", "coverSquare", "coverWide"])
+            ..source(STEAMGRIDDB, "SteamGridDB", Pictures, &["cover", "hero", "coverSquare", "coverWide", "logo"])
         },
         // Box art by the dump's own file name: for the emulated games of the
         // platforms that have a folder on the server. It goes ahead of the
@@ -274,10 +294,10 @@ fn descriptors() -> Vec<SourceDescriptor> {
             finds_by: vec![ExactTitle, FuzzyTitle],
             leads_for: Some(AppliesTo::Emulated),
             about: Some(n_!(
-                "The box art RetroArch uses (thumbnails.libretro.com), found by each game's dump file name on its platform. No key or account. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Heronite is not affiliated with libretro."
+                "The box art RetroArch uses (thumbnails.libretro.com), found by each game's dump file name on its platform, and the logo beside it when the platform has logos. No key or account. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Heronite is not affiliated with libretro."
             )
             .into()),
-            ..source(LIBRETRO, "Libretro", Pictures, &["cover", "coverSquare", "coverWide"])
+            ..source(LIBRETRO, "Libretro", Pictures, &["cover", "coverSquare", "coverWide", "logo"])
         },
         SourceDescriptor {
             finds_by: vec![FuzzyTitle],

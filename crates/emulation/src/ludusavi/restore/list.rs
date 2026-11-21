@@ -7,9 +7,10 @@ use std::path::{Path, PathBuf};
 use heronite_data::models::LudusaviSettings;
 use serde_json::Value;
 
-use super::super::backup::resolve_title;
+use super::super::backup::{emulator_engine, resolve_title};
 use super::super::detect::LudusaviDetected;
 use super::super::last_backup::{backup_root, RootFolders};
+use super::super::titles::emulator_names;
 use super::super::{parse_json, LudusaviEnv, LudusaviGame};
 use super::Tool;
 
@@ -167,6 +168,19 @@ pub fn list_backups(env: &LudusaviEnv, tool: &Tool, game: &LudusaviGame, picked:
     let mut roots: Vec<Option<RootFolders>> = sources.iter().map(|s| RootFolders::read(&s.root, steam)).collect();
     let mut found: Vec<Option<(String, PathBuf)>> =
         roots.iter_mut().map(|r| r.as_mut()?.find(&game.title).map(|b| (b.game_name, b.dir))).collect();
+    // Emulated games: the folder carries the platform suffix the emulator
+    // manifests use ("… (RetroArch)"), not the bare title.
+    let engine = emulator_engine(env.paths, game.emulator_id.as_deref());
+    for name in emulator_names(engine.as_deref(), &game.title, game.rom_path.as_deref()) {
+        if found.iter().all(Option::is_some) {
+            break;
+        }
+        for (slot, root) in found.iter_mut().zip(&mut roots) {
+            if slot.is_none() {
+                *slot = root.as_mut().and_then(|r| r.find(&name)).map(|b| (b.game_name, b.dir));
+            }
+        }
+    }
     if found.iter().any(Option::is_none) && (steam.is_some_and(|s| !s.is_empty()) || game.runner == "gog") {
         let name = resolve_title(env, &tool.binary, game);
         if name != game.title {
@@ -207,6 +221,9 @@ pub fn list_backups(env: &LudusaviEnv, tool: &Tool, game: &LudusaviGame, picked:
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ludusavi::fake::{out, Fake};
+    use heronite_data::DataPaths;
+    use heronite_launch::probe::FakeProbe;
 
     fn settings(backup_path: &str, extra: &[&str]) -> LudusaviSettings {
         LudusaviSettings {
@@ -297,5 +314,41 @@ mod tests {
         assert_eq!(backup_size(d.path(), "backup-2"), Some(3));
         assert_eq!(backup_size(d.path(), "."), Some(4));
         assert_eq!(backup_size(d.path(), "missing.zip"), None);
+    }
+
+    #[test]
+    fn lists_backups_in_the_emulator_suffixed_folder() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().join("backups");
+        let dir = root.join("Turbo Goose Racer (RetroArch)");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("mapping.yaml"), "name: Turbo Goose Racer (RetroArch)\nbackups:\n  - name: backup-1.zip\n").unwrap();
+        fs::write(dir.join("backup-1.zip"), b"x").unwrap();
+
+        let tool = Tool { binary: "/usr/bin/ludusavi".into(), detected: None, settings: settings(root.to_str().unwrap(), &[]) };
+        let reply = r#"{"games":{"Turbo Goose Racer (RetroArch)":{"backups":[{"name":"backup-1.zip","when":"2026-01-01T00:00:00Z"}]}}}"#;
+        let runner = Fake {
+            replies: vec![(format!("--no-manifest-update backups --api --path {}", root.display()), out(reply, "", 0))],
+            ..Default::default()
+        };
+        let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
+        let paths = DataPaths::at(d.path());
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        let game = LudusaviGame {
+            app_name: "g".into(),
+            title: "Turbo Goose Racer".into(),
+            runner: "sideload".into(),
+            emulator_id: Some("7d0c2f1e".into()),
+            ..Default::default()
+        };
+        let emulator = r#"{"emulators":[{"id":"7d0c2f1e","definitionId":"retroarch","name":"RetroArch"}]}"#;
+        fs::create_dir_all(paths.emulators().parent().unwrap()).unwrap();
+        fs::write(paths.emulators(), emulator).unwrap();
+        let found = list_backups(&env, &tool, &game, None);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].game_name.as_deref(), Some("Turbo Goose Racer (RetroArch)"));
+        assert_eq!(found[0].backups.len(), 1);
+        assert_eq!(found[0].backups[0].id, "backup-1.zip");
+        assert_eq!(found[0].backups[0].bytes, Some(1));
     }
 }

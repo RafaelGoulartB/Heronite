@@ -225,7 +225,7 @@ impl WineManagerPage {
         } else {
             self.repo.explanation()
         };
-        let list = self.console_list.render("console-wine", &rows, !self.layer.is_open());
+        let list = self.console_list.render_cards("console-wine", &rows, !self.layer.is_open());
         div()
             .relative()
             .flex()
@@ -245,13 +245,11 @@ impl WineManagerPage {
                     .child(kit::clock()),
             )
             .child(div().px(u(46.)).pb(u(14.)).max_w(u(900.)).child(kit::body_text(about)))
-            .child(div().flex().flex_col().flex_1().min_h_0().px(u(46.)).pb(u(16.)).child(
-                div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(if self.loaded {
-                    list.flex_1().min_h_0().into_any_element()
-                } else {
-                    kit::body_text(tr!("Reading the release lists\u{2026}")).into_any_element()
-                }),
-            ))
+            .child(div().flex().flex_col().flex_1().min_h_0().px(u(46.)).pb(u(16.)).child(if self.loaded {
+                list.into_any_element()
+            } else {
+                kit::body_text(tr!("Reading the release lists\u{2026}")).into_any_element()
+            }))
             .children(self.layer.view())
             .into_any_element()
     }

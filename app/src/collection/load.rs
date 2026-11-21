@@ -188,7 +188,8 @@ impl CollectionView {
         crate::services::sunshine::library_loaded(&lib, cx);
         self.lib = Some(lib);
         if first {
-            if let Some((text, error)) = crate::services::upkeep::take_restore_notice() {
+            let notice = crate::services::upkeep::take_restore_notice().or_else(crate::system::interface_gpu::take_notice);
+            if let Some((text, error)) = notice {
                 self.show_toast(text, error, cx);
             }
         }

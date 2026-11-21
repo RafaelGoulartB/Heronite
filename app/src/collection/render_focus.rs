@@ -163,9 +163,10 @@ impl CollectionView {
     /// Covers of the related games (the game's own is in the left column).
     pub(super) fn focus_covers(&mut self, vm: &super::vm::FocusVm, scale: f32) -> HashMap<SharedString, ImageSource> {
         let mut covers: HashMap<SharedString, ImageSource> = HashMap::new();
+        let whole = super::whole_cover::on();
         for g in &vm.related {
             for c in &g.games {
-                if let Some(src) = self.cover(&c.cover_key, focus::RELATED_COVER_W, focus::RELATED_COVER_H, scale, 50) {
+                if let Some(src) = self.tall_cover(&c.cover_key, focus::RELATED_COVER_W, focus::RELATED_COVER_H, scale, 50, whole) {
                     covers.insert(c.cover_key.clone(), src);
                 }
             }

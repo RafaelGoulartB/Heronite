@@ -44,7 +44,7 @@ use super::tray::TrayHandle;
 use crate::collection::CollectionView;
 use crate::runtime::GameRuntime;
 
-pub use events::stop_running;
+pub use events::{hide_after_cover, stop_running};
 pub use launch::{candidate_keys, play_game};
 pub use quit::{
     keep_in_tray, post_game_idle, quit_anyway, relaunch_if_requested, request_quit, restart_blocker, restart_into, restart_now,
@@ -93,6 +93,9 @@ struct State {
     /// The window was closed because a game started (minimize on launch):
     /// it may open again once no game runs.
     hidden_for_game: bool,
+    /// Minimize on launch waits for console mode's launch screen: it closes
+    /// the window once the game's own window is up ([`hide_after_cover`]).
+    hide_after_cover: bool,
     /// The graceful quit began: no new windows, requests or quits.
     quitting: bool,
     fake_launch: bool,

@@ -93,6 +93,11 @@ pub struct HandoffConfig {
     pub soon: Duration,
     /// How long the game has to show up after the hand-off.
     pub wait: Duration,
+    /// The same for a Microsoft Store game (`plan::Handoff::package`): its
+    /// launcher and anti-cheat can take longer before the game runs. With
+    /// `soon`, shorter than [`CHECKPOINT_INTERVAL`], so a game that never
+    /// showed up has no play time saved meanwhile.
+    pub package_wait: Duration,
     /// Gone this long: the game is over (a game restarting itself shows up
     /// again within it).
     pub gone: Duration,
@@ -113,6 +118,7 @@ impl Default for HandoffConfig {
         Self {
             soon: Duration::from_secs(20),
             wait: Duration::from_secs(45),
+            package_wait: Duration::from_secs(90),
             gone: Duration::from_secs(5),
             client_wait: Duration::from_secs(600),
             client_gone: Duration::from_secs(10),
