@@ -124,6 +124,7 @@ pub fn cinema() -> ConsoleTheme {
 /// copy of it also set A to play, which [`cinema`] leaves to the user).
 pub(super) fn five_tab_cinema() -> ConsoleTheme {
     let mut t = cinema();
+    t.description = "The game's art full screen with its logo, and a row of large covers below it.".into();
     t.tabs[4] = TabSpec::new(n_!("Not played yet"), Layout::Cinema, "status:not-played");
     t.interface.status_icons = true;
     t
