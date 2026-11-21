@@ -19,6 +19,7 @@ pub fn of_definition(definition_id: &str) -> Icon {
         "cemu" => Icon::EmuCemu,
         "ryujinx" => Icon::EmuRyujinx,
         "xemu" => Icon::EmuXemu,
+        "xenia" => Icon::EmuXenia,
         "melonds" => Icon::EmuMelonDs,
         "mgba" => Icon::EmuMgba,
         "flycast" => Icon::EmuFlycast,
@@ -73,6 +74,7 @@ mod tests {
             |definition_id: &str, name: &str| UserEmulator { definition_id: definition_id.into(), name: name.into(), ..Default::default() };
         assert_eq!(of(&e("custom", "PCSX2 Nightly")), Icon::EmuPcsx2);
         assert_eq!(of(&e("custom", "ePSXe (Wine)")), Icon::EmuEpsxe);
+        assert_eq!(of(&e("custom", "Xenia Edge")), Icon::EmuXenia);
         assert_eq!(of(&e("", "My emulator")), Icon::SportsEsports);
         assert_eq!(of(&e("dolphin", "GameCube")), Icon::BrandDolphin);
     }
