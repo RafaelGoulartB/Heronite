@@ -397,7 +397,7 @@ impl CollectionView {
 
                 // Only the rows near the view are built; the rest is room.
                 let n = ids.len();
-                if view <= 0. {
+                if view <= 0. && n > 0 {
                     // Laid out on this frame: the fades need its height.
                     window.request_animation_frame();
                 }
