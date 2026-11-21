@@ -9,6 +9,7 @@
 //! tab.
 
 mod advanced;
+mod antimicrox;
 mod changes;
 mod companions;
 mod console;

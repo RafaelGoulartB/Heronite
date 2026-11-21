@@ -49,6 +49,8 @@ pub struct GameSettings {
     pub shared_folders: Vec<String>,
     /// `heroniteCompanions`: programs run alongside the game.
     pub companions: Vec<crate::companions::Companion>,
+    /// `heroniteAntimicrox`: AntiMicroX profiles, player 1 first.
+    pub antimicrox: Vec<String>,
     pub wrapper_options: Vec<Wrapper>,
     pub launcher_args: String,
     pub target_exe: String,
@@ -206,6 +208,7 @@ impl GameSettings {
             env_options,
             shared_folders,
             companions: crate::companions::parse(m.get(crate::companions::KEY)),
+            antimicrox: crate::antimicrox::parse(m.get(crate::antimicrox::KEY)),
             wrapper_options,
             launcher_args: text(m.get("launcherArgs")),
             target_exe: text(m.get("targetExe")),

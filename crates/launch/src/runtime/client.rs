@@ -225,7 +225,7 @@ impl Session<'_> {
         if aborted {
             play.companions.leave_running();
         } else {
-            play.companions.stop(shared.cfg.kill_grace, log);
+            play.companions.stop(shared, log);
         }
         if let Some(h) = play.awake.as_mut() {
             h.terminate();
