@@ -7,9 +7,10 @@
 //! legendary, gogdl and nile are the ones Heroic pins (`RELEASE_TAGS` in its
 //! `meta/downloadHelperBinaries.ts`); their Windows builds are standalone
 //! programs (PyInstaller), no Python needed. Comet's is newer than Heroic's
-//! pin (v0.2.0).
+//! pin (v0.2.0). Each release asset is pinned with its SHA-256: a download
+//! that does not match is never made a program nor run.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use heronite_data::DataPaths;
@@ -34,8 +35,10 @@ pub struct StoreTool {
     /// Looked for on `PATH` too. Not for a name other programs use
     /// (`comet`): it would get the account's tokens.
     on_path: bool,
-    /// Release assets: (system, CPU, file), as `std::env::consts` names them.
-    assets: &'static [(&'static str, &'static str, &'static str)],
+    /// Release assets: (system, CPU, file, SHA-256 in lower-case hex), as
+    /// `std::env::consts` names them. The SHA-256 pins the file (the one
+    /// GitHub shows for the asset): a download that does not match never runs.
+    assets: &'static [(&'static str, &'static str, &'static str, &'static str)],
 }
 
 /// Epic's client.
@@ -47,10 +50,10 @@ pub const LEGENDARY: StoreTool = StoreTool {
     version: "0.21.1",
     on_path: true,
     assets: &[
-        ("linux", "x86_64", "legendary_linux_x64"),
-        ("linux", "aarch64", "legendary_linux_arm64"),
-        ("windows", "x86_64", "legendary_windows_x64.exe"),
-        ("windows", "aarch64", "legendary_windows_arm64.exe"),
+        ("linux", "x86_64", "legendary_linux_x64", "dbed33bbe96031e65858233e4badf0a1d401bb6cb0cc995d1237cf3a0c826a45"),
+        ("linux", "aarch64", "legendary_linux_arm64", "e901cb52ada10d5cef6ffb2a0985099958124457bfb455a571023d1e042143d9"),
+        ("windows", "x86_64", "legendary_windows_x64.exe", "6be77857dc0a6dd33ea7442ce8b5291944ec6da53757f81ca95b57ce794baf5b"),
+        ("windows", "aarch64", "legendary_windows_arm64.exe", "5ca178d75713cb92ee24daa5df1905c75f05b8b403383669ca7aa32a5809fba3"),
     ],
 };
 
@@ -63,10 +66,10 @@ pub const GOGDL: StoreTool = StoreTool {
     version: "v1.3.0",
     on_path: true,
     assets: &[
-        ("linux", "x86_64", "gogdl_linux_x86_64"),
-        ("linux", "aarch64", "gogdl_linux_arm64"),
-        ("windows", "x86_64", "gogdl_windows_x86_64.exe"),
-        ("windows", "aarch64", "gogdl_windows_arm64.exe"),
+        ("linux", "x86_64", "gogdl_linux_x86_64", "cba013d42767c808237c437335ab1d56f58405d07e8f37b3324d264ea5c49655"),
+        ("linux", "aarch64", "gogdl_linux_arm64", "c49e1519146523ec94f33e2d21eedcc9a167004d7da218621e6d5fb84a7a0f4c"),
+        ("windows", "x86_64", "gogdl_windows_x86_64.exe", "69ea54467371803f681d6c39805992e3a4b8ddccb44ac8a1de7b1e3c80deaeec"),
+        ("windows", "aarch64", "gogdl_windows_arm64.exe", "a3dbb818530d21caad40f56136d3520966c151c7b205dd835bdbd53b63467e73"),
     ],
 };
 
@@ -79,11 +82,11 @@ pub const NILE: StoreTool = StoreTool {
     version: "v1.2.0",
     on_path: true,
     assets: &[
-        ("linux", "x86_64", "nile_linux_x86_64"),
-        ("linux", "aarch64", "nile_linux_arm64"),
-        ("windows", "x86_64", "nile_windows_x86_64.exe"),
+        ("linux", "x86_64", "nile_linux_x86_64", "d73519514df9d52c50c6feec629373cc3a0d9504e087b6c7372a8ca8a95e7bfe"),
+        ("linux", "aarch64", "nile_linux_arm64", "197859c629c47e4e4d7ed1d2a290b7bef1e778f891ff8ca42ba65dbb020ba751"),
+        ("windows", "x86_64", "nile_windows_x86_64.exe", "6531790c59f78cea4a8743bf0582d5afda7fb887f5c143391d7339ad0f42ab88"),
         // No Arm build: Windows on Arm runs x64 programs.
-        ("windows", "aarch64", "nile_windows_x86_64.exe"),
+        ("windows", "aarch64", "nile_windows_x86_64.exe", "6531790c59f78cea4a8743bf0582d5afda7fb887f5c143391d7339ad0f42ab88"),
     ],
 };
 
@@ -96,10 +99,10 @@ pub const COMET: StoreTool = StoreTool {
     version: "v0.4.1",
     on_path: false,
     assets: &[
-        ("linux", "x86_64", "comet-x86_64-unknown-linux-gnu"),
-        ("linux", "aarch64", "comet-aarch64-unknown-linux-gnu"),
-        ("windows", "x86_64", "comet-x86_64-pc-windows-msvc.exe"),
-        ("windows", "aarch64", "comet-aarch64-pc-windows-msvc.exe"),
+        ("linux", "x86_64", "comet-x86_64-unknown-linux-gnu", "868dd0b510f2c1c63a524b8e0466dd92bb2aecdb697217a690bf9effd04d3a5a"),
+        ("linux", "aarch64", "comet-aarch64-unknown-linux-gnu", "33c52a7f4747e4e3340b1de955683679e33d01ba1a4fd2f9d79d7eb4dc229fc8"),
+        ("windows", "x86_64", "comet-x86_64-pc-windows-msvc.exe", "35c8b1a7d82b9a03839bca9238ed1e68d1c2718ebeb1a0530b26c5f89885b876"),
+        ("windows", "aarch64", "comet-aarch64-pc-windows-msvc.exe", "ef57dda0f5f1513a0b9f068818f58f8c29528b46d5290ad01f6260af30e04127"),
     ],
 };
 
@@ -184,7 +187,18 @@ impl StoreTool {
 
     /// Release asset for a system and CPU (`std::env::consts` names).
     pub fn asset_for(&self, os: &str, arch: &str) -> Option<&'static str> {
-        self.assets.iter().find(|(o, a, _)| *o == os && *a == arch).map(|(_, _, file)| *file)
+        self.assets.iter().find(|(o, a, _, _)| *o == os && *a == arch).map(|(_, _, file, _)| *file)
+    }
+
+    /// SHA-256 of the release asset for this system and CPU.
+    fn pinned_sha256(&self) -> Option<&'static str> {
+        let (os, arch) = (std::env::consts::OS, std::env::consts::ARCH);
+        self.assets.iter().find(|(o, a, _, _)| *o == os && *a == arch).map(|(_, _, _, sha)| *sha)
+    }
+
+    /// Whether `bin` is the pinned release asset for this system.
+    fn is_pinned_release(&self, bin: &Path) -> bool {
+        self.pinned_sha256().is_some_and(|pin| crate::legendary_install::sha256_of(bin).is_ok_and(|sum| sum == pin))
     }
 
     pub fn download_url(&self, asset: &str) -> String {
@@ -221,23 +235,41 @@ impl StoreTool {
     }
 
     /// The binary to run: an existing one, else a fresh download into the
-    /// data folder. Blocking, network.
+    /// data folder. The data folder's copy is kept only while it is the
+    /// pinned release (a copy from before the pin, or from another release,
+    /// is downloaded again); one the user picked (`HERONITE_*_BIN`, the
+    /// settings, `PATH`) is theirs and is not checked. Blocking, network.
     pub fn ensure(&self, paths: &DataPaths, probe: &dyn Probe, net: &dyn Net, cancel: Cancel) -> Result<PathBuf, String> {
         let _guard = busy(self).lock().unwrap_or_else(|e| e.into_inner());
+        let target = self.data_bin(paths);
+        let mut stale = false;
         if let Some(found) = self.find(&PlanContext::load(paths), probe) {
-            if let Some(why) = missing_runtime(self.name, &found, probe) {
-                return Err(why);
+            // Where nothing is pinned, nothing was downloaded: a copy there was put by hand.
+            stale = Path::new(&found) == target && self.pinned_sha256().is_some() && !self.is_pinned_release(&target);
+            if !stale {
+                if let Some(why) = missing_runtime(self.name, &found, probe) {
+                    return Err(why);
+                }
+                return Ok(PathBuf::from(found));
             }
-            return Ok(PathBuf::from(found));
         }
         let asset = self
             .asset_name()
             .ok_or_else(|| format!("{} has no build for {} {}", self.name, std::env::consts::OS, std::env::consts::ARCH))?;
         if !net.is_online() {
+            if stale {
+                return Err(format!(
+                    "the {} in Heronite's data folder is not the release Heronite expects, and there is no internet connection to download it again",
+                    self.name
+                ));
+            }
             return Err(format!("{} is not installed and there is no internet connection", self.name));
         }
-        let target = self.data_bin(paths);
-        install_binary(self.name, &self.download_url(asset), &target, net, cancel)?;
+        if stale {
+            log::warn!("{} is not the pinned {} {}: downloading it again", target.display(), self.name, self.version);
+        }
+        let sha256 = self.pinned_sha256().ok_or_else(|| format!("{} has no pinned build for this system", self.name))?;
+        install_binary(self.name, &self.download_url(asset), sha256, &target, net, cancel)?;
         log::info!("{} {} downloaded to {}", self.name, self.version, target.display());
         Ok(target)
     }
@@ -248,6 +280,15 @@ pub(crate) mod tests {
     use super::*;
     use crate::net::FakeNet;
     use crate::probe::FakeProbe;
+
+    /// `tool` with its build for this system pinned to `body`, as if `body`
+    /// were the release.
+    pub(crate) fn pinned_to(tool: StoreTool, body: &[u8]) -> StoreTool {
+        use sha2::{Digest, Sha256};
+        let sha: String = Sha256::digest(body).iter().map(|b| format!("{b:02x}")).collect();
+        let asset = (std::env::consts::OS, std::env::consts::ARCH, tool.asset_name().unwrap(), &*Box::leak(sha.into_boxed_str()));
+        StoreTool { assets: Box::leak(Box::new([asset])), ..tool }
+    }
 
     /// A program of this system that runs `--version` well, or a file that
     /// is no program.
@@ -262,6 +303,7 @@ pub(crate) mod tests {
     #[test]
     fn downloads_into_the_data_folder_when_none_is_found() {
         for tool in [LEGENDARY, GOGDL, NILE, COMET] {
+            let tool = pinned_to(tool, &fake_bin(true));
             let dir = tempfile::tempdir().unwrap();
             let paths = DataPaths::at(dir.path().join("heronite"));
             let url = tool.download_url(tool.asset_name().unwrap());
@@ -303,7 +345,20 @@ pub(crate) mod tests {
         assert_eq!(NILE.asset_for("macos", "aarch64"), None);
         for tool in [LEGENDARY, GOGDL, NILE, COMET] {
             assert!(tool.asset_name().is_some(), "{} has a build for this system", tool.name);
+            assert!(tool.pinned_sha256().is_some(), "{} pins its build for this system", tool.name);
         }
+    }
+
+    #[test]
+    fn every_build_is_pinned_with_a_sha256() {
+        for tool in [LEGENDARY, GOGDL, NILE, COMET] {
+            for (os, arch, file, sha) in tool.assets {
+                let hex = sha.len() == 64 && sha.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+                assert!(hex, "{} {os} {arch} {file}: {sha}", tool.name);
+            }
+        }
+        // The same file has the same pin (nile's x64 build on Arm).
+        assert_eq!(NILE.assets[2].3, NILE.assets[3].3);
     }
 
     #[test]
@@ -373,24 +428,86 @@ pub(crate) mod tests {
     fn a_found_tool_that_cannot_start_is_explained() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path().join("heronite"));
-        let data = GOGDL.data_bin(&paths).to_string_lossy().into_owned();
-        let probe = FakeProbe::default().with_file(&data, b"#!/usr/bin/env python3\n");
-        let err = GOGDL.ensure(&paths, &probe, &FakeNet::offline(), &|| false).unwrap_err();
+        let zipapp = b"#!/usr/bin/env python3\n";
+        let tool = pinned_to(GOGDL, zipapp);
+        let data = tool.data_bin(&paths);
+        std::fs::create_dir_all(data.parent().unwrap()).unwrap();
+        std::fs::write(&data, zipapp).unwrap();
+        let probe = FakeProbe::default().with_file(data.to_str().unwrap(), zipapp);
+        let err = tool.ensure(&paths, &probe, &FakeNet::offline(), &|| false).unwrap_err();
         assert!(err.contains("gogdl needs python3"), "{err}");
+    }
+
+    /// A copy in the data folder that is not the pinned release (downloaded
+    /// before the pin, or changed since) is downloaded again, and never
+    /// handed out.
+    #[test]
+    fn a_data_folder_copy_that_is_not_the_pinned_release_is_replaced() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("heronite"));
+        let tool = pinned_to(NILE, &fake_bin(true));
+        let data = tool.data_bin(&paths);
+        std::fs::create_dir_all(data.parent().unwrap()).unwrap();
+        std::fs::write(&data, b"an older or changed nile").unwrap();
+        let probe = FakeProbe::default().with_path(data.to_str().unwrap());
+
+        let err = tool.ensure(&paths, &probe, &FakeNet::offline(), &|| false).unwrap_err();
+        assert!(err.contains("not the release Heronite expects") && err.contains("no internet"), "{err}");
+        assert_eq!(std::fs::read(&data).unwrap(), b"an older or changed nile", "kept for when the internet is back");
+
+        let net = FakeNet::online().with_file(&tool.download_url(tool.asset_name().unwrap()), fake_bin(true));
+        assert_eq!(tool.ensure(&paths, &probe, &net, &|| false).unwrap(), data);
+        assert_eq!(std::fs::read(&data).unwrap(), fake_bin(true));
+        assert_eq!(net.requests().len(), 1);
+        tool.ensure(&paths, &probe, &net, &|| false).unwrap();
+        assert_eq!(net.requests().len(), 1, "the pinned copy is kept");
+    }
+
+    /// A binary the user picked is theirs: not checked against the pin.
+    #[test]
+    fn a_tool_the_user_picked_is_not_checked() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("heronite"));
+        let probe = FakeProbe::default().with_env("HERONITE_GOGDL_BIN", "/opt/gogdl").with_path("/opt/gogdl");
+        let net = FakeNet::online();
+        assert_eq!(GOGDL.ensure(&paths, &probe, &net, &|| false).unwrap(), PathBuf::from("/opt/gogdl"));
+        let probe = FakeProbe::default().with_bin("legendary", "/usr/bin/legendary");
+        assert_eq!(LEGENDARY.ensure(&paths, &probe, &net, &|| false).unwrap(), PathBuf::from("/usr/bin/legendary"));
+        assert!(net.requests().is_empty());
     }
 
     #[test]
     fn a_broken_download_is_not_installed() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path().join("heronite"));
-        let url = GOGDL.download_url(GOGDL.asset_name().unwrap());
+        let tool = pinned_to(GOGDL, &fake_bin(false));
+        let url = tool.download_url(tool.asset_name().unwrap());
         let net = FakeNet::online().with_file(&url, fake_bin(false));
-        let err = GOGDL.ensure(&paths, &FakeProbe::default(), &net, &|| false).unwrap_err();
+        let err = tool.ensure(&paths, &FakeProbe::default(), &net, &|| false).unwrap_err();
         assert!(err.contains("gogdl does not run"), "{err}");
-        assert!(!GOGDL.data_bin(&paths).exists());
+        assert!(!tool.data_bin(&paths).exists());
         assert!(FakeNet::offline().requests().is_empty());
         let err = NILE.ensure(&paths, &FakeProbe::default(), &FakeNet::offline(), &|| false).unwrap_err();
         assert!(err.contains("no internet"), "{err}");
+    }
+
+    /// A download that is not the pinned release (a release replaced on
+    /// GitHub) is refused before it is made a program or run.
+    #[cfg(unix)]
+    #[test]
+    fn a_download_that_is_not_the_pinned_release_never_runs() {
+        for tool in [LEGENDARY, GOGDL, NILE, COMET] {
+            let dir = tempfile::tempdir().unwrap();
+            let paths = DataPaths::at(dir.path().join("heronite"));
+            let ran = dir.path().join("ran");
+            let script = format!("#!/bin/sh\ntouch '{}'\n", ran.display());
+            let net = FakeNet::online().with_file(&tool.download_url(tool.asset_name().unwrap()), script.into_bytes());
+            let err = tool.ensure(&paths, &FakeProbe::default(), &net, &|| false).unwrap_err();
+            assert!(!ran.exists(), "{} ran a download that is not the pinned release", tool.name);
+            assert!(err.contains("not the expected file"), "{err}");
+            assert!(!tool.data_bin(&paths).exists());
+            assert!(!crate::legendary_install::part_file(&tool.data_bin(&paths)).exists());
+        }
     }
 
     /// The real releases, downloaded and run (`--version`) on this system:

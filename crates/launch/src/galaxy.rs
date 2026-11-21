@@ -60,6 +60,9 @@ sc create GalaxyCommunication binPath= \"\\\"%target%\\GalaxyCommunication.exe\\
 ";
 const REGISTER_SCRIPT_NAME: &str = "register-galaxy-service.bat";
 const DUMMY_ASSET: &str = "dummy-service.zip";
+/// SHA-256 of [`DUMMY_ASSET`] in [`COMET`]'s release (the one GitHub shows):
+/// an archive that does not match is never unpacked.
+const DUMMY_SHA256: &str = "e89e837fb33d11e4757fe4ff46255ea35d95e1ed32750ef804a28bee8ef7de53";
 /// How long one Wine command of the prefix setup may take (they take a
 /// few seconds; a hung Wine is ended, and the setup runs again next time).
 const WINE_TIMEOUT: Duration = Duration::from_secs(45);
@@ -145,6 +148,11 @@ pub fn dummy_service_dir(paths: &DataPaths) -> PathBuf {
 /// The folder with Comet's dummy service, downloaded the first time.
 /// Blocking, network.
 pub fn ensure_dummy_service(paths: &DataPaths, net: &dyn Net, cancel: Cancel) -> Result<PathBuf, String> {
+    ensure_dummy_service_pinned(paths, net, cancel, DUMMY_SHA256)
+}
+
+/// [`ensure_dummy_service`], with the archive pinned to `sha256`.
+fn ensure_dummy_service_pinned(paths: &DataPaths, net: &dyn Net, cancel: Cancel, sha256: &str) -> Result<PathBuf, String> {
     static BUSY: Mutex<()> = Mutex::new(());
     let _guard = BUSY.lock().unwrap_or_else(|e| e.into_inner());
     let dir = dummy_service_dir(paths);
@@ -156,7 +164,13 @@ pub fn ensure_dummy_service(paths: &DataPaths, net: &dyn Net, cancel: Cancel) ->
     }
     std::fs::create_dir_all(&dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
     let zip = dir.join(format!("{DUMMY_ASSET}.part"));
-    let result = net.download(&COMET.download_url(DUMMY_ASSET), &zip, cancel).and_then(|()| extract(&zip, &dir));
+    let result = net.download(&COMET.download_url(DUMMY_ASSET), &zip, cancel).and_then(|()| {
+        let sum = crate::legendary_install::sha256_of(&zip).map_err(|e| format!("{}: {e}", zip.display()))?;
+        if sum != sha256 {
+            return Err(format!("{DUMMY_ASSET} is not the expected file (SHA-256 {sum})"));
+        }
+        extract(&zip, &dir)
+    });
     let _ = std::fs::remove_file(&zip);
     result.map(|()| dir).map_err(|e| format!("getting Comet's dummy service: {e}"))
 }
@@ -321,7 +335,16 @@ mod tests {
         let url = COMET.download_url(DUMMY_ASSET);
         assert_eq!(url, "https://github.com/imLinguin/comet/releases/download/v0.4.1/dummy-service.zip");
         let net = FakeNet::online().with_file(&url, dummy_zip());
-        let got = ensure_dummy_service(&paths, &net, &|| false).unwrap();
+        // Not the release's archive: refused, nothing unpacked.
+        let err = ensure_dummy_service(&paths, &net, &|| false).unwrap_err();
+        assert!(err.contains("not the expected file"), "{err}");
+        assert!(DUMMY_FILES.iter().all(|f| !dummy_service_dir(&paths).join(f).exists()));
+        assert!(!dummy_service_dir(&paths).join("dummy-service.zip.part").exists());
+
+        use sha2::Digest;
+        let sha: String = sha2::Sha256::digest(dummy_zip()).iter().map(|b| format!("{b:02x}")).collect();
+        let net = FakeNet::online().with_file(&url, dummy_zip());
+        let got = ensure_dummy_service_pinned(&paths, &net, &|| false, &sha).unwrap();
         assert_eq!(got, dummy_service_dir(&paths));
         assert_eq!(std::fs::read(got.join("GalaxyCommunication.exe")).unwrap(), b"GalaxyCommunication.exe");
         assert!(!got.join("dummy-service.zip.part").exists());

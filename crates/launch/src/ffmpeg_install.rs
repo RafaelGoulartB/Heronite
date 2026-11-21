@@ -20,18 +20,15 @@
 //! waits on it forever.
 
 use std::fs;
-use std::io::{self, Read};
 use std::path::Path;
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use crate::legendary_install::{part_file, sha256_of};
+use crate::net::{Cancel, Net, CANCELLED};
 use heronite_data::ffmpeg::{self, Tool, DOWNLOADED_RELEASE};
 use heronite_data::DataPaths;
-use sha2::{Digest, Sha256};
-
-use crate::legendary_install::part_file;
-use crate::net::{Cancel, Net, CANCELLED};
 
 const REPO: &str = "shaka-project/static-ffmpeg-binaries";
 /// What the download of each program costs, for the UI.
@@ -146,20 +143,6 @@ pub fn install(asset: &Asset, url: &str, target: &Path, net: &dyn Net, cancel: C
     heronite_platform::fs::rename_replacing(&part, target).map_err(|e| fail(format!("installing {name}: {e}")))
 }
 
-fn sha256_of(path: &Path) -> io::Result<String> {
-    let mut file = fs::File::open(path)?;
-    let mut hasher = Sha256::new();
-    let mut buf = vec![0u8; 256 * 1024];
-    loop {
-        let n = file.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
-}
-
 /// Whether `bin -version` exits well. It runs as a helper: no console
 /// window on Windows (`heronite_data::proc`).
 fn runs(bin: &Path) -> bool {
@@ -173,6 +156,7 @@ fn runs(bin: &Path) -> bool {
 mod tests {
     use super::*;
     use crate::net::FakeNet;
+    use sha2::{Digest, Sha256};
 
     use crate::store_tools::tests::fake_bin;
 
