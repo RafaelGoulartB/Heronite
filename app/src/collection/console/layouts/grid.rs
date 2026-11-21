@@ -217,8 +217,8 @@ fn rail_letters() -> impl Iterator<Item = char> {
 /// The rail letter of a game's [`sort_key`](CollectionGame::sort_key): its
 /// first letter without accents, `#` for digits and symbols (they sort
 /// before A).
-pub(super) fn letter_of(title: &str) -> char {
-    let first = title.trim_start().chars().next().unwrap_or('#');
+pub(super) fn letter_of(key: &str) -> char {
+    let first = key.trim_start().chars().next().unwrap_or('#');
     heronite_data::fuzzy::fold(first.encode_utf8(&mut [0; 4]))
         .chars()
         .next()
