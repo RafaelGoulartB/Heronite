@@ -2,7 +2,9 @@
 //! lists of `store/config.json` (`games.*`) and `maxRecentGames`.
 //!
 //! "Show hidden games" is a UI flag owned by the Collection (ui-state); the
-//! page only asks for it with `PageEvent::ShowHidden` and mirrors it.
+//! page only asks for it with `PageEvent::ShowHidden` and mirrors it. Behind
+//! a PIN (`services::hidden_lock`) the Collection asks for the PIN first, and
+//! the page lists no hidden game until it was typed.
 
 mod pager;
 mod render;
@@ -16,6 +18,7 @@ use serde_json::json;
 
 use super::SettingsPage;
 use crate::pages::{PageCtx, PageEvent};
+use crate::services::hidden_lock as lock;
 use pager::Pager;
 
 pub(super) use render::notice_line;
@@ -26,6 +29,10 @@ type Entries = Vec<(String, String)>;
 #[derive(Default, Clone, Debug, PartialEq)]
 struct Snapshot {
     show_hidden: bool,
+    /// Hidden games are behind a PIN.
+    pin: bool,
+    /// Behind a PIN not typed yet: `hidden` stays empty.
+    locked: bool,
     hidden: Entries,
     favourites: Entries,
     recent: Entries,
@@ -38,9 +45,12 @@ const DEFAULT_MAX_RECENT: i64 = 5;
 fn read_snapshot(data_paths: &DataPaths, app: &AppPaths, home: &str) -> Snapshot {
     let settings = game_config::load_global(data_paths, home);
     let max_recent = settings.get("maxRecentGames").and_then(|v| v.as_i64()).filter(|n| *n >= 1).unwrap_or(DEFAULT_MAX_RECENT).min(10);
+    let locked = !lock::open(app);
     Snapshot {
-        show_hidden: UiState::load(app).show_hidden,
-        hidden: config_games::list_entries(data_paths, "hidden"),
+        show_hidden: lock::shown(UiState::load(app).show_hidden, app),
+        pin: lock::pin_set(app),
+        locked,
+        hidden: if locked { Vec::new() } else { config_games::list_entries(data_paths, "hidden") },
         favourites: config_games::list_entries(data_paths, "favourites"),
         recent: config_games::list_entries(data_paths, "recent"),
         max_recent,
@@ -201,8 +211,30 @@ impl SettingsPage {
     }
 
     pub(super) fn set_show_hidden(&mut self, on: bool, cx: &mut Context<Self>) {
-        self.library.snap.show_hidden = on;
+        // Behind a PIN the switch moves once it was typed (`hidden_lock_changed`).
+        if !(on && self.library.snap.locked) {
+            self.library.snap.show_hidden = on;
+        }
         cx.emit(PageEvent::ShowHidden(on));
+        cx.notify();
+    }
+
+    /// The PIN switch: sets a PIN, or asks for it to turn it off.
+    pub(super) fn toggle_hidden_pin(&mut self, cx: &mut Context<Self>) {
+        use crate::dialogs::hidden_pin::PinMode;
+        cx.emit(PageEvent::HiddenPin(if self.library.snap.pin { PinMode::Remove } else { PinMode::Set }));
+    }
+
+    pub(super) fn change_hidden_pin(&mut self, cx: &mut Context<Self>) {
+        cx.emit(PageEvent::HiddenPin(crate::dialogs::hidden_pin::PinMode::Change));
+    }
+
+    /// The Collection's "Show hidden games" after the PIN was typed, set or
+    /// turned off: the switch follows it and the lists are read again.
+    pub fn hidden_lock_changed(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.library.snap.show_hidden = on;
+        let ctx = self.ctx.clone();
+        self.library.reload(&ctx, cx);
         cx.notify();
     }
 
@@ -242,10 +274,18 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
     let s = &p.library.snap;
     let mut rows = vec![
         Row::toggle("show-hidden", tr!("Show hidden games"), s.show_hidden).desc(tr!("Hidden games stay in the library, marked")),
-        Row::number("max-recent", tr!("Recent games to keep"), s.max_recent, 1, 10, 1, ""),
+        Row::toggle("hidden-pin", tr!("Ask for a PIN"), s.pin).desc(tr!("Before hidden games show")),
     ];
+    if s.pin {
+        rows.push(Row::action("hidden-pin-change", tr!("Change the PIN")).child_of("hidden-pin"));
+    }
+    rows.extend([Row::number("max-recent", tr!("Recent games to keep"), s.max_recent, 1, 10, 1, "")]);
     // The lists are groups: closed, they say how many they hold.
-    rows.push(list_row("grp:hidden", tr!("Hidden games \u{b7} {count}", count = s.hidden.len()), &s.hidden));
+    if s.locked {
+        rows.push(Row::info("grp:hidden", tr!("Hidden games"), tr!("Locked by the PIN")));
+    } else {
+        rows.push(list_row("grp:hidden", tr!("Hidden games \u{b7} {count}", count = s.hidden.len()), &s.hidden));
+    }
     for (app, title) in &s.hidden {
         rows.push(Row::info(SharedString::from(format!("h:{app}")), title.clone(), tr!("A shows it again")).child_of("grp:hidden"));
     }
@@ -299,11 +339,13 @@ pub(super) fn console_apply(p: &mut SettingsPage, outcome: crate::console::list:
     let asked = p.library.confirm.take();
     match outcome {
         Outcome::Changed(id, Value::Toggle(on)) if id.as_ref() == "show-hidden" => p.set_show_hidden(on, cx),
+        Outcome::Changed(id, Value::Toggle(_)) if id.as_ref() == "hidden-pin" => p.toggle_hidden_pin(cx),
         Outcome::Changed(id, Value::Number { value, .. }) if id.as_ref() == "max-recent" => p.set_max_recent(value, cx),
         Outcome::Activate(id) => match id.as_ref() {
             "unhide-all" => p.console_clear(Clear::Hidden, asked, cx),
             "fav-clear" => p.console_clear(Clear::Favourites, asked, cx),
             "recent-clear" => p.console_clear(Clear::Recent, asked, cx),
+            "hidden-pin-change" => p.change_hidden_pin(cx),
             id => {
                 if let Some(app) = id.strip_prefix("h:") {
                     p.library_unhide(app.to_string(), cx);

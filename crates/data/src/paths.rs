@@ -404,6 +404,10 @@ impl AppPaths {
     pub fn ui_state(&self) -> PathBuf {
         self.config.join("ui-state.json")
     }
+    /// The PIN that guards hidden games (see `heronite_data::hidden_lock`).
+    pub fn hidden_lock(&self) -> PathBuf {
+        self.config.join("hidden-lock.json")
+    }
     /// The getting-started checklist (see `heronite_data::onboarding`).
     pub fn onboarding(&self) -> PathBuf {
         self.config.join("onboarding.json")

@@ -295,6 +295,12 @@ impl CollectionView {
             }
             w if w.starts_with("mod") && self.mods_debug_dialog(w, window, cx) => {}
             "statuses" => self.open_manage_statuses(window, cx),
+            // hidden-pin:<unlock|set|change|remove>
+            w if w.starts_with("hidden-pin:") => {
+                if let Some(mode) = crate::dialogs::hidden_pin::PinMode::parse(&w["hidden-pin:".len()..]) {
+                    self.open_hidden_pin(mode, cx);
+                }
+            }
             "hltb" => self.open_hltb_match(window, cx),
             "batchedit" => self.open_batch_edit(window, cx),
             "batchremove" => self.open_batch_remove(cx),

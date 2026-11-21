@@ -6,6 +6,7 @@ pub mod clients;
 pub mod compression;
 pub mod downloads;
 pub mod game_folders;
+pub mod hidden_lock;
 pub mod launch_blocker;
 pub mod launcher_imports;
 pub mod mods;

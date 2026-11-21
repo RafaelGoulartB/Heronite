@@ -18,6 +18,8 @@ pub enum Icon {
     ChevronLeft,
     ChevronRight,
     Close,
+    /// Deletes the last digit (the PIN pad).
+    Backspace,
     CloudDownload,
     DeleteForever,
     DeleteOutline,
@@ -204,6 +206,7 @@ impl Icon {
             ChevronLeft => "icons/chevron-left.svg",
             ChevronRight => "icons/chevron-right.svg",
             Close => "icons/close.svg",
+            Backspace => "icons/backspace.svg",
             CloudDownload => "icons/cloud-download.svg",
             DeleteForever => "icons/delete-forever.svg",
             DeleteOutline => "icons/delete-outline.svg",

@@ -21,6 +21,9 @@ tempfile = "3"
 icu_collator = "2"
 unicode-normalization = "0.1"
 base64 = "0.22"
+getrandom = "0.3"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+sha2 = "0.10"
 
 [features]
 # Helpers for other crates' tests (`testing`): their `[dev-dependencies]` turn it on.
