@@ -25,6 +25,7 @@ use crate::ui::fields::{duration_field, input_box, labeled, new_input, new_texta
 #[derive(Clone, PartialEq, Default)]
 pub(super) struct Form {
     title: String,
+    sort_name: String,
     description: String,
     release_date: String,
     series: String,
@@ -44,6 +45,7 @@ pub(super) fn form_from(title: &str, md: Option<&CollectionGameMetadata>, meta: 
     let md_str = |v: &Option<String>| v.clone().unwrap_or_default();
     Form {
         title: md.and_then(|m| m.title.as_deref()).map(str::trim).filter(|t| !t.is_empty()).unwrap_or(title).to_string(),
+        sort_name: md.map(|m| md_str(&m.sort_name)).unwrap_or_default(),
         description: md.map(|m| md_str(&m.description)).unwrap_or_default(),
         release_date: md.map(|m| md_str(&m.release_date)).unwrap_or_default(),
         series: md.map(|m| md_str(&m.series)).unwrap_or_default(),
@@ -69,7 +71,7 @@ pub(super) fn form_from(title: &str, md: Option<&CollectionGameMetadata>, meta: 
 
 /// The patch sets at least one field.
 fn changes_anything(p: &DetailsPatch) -> bool {
-    [&p.title, &p.notes, &p.description, &p.release_date, &p.series].iter().any(|f| f.is_some())
+    [&p.title, &p.sort_name, &p.notes, &p.description, &p.release_date, &p.series].iter().any(|f| f.is_some())
         || [&p.developers, &p.publishers, &p.genres, &p.themes, &p.game_modes, &p.platforms, &p.features, &p.websites]
             .iter()
             .any(|f| f.is_some())
@@ -96,6 +98,7 @@ pub(super) const TAG_FIELDS: [(&str, &str, bool); 8] = [
 
 pub(super) struct Details {
     pub(super) name: Entity<InputState>,
+    pub(super) sort_name: Entity<InputState>,
     pub(super) description: Entity<TextareaState>,
     pub(super) release: Entity<InputState>,
     pub(super) score: Entity<InputState>,
@@ -137,6 +140,7 @@ impl GameSettingsDialog {
             .collect();
         let details = Details {
             name: new_input(window, cx, &initial.title, ""),
+            sort_name: new_input(window, cx, &initial.sort_name, tr!("Same as the name")),
             description: new_textarea(window, cx, &initial.description, 6),
             release: new_input(window, cx, &initial.release_date, ""),
             score: new_input(window, cx, &initial.score, ""),
@@ -146,7 +150,9 @@ impl GameSettingsDialog {
             hours: new_input(window, cx, &split_minutes(playtime).0.to_string(), "0"),
             minutes: new_input(window, cx, &split_minutes(playtime).1.to_string(), "0"),
         };
-        for input in [&details.name, &details.release, &details.score, &details.websites, &details.hours, &details.minutes] {
+        for input in
+            [&details.name, &details.sort_name, &details.release, &details.score, &details.websites, &details.hours, &details.minutes]
+        {
             cx.subscribe_in(input, window, |this, _, ev: &InputEvent, _, cx| {
                 if matches!(ev, InputEvent::Change) {
                     this.schedule_save(cx);
@@ -172,6 +178,7 @@ impl GameSettingsDialog {
         let tag = |i: usize| d.tags[i].read(cx).values().to_vec();
         Form {
             title: d.name.read(cx).value().to_string(),
+            sort_name: d.sort_name.read(cx).value().to_string(),
             description: d.description.read(cx).value().to_string(),
             release_date: d.release.read(cx).value().to_string(),
             series: d.tags[0].read(cx).value(),
@@ -250,6 +257,9 @@ impl GameSettingsDialog {
         let mut patch = DetailsPatch { app_name: self.game.app_name.clone(), runner: self.runner(), ..Default::default() };
         if form.title != old.title {
             patch.title = Some(form.title.clone());
+        }
+        if form.sort_name != old.sort_name {
+            patch.sort_name = Some(form.sort_name.clone());
         }
         if form.notes != old.notes {
             patch.notes = Some(form.notes.clone());
@@ -396,6 +406,14 @@ impl GameSettingsDialog {
         let d = &self.details;
         let general = card([
             block(labeled(tr!("Name"), input_box(&d.name, false))),
+            block(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(6.))
+                    .child(labeled(tr!("Sorting name"), input_box(&d.sort_name, false)))
+                    .child(help_text(tr!("Only orders the games A–Z: the name shown stays the same."))),
+            ),
             block(labeled(tr!("Description"), textarea_box(&d.description, 6))),
             block(
                 div()

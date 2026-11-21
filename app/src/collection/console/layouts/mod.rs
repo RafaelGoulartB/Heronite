@@ -312,7 +312,7 @@ fn body_height(window: &Window, hints: bool) -> f32 {
 /// follow, by title).
 fn top_recent(games: &[Arc<CollectionGame>], k: usize) -> Vec<Arc<CollectionGame>> {
     let order = |a: &&Arc<CollectionGame>, b: &&Arc<CollectionGame>| {
-        b.last_played.cmp(&a.last_played).then_with(|| a.title_lower.cmp(&b.title_lower))
+        b.last_played.cmp(&a.last_played).then_with(|| heronite_data::organize::title_order(a, b))
     };
     let mut v: Vec<&Arc<CollectionGame>> = games.iter().collect();
     if v.len() > k {

@@ -13,7 +13,7 @@ use super::sources::{game_entry, Entry, GameCard, GameRow};
 /// `app_name` runs now.
 pub(crate) fn library_entries(lib: &Library, playing: &dyn Fn(&str) -> bool) -> Vec<Entry> {
     let mut games: Vec<_> = lib.games.iter().collect();
-    games.sort_by(|a, b| a.title_lower.cmp(&b.title_lower).then(a.key.cmp(&b.key)));
+    games.sort_by(|a, b| heronite_data::organize::title_order(a, b).then(a.key.cmp(&b.key)));
     let mut v = Vec::with_capacity(games.len());
     for g in games {
         let playtime = heronite_data::collection::playtime_label(g.playtime_minutes);
