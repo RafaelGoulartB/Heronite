@@ -303,7 +303,20 @@ mod tests {
     }
 
     /// A program Wine would name `C:\\games\\Game.EXE` (the name is argv[0]).
+    /// `spawn` returns once the exec is past its point of no return, a moment
+    /// before the kernel lays out the new argv: until then `cmdline` reads
+    /// empty, so this waits for it.
     fn windows_program(argv0: &str, prefix: Option<&str>, cwd: Option<&std::path::Path>) -> std::process::Child {
+        let child = spawn_windows_program(argv0, prefix, cwd);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !std::fs::read(format!("/proc/{}/cmdline", child.id())).is_ok_and(|c| c.starts_with(argv0.as_bytes())) {
+            assert!(std::time::Instant::now() < deadline, "{argv0} never showed its name");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        child
+    }
+
+    fn spawn_windows_program(argv0: &str, prefix: Option<&str>, cwd: Option<&std::path::Path>) -> std::process::Child {
         use std::os::unix::process::CommandExt;
         let mut c = std::process::Command::new("sleep");
         c.arg0(argv0).arg("5").env_remove("WINEPREFIX");

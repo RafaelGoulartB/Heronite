@@ -589,5 +589,7 @@
   "{n} shows a crop in Console mode": "{n} muestra un recorte en el modo consola",
   "{n} show a crop in Console mode": "{n} muestran un recorte en el modo consola",
   "{n} shows a crop on the desktop": "{n} muestra un recorte en el modo escritorio",
-  "{n} show a crop on the desktop": "{n} muestran un recorte en el modo escritorio"
+  "{n} show a crop on the desktop": "{n} muestran un recorte en el modo escritorio",
+  "{n} shows another picture on the desktop": "{n} muestra otra imagen en el escritorio",
+  "{n} show another picture on the desktop": "{n} muestran otra imagen en el escritorio"
 }

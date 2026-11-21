@@ -117,7 +117,7 @@ The Windows files are not code-signed yet, so SmartScreen may warn about them: c
 - **Epic Games, GOG, and Amazon Games:** log in and install, update, repair, or move games from one download queue. On Windows, games from their official launchers come in without downloading again.
 - **Steam:** your library comes in by itself, no login needed.
 - **Xbox and PC Game Pass (Windows):** Microsoft Store and Game Pass games show up in your Collection, launch from Heronite, and count their play time.
-- **Battle.net, EA app, Ubisoft Connect, and Rockstar Games:** their games join your Collection, through the store's own app on Windows and in its own Wine prefix on Linux.
+- **Battle.net, EA app, Ubisoft Connect, and Rockstar Games:** their games join your Collection, through the store's own app on Windows and in its own Wine prefix on Linux. Connect your EA account on the EA app's page to also see the EA games you own that are not installed.
 - **Other launchers:** import and sync games from Heroic, Lutris, Bottles, and Faugus on Linux, and from Heroic and Playnite on Windows (Settings → Other launchers).
 - **Games you already have:** add one by hand, or a whole folder at once.
 
@@ -174,7 +174,7 @@ A controller-first layout for the couch or a TV. Turn it on from the ☰ menu, t
 ## Make it yours
 
 - **Appearance:** dark or light, accent colour, fonts, density, and a background picture.
-- **Language:** English, Portuguese (Brazil), Spanish, and German.
+- **Language:** English, Portuguese (Brazil), Spanish, German, and French.
 - **Saves and backups:** Ludusavi save backups after each session (and, if you choose, every 15 minutes to 2 hours while you play), and scheduled Collection backups.
 - **Sync:** status, ratings, notes, and play time stay the same across your PCs or both sides of a dual boot, through a shared folder or a cloud account ([rclone](https://rclone.org/)), which can also keep your backups, saves, and screenshots.
 - **Storage:** see what your games take on each disk and clean up leftovers.

@@ -1,0 +1,23 @@
+{
+  "Pick a random game": "Choisir un jeu au hasard",
+  "Pick a random installed game": "Choisir un jeu installé au hasard",
+  "Pick a random game you have not played": "Choisir un jeu auquel vous n'avez pas joué",
+  "Pick a random favourite": "Choisir un favori au hasard",
+  "Pick a random game from the whole Collection": "Choisir un jeu au hasard dans toute la Collection",
+  "Pick a random game: {category}": "Choisir un jeu au hasard : {category}",
+  "Pick another": "En choisir un autre",
+  "No game to pick from": "Aucun jeu parmi lequel choisir",
+  "It is the only game to pick from": "C'est le seul jeu disponible",
+  "From the {n} game on screen": "Parmi le {n} jeu à l'écran",
+  "From the {n} games on screen": "Parmi les {n} jeux à l'écran",
+  "From the whole Collection: {n} game": "Dans toute la Collection : {n} jeu",
+  "From the whole Collection: {n} games": "Dans toute la Collection : {n} jeux",
+  "From your {n} installed game": "Parmi votre {n} jeu installé",
+  "From your {n} installed games": "Parmi vos {n} jeux installés",
+  "From the {n} game you have not played": "Parmi le {n} jeu auquel vous n'avez pas joué",
+  "From the {n} games you have not played": "Parmi les {n} jeux auxquels vous n'avez pas joué",
+  "From your {n} favourite": "Parmi votre {n} favori",
+  "From your {n} favourites": "Parmi vos {n} favoris",
+  "From {name}: {n} game": "Dans {name} : {n} jeu",
+  "From {name}: {n} games": "Dans {name} : {n} jeux"
+}

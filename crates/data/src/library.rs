@@ -51,6 +51,9 @@ pub struct CollectionGame {
     /// override, else the store title.
     pub title: String,
     pub title_lower: String,
+    /// What the A-Z sorts compare: [`sort_name`](crate::organize::sort_name)
+    /// of the Collection metadata's sorting name, else of the title.
+    pub sort_key: String,
     /// "Library" of the Details panel: Steam, Emulator, Epic, GOG, Amazon,
     /// Xbox, Local, Other.
     pub source_label: &'static str,
@@ -228,6 +231,7 @@ impl CollectionGame {
             runner: game.runner.clone(),
             app_name: game.app_name.clone(),
             title_lower: title.to_lowercase(),
+            sort_key: crate::organize::sort_name(sorting_name(metadata.as_deref()).unwrap_or(&title)),
             title,
             source_label: if family.is_some() { FAMILY_LABEL } else { source_label(meta.as_deref(), &game.runner) },
             installed: game.is_installed || via_steam,
@@ -354,6 +358,11 @@ fn display_title(game: &GameInfo, overrides: Option<&GameOverride>, metadata: Op
         .unwrap_or_else(|| game.title.clone())
 }
 
+/// The sorting name the user set, when it is not blank.
+fn sorting_name(metadata: Option<&CollectionGameMetadata>) -> Option<&str> {
+    metadata.and_then(|m| m.sort_name.as_deref()).map(str::trim).filter(|t| !t.is_empty())
+}
+
 pub fn metadata_key(runner: &str, app_name: &str) -> String {
     format!("{}:{app_name}", if runner == "zoom" { "sideload" } else { runner })
 }
@@ -396,6 +405,10 @@ struct RawGame {
     /// (`crate::sideload::COMMAND_KEY`).
     #[serde(rename = "heroniteCommand")]
     command: Option<String>,
+    /// Kept in `GameInfo::rest`: the folder a Windows game starts in
+    /// (`crate::sideload::WORKING_DIR_KEY`).
+    #[serde(rename = "heroniteWorkingDir")]
+    working_dir: Option<String>,
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -444,6 +457,9 @@ impl From<RawGame> for GameInfo {
                 }
                 if let Some(c) = g.command.filter(|s| !s.trim().is_empty()) {
                     rest.insert(crate::sideload::COMMAND_KEY.to_string(), Value::String(c));
+                }
+                if let Some(d) = g.working_dir.filter(|s| !s.trim().is_empty()) {
+                    rest.insert(crate::sideload::WORKING_DIR_KEY.to_string(), Value::String(d));
                 }
                 rest
             },
@@ -562,6 +578,16 @@ struct SteamJoins {
     gone: HashSet<String>,
 }
 
+/// Whether the record's Steam id is a link to a Steam page: pinned by the user, or found by the
+/// exact title (`sourceMatches.steam`, written by the metadata service), as opposed to an id a
+/// source such as IGDB reports for the game.
+pub fn steam_id_is_a_link(md: &CollectionGameMetadata) -> bool {
+    let Some(id) = md.steam_app_id.as_deref().filter(|s| !s.is_empty()) else { return false };
+    let Some(m) = md.extra.get("sourceMatches").and_then(|v| v.get("steam")) else { return false };
+    m.get("id").and_then(|v| v.as_str()) == Some(id)
+        && (m.get("pinned").and_then(|v| v.as_bool()) == Some(true) || m.get("matchedBy").and_then(|v| v.as_str()) == Some("exactTitle"))
+}
+
 /// The Steam app id a Steam entry (`steam-uri`) launches.
 fn steam_entry_id<'a>(game: &'a GameInfo, meta: Option<&'a LocalGameMeta>) -> Option<&'a str> {
     let meta = meta.filter(|m| m.launch_kind == "steam-uri")?;
@@ -592,11 +618,11 @@ fn steam_joins(
         .map(|(i, g)| {
             let meta = metas.get(&g.app_name).map(|m| &**m);
             let metadata = metadatas.get(&metadata_key(&g.runner, &g.app_name));
-            let steam_ids = [meta.and_then(|m| m.steam_app_id.as_deref()), metadata.and_then(|m| m.steam_app_id.as_deref())]
-                .into_iter()
-                .flatten()
-                .filter(|s| !s.is_empty())
-                .collect();
+            // A link the user made by hand, or a search by name made, is metadata: it never joins
+            // the game to a Steam copy (a hand-added Enderal linked to Skyrim's page is not Skyrim).
+            let record_id = metadata.filter(|m| !steam_id_is_a_link(m)).and_then(|m| m.steam_app_id.as_deref());
+            let steam_ids =
+                [meta.and_then(|m| m.steam_app_id.as_deref()), record_id].into_iter().flatten().filter(|s| !s.is_empty()).collect();
             let browser = g.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("browser"));
             Candidate {
                 key: &keys[i],
@@ -871,6 +897,8 @@ pub(crate) mod tests_support {
         pub genres: Vec<String>,
         pub game_modes: Vec<String>,
         pub series: Option<String>,
+        /// The Collection metadata's sorting name.
+        pub sort_name: Option<String>,
         pub status: Option<String>,
         pub runner: Option<String>,
         pub favourite: bool,
@@ -897,7 +925,11 @@ pub(crate) mod tests_support {
         }
         // The Collection title wins over the store's, as metadata would.
         let overrides = spec.store_title.is_some().then(|| GameOverride { title: Some(title.into()), ..Default::default() });
-        let has_metadata = !spec.developers.is_empty() || !spec.genres.is_empty() || !spec.game_modes.is_empty() || spec.series.is_some();
+        let has_metadata = !spec.developers.is_empty()
+            || !spec.genres.is_empty()
+            || !spec.game_modes.is_empty()
+            || spec.series.is_some()
+            || spec.sort_name.is_some();
         let metadata = has_metadata.then(|| {
             Arc::new(CollectionGameMetadata {
                 app_name: app.into(),
@@ -906,6 +938,7 @@ pub(crate) mod tests_support {
                 genres: spec.genres.clone(),
                 game_modes: spec.game_modes.clone(),
                 series: spec.series.clone(),
+                sort_name: spec.sort_name.clone(),
                 ..Default::default()
             })
         });
@@ -1244,6 +1277,93 @@ mod tests {
         let lib = Library::load(&paths).unwrap();
         assert!(lib.get("sideload_steam_2").is_some());
         assert!(lib.get("legendary_hds").unwrap().steam_link.is_none());
+    }
+
+    #[test]
+    fn a_steam_page_linked_in_the_record_does_not_make_a_steam_game() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let w = |p: PathBuf, s: &str| {
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, s).unwrap();
+        };
+        w(
+            paths.sideload_library(),
+            r#"{"games":[{"runner":"sideload","app_name":"manual","title":"Hades","is_installed":true,"install":{"executable":"/g/hades.exe"}}]}"#,
+        );
+        w(
+            paths.local_meta(),
+            r#"{"games":{"manual":{"appName":"manual","runner":"sideload","source":"manual","launchKind":"executable"}}}"#,
+        );
+        w(paths.metadata(), r#"{"games":{"sideload:manual":{"appName":"manual","runner":"sideload","steamAppId":"1145360"}}}"#);
+        // The account owns other games: its library is known, and Hades is not in it.
+        w(paths.steam_owned(), r#"{"games":[{"appId":"4","name":"Portal"}],"updatedAt":"2026-10-13T00:00:00Z"}"#);
+        let lib = Library::load(&paths).unwrap();
+        let game = lib.get("sideload_manual").unwrap();
+        assert_eq!((game.steam_app_id.as_deref(), game.steam_launch_id.as_deref()), (None, None));
+        assert!(game.steam_link.is_none() && !game.via_steam && game.installed);
+        assert_eq!(game.launch_kind.as_deref(), Some("executable"));
+        // What the metadata reads: tags, ProtonDB and the links use the record's id.
+        assert_eq!(game.tag_steam_id(), Some("1145360"));
+        let stores = &game.facets[crate::collection::FacetKind::Store.index()];
+        assert_eq!(stores.iter().map(|i| i.value.as_str()).collect::<Vec<_>>(), ["Added manually"]);
+    }
+
+    #[test]
+    fn a_link_to_a_steam_page_is_told_from_an_id_a_source_reports() {
+        let md = |id: &str, entry: serde_json::Value| -> CollectionGameMetadata {
+            serde_json::from_value(
+                serde_json::json!({"appName": "a", "runner": "sideload", "steamAppId": id, "sourceMatches": {"steam": entry}}),
+            )
+            .unwrap()
+        };
+        assert!(steam_id_is_a_link(&md("1", serde_json::json!({"id": "1", "pinned": true}))), "pinned by hand");
+        assert!(steam_id_is_a_link(&md("1", serde_json::json!({"id": "1", "matchedBy": "exactTitle"}))), "found by name");
+        assert!(!steam_id_is_a_link(&md("1", serde_json::json!({"id": "1", "matchedBy": "steamId"}))), "Steam's own game");
+        assert!(!steam_id_is_a_link(&md("1", serde_json::json!({"id": "2", "pinned": true}))), "a match of another id");
+        let bare: CollectionGameMetadata =
+            serde_json::from_value(serde_json::json!({"appName": "a", "runner": "sideload", "steamAppId": "1"})).unwrap();
+        assert!(!steam_id_is_a_link(&bare), "an id IGDB reports");
+    }
+
+    #[test]
+    fn a_link_to_a_steam_page_does_not_join_a_steam_copy_by_its_id_but_an_id_a_source_reports_does() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let w = |p: PathBuf, s: &str| {
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, s).unwrap();
+        };
+        w(
+            paths.sideload_library(),
+            r#"{"games":[
+              {"runner":"sideload","app_name":"enderal","title":"Enderal","is_installed":true,"install":{}},
+              {"runner":"sideload","app_name":"igdb","title":"Cyber Heist","is_installed":true,"install":{}}]}"#,
+        );
+        w(
+            paths.local_meta(),
+            r#"{"games":{
+              "enderal":{"appName":"enderal","runner":"sideload","source":"manual","launchKind":"executable"},
+              "igdb":{"appName":"igdb","runner":"sideload","source":"manual","launchKind":"executable"}}}"#,
+        );
+        // This isolates the id: the titles differ, so no join by title can hide it. Enderal is
+        // pinned to Skyrim's page (72850) and Cyber Heist is given 72850 by IGDB. The account owns
+        // Skyrim. (A game found by name has its page's own title, so a Steam copy of that title
+        // joins it by title, as it always did: `steam_twins_join_other_sources`.)
+        w(
+            paths.metadata(),
+            r#"{"games":{
+              "sideload:enderal":{"appName":"enderal","runner":"sideload","steamAppId":"72850",
+                "sourceMatches":{"steam":{"id":"72850","pinned":true}}},
+              "sideload:igdb":{"appName":"igdb","runner":"sideload","steamAppId":"72850"}}}"#,
+        );
+        w(paths.steam_owned(), r#"{"games":[{"appId":"72850","name":"Skyrim"}],"updatedAt":"2026-10-13T00:00:00Z"}"#);
+        let lib = Library::load(&paths).unwrap();
+        let enderal = lib.get("sideload_enderal").unwrap();
+        assert!(enderal.steam_link.is_none() && enderal.steam_app_id.is_none() && !enderal.via_steam);
+        assert_eq!(enderal.tag_steam_id(), Some("72850"), "the metadata still reads the page");
+        // An id a source reports keeps joining the Steam copy, as before.
+        assert_eq!(lib.get("sideload_igdb").unwrap().steam_link.as_ref().map(|l| l.app_id.as_str()), Some("72850"));
     }
 
     #[test]

@@ -12,7 +12,11 @@
 //!   as installed once logged in here; each comes with its game settings
 //!   (its Wine prefix) while it has none here.
 //! * [`playnite`] reads Playnite's library (a LiteDB file, [`litedb`]) on
-//!   Windows: its installed games start through Playnite, like Lutris'.
+//!   Windows. Its installed games are brought over as this app's own
+//!   ([`transfer`]): they start here, with their settings, emulator, details,
+//!   status, favourite, categories and play time. A game only Playnite can
+//!   start (one of its add-ons', or a script) keeps starting through it, like
+//!   Lutris'.
 //!
 //! [`detect`] finds this system's launchers ([`Launcher::here`]; on Linux
 //! native or Flatpak, Heroic in `%APPDATA%` on Windows) and reads their libraries: small files, read only. [`sync`] writes the
@@ -28,6 +32,7 @@ pub mod heroic;
 pub mod litedb;
 pub mod lutris;
 pub mod playnite;
+pub mod transfer;
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -84,6 +89,9 @@ pub struct Game {
     /// Where the program that runs it is when that is not its folder (the
     /// emulator of a Playnite game): the session follows it there.
     pub runs_from: Option<String>,
+    /// A Playnite game that starts here without Playnite: how, and what it
+    /// carries. `command` then starts it only until it is brought over.
+    pub transfer: Option<Box<transfer::Transfer>>,
 }
 
 /// What a [`sync`] changed in the Collection.
@@ -116,13 +124,14 @@ pub fn detect(home: &Path, data: &DataPaths) -> Vec<Found> {
 }
 
 /// Brings `found`'s games into the Collection, but the ones the user took
-/// out (`removed`: their app names). Blocking (small files). A library in
-/// use is an error: none of its games would be marked as not installed.
-pub fn sync(paths: &DataPaths, found: &Found, removed: &BTreeSet<String>) -> Result<Report> {
+/// out (`removed`: their app names). `home` is the user's home folder.
+/// Blocking (small files). A library in use is an error: none of its games
+/// would be marked as not installed.
+pub fn sync(paths: &DataPaths, home: &Path, found: &Found, removed: &BTreeSet<String>) -> Result<Report> {
     anyhow::ensure!(!found.in_use, "{} holds its library open", found.launcher.name());
     match &found.heroic {
         Some(library) => heroic::sync(paths, library, removed),
-        None => collection::sync(paths, found.launcher, &found.games, removed),
+        None => collection::sync(paths, home, found.launcher, &found.games, removed),
     }
 }
 

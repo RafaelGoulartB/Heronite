@@ -23,7 +23,8 @@ impl<K: ClientKind> HasLayer for ClientPage<K> {
 }
 
 impl<K: ClientKind> ClientPage<K> {
-    fn console_rows(&self, st: &ClientState) -> Vec<Row> {
+    /// `ea_busy`: the EA account reads or signs in (no removal meanwhile).
+    fn console_rows(&self, st: &ClientState, ea_busy: bool) -> Vec<Row> {
         let client = K::CLIENT;
         let pill = logic::pill(st);
         let main = logic::main_action(client, st);
@@ -56,7 +57,7 @@ impl<K: ClientKind> ClientPage<K> {
                     Row::action("folder", tr!("Open the Wine prefix folder")).desc(logic::tilde(prefix, &home())).icon(Icon::FolderOpen),
                 );
             }
-            rows.push(Row::action("forget", tr!("Remove from Heronite")).icon(Icon::Logout).danger());
+            rows.push(Row::action("forget", tr!("Remove from Heronite")).icon(Icon::Logout).danger().enabled(!ea_busy));
         } else if !st.installed() && !st.busy() && st.status.is_some() {
             rows.push(Row::action("adopt", tr!("Use an existing install")).icon(Icon::FolderOpen));
         }
@@ -148,8 +149,8 @@ impl<K: ClientKind> ClientPage<K> {
 
     pub(super) fn render_console(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let st = self.svc.read(cx).state(K::CLIENT).clone();
-        let rows = self.console_rows(&st);
-        let list = self.console_list.render(self.id("console"), &rows, !self.layer.is_open() && self.dialog.is_none());
+        let rows = self.console_rows(&st, self.ea_busy(cx));
+        let list = self.console_list.render_cards(self.id("console"), &rows, !self.layer.is_open() && self.dialog.is_none());
         div()
             .relative()
             .flex()
@@ -168,16 +169,7 @@ impl<K: ClientKind> ClientPage<K> {
                     .child(div().flex_1())
                     .child(kit::clock()),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h_0()
-                    .px(u(46.))
-                    .pb(u(16.))
-                    .child(div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(list.flex_1().min_h_0())),
-            )
+            .child(div().flex().flex_col().flex_1().min_h_0().px(u(46.)).pb(u(16.)).child(list))
             .children(self.layer.view())
             .children(self.dialog.clone())
             .into_any_element()
@@ -208,7 +200,7 @@ impl<K: ClientKind> PadTarget for ClientPage<K> {
             return true;
         }
         let st = self.svc.read(cx).state(K::CLIENT).clone();
-        let rows = self.console_rows(&st);
+        let rows = self.console_rows(&st, self.ea_busy(cx));
         let used = match self.console_list.on_pad(pad, &rows) {
             Outcome::Activate(id) => {
                 self.console_activate(&id, window, cx);

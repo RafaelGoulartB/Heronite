@@ -191,16 +191,20 @@ pub(crate) fn gives(fields: &[String]) -> String {
         parts.push(tr!("Text"));
     }
     const COVERS: [&str; 3] = ["cover", "coverSquare", "coverWide"];
-    for (field, label) in
-        [("criticScore", tr!("Scores")), ("ageRatings", tr!("Age ratings")), ("cover", tr!("Covers")), ("hero", tr!("Backgrounds"))]
-    {
+    for (field, label) in [
+        ("criticScore", tr!("Scores")),
+        ("ageRatings", tr!("Age ratings")),
+        ("cover", tr!("Covers")),
+        ("hero", tr!("Backgrounds")),
+        ("logo", tr!("Logos")),
+    ] {
         // Covers of any shape read as covers.
         let given = if field == "cover" { COVERS.iter().any(|f| has(f)) } else { has(field) };
         if given {
             parts.push(label);
         }
     }
-    let known = |f: &str| TEXT.contains(&f) || COVERS.contains(&f) || ["criticScore", "ageRatings", "hero"].contains(&f);
+    let known = |f: &str| TEXT.contains(&f) || COVERS.contains(&f) || ["criticScore", "ageRatings", "hero", "logo"].contains(&f);
     parts.extend(fields.iter().filter(|f| !known(f)).map(|f| field_name(f)));
     parts.join(" \u{b7} ")
 }
@@ -288,6 +292,7 @@ mod tests {
         let f = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(gives(&f(&["cover", "description", "criticScore", "genres"])), "Text \u{b7} Scores \u{b7} Covers");
         assert_eq!(gives(&f(&["cover", "hero"])), "Covers \u{b7} Backgrounds");
+        assert_eq!(gives(&f(&["coverSquare", "logo"])), "Covers \u{b7} Logos");
         assert_eq!(gives(&f(&["timeToBeat"])), "Time to beat");
     }
 }

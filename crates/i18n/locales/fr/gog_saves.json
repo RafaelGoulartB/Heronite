@@ -1,0 +1,9 @@
+{
+  "Could not load the save folders: {error}": "Impossible de charger les dossiers de sauvegardes : {error}",
+  "Default folder": "Dossier par défaut",
+  "GOG lists these folders. They are kept in the game's settings (gogSaves).": "GOG répertorie ces dossiers. Ils sont conservés dans les paramètres du jeu (gogSaves).",
+  "GOG lists these folders. They are kept in the game's settings (gogSaves); refresh them after changing the Wine prefix.": "GOG répertorie ces dossiers. Ils sont conservés dans les paramètres du jeu (gogSaves) ; actualisez-les après avoir changé le préfixe Wine.",
+  "Loading the save folders…": "Chargement des dossiers de sauvegardes…",
+  "Refresh locations": "Actualiser les emplacements",
+  "Save folders": "Dossiers de sauvegardes"
+}

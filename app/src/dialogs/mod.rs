@@ -12,6 +12,7 @@
 
 pub mod achievements;
 pub mod add_game;
+pub mod animated_art;
 pub mod art_images;
 pub mod batch_edit;
 pub mod client_settings;
@@ -25,7 +26,9 @@ pub mod epic_import;
 pub mod epic_install;
 pub mod epic_modify;
 pub mod extensions;
+pub mod game_links;
 pub mod game_settings;
+pub mod hidden_pin;
 pub mod hltb_match;
 pub mod launch_problem;
 pub mod launch_state;
@@ -53,6 +56,7 @@ pub mod script_install;
 pub mod settings_panel;
 pub mod shortcuts;
 pub mod smart_group;
+pub mod steamgrid_styles;
 pub mod store_import;
 pub mod store_install;
 pub mod web_image;
@@ -80,6 +84,9 @@ pub enum DialogEvent {
 /// dialog used the key: it closed something inside itself (an image picker,
 /// a question) or asked before throwing away what was typed.
 pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool {
+    if let Ok(d) = view.clone().downcast::<hidden_pin::HiddenPinDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
     if let Ok(d) = view.clone().downcast::<add_game::AddGameDialog>() {
         return d.update(cx, |d, cx| d.on_escape(cx));
     }
@@ -131,6 +138,9 @@ pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool 
 /// A key other than Esc, offered to the open dialog before the Collection
 /// sees it. True when the dialog used it ("Review matches": ↑ ↓, Enter, S).
 pub fn handle_key(view: &AnyView, ev: &KeyDownEvent, window: &mut Window, cx: &mut App) -> bool {
+    if let Ok(d) = view.clone().downcast::<hidden_pin::HiddenPinDialog>() {
+        return d.update(cx, |d, cx| d.on_key(ev, cx));
+    }
     if let Ok(d) = view.clone().downcast::<metadata_review::MetadataReview>() {
         return d.update(cx, |d, cx| d.on_key(ev, window, cx));
     }

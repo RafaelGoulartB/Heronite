@@ -28,7 +28,7 @@ impl MetadataService {
     pub fn search_game_art_images(&self, game: &MetadataApplyArgs, typed: &str, query: &str, kind: ArtKind) -> Result<ArtImages> {
         let (launchbox, rest) = std::thread::scope(|s| {
             let launchbox = s.spawn(|| self.launchbox_pictures(game, typed, kind));
-            let rest = self.search_art_images(query, kind, false);
+            let rest = self.search_game_images(game, query, kind, false);
             (launchbox.join().unwrap_or_default(), rest)
         });
         let mut images = match rest {

@@ -13,9 +13,11 @@ use super::details::TAG_FIELDS;
 use super::{GameSettingsDialog, Tab};
 use crate::console::browser::{Browser, BrowserEvent, PickKind};
 use crate::console::kit::{self, u};
-use crate::console::list::{Outcome, Row, Value};
+use crate::console::list::{Outcome, Row, RowStyle, Value};
 use crate::console::osk::{Osk, OskEvent};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
+use crate::dialogs::covers::CoversDialog;
+use crate::dialogs::DialogEvent;
 use crate::icons::Icon;
 use crate::theme;
 
@@ -26,6 +28,7 @@ const RUN_AS: [(&str, &str); 3] =
 #[derive(Clone, Copy)]
 enum Field {
     Name,
+    SortName,
     Release,
     Score,
     Websites,
@@ -128,20 +131,21 @@ impl GameSettingsDialog {
     fn console_info_rows(&self, cx: &App) -> Vec<Row> {
         match self.tab {
             Tab::Game => {
-                let custom = self.art.cover_url.is_some() || self.art.hero_url.is_some();
                 let d = &self.details;
                 let form = self.read_form(cx);
                 let dirty = form != self.initial;
                 let mut rows = vec![
+                    // One way in: the Covers dialog shows every picture and
+                    // has its own Reset (Start › Options).
                     Row::header(tr!("Images")),
-                    Row::info("img-cover", tr!("Cover"), if self.art.cover_url.is_some() { tr!("Custom") } else { tr!("Default") }),
-                    Row::info("img-hero", tr!("Background"), if self.art.hero_url.is_some() { tr!("Custom") } else { tr!("Default") }),
-                    Row::action("img-reset", tr!("Use the default images"))
-                        .icon(Icon::Replay)
-                        .enabled(custom && self.busy.is_none())
-                        .desc(tr!("Choosing new images from the web needs desktop mode")),
+                    Row::action("img-find", tr!("Change pictures\u{2026}"))
+                        .icon(Icon::Image)
+                        .enabled(self.busy.is_none())
+                        .desc(tr!("Covers and backgrounds, from the web or a file")),
                     Row::header(tr!("Details")),
                     Row::text("f:name", tr!("Name"), d.name.read(cx).value().to_string()),
+                    Row::text("f:sort-name", tr!("Sorting name"), d.sort_name.read(cx).value().to_string())
+                        .desc(tr!("Only orders the games A–Z: the name shown stays the same.")),
                     Row::text("f:release", tr!("Release date"), d.release.read(cx).value().to_string()),
                     Row::text("f:score", tr!("Critic score"), d.score.read(cx).value().to_string()),
                     Row::text("f:websites", tr!("Websites"), d.websites.read(cx).value().to_string()),
@@ -169,6 +173,7 @@ impl GameSettingsDialog {
         let d = &self.details;
         match f {
             Field::Name => d.name.read(cx).value().to_string(),
+            Field::SortName => d.sort_name.read(cx).value().to_string(),
             Field::Release => d.release.read(cx).value().to_string(),
             Field::Score => d.score.read(cx).value().to_string(),
             Field::Websites => d.websites.read(cx).value().to_string(),
@@ -188,6 +193,7 @@ impl GameSettingsDialog {
                 let t = text.clone();
                 match f {
                     Field::Name => d.name.update(cx, |s, cx| s.set_value(t, window, cx)),
+                    Field::SortName => d.sort_name.update(cx, |s, cx| s.set_value(t, window, cx)),
                     Field::Release => d.release.update(cx, |s, cx| s.set_value(t, window, cx)),
                     Field::Score => d.score.update(cx, |s, cx| s.set_value(t, window, cx)),
                     Field::Websites => d.websites.update(cx, |s, cx| s.set_value(t, window, cx)),
@@ -202,6 +208,24 @@ impl GameSettingsDialog {
             cx.notify();
         });
         self.layer.open(&osk, sub);
+    }
+
+    /// "Change pictures…": the Covers dialog over this page. What it saves
+    /// shows in the rows at once and reaches the Collection.
+    fn console_find_pictures(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (ctx, game) = (self.ctx.clone(), self.game.clone());
+        let view = cx.new(|cx| CoversDialog::new(ctx, game, None, window, cx));
+        let sub = cx.subscribe(&view, |this: &mut Self, view, ev: &DialogEvent, cx| {
+            if !matches!(ev, DialogEvent::Close) {
+                this.art = view.read(cx).art().clone();
+                cx.emit(DialogEvent::Changed);
+            }
+            if !matches!(ev, DialogEvent::Changed) {
+                this.layer.close();
+            }
+            cx.notify();
+        });
+        self.layer.open(&view, sub);
     }
 
     fn pick_launch_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -327,13 +351,18 @@ impl GameSettingsDialog {
                     ),
             );
 
+        // The rows are settings cards, as in Settings.
         let body: AnyElement = match (self.tab.section(), &self.panel) {
-            (Some(_), Some((panel, _))) => div().flex().flex_col().size_full().child(panel.clone()).into_any_element(),
+            (Some(_), Some((panel, _))) => {
+                panel.update(cx, |p, _| p.set_console_style(RowStyle::Card));
+                div().flex().flex_col().size_full().child(panel.clone()).into_any_element()
+            }
             _ if self.tab == Tab::Saves && self.backups.is_some() => {
                 div().flex().flex_col().size_full().children(self.backups.clone()).into_any_element()
             }
             _ => {
                 let rows = self.console_rows(cx);
+                self.console_list.set_style(RowStyle::Card);
                 self.console_list.render("console-gs", &rows, !self.layer.is_open()).size_full().into_any_element()
             }
         };
@@ -346,17 +375,7 @@ impl GameSettingsDialog {
             .flex_col()
             .child(header)
             .child(div().flex_none().px(u(46.)).py(u(12.)).child(kit::tabs(&labels, active)))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h_0()
-                    .px(u(46.))
-                    .pb(u(70.))
-                    .child(div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(body))
-                    .children(error),
-            )
+            .child(div().flex().flex_col().flex_1().min_h_0().px(u(46.)).pb(u(70.)).child(kit::settings_column(body)).children(error))
             .children(self.layer.view())
             .into_any_element()
     }
@@ -423,8 +442,9 @@ impl PadTarget for GameSettingsDialog {
                 "command" => self.edit_launch_command(window, cx),
                 "save-launch" => self.save_launch(cx),
                 "save-details" => self.save_details(cx),
-                "img-reset" => self.reset_all_images(cx),
+                "img-find" => self.console_find_pictures(window, cx),
                 "f:name" => self.edit_field(Field::Name, tr!("Name"), window, cx),
+                "f:sort-name" => self.edit_field(Field::SortName, tr!("Sorting name"), window, cx),
                 "f:release" => self.edit_field(Field::Release, tr!("Release date"), window, cx),
                 "f:score" => self.edit_field(Field::Score, tr!("Critic score"), window, cx),
                 "f:websites" => self.edit_field(Field::Websites, tr!("Websites"), window, cx),

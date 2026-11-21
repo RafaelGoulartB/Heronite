@@ -170,6 +170,9 @@ pub enum PageEvent {
     /// "Show hidden games" changed in Settings: the Collection saves the flag
     /// and reloads its library.
     ShowHidden(bool),
+    /// Settings → Library: open the PIN dialog of hidden games (set, change
+    /// or turn off the PIN).
+    HiddenPin(crate::dialogs::hidden_pin::PinMode),
     /// Open the store page shown last (the Emulators page's link).
     OpenStores,
     /// Select this game (`CollectionGame::key`) on the Collection.

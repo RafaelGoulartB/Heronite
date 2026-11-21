@@ -232,6 +232,7 @@ fn to_map(md: &CollectionGameMetadata) -> Result<Map<String, Value>> {
 fn json_key(field: &str) -> &str {
     match field {
         "hero" => "heroUrl",
+        "logo" => "logoUrl",
         f => match CoverFamily::from_field(f) {
             Some(family) => family.json_key(),
             None => f,

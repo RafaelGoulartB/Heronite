@@ -104,7 +104,8 @@ fn attention_line(a: &Attention) -> Option<String> {
 }
 
 pub(super) fn card(d: &SettingsPage) -> Div {
-    let text = div().flex().flex_col().gap(px(6.)).flex_1().min_w_0();
+    // The buttons go under the text when the window is narrow.
+    let text = div().flex().flex_col().gap(px(6.)).flex_grow(1.).flex_basis(px(200.)).min_w_0();
     let attention = d.metadata.attention.as_ref();
     let line = attention.and_then(attention_line);
     let text = match d.metadata.coverage {
@@ -140,13 +141,13 @@ pub(super) fn card(d: &SettingsPage) -> Div {
     });
     card_box()
         .flex_row()
+        .flex_wrap()
         .items_center()
         .gap(px(14.))
         .py(px(14.))
         .child(icon_badge(Icon::TravelExplore))
         .child(text)
-        .children(review)
-        .child(update)
+        .child(div().flex().flex_none().ml_auto().items_center().gap(px(14.)).children(review).child(update))
 }
 
 #[cfg(test)]

@@ -27,10 +27,10 @@ use std::path::PathBuf;
 use gpui_kit::SharedString;
 use heronite_data::categories::{Categories, UNCATEGORIZED};
 use heronite_data::console_theme::{
-    parse_hex, presets, slug, AButton, AutoConsole, BackgroundMotion, BackgroundSource, Badges, Clock, ConsoleButton, ConsoleFont,
-    ConsolePrefs, ConsoleTheme, Corners, FactStyle, FocusStyle, GamePage, Glyphs, GridPanel, Headings, HeroAlign, HeroTitle, Hints, Idle,
-    Layout, MenuStyle, Motion, OpenIn, ShelfSpec, Side, Size3, SpotActions, StartOn, TabBar, TabSpec, TileShape, TileSize, TileTitles,
-    WheelItems, MAX_TABS, MENU_LOCKED,
+    parse_hex, presets, slug, AButton, AutoConsole, BackgroundMotion, BackgroundSource, Badges, Clock, ConfirmButton, ConsoleButton,
+    ConsoleFont, ConsolePrefs, ConsoleTheme, Corners, FactStyle, FocusStyle, GamePage, Glyphs, GridPanel, Headings, HeroAlign, HeroTitle,
+    Hints, Idle, LaunchScreen, LaunchShade, Layout, MenuStyle, Motion, OpenIn, ShelfSpec, Side, Size3, SoundStyle, SpotActions, StartOn,
+    TabBar, TabSpec, TileShape, TileSize, TileTitles, WheelItems, MAX_TABS, MENU_LOCKED,
 };
 use heronite_data::smart_groups::SmartGroups;
 use heronite_data::{CollectionGame, Library};
@@ -39,8 +39,8 @@ use heronite_i18n::{n_, tr, trc};
 use super::list::{Row, Value};
 use super::look::ACCENTS;
 use crate::icons::Icon;
-pub use labels::layout_name;
 use labels::*;
+pub use labels::{a_button_name, confirm_name, console_button_name, glyphs_name, layout_name};
 
 /// What the library has, for the pickers (a tab's games, a shelf's kind).
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -234,6 +234,9 @@ fn opt_row(o: &Opt, cx: &Ctx) -> Row {
         let own = p.theme.background.source == BackgroundSource::Image;
         row = row.enabled(own);
     }
+    if matches!(o.id, "controls.sound_style" | "controls.sound_volume") {
+        row = row.enabled(p.theme.controls.sounds);
+    }
     if !applies(o.id, &p.theme) {
         row = row.enabled(false).desc(tr!("No tab uses a layout this applies to."));
     }
@@ -242,7 +245,9 @@ fn opt_row(o: &Opt, cx: &Ctx) -> Row {
 
 /// Whether the option `id` matters for the tabs the theme has.
 pub fn applies(id: &str, theme: &ConsoleTheme) -> bool {
-    opt(id).is_none_or(|o| o.on.is_empty() || o.on.iter().any(|l| theme.uses(*l)))
+    // Spotlight's page sections are also the Showcase game page's.
+    let showcase = theme.game_page == GamePage::Showcase && id.starts_with("layouts.spotlight_sections.");
+    showcase || opt(id).is_none_or(|o| o.on.is_empty() || o.on.iter().any(|l| theme.uses(*l)))
 }
 
 /// Whether a tab of the theme shows shelves (a layout with them).

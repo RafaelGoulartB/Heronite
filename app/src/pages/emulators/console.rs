@@ -186,7 +186,7 @@ impl EmulatorsPage {
     pub(super) fn render_console(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> AnyElement {
         let rows = self.console_rows();
         let overlay = self.layer.is_open() || self.dialog.is_some();
-        let list = self.console_list.render("console-emulators", &rows, !overlay);
+        let list = self.console_list.render_cards("console-emulators", &rows, !overlay);
 
         let mut status = div().flex().flex_col().gap(u(4.));
         if let Some(label) = self.busy.clone() {
@@ -228,8 +228,8 @@ impl EmulatorsPage {
                     .gap(u(10.))
                     .px(u(46.))
                     .pb(u(16.))
-                    .child(div().w(u(900.)).max_w_full().flex().flex_col().gap(u(8.)).child(status))
-                    .child(div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(list.flex_1().min_h_0())),
+                    .child(div().w(u(kit::SETTINGS_W)).max_w_full().flex().flex_col().gap(u(8.)).child(status))
+                    .child(list),
             )
             .children(self.layer.view())
             .children(self.dialog.clone())

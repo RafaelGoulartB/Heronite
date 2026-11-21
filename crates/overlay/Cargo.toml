@@ -14,6 +14,9 @@ log = "0.4"
 [target.'cfg(target_os = "linux")'.dependencies]
 evdev = "0.13"
 libc = "0.2"
+# `_NET_ACTIVE_WINDOW` for "Back to game" on X11 (`game_window`); GPUI builds
+# it on Linux already.
+x11rb = { version = "0.13", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 heronite-platform = { path = "../platform" }

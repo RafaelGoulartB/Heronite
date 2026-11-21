@@ -8,6 +8,7 @@ use std::time::SystemTime;
 
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameMetadata, GameInfo, LocalMetaFile};
+use heronite_data::num::JsNum;
 use heronite_data::paths::DataPaths;
 use heronite_data::text::platform_names;
 use parking_lot::Mutex;
@@ -114,7 +115,7 @@ impl StoreLibraries {
 }
 
 /// The fields of a Playnite game the metadata uses (`PlayniteGame`).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct PlayniteGame {
     pub id: String,
     pub name: String,
@@ -127,6 +128,10 @@ pub struct PlayniteGame {
     pub platforms: Vec<String>,
     pub series: Option<String>,
     pub features: Vec<String>,
+    /// `0..=100`.
+    pub critic_score: Option<i64>,
+    /// Its links' addresses.
+    pub links: Vec<String>,
     /// Relative path inside the Playnite library (`files/...`).
     pub cover_image: Option<String>,
     pub background_image: Option<String>,
@@ -168,6 +173,8 @@ pub fn metadata_from_playnite_game(app_name: &str, runner: &str, game: &Playnite
     md.platforms = platform_names(list(&game.platforms));
     md.series = game.series.clone().filter(|s| !s.is_empty());
     md.features = list(&game.features);
+    md.critic_score = game.critic_score.filter(|s| (0..=100).contains(s)).map(|s| JsNum(s as f64));
+    md.websites = unique_names(game.links.iter().filter(|l| l.contains("://")).map(|l| Some(l.as_str())), 20);
     let max = 2 * 1024 * 1024;
     md.cover_url = usable_playnite_file(library_path, game.cover_image.as_deref(), max).map(|p| p.to_string_lossy().into_owned());
     md.hero_url = usable_playnite_file(library_path, game.background_image.as_deref(), max).map(|p| p.to_string_lossy().into_owned());
@@ -253,8 +260,15 @@ mod tests {
             background_image: Some("abc/big.png".into()),
             ..Default::default()
         };
+        let g = PlayniteGame {
+            critic_score: Some(87),
+            links: vec!["https://store.example/game".into(), "not a link".into(), "https://store.example/game".into()],
+            ..g
+        };
         let md = metadata_from_playnite_game("a", "sideload", &g, dir.path());
         assert_eq!(md.themes, ["Action"]);
+        assert_eq!(md.critic_score, Some(JsNum(87.0)));
+        assert_eq!(md.websites, ["https://store.example/game"]);
         assert_eq!(md.description.as_deref(), Some("Hi"));
         // As paths: Windows takes `/` and `\` alike.
         assert_eq!(md.cover_url.as_deref().map(Path::new), Some(dir.path().join("files/abc/cover.png").as_path()));

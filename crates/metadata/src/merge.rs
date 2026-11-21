@@ -58,6 +58,7 @@ fn text_of<'a>(md: &'a CollectionGameMetadata, field: &str) -> Option<&'a Option
         "hero" => &md.hero_url,
         "coverSquare" => &md.cover_square_url,
         "coverWide" => &md.cover_wide_url,
+        "logo" => &md.logo_url,
         _ => return None,
     })
 }
@@ -104,6 +105,7 @@ fn set_field(target: &mut CollectionGameMetadata, field: &str, value: FieldValue
         ("hero", FieldValue::Text(v)) => target.hero_url = Some(v),
         ("coverSquare", FieldValue::Text(v)) => target.cover_square_url = Some(v),
         ("coverWide", FieldValue::Text(v)) => target.cover_wide_url = Some(v),
+        ("logo", FieldValue::Text(v)) => target.logo_url = Some(v),
         (AGE_RATINGS, FieldValue::AgeRatings(v)) => target.age_ratings = v,
         (f, FieldValue::List(v)) if list_of(target, f).is_some() => {
             *list_of_mut(target, f).expect("checked") = v;
@@ -161,6 +163,7 @@ fn text_of_mut<'a>(md: &'a mut CollectionGameMetadata, field: &str) -> Option<&'
         "hero" => &mut md.hero_url,
         "coverSquare" => &mut md.cover_square_url,
         "coverWide" => &mut md.cover_wide_url,
+        "logo" => &mut md.logo_url,
         _ => return None,
     })
 }
@@ -445,6 +448,21 @@ mod tests {
         let out = merge(None, &cands2, &pr, true, false, Some(&picks));
         assert_eq!(out.series.as_deref(), Some("S"));
         assert_eq!(out.field_sources["series"], "igdb");
+    }
+
+    #[test]
+    fn fetching_with_overwrite_keeps_the_sort_name() {
+        let current = md(|m| m.sort_name = Some("Pokemon 3".into()));
+        let igdb = md(|m| {
+            m.sort_name = Some("from a source".into());
+            m.description = Some("d".into());
+        });
+        let pr = priority();
+        let cands = [MergeCandidate { source: "igdb", metadata: &igdb }];
+        let out = merge(Some(&current), &cands, &pr, true, false, None);
+        assert_eq!(out.sort_name.as_deref(), Some("Pokemon 3"));
+        assert_eq!(out.description.as_deref(), Some("d"));
+        assert_eq!(merge(None, &cands, &pr, true, false, None).sort_name, None);
     }
 
     #[test]

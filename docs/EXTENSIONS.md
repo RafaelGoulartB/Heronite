@@ -55,6 +55,7 @@ description = "Games from Example DB, the database of example games."   # the "a
 # description releaseDate developers publishers genres themes gameModes
 # platforms series features criticScore ageRatings
 # cover (the tall cover) coverSquare coverWide hero (the background)
+# logo (the title on a transparent background, for console mode)
 fields = ["description", "releaseDate", "genres", "cover", "hero"]
 
 [applies]                        # optional: every game, always asked
@@ -96,7 +97,8 @@ default = "us"
   user's settings for it are kept under this id: keep it for ever.
 - **kind**: a *details* source takes part in deciding which game a game is
   (an unsure match of its sends the game to review). A *pictures* source
-  provides pictures only (`cover`, `coverSquare`, `coverWide`, `hero`).
+  provides pictures only (`cover`, `coverSquare`, `coverWide`, `hero`,
+  `logo`).
   An *extras* source fills facts beside the others; its match is used when
   it is sure, or the same game the details sources found, and it never
   sends a game to review.
@@ -228,24 +230,32 @@ pattern = '\b(?:RJ|BJ|VJ)[0-9]{6,8}\b'
 
 The app looks for it in the game's `title` and `fileName`. When it finds
 exactly one code (the same code found in both counts as one), the script
-gets it as `game.ids.<your id>` (`game.ids.dlsite`, say); two different codes
-pass none, and the log says so. A code typed in the search by name is
-passed the same way. A hit with `matchedBy: { id: "<your id>" }` whose `id`
-is that code is a sure match, whatever its title, so the pattern is
-checked when the extension is installed or loaded, and a manifest whose
-pattern breaks a rule is refused, with the rule it breaks:
+gets it as `game.ids.<your id>` (`game.ids.dlsite`, say), in upper case;
+two different codes pass none, and the log says so. A code typed in the
+search by name is passed the same way. A hit with
+`matchedBy: { id: "<your id>" }` whose `id` is that code is a sure match,
+whatever its title, so the pattern is checked when the extension is
+installed or loaded, and a manifest whose pattern breaks a rule is
+refused, with the rule it breaks:
 
-- It is a regular expression in the syntax of Rust's `regex` crate,
-  matched as written (letter case matters), 200 characters at most.
+- It is a regular expression in the syntax of Rust's `regex` crate, 200
+  characters at most, read in ASCII mode:
+  - letter case is ignored: `rj123456` is found, and passed as `RJ123456`;
+  - `\b`, `\d` and `\w` are ASCII: a code right against Japanese text
+    (`作品RJ123456`) is found;
+  - nothing in it may match any character: `.` and `[^…]` are refused;
+    name the characters (`[0-9]`, `[A-Z]`).
 - It starts and ends with a word boundary around the whole pattern: `\b`
-  (or `(?-u:\b)`, `\b{start}`, `\b{end}`). `\bRJ[0-9]{6}\b|\bBJ[0-9]{6}\b`
-  is refused; write `\b(?:RJ|BJ)[0-9]{6}\b`.
+  (or `\b{start}`, `\b{end}`). `\bRJ[0-9]{6}\b|\bBJ[0-9]{6}\b` is
+  refused; write `\b(?:RJ|BJ)[0-9]{6}\b`.
 - What follows the first boundary is a literal prefix of two ASCII letters
   or more, or a few of them (`RJ`, `(?:RJ|BJ|VJ)`, `[RBV]J`): never a class
-  or a wildcard such as `[A-Z]{2}`, `\d` or `.`.
+  such as `[A-Z]{2}` or `\d`.
 - What it matches is 4 to 64 bytes long: every repeat has an upper bound
-  (`{6,8}`, not `+`, `*` or `{6,}`). `[0-9]` counts one byte a character,
-  `\d` and `\w` (which take any script's digits and letters) four.
+  (`{6,8}`, not `+`, `*` or `{6,}`).
+
+In the title and file name, `_` also counts as a space, since file names
+join words with it: `RJ123456_v1.02` gives `RJ123456`.
 
 Only one pattern per manifest. A script still reads `game.title` and
 `game.fileName` as it likes, but what it finds there itself is a match by
@@ -271,7 +281,8 @@ Every key is optional; what the manifest does not provide is left out.
     { kind: "cover", url: "https://images.example.net/c.jpg" },               // the tall cover
     { kind: "cover", shape: "square", url: "https://images.example.net/s.jpg" },
     { kind: "cover", shape: "wide", url: "https://images.example.net/w.jpg" },
-    { kind: "background", url: "https://images.example.net/b.jpg", adult: true }
+    { kind: "background", url: "https://images.example.net/b.jpg", adult: true },
+    { kind: "logo", url: "https://images.example.net/l.png" }                 // transparent around the title
   ],
   extras: {}                   // reserved for a later version of the contract; ignored
 }

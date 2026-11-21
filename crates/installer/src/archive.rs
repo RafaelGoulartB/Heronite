@@ -244,7 +244,8 @@ fn seven_zip_or_bsdtar(archive: &Path, out: &Path, io: &Io) -> Result<(), String
     if let Some(bin) = which_any(SEVEN_ZIP) {
         return run_ok(Command::new(bin).args(["x", "-y", "-aoa"]).arg(format!("-o{}", out.display())).arg(archive), io, None);
     }
-    let bin = tool(&["bsdtar", "7z"])?;
+    // 7-Zip first: the name the error gives, as it unpacks every format here.
+    let bin = tool(&["7z", "bsdtar"])?;
     run_ok(Command::new(bin).arg("-xf").arg(archive).arg("-C").arg(out), io, None)
 }
 

@@ -9,13 +9,18 @@
 //!   assertion) first and last, around everything else;
 //! - it starts with a literal prefix of at least two ASCII letters (`RJ`,
 //!   or a few such prefixes: `(?:RJ|BJ|VJ)`);
-//! - what it matches is 4 to [`MAX_MATCH_LEN`] bytes long in UTF-8, so it
-//!   has an upper bound (no `+`, `*` or `{n,}`). `\d` and `\w` count as up
-//!   to 4 bytes a character; `[0-9]` as one.
+//! - what it matches is 4 to [`MAX_MATCH_LEN`] bytes long, so it has an
+//!   upper bound (no `+`, `*` or `{n,}`).
+//!
+//! It is read in ASCII mode: `\b`, `\d` and `\w` are ASCII (so a code right
+//! against Japanese text, `作品RJ123456`, is found), letter case is ignored
+//! (`rj123456` is found, and passed as `RJ123456`), and what may match any
+//! character (`.`, `[^…]`) is refused. In the texts, `_` also counts as a
+//! space (`RJ123456_v1.02`).
 
 use regex::Regex;
 use regex_syntax::hir::literal::{ExtractKind, Extractor};
-use regex_syntax::hir::{Hir, HirKind, Look};
+use regex_syntax::hir::{ErrorKind, Hir, HirKind, Look};
 
 /// The longest text a pattern may match, in bytes.
 pub const MAX_MATCH_LEN: usize = 64;
@@ -48,9 +53,14 @@ impl IdPattern {
         if text.chars().count() > MAX_PATTERN_LEN {
             return Err(format!("ids.pattern is longer than {MAX_PATTERN_LEN} characters"));
         }
-        let hir = regex_syntax::Parser::new()
-            .parse(text)
-            .map_err(|e| format!("ids.pattern \"{shown}\" is not a regular expression: {}", first_line(&e.to_string())))?;
+        // As written (letter case kept), for the prefix rule; matched below
+        // ignoring case.
+        let hir = regex_syntax::ParserBuilder::new().unicode(false).build().parse(text).map_err(|e| match &e {
+            regex_syntax::Error::Translate(t) if matches!(t.kind(), ErrorKind::InvalidUtf8) => {
+                format!("ids.pattern \"{shown}\" may match any character (such as . or [^…]): name the characters, such as [0-9] or [A-Z]")
+            }
+            _ => format!("ids.pattern \"{shown}\" is not a regular expression: {}", first_line(&e.to_string())),
+        })?;
 
         let body = word_bounded(&hir)
             .ok_or_else(|| format!("ids.pattern \"{shown}\" must start and end with a word boundary (\\b), around the whole pattern"))?;
@@ -64,6 +74,8 @@ impl IdPattern {
             return Err(format!("ids.pattern \"{shown}\" may match fewer than {MIN_MATCH_LEN} bytes"));
         }
         let regex = regex::RegexBuilder::new(text)
+            .unicode(false)
+            .case_insensitive(true)
             .size_limit(1 << 20)
             .build()
             .map_err(|e| format!("ids.pattern \"{shown}\" is not a regular expression: {}", first_line(&e.to_string())))?;
@@ -75,20 +87,31 @@ impl IdPattern {
         self.regex.as_str()
     }
 
-    /// The one code found in `texts` (a game's title and file name). Two
-    /// different codes are no sure id: none is returned.
+    /// The one code found in `texts` (a game's title and file name), in
+    /// upper case. Two different codes are no sure id: none is returned.
     pub fn find<'a>(&self, texts: impl IntoIterator<Item = &'a str>) -> Option<String> {
-        let mut found: Option<&str> = None;
+        let mut codes = self.codes(texts);
+        (codes.len() == 1).then(|| codes.remove(0))
+    }
+
+    /// Every different code found in `texts`, in upper case, in the order
+    /// found. Each text is read as written and, when it has a `_`, with
+    /// each `_` as a space: file names join words with it
+    /// (`RJ123456_v1.02`).
+    pub fn codes<'a>(&self, texts: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+        let mut codes: Vec<String> = Vec::new();
         for text in texts {
-            for m in self.regex.find_iter(text) {
-                match found {
-                    None => found = Some(m.as_str()),
-                    Some(f) if f == m.as_str() => {}
-                    Some(_) => return None,
+            let spaced = text.contains('_').then(|| text.replace('_', " "));
+            for t in std::iter::once(text).chain(spaced.as_deref()) {
+                for m in self.regex.find_iter(t) {
+                    let code = m.as_str().to_ascii_uppercase();
+                    if !codes.contains(&code) {
+                        codes.push(code);
+                    }
                 }
             }
         }
-        found.map(str::to_owned)
+        codes
     }
 }
 
@@ -161,6 +184,9 @@ mod tests {
             r"(?-u:\b)[RBV]J[0-9]{6,8}(?-u:\b)",
             r"\b{start}CUSA[0-9]{5}\b{end}",
             r"\bSLUS-[0-9]{5}\b",
+            r"(?i)\bCUSA[0-9]{5}\b",
+            r"\bSK[0-9]{6}\b",
+            r"\bRJ\w{6,8}\b",
         ] {
             assert!(IdPattern::parse(p).is_ok(), "{p}: {:?}", IdPattern::parse(p).err());
         }
@@ -176,7 +202,9 @@ mod tests {
         assert!(refused(r"\b[A-Z]{2}[0-9]{6}\b").contains("literal prefix"));
         assert!(refused(r"\bR[0-9]{6}\b").contains("literal prefix"));
         assert!(refused(r"\b(?:RJ|[0-9]{2})[0-9]{6}\b").contains("literal prefix"));
-        assert!(refused(r"\b.{2}[0-9]{6}\b").contains("literal prefix"));
+        assert!(refused(r"\b.{2}[0-9]{6}\b").contains("any character"));
+        assert!(refused(r"\bRJ.{2,15}\b").contains("any character"), "a wildcard after the prefix");
+        assert!(refused(r"\bRJ[^ ]{6,8}\b").contains("any character"));
         assert!(refused(r"\b12[0-9]{6}\b").contains("literal prefix"));
         assert!(refused(r"\bRJ[0-9]+\b").contains("upper bound"));
         assert!(refused(r"\bRJ[0-9]{6,}\b").contains("upper bound"));
@@ -192,11 +220,27 @@ mod tests {
         let p = IdPattern::parse(r"\b(?:RJ|BJ|VJ)[0-9]{6,8}\b").unwrap();
         assert_eq!(p.find(["My Game [RJ01234567]", "x"]), Some("RJ01234567".into()));
         assert_eq!(p.find(["My Game", "RJ123456 My Game"]), Some("RJ123456".into()));
-        assert_eq!(p.find(["RJ123456", "RJ123456_v1.02"]), Some("RJ123456".into()), "the same code twice is one");
+        assert_eq!(p.find(["RJ123456", "RJ123456 v1.02"]), Some("RJ123456".into()), "the same code twice is one");
+        assert_eq!(p.find(["RJ123456 RJ123456 Remake"]), Some("RJ123456".into()));
         assert_eq!(p.find(["RJ123456 and VJ654321"]), None, "two codes: no sure id");
         assert_eq!(p.find(["RJ123456", "RJ654321"]), None);
         assert_eq!(p.find(["XRJ123456", "RJ1234567890"]), None, "inside a longer word");
-        assert_eq!(p.find(["rj123456"]), None, "as written: case matters");
         assert_eq!(p.find(["My Game"]), None);
+    }
+
+    #[test]
+    fn ascii_boundaries_any_case_and_underscores() {
+        let p = IdPattern::parse(r"\b(?:RJ|BJ|VJ)[0-9]{6,8}\b").unwrap();
+        assert_eq!(p.find(["rj123456 my game"]), Some("RJ123456".into()), "any case, passed in upper case");
+        assert_eq!(p.find(["RJ123456", "rj123456"]), Some("RJ123456".into()), "the same code in two cases is one");
+        assert_eq!(p.find(["作品RJ123456"]), Some("RJ123456".into()), "right against Japanese text");
+        assert_eq!(p.find(["【RJ123456】"]), Some("RJ123456".into()));
+        assert_eq!(p.find(["RJ123456_GameName"]), Some("RJ123456".into()), "_ joins words in a file name");
+        assert_eq!(p.find(["RJ01234567_v1.02"]), Some("RJ01234567".into()));
+        assert_eq!(p.find(["My_Game_rj123456"]), Some("RJ123456".into()));
+        assert_eq!(p.find(["RJ123456_VJ654321"]), None, "two codes joined by _");
+        assert_eq!(p.find(["RJ123456Z"]), None, "a letter still joins");
+        let serial = IdPattern::parse(r"\bSLUS_[0-9]{3}\.[0-9]{2}\b").unwrap();
+        assert_eq!(serial.find(["SLUS_012.34"]), Some("SLUS_012.34".into()), "a pattern with _ still matches it");
     }
 }

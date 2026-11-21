@@ -106,7 +106,9 @@ fn family_row(d: &SettingsPage, s: &Shapes, f: CoverFamily, cx: &mut Context<Set
     let (in_use, kept) = (state.in_use(), state.kept());
     let real = s.real[index(f)];
     let crop = if in_use { cropped(d.metadata.attention.as_ref(), f) } else { 0 };
-    let count = if in_use && f != CoverFamily::Tall {
+    let count = if in_use && f != CoverFamily::Tall && words::shown_whole(state) {
+        tr!("{real} with their own \u{b7} {other} borrowed", real, other = crop)
+    } else if in_use && f != CoverFamily::Tall {
         tr!("{real} with their own \u{b7} {cropped} cropped", real, cropped = crop)
     } else {
         tr!("{real} with their own", real)
@@ -189,7 +191,7 @@ pub(super) fn card(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Option<D
         }
         let ready = s.ready[index(f)];
         card = card.child(div().h(px(1.)).w_full().bg(theme::row_separator())).child(row(
-            words::cropped(f, n),
+            words::cropped(f, n, words::shown_whole(s.families.state(f))),
             (!ready).then(|| words::no_source(f)),
             action_button(
                 SharedString::from(format!("md-shape-dl-{}", f.id())),
@@ -223,7 +225,9 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         let n = cropped(d.metadata.attention.as_ref(), f);
         if n > 0 {
             rows.push(
-                Row::action(format!("shape-dl:{}", f.id()), words::download(f)).desc(words::cropped(f, n)).enabled(s.ready[index(f)]),
+                Row::action(format!("shape-dl:{}", f.id()), words::download(f))
+                    .desc(words::cropped(f, n, words::shown_whole(s.families.state(f))))
+                    .enabled(s.ready[index(f)]),
             );
         }
     }

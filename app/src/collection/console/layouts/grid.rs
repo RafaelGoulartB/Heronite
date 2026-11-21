@@ -47,7 +47,7 @@ impl Default for Nav {
 }
 
 /// What a Grid shows (its chips and the Filters panel edit it).
-#[derive(Clone, Default, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub(crate) struct Filters {
     /// Index in [`SHOW`].
     pub show: usize,
@@ -95,6 +95,13 @@ impl Filters {
     pub(crate) fn from_kept(k: KeptFilters) -> Self {
         let pick = |v: usize, n: usize| if v < n { v } else { 0 };
         Self { show: pick(k.show, SHOW.len()), sort: pick(k.sort, SORT.len()), favourites: k.favourites, ..Self::default() }
+    }
+}
+
+impl Default for Filters {
+    /// Every game, the one played last first.
+    fn default() -> Self {
+        Self { show: 0, favourites: false, sort: heronite_data::console_theme::SORT_LAST_PLAYED, status: 0, category: 0, group: 0 }
     }
 }
 
@@ -161,9 +168,9 @@ impl Nav {
             .filter(|g| cats.matches(&category, &g.runner, &g.app_name))
             .collect();
         match f.sort {
-            1 => games.sort_by(|a, b| b.last_played.cmp(&a.last_played).then_with(|| a.title_lower.cmp(&b.title_lower))),
-            2 => games.sort_by(|a, b| b.playtime_minutes.cmp(&a.playtime_minutes).then_with(|| a.title_lower.cmp(&b.title_lower))),
-            _ => games.sort_by(|a, b| a.title_lower.cmp(&b.title_lower)),
+            1 => games.sort_by(|a, b| b.last_played.cmp(&a.last_played).then_with(|| heronite_data::organize::title_order(a, b))),
+            2 => games.sort_by(|a, b| b.playtime_minutes.cmp(&a.playtime_minutes).then_with(|| heronite_data::organize::title_order(a, b))),
+            _ => games.sort_by(|a, b| heronite_data::organize::title_order(a, b)),
         }
         if !tokens.is_empty() {
             // Same search as the desktop Collection; stable, so the sort orders ties.
@@ -207,10 +214,11 @@ fn rail_letters() -> impl Iterator<Item = char> {
     std::iter::once('#').chain('A'..='Z')
 }
 
-/// The rail letter of a title: its first letter without accents, `#` for
-/// digits and symbols (they sort before A).
-pub(super) fn letter_of(title: &str) -> char {
-    let first = title.trim_start().chars().next().unwrap_or('#');
+/// The rail letter of a game's [`sort_key`](CollectionGame::sort_key): its
+/// first letter without accents, `#` for digits and symbols (they sort
+/// before A).
+pub(super) fn letter_of(key: &str) -> char {
+    let first = key.trim_start().chars().next().unwrap_or('#');
     heronite_data::fuzzy::fold(first.encode_utf8(&mut [0; 4]))
         .chars()
         .next()
@@ -300,7 +308,7 @@ impl CollectionView {
 
     fn grid_cols(&self, window: &Window, panel: bool, rail: bool) -> usize {
         let (tw, _) = self.console_tile_size();
-        let vw = f32::from(crate::ui::content_size(window).width) / kit::scale();
+        let vw = super::body_width(window);
         let taken = if panel { panel_width(vw) + SIDE } else { 0. } + if rail { RAIL } else { 0. };
         (((vw - 2. * SIDE - taken + GAP) / (tw + GAP)).floor() as usize).max(2)
     }
@@ -396,7 +404,7 @@ impl CollectionView {
             kit::empty(Icon::FaSearch, tr!("No games match"), tr!("Change the filters above or the search (Y).")).into_any_element()
         } else {
             let scroller = self.grid_scroller(tab, &keys, cols, grid_focus, window);
-            let current = game.as_ref().map_or('#', |g| letter_of(&g.title));
+            let current = game.as_ref().map_or('#', |g| letter_of(&g.sort_key));
             div()
                 .flex()
                 .flex_1()
@@ -407,7 +415,7 @@ impl CollectionView {
         };
         let list = div().flex().flex_col().flex_1().min_w_0().child(div().flex_none().children(title_line)).child(body);
         let side = game.filter(|_| panel && !keys.is_empty()).map(|g| {
-            let w = panel_width(f32::from(crate::ui::content_size(window).width) / kit::scale());
+            let w = panel_width(super::body_width(window));
             self.grid_panel(&g, w, window)
         });
         div()
@@ -582,7 +590,7 @@ impl CollectionView {
             Pad::Up => nav.index = i - cols,
             Pad::Down => nav.index = (i + cols).min(n.saturating_sub(1)),
             Pad::RT | Pad::LT if by_letter => {
-                let letters: Vec<char> = keys.iter().map(|k| lib.get(k).map_or('#', |g| letter_of(&g.title))).collect();
+                let letters: Vec<char> = keys.iter().map(|k| lib.get(k).map_or('#', |g| letter_of(&g.sort_key))).collect();
                 nav.index = jump_letter(&letters, i, pad == Pad::RT);
             }
             Pad::ScrollDown | Pad::RT => nav.index = (i + cols * 3).min(n.saturating_sub(1)),

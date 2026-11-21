@@ -204,6 +204,7 @@ fn a_record_is_clamped_like_the_built_in_mappings() {
     assert_eq!(md.cover_wide_url.as_deref(), Some(mark("https://x.img.example.org/w.jpg").as_str()));
     assert!(md.cover_url.as_deref().is_some_and(heronite_images::public::is_extension_url), "downloaded the safe way, later too");
     assert_eq!(md.hero_url, None);
+    assert_eq!(md.logo_url.as_deref(), Some(mark("https://api.example.org/l.png").as_str()));
     assert_eq!(r.adult, ["coverWide"]);
 
     // Only what the manifest provides, and of that what was asked.
@@ -214,7 +215,7 @@ fn a_record_is_clamped_like_the_built_in_mappings() {
     assert!(r.metadata.description.is_none() && r.metadata.cover_url.is_some());
     // An adult source: every picture is adult.
     let r = record(&value, "a", "sideload", &all_fields(), None, &rules(), true).unwrap();
-    assert_eq!(r.adult, ["cover", "coverWide"]);
+    assert_eq!(r.adult, ["cover", "coverWide", "logo"]);
     assert!(record(&Value::Null, "a", "sideload", &all_fields(), None, &rules(), false).is_none());
     assert!(record(&json!({"score": 400}), "a", "sideload", &all_fields(), None, &rules(), false).unwrap().metadata.critic_score.is_none());
 }

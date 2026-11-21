@@ -13,8 +13,8 @@ use heronite_data::CollectionGame;
 use heronite_i18n::tr;
 
 use super::super::super::CollectionView;
-use super::super::hero::{card_surface, clip, pill_button, played_time, HeroSize, PillSize};
-use super::super::layouts::step;
+use super::super::hero::{card_surface, clip, fit_words, pill_button, played_time, HeroSize, PillSize};
+use super::super::layouts::{body_width, step};
 use super::detail_text;
 use super::sheet::side_sheet;
 use crate::collection::focus_left::STAR;
@@ -22,7 +22,7 @@ use crate::collection::vm::FocusVm;
 use crate::console::kit::{self, u};
 use crate::console::list::{ListNav, Outcome, Row, Value};
 use crate::console::pointer::{self, Clickable};
-use crate::console::{hint, Btn, Hint, Pad};
+use crate::console::{hint, look, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
 
@@ -52,6 +52,7 @@ enum Button {
     Status,
     Favourite,
     Settings,
+    Achievements,
     More,
 }
 
@@ -63,6 +64,7 @@ impl Button {
             Button::Status => Some("status"),
             Button::Favourite => Some("favourite"),
             Button::Settings => Some("settings"),
+            Button::Achievements => Some("achievements"),
             Button::More => None,
         }
     }
@@ -85,6 +87,12 @@ pub(super) struct Nav {
 const SHOTS: usize = 4;
 /// Height of the content under the tabs, design px.
 const CONTENT_H: f32 = 190.;
+/// The page's margin on each side, design px.
+const PAGE_X: f32 = 56.;
+/// Between the Overview's cover and what is beside it, design px.
+const COVER_GAP: f32 = 20.;
+/// Lines of the overview under the cards.
+const OVERVIEW_LINES: usize = 3;
 
 /// The buttons the row has for these actions.
 fn buttons(rows: &[Row]) -> Vec<Button> {
@@ -97,13 +105,16 @@ fn buttons(rows: &[Row]) -> Vec<Button> {
     if has("settings") {
         out.push(Button::Settings);
     }
+    if has("achievements") {
+        out.push(Button::Achievements);
+    }
     out.push(Button::More);
     out
 }
 
 /// The actions the buttons do not cover (what "More" lists).
 fn more_rows(rows: &[Row]) -> Vec<Row> {
-    rows.iter().filter(|r| !["primary", "status", "favourite", "settings"].contains(&r.id.as_ref())).cloned().collect()
+    rows.iter().filter(|r| !["primary", "status", "favourite", "settings", "achievements"].contains(&r.id.as_ref())).cloned().collect()
 }
 
 /// First item to show so that `focus` is among the `visible` from it,
@@ -218,7 +229,7 @@ impl CollectionView {
     }
 
     /// A screenshot thumbnail `w`×`h` design px (its picture loads when drawn).
-    pub(super) fn shot_thumb(&mut self, i: usize, w: f32, h: f32, focused: bool) -> Div {
+    pub(in crate::collection::console) fn shot_thumb(&mut self, i: usize, w: f32, h: f32, focused: bool) -> Div {
         let src = self.shots.items.get(i).map(|s| s.path.clone()).and_then(|p| self.shots.thumb(&p));
         div()
             .relative()
@@ -235,14 +246,14 @@ impl CollectionView {
     }
 
     /// Opens screenshot `i` full screen.
-    pub(super) fn shot_open(&mut self, i: usize, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::collection::console) fn shot_open(&mut self, i: usize, window: &mut Window, cx: &mut Context<Self>) {
         self.shots_open_view(i, window, cx);
         // Decoded for the whole window, drawn by `shot_viewer`.
         self.shots.fit = true;
     }
 
     /// The open screenshot over the page.
-    pub(super) fn shot_viewer(&self) -> Option<AnyElement> {
+    pub(in crate::collection::console) fn shot_viewer(&self) -> Option<AnyElement> {
         let i = self.shots.view?;
         let path = &self.shots.items.get(i)?.path;
         let shown = self.shots.full.as_ref().filter(|f| f.path == *path).map(|f| f.img.clone());
@@ -280,7 +291,7 @@ impl CollectionView {
     }
 
     /// While a screenshot is open every press is for it: ◀ ▶ browse, A / B close.
-    pub(super) fn shot_viewer_pad(&mut self, pad: Pad) -> bool {
+    pub(in crate::collection::console) fn shot_viewer_pad(&mut self, pad: Pad) -> bool {
         let Some(i) = self.shots.view else { return false };
         let n = self.shots.items.len().max(1);
         match pad {
@@ -304,7 +315,7 @@ impl CollectionView {
     }
 
     /// Hints while a screenshot is open.
-    pub(super) fn shot_viewer_hints(&self) -> Option<Vec<Hint>> {
+    pub(in crate::collection::console) fn shot_viewer_hints(&self) -> Option<Vec<Hint>> {
         self.shots.view.map(|_| vec![hint(Btn::LeftRight, tr!("Browse")), hint(Btn::B, tr!("Close"))])
     }
 
@@ -340,7 +351,8 @@ impl CollectionView {
         let on_buttons = !in_content && nav.more.is_none();
 
         let name = self.console_name(&g, HeroSize { title: 58., logo: (520., 128.), ..HeroSize::default() }, window);
-        let facts = self.console_fact_line(&g, Self::console_facts(&g), 16.);
+        // No status pill: the Status button shows it.
+        let facts = div().text_size(u(16.)).text_color(theme::text_muted()).child(Self::console_facts(&g));
         let buttons_row = div().flex().gap(u(12.)).mt(u(8.)).children(btns.iter().enumerate().map(|(i, b)| {
             // A click: up from the screenshots, ← → to the button, A.
             let mut pads = if in_content { vec![Pad::Up] } else { Vec::new() };
@@ -354,7 +366,7 @@ impl CollectionView {
 
         let focus = self.focus.clone().filter(|f| f.key == *key);
         let content = match tab {
-            Tab::Overview => self.hero_overview(&g, focus.as_ref()).into_any_element(),
+            Tab::Overview => self.hero_overview(key, &g, focus.as_ref(), window).into_any_element(),
             Tab::Details => {
                 let about = self.console.game.about.handle().clone();
                 let table = focus.as_ref().map(|f| facts_table(&detail_facts(f), 2));
@@ -391,7 +403,7 @@ impl CollectionView {
             .flex_col()
             .justify_end()
             .size_full()
-            .px(u(56.))
+            .px(u(PAGE_X))
             .pb(u(24.))
             .gap(u(12.))
             .child(div().flex().child(name))
@@ -415,25 +427,54 @@ impl CollectionView {
         div().relative().size_full().child(page).children(more.map(over)).children(self.shot_viewer().map(over)).into_any_element()
     }
 
-    /// Playtime, last played and time to beat over the start of the overview.
-    fn hero_overview(&self, g: &CollectionGame, f: Option<&FocusVm>) -> Div {
+    /// The cover beside the playtime, last played and time to beat over the
+    /// start of the overview (whole words, as many as fit its lines).
+    fn hero_overview(&mut self, key: &SharedString, g: &CollectionGame, f: Option<&FocusVm>, window: &Window) -> Div {
         let dash = || "\u{2014}".to_string();
         let played = played_time(g).unwrap_or_else(dash);
         let last = f.map_or_else(dash, |f| f.last_played.as_ref().map_or_else(|| tr!("Never").to_string(), |l| l.to_string()));
         let beat = f.and_then(|f| f.hltb.as_ref()?.main).map_or_else(dash, |h| format!("~{h:.0}h"));
+
+        let s = kit::scale();
+        let (cover_w, cover_h) = (CONTENT_H / self.cover_aspect, CONTENT_H);
+        let cover = self.cover(key, cover_w * s, cover_h * s, window.scale_factor(), 300);
+        // The page's width (the body's: less the window frame and the menu's
+        // rail) less its sides, the cover and the gap after it.
+        let room = body_width(window) - 2. * PAGE_X - cover_w - COVER_GAP;
+        let text_w = room.clamp(240., 820.);
+        let overview = f.and_then(|f| f.overview.clone()).map(|o| {
+            let text = fit_words(&o, OVERVIEW_LINES, u(text_w), u(15.), look::fonts().1, window);
+            kit::body_text(text).w(u(text_w)).line_clamp(OVERVIEW_LINES)
+        });
         div()
             .flex()
-            .flex_col()
-            .gap(u(14.))
+            .gap(u(COVER_GAP))
+            .child(
+                div()
+                    .flex_none()
+                    .w(u(cover_w))
+                    .h(u(cover_h))
+                    .rounded(u(12.))
+                    .overflow_hidden()
+                    .bg(kit::ink(0.08))
+                    .children(cover.map(|c| img(c).size_full().object_fit(ObjectFit::Cover))),
+            )
             .child(
                 div()
                     .flex()
+                    .flex_col()
+                    .min_w_0()
                     .gap(u(14.))
-                    .child(stat_card(tr!("Playtime"), played))
-                    .child(stat_card(tr!("Last played"), last))
-                    .child(stat_card(tr!("Time to beat"), beat)),
+                    .child(
+                        div()
+                            .flex()
+                            .gap(u(14.))
+                            .child(stat_card(tr!("Playtime"), played))
+                            .child(stat_card(tr!("Last played"), last))
+                            .child(stat_card(tr!("Time to beat"), beat)),
+                    )
+                    .children(overview),
             )
-            .children(f.and_then(|f| f.overview.clone()).map(|o| kit::body_text(clip(&o, 360)).max_w(u(820.)).line_clamp(2)))
     }
 
     pub(super) fn game_pad_hero(&mut self, key: &SharedString, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
@@ -527,6 +568,7 @@ fn hero_button(b: Button, rows: &[Row], g: &CollectionGame, focused: bool) -> Di
         Button::Favourite if g.favourite => (Icon::Favorite, None, Some(rgb(STAR))),
         Button::Favourite => (Icon::FavoriteBorder, None, None),
         Button::Settings => (Icon::Tune, None, None),
+        Button::Achievements => (Icon::Trophy, None, None),
         Button::More => (Icon::Menu, None, None),
     };
     pill_button(focused, ic, label, tint, PillSize::LARGE)
@@ -545,6 +587,9 @@ mod tests {
         assert_eq!(buttons(&[play.clone(), fav.clone()]), [Button::Primary, Button::Favourite, Button::More]);
         let all = [play, Row::choice("status", "Status", vec!["a".into()], 0), fav, Row::action("settings", "Game settings")];
         assert_eq!(buttons(&all), [Button::Primary, Button::Status, Button::Favourite, Button::Settings, Button::More]);
+        let with_achievements = [Row::action("primary", "Play"), Row::action("achievements", "Achievements")];
+        assert_eq!(buttons(&with_achievements), [Button::Primary, Button::Favourite, Button::Achievements, Button::More]);
+        assert!(more_rows(&with_achievements).is_empty());
     }
 
     #[test]

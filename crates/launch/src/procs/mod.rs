@@ -56,6 +56,13 @@ pub trait Procs: Send + Sync {
     /// under `folder`, or a Windows program (not Wine's own) in `prefix` or
     /// from `folder`. Never this process.
     fn game_pids(&self, prefix: Option<&str>, folder: Option<&str>) -> Vec<u32>;
+    /// Processes running from the Microsoft Store package of family
+    /// `family` (`<name>_<publisher id>`), wherever its folder is. Never this
+    /// process; none outside Windows.
+    fn package_pids(&self, family: &str) -> Vec<u32> {
+        let _ = family;
+        Vec::new()
+    }
     /// The user namespace of a process (`user:[4026531837]`), which tells a
     /// sandboxed one (see [`crate::sandbox::find_sandbox`]).
     fn user_ns(&self, pid: u32) -> Option<String>;
@@ -202,6 +209,8 @@ struct FakeState {
     boot: Option<String>,
     /// What [`Procs::game_pids`] reports (alive ones only).
     game: Vec<u32>,
+    /// What [`Procs::package_pids`] reports for a family (alive ones only).
+    packages: HashMap<String, Vec<u32>>,
     /// User namespace of a pid; "host" when not set.
     user_ns: HashMap<u32, String>,
     /// What [`Procs::prefix_programs`] reports (alive ones only).
@@ -229,6 +238,10 @@ impl FakeProcs {
     /// The processes [`Procs::game_pids`] finds (while alive).
     pub fn set_game_pids(&self, pids: &[u32]) {
         self.inner.lock().unwrap().game = pids.to_vec();
+    }
+    /// The processes [`Procs::package_pids`] finds for `family` (while alive).
+    pub fn set_package_pids(&self, family: &str, pids: &[u32]) {
+        self.inner.lock().unwrap().packages.insert(family.to_string(), pids.to_vec());
     }
     /// What [`Procs::windows_programs`] reports for `prefix`.
     pub fn set_windows_programs(&self, prefix: &str, names: &[&str]) {
@@ -318,6 +331,11 @@ impl Procs for FakeProcs {
     fn game_pids(&self, _prefix: Option<&str>, _folder: Option<&str>) -> Vec<u32> {
         let s = self.inner.lock().unwrap();
         s.game.iter().copied().filter(|p| s.alive.contains(p)).collect()
+    }
+
+    fn package_pids(&self, family: &str) -> Vec<u32> {
+        let s = self.inner.lock().unwrap();
+        s.packages.get(family).into_iter().flatten().copied().filter(|p| s.alive.contains(p)).collect()
     }
 
     fn user_ns(&self, pid: u32) -> Option<String> {

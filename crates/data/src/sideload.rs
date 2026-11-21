@@ -133,6 +133,15 @@ pub struct SideloadSpec {
 /// The shell command that starts a Linux game, run inside its folder.
 pub const COMMAND_KEY: &str = "heroniteCommand";
 
+/// The folder a Windows game starts in when it is not its executable's
+/// (a game brought over from Playnite keeps the one it had there).
+pub const WORKING_DIR_KEY: &str = "heroniteWorkingDir";
+
+/// The folder `game` starts in, when it has one of its own ([`WORKING_DIR_KEY`]).
+pub fn working_dir_of(game: &crate::models::GameInfo) -> Option<&str> {
+    game.rest.get(WORKING_DIR_KEY).and_then(Value::as_str).map(str::trim).filter(|d| !d.is_empty())
+}
+
 /// `(command, folder)` of a game started by a command (see
 /// [`SideloadSpec::command`]).
 pub fn command_of(game: &crate::models::GameInfo) -> Option<(&str, &str)> {
@@ -200,6 +209,11 @@ fn build_game(spec: &SideloadSpec) -> Map<String, Value> {
 /// executable, `is_linux_native` for a web page) are dropped, and empty art
 /// never wipes art the game already has.
 fn merge_into(current: &mut Map<String, Value>, game: Map<String, Value>) {
+    // Another program does not start in the old one's working folder.
+    let exe = |g: &Map<String, Value>| g.get("install").and_then(|i| i.get("executable")).cloned();
+    if exe(current) != exe(&game) {
+        current.shift_remove(WORKING_DIR_KEY);
+    }
     for key in ["folder_name", "is_linux_native", COMMAND_KEY] {
         if !game.contains_key(key) {
             current.shift_remove(key);
@@ -780,6 +794,23 @@ mod tests {
         let mut s = spec("w", "/w/game.exe", SideloadPlatform::Windows);
         s.command = "./x".into();
         assert!(save_game(&paths, &s).unwrap().game.get(COMMAND_KEY).is_none());
+    }
+
+    /// A game brought over with its own working folder keeps it while it
+    /// starts the same program, and drops it for another one.
+    #[test]
+    fn another_program_drops_the_working_folder() {
+        let (_d, paths) = setup();
+        save_game(&paths, &spec("w", "/g/w/bin/w.exe", SideloadPlatform::Windows)).unwrap();
+        json_store::update_value(&paths.sideload_library(), |doc| {
+            doc["games"][0][WORKING_DIR_KEY] = json!("/g/w");
+            Ok(())
+        })
+        .unwrap();
+        let out = save_game(&paths, &spec("w", "/g/w/bin/w.exe", SideloadPlatform::Windows)).unwrap();
+        assert_eq!(out.game[WORKING_DIR_KEY], "/g/w");
+        let out = save_game(&paths, &spec("w", "/g/other/o.exe", SideloadPlatform::Windows)).unwrap();
+        assert!(out.game.get(WORKING_DIR_KEY).is_none());
     }
 
     #[test]

@@ -593,6 +593,24 @@ mod tests {
         assert!(Path::new(&r.games[0].roms[0].path).ends_with("USRDIR/EBOOT.BIN"));
     }
 
+    #[test]
+    fn xbox_360_games_are_images_archives_and_extracted_folders() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        write(root.join("Halo 3 (USA).iso"), "x").unwrap();
+        write(root.join("Gears of War.zar"), "x").unwrap();
+        create_dir_all(root.join("Forza Motorsport 4/media")).unwrap();
+        write(root.join("Forza Motorsport 4/default.xex"), "x").unwrap();
+        // The other executables of an extracted game are not games.
+        write(root.join("Forza Motorsport 4/media/extra.xex"), "x").unwrap();
+        let cat = crate::catalog::definition_profile("xenia", "x360").unwrap();
+        let ext: Vec<&str> = cat.extensions.iter().map(String::as_str).collect();
+        let (e, p) = indicator_profile("xenia", "x360", &ext, cat.folder_indicator.as_deref().unwrap());
+        let r = scan_rom_directory(&e, &p, root.to_str().unwrap(), ScanOptions::default(), &HashSet::new());
+        assert_eq!(titles(&r), ["Forza Motorsport 4", "Gears of War", "Halo 3"]);
+        assert!(Path::new(&r.games[0].roms[0].path).ends_with("Forza Motorsport 4/default.xex"));
+    }
+
     fn sfo(entries: &[(&str, &str)]) -> Vec<u8> {
         let (mut keys, mut vals, mut index) = (Vec::new(), Vec::new(), Vec::new());
         for (k, v) in entries {

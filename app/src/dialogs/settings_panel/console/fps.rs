@@ -22,7 +22,10 @@ impl SettingsPanel {
         let f = self.fps();
         let mut v = vec![Self::c_header(tr!("FPS limit"))];
         let desc = tr!("The most frames per second the game draws");
-        v.push(number_row("c:fps-limit", tr!("Maximum FPS"), desc, &LIMITS, f.limit, tr!("No limit"), enabled, |f, n| f.limit = n));
+        let mut limit = number_row("c:fps-limit", tr!("Maximum FPS"), desc, &LIMITS, f.limit, tr!("No limit"), enabled, |f, n| f.limit = n);
+        // Its options come and go with the method: A always opens them.
+        limit.row = limit.row.clone().always_folds();
+        v.push(limit);
         if !f.is_on() {
             return v;
         }
@@ -34,10 +37,11 @@ impl SettingsPanel {
             .map(|m| {
                 SharedString::from(match (m, self.fps_unavailable(*m, &tools)) {
                     (Method::Auto, _) => match tools.auto() {
-                        Some(a) => format!("{} \u{b7} {}", tr!("Automatic"), method_name(a)),
+                        // Brackets, not "·": a group's summary joins values with "·".
+                        Some(a) => format!("{} ({})", tr!("Automatic"), method_name(a)),
                         None => tr!("Automatic").to_string(),
                     },
-                    (m, Some(why)) => format!("{} \u{b7} {why}", method_name(*m)),
+                    (m, Some(why)) => format!("{} ({why})", method_name(*m)),
                     (m, None) => method_name(*m).to_string(),
                 })
             })
@@ -84,7 +88,9 @@ impl SettingsPanel {
             }
             _ => {}
         }
-        v
+        // How it is limited belongs to the limit: its sub-settings.
+        let head = v.remove(0);
+        std::iter::once(head).chain(super::grouped(v)).collect()
     }
 }
 

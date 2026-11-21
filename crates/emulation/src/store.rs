@@ -117,6 +117,7 @@ pub fn upsert_emulator_in(emulators: &mut Vec<UserEmulator>, args: UpsertUserEmu
         launch_kind: args.launch_kind.clone(),
         flatpak_id: args.flatpak_id.clone().filter(|s| !s.is_empty()).or_else(|| existing.as_ref().and_then(|e| e.flatpak_id.clone())),
         playnite_id: args.playnite_id.clone().filter(|s| !s.is_empty()).or_else(|| existing.as_ref().and_then(|e| e.playnite_id.clone())),
+        ludusavi_entry: existing.as_ref().and_then(|e| e.ludusavi_entry.clone()),
         profiles: default_profiles(&args.definition_id, profiles_in),
         // Keep fields this app does not model.
         extra: existing.map(|e| e.extra).unwrap_or_default(),

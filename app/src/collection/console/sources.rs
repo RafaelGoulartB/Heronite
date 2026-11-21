@@ -38,12 +38,12 @@ impl Shelf {
 }
 
 pub(super) fn by_last_played(mut v: Vec<&CollectionGame>) -> Vec<&CollectionGame> {
-    v.sort_by(|a, b| b.last_played.cmp(&a.last_played).then_with(|| a.title_lower.cmp(&b.title_lower)));
+    v.sort_by(|a, b| b.last_played.cmp(&a.last_played).then_with(|| heronite_data::organize::title_order(a, b)));
     v
 }
 
 pub(super) fn by_title(mut v: Vec<&CollectionGame>) -> Vec<&CollectionGame> {
-    v.sort_by(|a, b| a.title_lower.cmp(&b.title_lower));
+    v.sort_by(|a, b| heronite_data::organize::title_order(a, b));
     v
 }
 
@@ -160,6 +160,7 @@ impl CollectionView {
             "installed" => g.installed,
             "not-installed" => !g.installed,
             "favourites" => g.favourite,
+            "recent" => g.last_played.is_some(),
             "pc" => !self.game_extras.systems.contains_key(&g.key),
             "emulated" => self.game_extras.systems.contains_key(&g.key),
             "status" => status_is(lib, g, value),

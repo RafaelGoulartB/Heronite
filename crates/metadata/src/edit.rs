@@ -43,6 +43,9 @@ pub fn update_collection_game_details(paths: &DataPaths, patch: &DetailsPatch) -
     if let Some(v) = &patch.title {
         next.title = trimmed_or_none(v);
     }
+    if let Some(v) = &patch.sort_name {
+        next.sort_name = trimmed_or_none(v);
+    }
     if let Some(v) = &patch.notes {
         next.notes = trimmed_or_none(v);
     }
@@ -325,6 +328,24 @@ mod tests {
         let stored = read_value(&paths.metadata()).unwrap();
         assert_eq!(stored["games"]["sideload:g"]["title"], "New Title");
         assert!(stored["games"]["sideload:g"].get("criticScore").is_none());
+    }
+
+    #[test]
+    fn sort_name_is_set_trimmed_kept_and_cleared() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let md = update_collection_game_details(&paths, &patch(|p| p.sort_name = Some("  Pokemon 3 ".into()))).unwrap().metadata;
+        assert_eq!(md.sort_name.as_deref(), Some("Pokemon 3"));
+        assert!(!md.field_sources.contains_key("sortName"), "only the user sets it: no source to lock");
+        assert_eq!(read_value(&paths.metadata()).unwrap()["games"]["sideload:g"]["sortName"], "Pokemon 3");
+
+        let md = update_collection_game_details(&paths, &patch(|p| p.notes = Some("n".into()))).unwrap().metadata;
+        assert_eq!(md.sort_name.as_deref(), Some("Pokemon 3"), "a patch without it leaves it");
+
+        let p: DetailsPatch = serde_json::from_str(r#"{"appName":"g","runner":"sideload","sortName":"  "}"#).unwrap();
+        let md = update_collection_game_details(&paths, &p).unwrap().metadata;
+        assert_eq!(md.sort_name, None);
+        assert!(read_value(&paths.metadata()).unwrap()["games"]["sideload:g"].get("sortName").is_none());
     }
 
     #[test]

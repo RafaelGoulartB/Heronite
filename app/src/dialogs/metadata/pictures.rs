@@ -1,8 +1,8 @@
 //! The pictures (each kept cover family and the background), above the
 //! other fields: a row each, where every value a source has is a tile in
 //! the picture's shape (one height for all, so the rows stay low) with the
-//! sources' marks over it, and a click picks it (the tile under the pointer
-//! shows its details). Beside the tiles,
+//! sources' marks over it and its resolution, dimmed, under it; a click picks
+//! it (the tile under the pointer shows its details). Beside the tiles,
 //! the details of that value: who has it, its size (read from the
 //! picture's first bytes, `MetadataService::picture_sizes`) and what to
 //! know before picking it: whether it is of the field's shape or a view
@@ -13,7 +13,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::cover_family::CoverFamily;
 use heronite_i18n::tr;
-use heronite_metadata::picture_size::family_of;
+use heronite_metadata::picture_size::{family_of, resolution_label};
 use heronite_metadata::ArtKind;
 
 use super::fields::{Choice, LABEL_W};
@@ -34,6 +34,8 @@ const LOW_BACKGROUND: u32 = 960;
 
 /// The height of every tile's picture.
 const TILE_H: f32 = 60.;
+/// The height of the resolution under each tile's picture.
+const CAPTION_H: f32 = 13.;
 /// The size of the arrows over a row of tiles that does not fit.
 const ARROW: f32 = 28.;
 
@@ -61,7 +63,21 @@ enum Fit {
     Cropped(CoverFamily),
 }
 
+/// The badge of a picture of `family`, another shape than its field's, when
+/// it is [`MetadataDialog::shown_whole`].
+fn whole_badge(family: CoverFamily) -> &'static str {
+    match family {
+        CoverFamily::Square => tr!("Shown whole: the picture is square"),
+        CoverFamily::Wide => tr!("Shown whole: the picture is wide"),
+        CoverFamily::Tall => tr!("Shown whole: the picture is tall"),
+    }
+}
+
 fn fit(field: &str, (w, h): (u32, u32)) -> Fit {
+    // A logo is drawn whole, whatever its shape.
+    if field == "logo" {
+        return Fit::Own;
+    }
     match family_of(w, h) {
         f if f == shape_of(field) => Fit::Own,
         f => Fit::Cropped(f),
@@ -69,7 +85,10 @@ fn fit(field: &str, (w, h): (u32, u32)) -> Fit {
 }
 
 fn low_resolution(field: &str, (w, h): (u32, u32)) -> bool {
-    if field == "hero" {
+    if field == "logo" {
+        // Drawn small, and often wide and short.
+        w < LOW_COVER
+    } else if field == "hero" {
         w < LOW_BACKGROUND
     } else {
         w.min(h) < LOW_COVER
@@ -94,6 +113,13 @@ enum Tone {
 }
 
 impl MetadataDialog {
+    /// A picture of another shape for `field` is drawn whole, not cropped:
+    /// "Cover fit" is on "Whole cover" and the desktop's covers draw the
+    /// field's family (backgrounds, and the other families, crop).
+    fn shown_whole(&self, field: &str) -> bool {
+        theme::appearance().whole_covers() && CoverFamily::from_field(field) == Some(self.ctx.lib.settings.cover_aspect.family())
+    }
+
     /// The size read of `url`: `None` while unknown (not read, or not a
     /// picture whose size can be read).
     fn size_of(&self, url: &str) -> Option<(u32, u32)> {
@@ -104,7 +130,7 @@ impl MetadataDialog {
     pub(super) fn read_sizes(&mut self, cx: &mut Context<Self>) {
         let Some(p) = &self.preview else { return };
         let mut urls: Vec<String> = Vec::new();
-        for field in ["cover", "coverSquare", "coverWide", "hero"] {
+        for field in ["cover", "coverSquare", "coverWide", "hero", "logo"] {
             let values = p.candidates.iter().map(|c| super::format_value(Some(&c.metadata), field));
             for url in values.chain(std::iter::once(super::format_value(p.current.as_ref(), field))) {
                 if !url.is_empty() && !self.sizes.contains_key(&url) && !urls.contains(&url) {
@@ -159,30 +185,44 @@ impl MetadataDialog {
     fn picture_tile(&mut self, field: &'static str, choice: &Choice, picked: bool, frozen: bool, cx: &mut Context<Self>) -> Stateful<Div> {
         let (w, h) = tile_size(field);
         let url = self.value_of(field, &choice.pick);
-        let pic = self.thumb(&url, w, h, cx);
-        let off = self.size_of(&url).is_some_and(|s| fit(field, s) != Fit::Own || low_resolution(field, s));
+        let pic = if field == "logo" { self.logo_thumb(&url, w, h, cx) } else { self.thumb(&url, w, h, cx) };
+        let off = self.size_of(&url).is_some_and(|s| (fit(field, s) != Fit::Own && !self.shown_whole(field)) || low_resolution(field, s));
         let source = choice.pick.clone();
         let (hover_field, hover_source) = (field, source.clone());
         let accent: Hsla = theme::accent().into();
-        let corner = |d: Div| d.absolute().top(px(5.)).size(px(14.)).rounded_full().flex().items_center().justify_center();
+        let corner = |d: Div| d.absolute().size(px(14.)).rounded_full().flex().items_center().justify_center();
         let who = if choice.sources().next().is_some() {
             self.marks(choice, 13.)
         } else {
             div().px(px(5.)).rounded(px(4.)).text_size(px(10.)).text_color(theme::text_bright()).child(tr!("Now"))
         };
+        // The resolution under the picture: nothing while it is not read.
+        let resolution = self.size_of(&url).and_then(|(w, h)| resolution_label(w, h)).unwrap_or_default();
+        let shown = div()
+            .relative()
+            .flex_none()
+            .child(pic)
+            .child(div().absolute().left(px(3.)).bottom(px(3.)).p(px(1.)).rounded(px(5.)).bg(theme::recess_a(0.7)).child(who))
+            .when(picked, |d| {
+                d.child(corner(div()).top(px(2.)).right(px(2.)).bg(accent).child(icon(Icon::Check, px(10.), theme::on_accent())))
+            })
+            .when(off, |d| {
+                d.child(corner(div()).top(px(2.)).left(px(2.)).bg(theme::warning()).child(icon(Icon::Warning, px(9.), theme::on_accent())))
+            });
         div()
             .id(SharedString::from(format!("md-pic-{field}-{source}")))
-            .relative()
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap(px(2.))
             .flex_none()
             .p(px(3.))
             .rounded(px(8.))
             .border_1()
             .border_color(if picked { Hsla { a: 0.85, ..accent } } else { theme::ink_a(0.07) })
             .bg(if picked { theme::accent_alpha(0.12).into() } else { theme::ink_a(0.025) })
-            .child(pic)
-            .child(div().absolute().left(px(6.)).bottom(px(6.)).p(px(1.)).rounded(px(5.)).bg(theme::recess_a(0.7)).child(who))
-            .when(picked, |d| d.child(corner(div()).right(px(5.)).bg(accent).child(icon(Icon::Check, px(10.), theme::on_accent()))))
-            .when(off, |d| d.child(corner(div()).left(px(5.)).bg(theme::warning()).child(icon(Icon::Warning, px(9.), theme::on_accent()))))
+            .child(shown)
+            .child(div().h(px(CAPTION_H)).whitespace_nowrap().text_size(px(10.)).text_color(theme::text_dim()).child(resolution))
             .when(frozen, |d| d.opacity(0.4))
             .when(!frozen, |d| {
                 d.cursor_pointer()
@@ -223,6 +263,8 @@ impl MetadataDialog {
         if let Some(s) = size {
             badges = badges.child(match fit(field, s) {
                 Fit::Own => badge(tr!("Own shape").to_string(), Tone::Good),
+                // Shown whole in its own shape: nothing to warn about.
+                Fit::Cropped(f) if self.shown_whole(field) => badge(whole_badge(f).to_string(), Tone::Info),
                 Fit::Cropped(CoverFamily::Square) => badge(tr!("Cropped: the picture is square").to_string(), Tone::Warn),
                 Fit::Cropped(CoverFamily::Wide) => badge(tr!("Cropped: the picture is wide").to_string(), Tone::Warn),
                 Fit::Cropped(CoverFamily::Tall) => badge(tr!("Cropped: the picture is tall").to_string(), Tone::Warn),
@@ -232,14 +274,17 @@ impl MetadataDialog {
             }
         }
         if self.custom_art(field) {
+            let (text, tip) = if field == "logo" {
+                (tr!("Set in Images"), tr!("Your logo from Images is shown instead"))
+            } else {
+                (tr!("Set in Covers"), tr!("Your picture from Covers is shown instead"))
+            };
             badges = badges.child(
-                badge(tr!("Set in Covers").to_string(), Tone::Info)
-                    .id(SharedString::from(format!("md-custom-{field}")))
-                    .tooltip(crate::ui::tooltip(tr!("Your picture from Covers is shown instead"))),
+                badge(text.to_string(), Tone::Info).id(SharedString::from(format!("md-custom-{field}"))).tooltip(crate::ui::tooltip(tip)),
             );
         }
         let size_text = match (size, self.sizes.contains_key(&url)) {
-            (Some((w, h)), _) => Some(format!("{w}\u{d7}{h}")),
+            (Some((w, h)), _) => resolution_label(w, h),
             (None, false) => Some("\u{2026}".to_string()),
             (None, true) => None,
         };
@@ -347,7 +392,7 @@ fn scroll_arrows(field: &'static str, scroll: &ScrollHandle) -> Vec<Stateful<Div
         div()
             .id(SharedString::from(format!("md-tiles-{field}-{side}")))
             .absolute()
-            .top(px((TILE_H + 8. - ARROW) / 2.))
+            .top(px((TILE_H + 8. + 2. + CAPTION_H - ARROW) / 2.))
             .size(px(ARROW))
             .flex()
             .items_center()
