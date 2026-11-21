@@ -45,6 +45,8 @@ const LABEL_H: f32 = 40.;
 const SHELF_RING: f32 = 14.;
 const SHELF_GAP: f32 = 14.;
 const SHELF_TOP: f32 = 24.;
+/// How far the shelves' shade takes to come in under the top bar, design px.
+const DEEP_FADE: f32 = 120.;
 /// Between the game's block and the row.
 const BLOCK_GAP: f32 = 46.;
 /// The logo's box.
@@ -423,7 +425,10 @@ impl CollectionView {
             let id = format!("cinema-{tab}-{}-{returns}", all[index]);
             let block_w = (vw * 0.5).clamp(520., 900.);
             let block = self.cinema_block(g, &id, LOGO_SLIDE, block_w, LOGO.1, window);
-            let shade_h = LOGO.1 + FACTS_H + GENRES_H + 70.;
+            // Behind the facts, the genres and the foot of the logo: a tall
+            // logo's top stays clear, so the shade fades out well under the
+            // top bar (it is drawn over the bar's art, after it).
+            let shade_h = FACTS_H + GENRES_H + 130.;
             over = over
                 .child(
                     div().absolute().left(u(side)).w(u(block_w)).bottom(u(block_bottom)).h(u(shade_h)).child(block_shade(block_w, shade_h)),
@@ -444,7 +449,7 @@ impl CollectionView {
 
         // The shelves under it, quieter: smaller covers, the focused one bright.
         let (sw, sh) = (geo.shelf_w, geo.shelf_h);
-        let mut content = div().relative().w_full().h(u(geo.total)).child(over).child(row);
+        let mut content = div().relative().w_full().h(u(geo.total)).child(row);
         for (si, shelf) in shelves.iter().enumerate() {
             let lv = si + 1;
             let top = geo.shelf_top(si);
@@ -500,10 +505,21 @@ impl CollectionView {
             .track_scroll(view_glide.handle())
             .child(content)
             .child(view_glide.driver());
-        // In the shelves the art steps back behind them.
-        let shade = motion::spring(("cinema-deep", tab), div().absolute().inset_0().bg(kit::veil(0.55)), motion::SOFT, deep, |d, k| {
-            d.opacity(k.clamp(0., 1.))
-        });
+        // In the shelves the art steps back behind them. The body starts under
+        // the top bar: the shade comes in over its first px instead of
+        // starting on a line under the bar's own lighter art.
+        let veil = div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .flex_col()
+            .child(div().flex_none().h(u(DEEP_FADE)).bg(linear_gradient(
+                180.,
+                linear_color_stop(kit::veil(0.), 0.),
+                linear_color_stop(kit::veil(0.55), 1.),
+            )))
+            .child(div().flex_1().bg(kit::veil(0.55)));
+        let shade = motion::spring(("cinema-deep", tab), veil, motion::SOFT, deep, |d, k| d.opacity(k.clamp(0., 1.)));
         // Deep in them, the shelves passing under the hints fade into the dark.
         let foot = motion::spring(
             ("cinema-deep-foot", tab),
@@ -516,7 +532,10 @@ impl CollectionView {
             deep,
             |d, k| d.opacity(k.clamp(0., 1.)),
         );
-        div().relative().size_full().child(shade).child(view).child(foot).into_any_element()
+        // The game's block lies over the view, not in it: the scroll area clips
+        // what it holds, and the block's soft shade would end on a line at
+        // its top edge (it only shows on the main row, the view at its top).
+        div().relative().size_full().child(shade).child(over).child(view).child(foot).into_any_element()
     }
 
     pub(super) fn cinema_pad(&mut self, tab: usize, spec: &TabSpec, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
