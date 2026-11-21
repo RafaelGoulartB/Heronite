@@ -943,6 +943,7 @@ impl CollectionView {
             PageEvent::OpenStores => self.navigate(self.pages.stores_page(), window, cx),
             PageEvent::ScanRoms(initial) => self.open_scan_roms(initial.clone(), window, cx),
             PageEvent::ShowHidden(on) => self.set_show_hidden(*on, cx),
+            PageEvent::HiddenPin(mode) => self.open_hidden_pin(*mode, cx),
             PageEvent::ShowGame(key) => self.show_game(key, window, cx),
             PageEvent::Play(key) => {
                 if self.lib.as_ref().and_then(|l| l.get(key)).is_some_and(|g| g.installed) {

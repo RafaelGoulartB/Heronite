@@ -15,5 +15,9 @@
   "Too many wrong PINs. Try again in {seconds} s.": "Zu viele falsche PINs. Versuche es in {seconds} s erneut.",
   "Turn off the PIN": "PIN ausschalten",
   "Turn on \"Show hidden games\" and enter the PIN to see them here.": "Schalte „Ausgeblendete Spiele anzeigen“ ein und gib die PIN ein, um sie hier zu sehen.",
-  "Wrong PIN. Try again.": "Falsche PIN. Versuche es erneut."
+  "Wrong PIN. Try again.": "Falsche PIN. Versuche es erneut.",
+  "Ask for a PIN": "Nach einer PIN fragen",
+  "Ask for a PIN to show hidden games": "Nach einer PIN fragen, bevor ausgeblendete Spiele angezeigt werden",
+  "Before hidden games show": "Bevor ausgeblendete Spiele erscheinen",
+  "Hidden games stay out of sight until the PIN is typed, and again once the switch is off or Heronite restarts. This keeps them private in Heronite; their files are not encrypted.": "Ausgeblendete Spiele bleiben unsichtbar, bis die PIN eingegeben wird, und wieder, sobald der Schalter aus ist oder Heronite neu startet. So bleiben sie in Heronite privat; ihre Dateien werden nicht verschlüsselt."
 }

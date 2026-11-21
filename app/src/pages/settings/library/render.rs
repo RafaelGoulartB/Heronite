@@ -33,8 +33,30 @@ impl SettingsPage {
         col
     }
 
+    /// "Show hidden games", the PIN switch and, with a PIN, "Change the PIN".
     fn render_show_hidden(&self, snap: &Snapshot, cx: &mut Context<Self>) -> Div {
-        card([toggle_row(
+        let pin = toggle_row(
+            "lib-hidden-pin",
+            tr!("Ask for a PIN to show hidden games"),
+            Some(tr!("Hidden games stay out of sight until the PIN is typed, and again once the switch is off or Heronite restarts. This keeps them private in Heronite; their files are not encrypted.")),
+            snap.pin,
+        )
+        .on_click(cx.listener(|this, _, _, cx| this.toggle_hidden_pin(cx)))
+        .into_any_element();
+        let change = snap.pin.then(|| {
+            row(
+                tr!("Change the PIN"),
+                None,
+                action_button("lib-hidden-pin-change", ButtonKind::Glass, tr!("Change"), true, {
+                    let weak = cx.entity().downgrade();
+                    move |_, _, cx| {
+                        weak.update(cx, |this, cx| this.change_hidden_pin(cx)).ok();
+                    }
+                }),
+            )
+            .into_any_element()
+        });
+        let show = toggle_row(
             "lib-show-hidden",
             tr!("Show hidden games"),
             Some(tr!("Hidden games appear in the Collection, greyed with a \"Hidden\" tag, and can be unhidden from their menu. The same switch is in the filter menu of the header.")),
@@ -44,7 +66,8 @@ impl SettingsPage {
             let on = !this.library.snap.show_hidden;
             this.set_show_hidden(on, cx);
         }))
-        .into_any_element()])
+        .into_any_element();
+        card([Some(show), Some(pin), change].into_iter().flatten())
     }
 
     /// Caption with "Unhide all", the card of hidden games and its pager;
