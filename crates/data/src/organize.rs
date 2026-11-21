@@ -454,8 +454,8 @@ pub fn group_games_with(filtered: &[Game], by: GroupBy, o: &Organize, smart: &[S
 }
 
 /// The A-Z order of the Collection's title sort, for lists sorted outside
-/// it (console mode, the palette): by [`CollectionGame::sort_key`], then
-/// by title.
+/// it (console mode, the palette, a game page's related games): by
+/// [`CollectionGame::sort_key`], then by title.
 pub fn title_order(a: &CollectionGame, b: &CollectionGame) -> Ordering {
     locale_cmp(&a.sort_key, &b.sort_key).then_with(|| locale_cmp(&a.title, &b.title))
 }
