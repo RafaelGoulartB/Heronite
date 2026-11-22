@@ -18,7 +18,7 @@ use crate::ui::fields::choose_path;
 use crate::ui::icon;
 use heronite_data::{AppPaths, DataPaths};
 use heronite_i18n::{tr, Lang, Preference};
-use heronite_launch::steam::KEY_CLOSE_AFTER_GAME;
+use heronite_launch::steam::{KEY_CLOSE_AFTER_GAME, KEY_START_SILENT};
 
 /// The help under a store tool's row: where its own copy lives
 /// (`<data>/tools/bin/<name>`, with `.exe` on Windows).
@@ -284,6 +284,15 @@ impl SettingsPanel {
                 false,
                 tr!("Stay hidden when a shortcut starts a game"),
                 Some(tr!("heronite:// links, like those of the games added to Steam.")),
+                false,
+                cx,
+            ))
+            .child(self.toggle_row(
+                "start-steam-silent",
+                KEY_START_SILENT,
+                true,
+                tr!("Start Steam in the background"),
+                Some(tr!("Keep Steam's window out of the way when Heronite opens it for a game.")),
                 false,
                 cx,
             ))

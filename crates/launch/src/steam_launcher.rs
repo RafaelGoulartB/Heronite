@@ -59,6 +59,15 @@ fn native_root(exe: &Path) -> Option<PathBuf> {
     dir.parent().map(Path::to_path_buf)
 }
 
+/// Whether any process in `processes` is a live native, Flatpak, or Snap Steam
+/// client (unlike [`running_steam`], stays true when more than one kind runs).
+pub fn has_running_steam(processes: &[ProcessInfo]) -> bool {
+    processes
+        .iter()
+        .filter(|p| p.comm == "steam")
+        .any(|p| in_flatpak_steam(&p.cgroup) || in_snap_steam(&p.cgroup) || p.exe.as_deref().and_then(native_root).is_some())
+}
+
 /// The one kind of Steam client running among `processes`; `None` when none
 /// is seen, or more than one (then nothing tells which got the URI wrong).
 /// Only the client itself counts (a process named `steam`): a game left
@@ -124,16 +133,102 @@ pub fn launcher_for(steam: &RunningSteam, probe: &dyn Probe) -> Option<Vec<Strin
     }
 }
 
+/// What kind of Steam install `root` is (Flatpak, Snap, or native). Resolves
+/// symlinks first so a `~/.steam/steam` link into Flatpak or Snap data is
+/// classified by its real target.
+pub fn kind_of_root(root: &Path) -> RunningSteam {
+    let resolved = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let text = resolved.to_string_lossy();
+    if text.contains(&format!("/.var/app/{FLATPAK_STEAM_ID}/")) {
+        RunningSteam::Flatpak
+    } else if text.starts_with("/snap/") || text.contains("/snap/steam/") {
+        RunningSteam::Snap
+    } else {
+        RunningSteam::Native(resolved)
+    }
+}
+
+/// Host-side commands to run via `flatpak-spawn --host` when Heronite itself
+/// runs inside a Flatpak sandbox (where host `/usr`, `/var/lib/flatpak`, and
+/// `/snap` are not visible to [`Probe`]).
+fn host_launchers_for(steam: &RunningSteam, probe: &dyn Probe) -> Vec<Vec<String>> {
+    match steam {
+        RunningSteam::Flatpak => {
+            let mut out = Vec::new();
+            let user_export = format!("{}/.local/share/flatpak/exports/bin/{FLATPAK_STEAM_ID}", probe.home().trim_end_matches('/'));
+            if probe.is_executable(&user_export) {
+                out.push(vec![user_export]);
+            }
+            out.push(vec!["flatpak".into(), "run".into(), FLATPAK_STEAM_ID.into()]);
+            out
+        }
+        RunningSteam::Snap => vec![vec!["/snap/bin/steam".into()]],
+        RunningSteam::Native(root) => {
+            let mut out = vec![vec!["steam".into()]];
+            let script = root.join("steam.sh").to_string_lossy().into_owned();
+            if probe.is_executable(&script) {
+                out.push(vec![script]);
+            }
+            out
+        }
+    }
+}
+
+fn push_unique(out: &mut Vec<Vec<String>>, cmd: Vec<String>) {
+    let dup = if cfg!(windows) {
+        out.iter().any(|existing| existing.len() == cmd.len() && existing.iter().zip(&cmd).all(|(a, b)| a.eq_ignore_ascii_case(b)))
+    } else {
+        out.contains(&cmd)
+    };
+    if !dup {
+        out.push(cmd);
+    }
+}
+
 /// The commands that hand a URI to the Steam client, to try in order: the
 /// running client's own launcher when exactly one kind of Steam runs and
 /// its launcher is found, then [`find_steam_binary`]'s (what is used when
 /// nothing is sure, or the first one cannot be started).
 pub fn client_commands(probe: &dyn Probe, processes: &[ProcessInfo]) -> Vec<Vec<String>> {
-    let mut out: Vec<Vec<String>> = running_steam(processes).and_then(|steam| launcher_for(&steam, probe)).into_iter().collect();
-    if let Some(usual) = find_steam_binary(probe).map(|b| vec![b]) {
-        if !out.contains(&usual) {
-            out.push(usual);
+    client_commands_for(probe, processes, None)
+}
+
+/// Like [`client_commands`], preferring the client of `preferred_root` when
+/// no running client already identifies which install to use (such as a cold
+/// silent launch when more than one Steam install exists on disk).
+pub fn client_commands_for(probe: &dyn Probe, processes: &[ProcessInfo], preferred_root: Option<&Path>) -> Vec<Vec<String>> {
+    client_commands_in(probe, processes, preferred_root, heronite_platform::flatpak::active())
+}
+
+fn client_commands_in(probe: &dyn Probe, processes: &[ProcessInfo], preferred_root: Option<&Path>, in_flatpak: bool) -> Vec<Vec<String>> {
+    let mut out: Vec<Vec<String>> = Vec::new();
+    if cfg!(windows) {
+        if let Some(exe) = preferred_root.map(|root| root.join("steam.exe").to_string_lossy().into_owned()).filter(|e| probe.exists(e)) {
+            push_unique(&mut out, vec![exe]);
         }
+    } else {
+        let mut add_kind = |steam: &RunningSteam| {
+            if in_flatpak {
+                for cmd in host_launchers_for(steam, probe) {
+                    push_unique(&mut out, cmd);
+                }
+            } else if let Some(cmd) = launcher_for(steam, probe) {
+                push_unique(&mut out, cmd);
+            }
+        };
+        if let Some(steam) = running_steam(processes) {
+            add_kind(&steam);
+        }
+        if let Some(root) = preferred_root {
+            add_kind(&kind_of_root(root));
+        }
+    }
+    if let Some(usual) = find_steam_binary(probe).map(|b| vec![b]) {
+        push_unique(&mut out, usual);
+    }
+    if !cfg!(windows) && in_flatpak {
+        push_unique(&mut out, vec!["steam".into()]);
+        push_unique(&mut out, vec!["flatpak".into(), "run".into(), FLATPAK_STEAM_ID.into()]);
     }
     out
 }
@@ -317,5 +412,91 @@ mod tests {
         // The running native Steam's launcher is the usual one: once.
         assert_eq!(client_commands(&probe, &[native("/home/u/.local/share/Steam/ubuntu12_32/steam")]), vec![usual]);
         assert!(client_commands(&FakeProbe::new("/home/u"), &[]).is_empty());
+    }
+
+    #[test]
+    fn preferred_root_picks_the_matching_launcher_when_steam_is_closed() {
+        let export = "/var/lib/flatpak/exports/bin/com.valvesoftware.Steam";
+        let probe = FakeProbe::new("/home/u").with_bin("steam", "/usr/bin/steam").with_path(export).with_path("/snap/bin/steam");
+        let usual = vec!["/usr/bin/steam".to_string()];
+
+        let flatpak_root = Path::new("/home/u/.var/app/com.valvesoftware.Steam/.local/share/Steam");
+        assert_eq!(client_commands_for(&probe, &[], Some(flatpak_root)), vec![vec![export.to_string()], usual.clone()]);
+
+        let snap_root = Path::new("/home/u/snap/steam/common/.local/share/Steam");
+        assert_eq!(client_commands_for(&probe, &[], Some(snap_root)), vec![vec!["/snap/bin/steam".to_string()], usual.clone()]);
+
+        // A running client still wins over the preferred root.
+        assert_eq!(
+            client_commands_for(&probe, &[proc_in(FLATPAK_CG)], Some(snap_root)),
+            vec![vec![export.to_string()], vec!["/snap/bin/steam".to_string()], usual]
+        );
+    }
+
+    #[test]
+    fn flatpak_heronite_builds_host_commands_without_probing_host_usr() {
+        let empty = FakeProbe::new("/home/u");
+        let flatpak_root = Path::new("/home/u/.var/app/com.valvesoftware.Steam/.local/share/Steam");
+        assert_eq!(
+            client_commands_in(&empty, &[], Some(flatpak_root), true),
+            vec![vec!["flatpak".to_string(), "run".into(), FLATPAK_STEAM_ID.into()], vec!["steam".into()]]
+        );
+
+        let snap_root = Path::new("/home/u/snap/steam/common/.local/share/Steam");
+        assert_eq!(
+            client_commands_in(&empty, &[], Some(snap_root), true),
+            vec![vec!["/snap/bin/steam".to_string()], vec!["steam".into()], vec!["flatpak".into(), "run".into(), FLATPAK_STEAM_ID.into()],]
+        );
+
+        let native_root = Path::new("/home/u/.local/share/Steam");
+        assert_eq!(
+            client_commands_in(&empty, &[], Some(native_root), true),
+            vec![vec!["steam".to_string()], vec!["flatpak".into(), "run".into(), FLATPAK_STEAM_ID.into()]]
+        );
+    }
+
+    #[test]
+    fn has_running_steam_sees_single_or_multiple_clients_and_ignores_non_steam() {
+        assert!(!has_running_steam(&[]));
+        assert!(!has_running_steam(&[native("/usr/bin/bash")]));
+        assert!(has_running_steam(&[proc_in(FLATPAK_CG)]));
+        assert!(has_running_steam(&[proc_in(SNAP_CG)]));
+        assert!(has_running_steam(&[proc_in(FLATPAK_CG), proc_in(SNAP_CG)]));
+    }
+
+    #[test]
+    fn kind_of_root_follows_symlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join(".var/app/com.valvesoftware.Steam/.local/share/Steam");
+        std::fs::create_dir_all(&target).unwrap();
+        let link = dir.path().join("steam-link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert_eq!(kind_of_root(&link), RunningSteam::Flatpak);
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+    use crate::probe::FakeProbe;
+
+    #[test]
+    fn preferred_root_steam_exe_comes_first_on_windows() {
+        let custom = Path::new(r"D:\Games\Steam");
+        let custom_exe = custom.join("steam.exe").to_string_lossy().into_owned();
+        let default_root = PathBuf::from(r"C:\Program Files (x86)\Steam");
+        let default_exe = default_root.join("steam.exe").to_string_lossy().into_owned();
+        let probe = FakeProbe::new(r"C:\Users\u").with_steam_roots(vec![default_root]).with_path(&custom_exe).with_path(&default_exe);
+        assert_eq!(client_commands_for(&probe, &[], Some(custom)), vec![vec![custom_exe], vec![default_exe.clone()]]);
+        assert_eq!(client_commands_for(&probe, &[], None), vec![vec![default_exe]]);
+
+        // Different casing of the same Steam install is deduplicated.
+        let lower_root = Path::new(r"c:\program files (x86)\steam");
+        let lower_exe = lower_root.join("steam.exe").to_string_lossy().into_owned();
+        let probe = FakeProbe::new(r"C:\Users\u")
+            .with_steam_roots(vec![PathBuf::from(r"C:\Program Files (x86)\Steam")])
+            .with_path(&lower_exe)
+            .with_path(r"C:\Program Files (x86)\Steam\steam.exe");
+        assert_eq!(client_commands_for(&probe, &[], Some(lower_root)), vec![vec![lower_exe]]);
     }
 }

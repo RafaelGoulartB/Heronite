@@ -27,7 +27,7 @@ use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 use crate::system::settings::KEY_RESTORE_AFTER_GAME;
 use heronite_i18n::tr;
-use heronite_launch::steam::KEY_CLOSE_AFTER_GAME;
+use heronite_launch::steam::{KEY_CLOSE_AFTER_GAME, KEY_START_SILENT};
 
 mod antimicrox;
 mod fps;
@@ -836,6 +836,13 @@ impl SettingsPanel {
         );
         v.extend([
             self.c_toggle("hideWindowOnProtocolLaunch", false, tr!("Hide the window for heronite:// launches"), None, false),
+            self.c_toggle(
+                KEY_START_SILENT,
+                true,
+                tr!("Start Steam in the background"),
+                Some(tr!("Keep Steam's window out of the way when Heronite opens it for a game")),
+                false,
+            ),
             self.c_toggle(
                 KEY_CLOSE_AFTER_GAME,
                 false,

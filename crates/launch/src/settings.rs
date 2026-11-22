@@ -296,7 +296,12 @@ impl GlobalSettings {
 
     /// A switch; missing or not a boolean is off.
     pub fn flag(&self, key: &str) -> bool {
-        self.defaults.get(key).and_then(Value::as_bool).unwrap_or(false)
+        self.flag_or(key, false)
+    }
+
+    /// A switch; missing or not a boolean takes `default`.
+    pub fn flag_or(&self, key: &str, default: bool) -> bool {
+        self.defaults.get(key).and_then(Value::as_bool).unwrap_or(default)
     }
 
     pub fn wine_version(&self) -> WineVersion {
@@ -380,5 +385,17 @@ mod tests {
         assert_eq!(s.wine_version.name, "W");
         let other = load_game_settings(&paths, "nope", &global, &probe);
         assert!(other.use_game_mode);
+    }
+
+    #[test]
+    fn global_flag_or_uses_default_for_missing_and_non_bool_values() {
+        let m = json!({"on": true, "off": false, "text": "yes", "num": 1});
+        let g = GlobalSettings::from_defaults(m.as_object().unwrap().clone());
+        assert!(g.flag_or("on", false));
+        assert!(!g.flag_or("off", true));
+        assert!(g.flag_or("missing", true));
+        assert!(!g.flag_or("missing", false));
+        assert!(g.flag_or("text", true));
+        assert!(!g.flag_or("num", false));
     }
 }

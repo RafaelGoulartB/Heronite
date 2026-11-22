@@ -562,6 +562,57 @@ fn steam_opened_for_a_game_is_closed_after_it_only_when_asked() {
 }
 
 #[test]
+fn steam_starts_silently_by_default_only_when_heronite_opens_it() {
+    let run = |setting: Option<bool>,
+               steam_open_before: bool|
+     -> (Vec<String>, Vec<String>, Vec<Option<std::path::PathBuf>>, Vec<String>, std::path::PathBuf) {
+        let r = rig();
+        let log = write_steam_log(&r, "");
+        let expected_root = r._dir.path().join("home/.steam/steam");
+        if let Some(on) = setting {
+            json_store::write(&r.paths.global_config(), &serde_json::json!({"defaultSettings": {"heroniteStartSteamSilent": on}})).unwrap();
+        }
+        if steam_open_before {
+            fs::write(r._dir.path().join("home/.steam/steam.pid"), "5000\n").unwrap();
+            r.procs.start(5000, if cfg!(windows) { "steam.exe" } else { "steam" }, None);
+        }
+        let uri = "steam://rungameid/400";
+        let plan = LaunchPlan::SteamUri { app_id: "400".into(), uri: uri.into(), extras: Default::default() };
+        r.launcher.launch(request("steam_400", plan)).unwrap();
+        assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+        wait_until("uri opened", || r.spawner.uris() == [uri]);
+        // Wait past `delivery_check` (150ms in `fast_cfg`) before the game
+        // appears to confirm a silent launch does not re-invoke non-silent `open_with_steam`.
+        std::thread::sleep(Duration::from_millis(200));
+        r.procs.start(7777, "reaper", None);
+        fs::OpenOptions::new().append(true).open(&log).unwrap().write_all(b"Game process added : AppID 400 x ProcID 7777\n").unwrap();
+        assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+        r.procs.exit(7777);
+        assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+        (r.spawner.uris(), r.spawner.silent_steam_uris(), r.spawner.silent_steam_roots(), r.spawner.steam_uris(), expected_root)
+    };
+
+    // Default (missing setting) and Steam closed -> silent, with Steam root, no non-silent retry.
+    let (uris, silent, roots, steam_uris, expected_root) = run(None, false);
+    assert_eq!(uris, ["steam://rungameid/400"]);
+    assert_eq!(silent, ["steam://rungameid/400"]);
+    assert_eq!(roots, [Some(expected_root)]);
+    assert!(steam_uris.is_empty(), "silent launch must not trigger non-silent delivery retry");
+
+    // Explicitly disabled and Steam closed -> regular open_uri.
+    let (uris, silent, roots, _, _) = run(Some(false), false);
+    assert_eq!(uris, ["steam://rungameid/400"]);
+    assert!(silent.is_empty());
+    assert!(roots.is_empty());
+
+    // Default (on) but Steam already running -> regular open_uri.
+    let (uris, silent, roots, _, _) = run(None, true);
+    assert_eq!(uris, ["steam://rungameid/400"]);
+    assert!(silent.is_empty());
+    assert!(roots.is_empty());
+}
+
+#[test]
 fn steam_that_never_starts_the_game_is_an_error_without_recording() {
     let r = rig();
     write_steam_log(&r, "");
