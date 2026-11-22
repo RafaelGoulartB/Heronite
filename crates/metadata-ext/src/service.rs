@@ -40,6 +40,9 @@ pub struct PackageInfo {
     pub applies_to: AppliesTo,
     pub asked: Asked,
     pub game_kind: Option<GameKind>,
+    /// `[ids] example`, checked against its pattern, in upper case: what
+    /// the installer says it recognises ("Recognises codes like …").
+    pub id_example: Option<String>,
     /// The hosts it will contact (`*.example.org` = its subdomains,
     /// `http://` = without encryption too).
     pub hosts: Vec<String>,
@@ -221,6 +224,7 @@ fn info(service: &MetadataService, pkg: &Package) -> PackageInfo {
         applies_to: m.applies_to.clone(),
         asked: m.asked,
         game_kind: m.game_kind.clone(),
+        id_example: m.id_example.clone(),
         hosts: m.network.hosts.iter().map(|h| h.text()).collect(),
         image_hosts: m.network.images.iter().map(|h| h.text()).collect(),
         rate: m.network.rate.text(),

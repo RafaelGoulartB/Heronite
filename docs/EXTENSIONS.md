@@ -65,6 +65,7 @@ asked = "always"                 # always | fallback
 
 [ids]                            # optional: a code that names a game for sure
 pattern = '\b(?:EX|EY)[0-9]{6,8}\b'  # found in its title or file name: game.ids.exampledb
+example = "EX01234567"           # optional: a code it finds, shown in the installer
 
 [network]
 hosts = ["api.example.org", "*.cdn.example.org"]   # where the script may send requests
@@ -223,6 +224,7 @@ in a dump's name. A manifest may name one pattern for such a code:
 ```toml
 [ids]
 pattern = '\b(?:RJ|BJ|VJ)[0-9]{6,8}\b'
+example = "RJ01234567"
 ```
 
 The app looks for it in the game's `title` and `fileName`. When it finds
@@ -253,6 +255,13 @@ refused, with the rule it breaks:
 
 In the title and file name, `_` also counts as a space, since file names
 join words with it: `RJ123456_v1.02` gives `RJ123456`.
+
+`example` is optional: a code the pattern is meant for. The installer and
+the gallery show it ("Recognises codes like RJ01234567"), never the
+pattern itself, so give one. It is checked with the pattern: the pattern
+must find that code in it, the whole of it (letter case ignored; it is
+shown in upper case), or the manifest is refused, with what the pattern
+found instead. An `example` without a `pattern` is refused too.
 
 Only one pattern per manifest. A script still reads `game.title` and
 `game.fileName` as it likes, but what it finds there itself is a match by
@@ -572,6 +581,7 @@ a file was checked by nobody.
 - Each entry copies its manifest: `id`, `name`, `version`, `api`, `author`,
   `homepage` (optional), `kind`, `adult` (optional), `description`,
   `fields` (`[provides] fields`), `applies` (the `[applies]` table, as is;
+  optional), `ids` (only `example`, from `[ids]`, for the gallery;
   optional), `hosts` and `images` (`[network]`), `settings` (each
   setting's `label` and `required`; optional). An entry whose `api` is
   higher than the app's is listed but cannot be installed.
@@ -647,7 +657,8 @@ refused at install ("made for a newer Heronite") and, once installed, shows
 as "Could not be loaded". Additions that old scripts do not notice (a new
 `ctx` helper, a new optional key) do not change the number; a change that
 would break a script does. `ctx.unreachable`, a hit's `altTitle` and
-`adult`, and `[ids] pattern` are such additions (a build without
-`[ids]` leaves it out with a line in the log, and the script gets no code).
+`adult`, and `[ids] pattern` and `example` are such additions (a build
+without `[ids]` leaves it out with a line in the log, and the script gets
+no code; one without `example` leaves only that out).
 
 Version 1 is the first.

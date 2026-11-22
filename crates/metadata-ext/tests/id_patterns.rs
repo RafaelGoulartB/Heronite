@@ -165,3 +165,57 @@ fn a_loose_pattern_is_refused_at_install_with_the_rule_it_breaks() {
     }
     assert!(svc.sources().get("codedb").is_none());
 }
+
+fn codedb_with_example(pattern: &str, example: &str) -> String {
+    let body = format!("[ids]\npattern = '{pattern}'\nexample = \"{example}\"\n\n[network]\nhosts = [\"{HOST}\"]\nrate = \"10/s\"");
+    manifest("codedb", "1.0.0", "details", &["description", "genres"], &body)
+}
+
+#[test]
+fn an_example_the_pattern_finds_is_shown_by_the_installer() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = DataPaths::at(dir.path());
+    write(&paths.collection_settings(), json!({"metadata": {}}));
+    let svc = MetadataService::new(paths);
+    let pkg = folder(&dir.path().join("packages"), "example", &codedb_with_example(PATTERN, "rj01234567"), SCRIPT);
+    assert_eq!(svc.inspect_extension(&pkg).unwrap().id_example.as_deref(), Some("RJ01234567"), "in upper case, as passed");
+    svc.install_extension(&pkg, true).unwrap();
+    assert!(svc.sources().get("codedb").is_some());
+
+    // Without one, nothing changes: no line, installed as before.
+    let pkg = folder(&dir.path().join("packages"), "plain", &codedb(PATTERN), SCRIPT);
+    assert_eq!(svc.inspect_extension(&pkg).unwrap().id_example, None);
+    svc.install_extension(&pkg, true).unwrap();
+}
+
+#[test]
+fn an_example_the_pattern_does_not_find_refuses_the_install() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = DataPaths::at(dir.path());
+    write(&paths.collection_settings(), json!({"metadata": {}}));
+    let svc = MetadataService::new(paths);
+    for (i, (example, says)) in [
+        ("BJ01234567", "does not find ids.example \"BJ01234567\""),
+        ("RJ123", "does not find"),
+        ("RJ123456 VJ654321", "not the whole example"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let pkg = folder(&dir.path().join("packages"), &format!("bad{i}"), &codedb_with_example(PATTERN, example), SCRIPT);
+        match svc.install_extension(&pkg, true) {
+            Err(ExtensionError::Manifest(why)) => {
+                assert!(why.contains(says) && why.contains("fix the pattern or the example"), "{example}: {why}")
+            }
+            other => panic!("{example}: {other:?}"),
+        }
+    }
+    // An example with no pattern to find it.
+    let body = format!("[ids]\nexample = \"RJ01234567\"\n\n[network]\nhosts = [\"{HOST}\"]\nrate = \"10/s\"");
+    let pkg = folder(&dir.path().join("packages"), "no-pattern", &manifest("codedb", "1.0.0", "details", &["description"], &body), SCRIPT);
+    match svc.install_extension(&pkg, true) {
+        Err(ExtensionError::Manifest(why)) => assert!(why.contains("needs ids.pattern"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+    assert!(svc.sources().get("codedb").is_none());
+}
