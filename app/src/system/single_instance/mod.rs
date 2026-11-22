@@ -184,17 +184,16 @@ pub fn forward(socket: &Path, msg: &Message) -> std::io::Result<Forward> {
 pub fn forward_with(socket: &Path, msg: &Message, timeouts: Timeouts) -> std::io::Result<Forward> {
     let mut stream = match transport::connect(socket) {
         Ok(s) => s,
-        Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => {
-            return Ok(Forward::NoInstance);
-        }
+        Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => return Ok(Forward::NoInstance),
         Err(e) if matches!(e.kind(), std::io::ErrorKind::ConnectionRefused) => {
             // Stale file of a crashed instance.
             let _ = std::fs::remove_file(socket);
             return Ok(Forward::NoInstance);
         }
-        Err(e) => {
-            return Err(e);
+        Err(e) if matches!(e.kind(), std::io::ErrorKind::TimedOut) => {
+            return Ok(Forward::Unresponsive("connecting: no answer in time".into()));
         }
+        Err(e) => return Err(e),
     };
     // From here on somebody is there: failures are `Unresponsive`, never a
     // reason to start a second instance.
@@ -223,66 +222,70 @@ pub fn forward_with(socket: &Path, msg: &Message, timeouts: Timeouts) -> std::io
 /// The listening side. Dropping it removes the socket file (unless
 /// [`close_active`] already did).
 pub struct Server {
+    socket: Arc<ActiveSocket>,
+}
+
+struct ActiveSocket {
     path: PathBuf,
     closed: Arc<AtomicBool>,
+    lock: transport::Lock,
+}
+
+impl ActiveSocket {
+    fn close(&self) {
+        if !self.closed.swap(true, Ordering::SeqCst) {
+            self.lock.release();
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
 }
 
 /// The socket this process listens on, for [`close_active`].
-static ACTIVE: Mutex<Option<(PathBuf, Arc<AtomicBool>)>> = Mutex::new(None);
+static ACTIVE: Mutex<Option<Arc<ActiveSocket>>> = Mutex::new(None);
 
 /// Stops accepting requests and removes the socket file now (the quit has
 /// started: a second invocation must find no socket, not a dying listener).
 /// Safe to call without a server and more than once.
 pub fn close_active() {
     let active = ACTIVE.lock().unwrap_or_else(|e| e.into_inner()).take();
-    if let Some((path, closed)) = active {
-        close_socket(&path, &closed);
-    }
-}
-
-fn close_socket(path: &Path, closed: &AtomicBool) {
-    if !closed.swap(true, Ordering::SeqCst) {
-        let _ = std::fs::remove_file(path);
+    if let Some(socket) = active {
+        socket.close();
     }
 }
 
 impl Server {
     /// Same as [`close_active`] for this server.
     pub fn close(&self) {
-        close_socket(&self.path, &self.closed);
+        self.socket.close();
     }
 
     /// Binds `socket` and calls `on_message` (from a worker thread) for every
     /// message received; it returns whether the message was delivered, which
     /// decides the answer (`ok` or `err`). Fails with `AddrInUse` when
     /// another live instance owns the socket.
-    pub fn bind(socket: &Path, on_message: impl (Fn(Message) -> bool) + Send + 'static) -> std::io::Result<Server> {
+    pub fn bind(socket: &Path, on_message: impl Fn(Message) -> bool + Send + 'static) -> std::io::Result<Server> {
         let listener = match transport::bind(socket) {
             Ok(l) => l,
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
                 // Alive? Then it is not ours to take.
                 match transport::connect(socket) {
-                    Ok(_) => {
-                        return Err(e);
-                    }
-                    Err(_) => {
-                        std::fs::remove_file(socket)?;
+                    Ok(_) => return Err(e),
+                    Err(err) if matches!(err.kind(), std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound) => {
+                        transport::remove_stale(socket)?;
                         transport::bind(socket)?
                     }
+                    Err(_) => return Err(e),
                 }
             }
-            Err(e) => {
-                return Err(e);
-            }
+            Err(e) => return Err(e),
         };
+        let lock = transport::lock(&listener);
         let _ = heronite_platform::fs::set_mode(socket, 0o600);
         let closed = Arc::new(AtomicBool::new(false));
         let flag = closed.clone();
         std::thread::Builder::new().name("single-instance".into()).spawn(move || {
             for stream in listener.incoming() {
-                let Ok(stream) = stream else {
-                    continue;
-                };
+                let Ok(stream) = stream else { continue };
                 let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
                 let mut line = String::new();
                 if BufReader::new(&stream).read_line(&mut line).is_err() {
@@ -306,8 +309,9 @@ impl Server {
                 let _ = stream.write_all(answer.as_bytes());
             }
         })?;
-        *ACTIVE.lock().unwrap_or_else(|e| e.into_inner()) = Some((socket.to_path_buf(), closed.clone()));
-        Ok(Server { path: socket.to_path_buf(), closed })
+        let active = Arc::new(ActiveSocket { path: socket.to_path_buf(), closed, lock });
+        *ACTIVE.lock().unwrap_or_else(|e| e.into_inner()) = Some(active.clone());
+        Ok(Server { socket: active })
     }
 }
 
@@ -420,6 +424,16 @@ mod tests {
     }
 
     #[cfg(windows)]
+    fn write_locked_socket_file(path: &Path, content: &str) -> std::fs::File {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_SHARE_READ: u32 = 1;
+        let mut file = std::fs::OpenOptions::new().write(true).create(true).truncate(true).share_mode(FILE_SHARE_READ).open(path).unwrap();
+        file.write_all(content.as_bytes()).unwrap();
+        file.flush().unwrap();
+        file
+    }
+
+    #[cfg(windows)]
     fn tcp_listener_that_hangs_up() -> (std::net::TcpListener, std::thread::JoinHandle<()>) {
         let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
         let acceptor = listener.try_clone().unwrap();
@@ -450,34 +464,126 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn a_live_owner_that_hangs_up_is_still_unresponsive() {
+    fn locked_file_of_a_dead_owner_is_still_stale_by_pid() {
+        let mut child = std::process::Command::new("cmd").args(["/c", "exit"]).spawn().unwrap();
+        let dead_pid = child.id();
+        child.wait().unwrap();
+
         let dir = tempfile::tempdir().unwrap();
         let sock = dir.path().join("s.sock");
-        let (listener, task) = tcp_listener_that_hangs_up();
+        let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
-        std::fs::write(&sock, format!("{port} live-owner-key {}\n", std::process::id())).unwrap();
+        let hold = write_locked_socket_file(&sock, &format!("{port} dead-owner-key {dead_pid}\n"));
 
-        let got = forward_with(&sock, &msg(), quick()).unwrap();
-        assert!(matches!(got, Forward::Unresponsive(_)), "{got:?}");
-        assert!(sock.exists(), "a live owner's file must not be removed");
-        task.join().unwrap();
+        assert_eq!(forward_with(&sock, &msg(), quick()).unwrap(), Forward::NoInstance);
+        drop(hold);
         drop(listener);
     }
 
     #[cfg(windows)]
     #[test]
-    fn a_legacy_two_field_file_still_connects() {
+    fn a_live_owner_that_hangs_up_is_still_unresponsive() {
         let dir = tempfile::tempdir().unwrap();
         let sock = dir.path().join("s.sock");
         let (listener, task) = tcp_listener_that_hangs_up();
         let port = listener.local_addr().unwrap().port();
-        std::fs::write(&sock, format!("{port} legacy-key\n")).unwrap();
+        let hold = write_locked_socket_file(&sock, &format!("{port} live-owner-key {}\n", std::process::id()));
 
         let got = forward_with(&sock, &msg(), quick()).unwrap();
         assert!(matches!(got, Forward::Unresponsive(_)), "{got:?}");
-        assert!(sock.exists(), "legacy file remains on the connect path");
+        assert!(sock.exists(), "a live owner's file must not be removed");
         task.join().unwrap();
+        drop(hold);
         drop(listener);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn locked_two_field_file_still_connects() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("s.sock");
+        let (listener, task) = tcp_listener_that_hangs_up();
+        let port = listener.local_addr().unwrap().port();
+        let hold = write_locked_socket_file(&sock, &format!("{port} legacy-key\n"));
+
+        let got = forward_with(&sock, &msg(), quick()).unwrap();
+        assert!(matches!(got, Forward::Unresponsive(_)), "{got:?}");
+        assert!(sock.exists(), "locked two-field file remains on the connect path");
+        task.join().unwrap();
+        drop(hold);
+        drop(listener);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn stale_socket_pointing_to_an_unrelated_listener_is_taken_over() {
+        use std::net::{Ipv4Addr, TcpListener};
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("s.sock");
+
+        // Another program now listens on the ephemeral port a dead Heronite
+        // left in its `.sock` file, and drops/resets unexpected connections
+        // (the `os error 10054` failure reported after a forced restart).
+        let unrelated = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = unrelated.local_addr().unwrap().port();
+        let stop = Arc::new(AtomicBool::new(false));
+        let accepted = Arc::new(AtomicBool::new(false));
+        let (stop_flag, accepted_flag) = (stop.clone(), accepted.clone());
+        let peer = std::thread::spawn(move || {
+            let _ = unrelated.set_nonblocking(true);
+            while !stop_flag.load(Ordering::Relaxed) {
+                if let Ok((mut stream, _)) = unrelated.accept() {
+                    accepted_flag.store(true, Ordering::SeqCst);
+                    let _ = stream.write_all(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+                    drop(stream);
+                } else {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            }
+        });
+
+        // Covers stale two-field `.sock` files left behind by older releases too.
+        let stale = format!("{port} 0123456789abcdef0123456789abcdef\n");
+        std::fs::write(&sock, &stale).unwrap();
+        assert_eq!(forward_with(&sock, &msg(), quick()).unwrap(), Forward::NoInstance);
+        assert!(!sock.exists(), "stale file removed without talking to the unrelated port");
+
+        // `Server::bind` also takes over when a stale file points at a busy port.
+        std::fs::write(&sock, &stale).unwrap();
+        let (tx, rx) = mpsc::channel();
+        let server = Server::bind(&sock, move |m| tx.send(m).is_ok()).unwrap();
+        // While the live owner holds the file, another process cannot delete it.
+        let remove_err = std::fs::remove_file(&sock).unwrap_err();
+        assert_eq!(remove_err.raw_os_error(), Some(32));
+        assert_eq!(forward(&sock, &msg()).unwrap(), Forward::Delivered);
+        assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), msg());
+        drop(server);
+
+        stop.store(true, Ordering::Relaxed);
+        peer.join().unwrap();
+        assert!(!accepted.load(Ordering::SeqCst), "must not connect to the unrelated listener");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn stale_socket_pointing_to_a_silent_unrelated_listener_is_taken_over() {
+        use std::net::{Ipv4Addr, TcpListener};
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("s.sock");
+
+        // An unrelated listener that accepts nothing (would time out as
+        // `Unresponsive` if we tried to connect to the stale port).
+        let silent = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = silent.local_addr().unwrap().port();
+        std::fs::write(&sock, format!("{port} 0123456789abcdef0123456789abcdef\n")).unwrap();
+
+        let t = std::time::Instant::now();
+        assert_eq!(forward(&sock, &msg()).unwrap(), Forward::NoInstance);
+        assert!(t.elapsed() < Duration::from_secs(2), "stale file must not wait on the unrelated listener");
+        assert!(!sock.exists());
+        drop(silent);
     }
 
     #[test]
