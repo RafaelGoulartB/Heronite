@@ -124,6 +124,15 @@ pub trait MetadataSource: Send + Sync {
         Lookup::Skipped
     }
 
+    /// Whether `game` carries what names one of its games for sure (an
+    /// extension's `[ids] pattern`: exactly one code in the title or file
+    /// name). A fallback source that claims a game is asked with the others,
+    /// as when the game is of its [`GameKind`]. Cheap (no network): every
+    /// gather asks it.
+    fn claims(&self, _game: &SourceGame) -> bool {
+        false
+    }
+
     /// Whether [`test`](Self::test) does something.
     fn has_test(&self) -> bool {
         false

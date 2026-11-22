@@ -108,9 +108,11 @@ default = "us"
   matches `to = "emulated"` but no `platforms` list.
 - **asked = "fallback"**: asked only when no other online details source
   found the game for sure, when the record or the game's Steam tags carry
-  its `game_kind` signal, when the game was already matched with it, or
-  when the user asks it by name. The VNDB example is one, for the games
-  whose genres or Steam tags say "Visual Novel".
+  its `game_kind` signal, when the game's title or folder has exactly one
+  code of its `[ids] pattern`, when the game was already matched with it,
+  or when the user asks it by name. The VNDB example is one, for the games
+  whose genres or Steam tags say "Visual Novel". Being asked does not put
+  its fields first: the field order still decides whose values are used.
 - An extension's fields are taken after the sources already in a field's
   order; the user can move it like any source. It never goes ahead of
   them by itself: unlike a built-in source such as the LaunchBox Games
@@ -229,7 +231,9 @@ The app looks for it in the game's `title` and `fileName`. When it finds
 exactly one code (the same code found in both counts as one), the script
 gets it as `game.ids.<your id>` (`game.ids.dlsite`, say), in upper case;
 two different codes pass none, and the log says so. A code typed in the
-search by name is passed the same way. A hit with
+search by name is passed the same way. For an `asked = "fallback"`
+extension, one code in the title or folder is also a reason to ask it,
+even when another source already found the game for sure. A hit with
 `matchedBy: { id: "<your id>" }` whose `id` is that code is a sure match,
 whatever its title, so the pattern is checked when the extension is
 installed or loaded, and a manifest whose pattern breaks a rule is
