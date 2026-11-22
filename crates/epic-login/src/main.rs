@@ -134,11 +134,11 @@ impl Store {
             return done.then(|| address.to_string());
         }
         // The token is sent to `nucleus:rest` when EA redirects instead of
-        // answering on its own address (an error may be sent there too).
+        // answering on its own address. An error sent there ends the window
+        // too (the page could not open the address): the app finds out
+        // from the session it is handed.
         if self == Self::Ea {
-            let params = url.fragment().or(url.query()).unwrap_or("");
-            let token = url::form_urlencoded::parse(params.as_bytes()).any(|(k, v)| k == "access_token" && !v.is_empty());
-            return (url.scheme() == "nucleus" && token).then(|| EA_DONE.to_string());
+            return (url.scheme() == "nucleus").then(|| EA_DONE.to_string());
         }
         let (host_ok, param) = match self {
             // Epic redirects to https://localhost/launcher/authorized?code=...
@@ -241,7 +241,7 @@ const EA_READ_SCRIPT: &str = concat!(
     "(function(){var p=document.querySelector('pre');",
     "var t=p?p.innerText:(document.body?document.body.innerText:'');",
     "try{var d=JSON.parse(t.slice(t.indexOf('{'),t.lastIndexOf('}')+1));",
-    "if((d.error||d.error_code)==='login_required'&&!d.access_token&&!window.__heroniteBack)",
+    "if((d.error==='login_required'||d.error_code==='login_required')&&!d.access_token&&!window.__heroniteBack)",
     "{window.__heroniteBack=1;location.replace('https://www.ea.com/login');}}catch(e){}",
     "return t;})()"
 );
@@ -602,7 +602,6 @@ mod tests {
         assert!(EA_READ_SCRIPT.contains(&format!("location.replace('{EA_LOGIN_URL}')")), "signed out: back to EA's sign-in");
 
         assert_eq!(Store::Ea.code_from_url("nucleus:rest#access_token=QVQx&expires_in=3599").as_deref(), Some(EA_DONE));
-        assert_eq!(Store::Ea.code_from_url("nucleus:rest#error=login_required"), None, "no token, not signed in");
         assert_eq!(Store::Ea.code_from_url("https://www.ea.com/?code=x"), None);
         assert_eq!(
             ea_cookies_json([("sid", "S1"), ("remid", "R\"1")]),
