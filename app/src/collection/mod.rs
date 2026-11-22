@@ -170,6 +170,11 @@ pub struct CollectionView {
     game_extras: Arc<heronite_data::organize::GameExtras>,
     /// The actions users added to their games, by game key, loaded with the library.
     user_actions: std::collections::HashMap<String, Vec<heronite_data::game_actions::Action>>,
+    /// Games whose Play asks how to play (`game_actions::load_ask_on_play`).
+    ask_on_play: std::collections::HashSet<String>,
+    /// The way to play picked last in "Choose how to start the game", by game
+    /// key (`None`: Play itself); focused first the next time.
+    last_play_choice: HashMap<String, Option<String>>,
     /// Games with an update waiting (app names), for "Only with updates".
     update_apps: std::collections::HashSet<String>,
     search: String,
@@ -413,6 +418,8 @@ impl CollectionView {
             group_members: Default::default(),
             game_extras: Default::default(),
             user_actions: Default::default(),
+            last_play_choice: HashMap::new(),
+            ask_on_play: Default::default(),
             update_apps: Default::default(),
             search: String::new(),
             search_input,

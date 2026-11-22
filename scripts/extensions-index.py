@@ -68,6 +68,7 @@ def entry(folder, base):
             "description": manifest["description"].strip(),
             "fields": manifest["provides"]["fields"],
             "applies": manifest.get("applies", {}),
+            **({"ids": {"example": example}} if (example := manifest.get("ids", {}).get("example")) else {}),
             "hosts": network.get("hosts", []),
             "images": network.get("images", []),
             "settings": [{"label": s["label"], "required": bool(s.get("required", False))} for s in manifest.get("settings", [])],

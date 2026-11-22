@@ -253,6 +253,13 @@ impl MetadataSource for ScriptSource {
         &self.descriptor
     }
 
+    /// Exactly one code of its `[ids] pattern` in the title or file name,
+    /// the code its script would get.
+    fn claims(&self, game: &SourceGame) -> bool {
+        let texts = [Some(game.title.as_str()), game.file_name.as_deref()];
+        self.manifest.id_pattern.as_ref().is_some_and(|p| p.find(texts.into_iter().flatten()).is_some())
+    }
+
     fn lookup(&self, ctx: &SourceContext<'_>, game: &SourceGame) -> Lookup<MetadataCandidate> {
         if self.lacks_required(ctx) {
             return Lookup::Skipped;

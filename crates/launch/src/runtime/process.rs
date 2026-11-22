@@ -286,7 +286,7 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
             // The game is over but what started it waits for these programs.
             if let Some(prefix) = prefix.as_deref().filter(|_| companions.active()) {
                 if companions.game_left(&*shared.procs, prefix) {
-                    companions.stop(shared.cfg.kill_grace, log);
+                    companions.stop(shared, log);
                 }
             }
         }
@@ -339,7 +339,7 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     if aborted {
         companions.leave_running();
     } else {
-        companions.stop(shared.cfg.kill_grace, log);
+        companions.stop(shared, log);
     }
     // Also when tracking stopped: nothing would stop it later.
     if let Some(comet) = comet {

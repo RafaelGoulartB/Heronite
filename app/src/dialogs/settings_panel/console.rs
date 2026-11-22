@@ -29,6 +29,7 @@ use crate::system::settings::KEY_RESTORE_AFTER_GAME;
 use heronite_i18n::tr;
 use heronite_launch::steam::KEY_CLOSE_AFTER_GAME;
 
+mod antimicrox;
 mod fps;
 mod gpu;
 mod lsfg;
@@ -560,6 +561,7 @@ impl SettingsPanel {
                 v.push(self.c_path("beforeScript", tr!("Script before launch"), false, cx));
                 v.push(self.c_path("afterScript", tr!("Script after exit"), false, cx));
                 v.extend(self.c_companions());
+                v.extend(self.c_antimicrox());
             }
             if self.steam_line_only() {
                 v.push(Self::c_header("Steam"));
@@ -608,6 +610,7 @@ impl SettingsPanel {
         }
         if game && extras {
             v.extend(self.c_companions());
+            v.extend(self.c_antimicrox());
         }
         if extras {
             v.extend(self.c_presets(false));

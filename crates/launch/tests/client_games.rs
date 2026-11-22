@@ -223,6 +223,7 @@ fn programs_run_alongside_the_game_are_not_the_game() {
         path: "/t/Trainer.exe".into(),
         command: command("/umu", &["/t/Trainer.exe"]),
         delay: Duration::from_secs(60),
+        ..Default::default()
     }];
     launch(&r, plan);
     running(&r, &[(900, "wow.exe"), (950, "trainer.exe")]);

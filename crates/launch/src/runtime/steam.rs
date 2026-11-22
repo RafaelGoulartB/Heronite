@@ -148,7 +148,7 @@ pub(super) fn run_steam(
             let finished = matches!(outcome, SteamWaitOutcome::Finished);
             if let Some(c) = companions.as_mut() {
                 if finished || game_gone(shared, control) {
-                    c.stop(shared.cfg.kill_grace, log);
+                    c.stop(shared, log);
                 }
             }
             // The session ends here; the script after it is not playtime.

@@ -98,6 +98,7 @@ const GROUPS: &[Group] = &[
     g("beforeScript", L, &["beforeLaunchScriptPath"]),
     g("afterScript", L, &["afterLaunchScriptPath"]),
     g("companions", L, &[heronite_launch::companions::KEY]),
+    g("antimicrox", L, &[heronite_launch::antimicrox::KEY]),
     g("targetExe", L, &["targetExe"]),
     g("verboseLogs", L, &["verboseLogs"]),
     t("steam-runtime", L, &["steamRuntime"]),

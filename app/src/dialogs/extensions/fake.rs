@@ -68,6 +68,7 @@ pub(super) const MADE_UP: &str = r#"{
       "description": "Doujin games and visual novels, found by the code in the folder name. Reads the public product page.",
       "fields": ["description", "releaseDate", "genres", "cover", "hero"],
       "applies": { "to": "pc", "asked": "fallback", "game_kind": { "name": "Visual novels", "signals": ["Visual Novel"] } },
+      "ids": { "example": "RJ01234567" },
       "hosts": ["www.doujin.example.org"],
       "images": ["img.doujin.example.org"],
       "files": {

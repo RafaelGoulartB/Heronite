@@ -175,7 +175,7 @@ fn wine_plan(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, client: Clie
 pub(crate) fn attach_companions(plan: &mut LaunchPlan, ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &GameSettings) {
     match plan.process().map(|p| p.prep.wine.clone()) {
         Some(Some(wine)) => {
-            let settings = GameSettings { companions: settings.companions.clone(), ..wine };
+            let settings = GameSettings { companions: settings.companions.clone(), antimicrox: settings.antimicrox.clone(), ..wine };
             crate::companions::attach(plan, ctx, probe, game, &settings);
         }
         Some(None) if matches!(plan, LaunchPlan::Native(_)) => crate::companions::attach(plan, ctx, probe, game, settings),
@@ -423,6 +423,18 @@ mod tests {
         let LaunchPlan::Wine { process, runtime, .. } = plan_of(&r, &wine, &game_settings(json!({}))) else { panic!() };
         assert_eq!(runtime, WineRuntime::Wine);
         assert!(process.wait_after_exit.is_none() && process.stop.commands.is_empty() && process.stop.kill_patterns.is_empty());
+    }
+
+    #[test]
+    fn the_games_antimicrox_profiles_still_come_with_it() {
+        let r = rig(set_up());
+        let own = game_settings(json!({"heroniteAntimicrox": ["/p/one.amgp"], "winePrefix": "/pfx/other"}));
+        let probe = r.probe().with_bin("antimicrox", "/usr/bin/antimicrox");
+        let plan = plan_of(&r, &probe, &own);
+        let process = plan.process().unwrap();
+        assert_eq!(process.companions.len(), 1, "{:?}", process.notes);
+        assert_eq!(process.companions[0].path, "/p/one.amgp");
+        assert!(process.companions[0].on_host);
     }
 
     #[test]

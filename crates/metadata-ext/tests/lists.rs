@@ -73,6 +73,7 @@ fn the_committed_list_matches_the_folders() {
         assert_eq!(entry.fields, m.provides, "{stale}");
         assert_eq!(entry.hosts, m.network.hosts.iter().map(|h| h.text()).collect::<Vec<_>>(), "{stale}");
         assert_eq!((entry.kind, entry.adult, &entry.name), (m.kind, m.adult, &m.name), "{stale}");
+        assert_eq!(entry.id_example, m.id_example, "{stale}");
         assert!(entry.manifest.url.starts_with("https://raw.githubusercontent.com/"), "{stale}");
     }
 }

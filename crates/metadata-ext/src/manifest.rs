@@ -101,6 +101,9 @@ pub struct Manifest {
     /// `[ids] pattern`: the code it finds in a game's title or file name,
     /// passed to its script as `game.ids.<id>`.
     pub id_pattern: Option<IdPattern>,
+    /// `[ids] example`: a code the pattern finds (checked), in upper case,
+    /// shown in the installer ("Recognises codes like RJ01234567").
+    pub id_example: Option<String>,
     pub network: Network,
     pub settings: Vec<SourceOption>,
     /// Keys left out and other things worth a line in the log.
@@ -344,7 +347,7 @@ impl Manifest {
 
         let provides = provides(&top, kind, &mut warnings)?;
         let (applies_to, asked, game_kind) = applies(&top, &mut warnings)?;
-        let id_pattern = id_pattern(&top, &mut warnings)?;
+        let (id_pattern, id_example) = id_pattern(&top, &mut warnings)?;
         let network = network(&top)?;
         let settings = settings(&table, &mut warnings)?;
         Ok(Self {
@@ -361,6 +364,7 @@ impl Manifest {
             asked,
             game_kind,
             id_pattern,
+            id_example,
             network,
             settings,
             warnings,
@@ -496,16 +500,25 @@ fn platform_ids(names: Vec<String>, warnings: &mut Vec<String>) -> Result<Vec<St
 }
 
 /// `[ids] pattern`, checked: a loose pattern would make guesses sure
-/// matches, so one that breaks a rule refuses the manifest.
-fn id_pattern(top: &Keys<'_>, warnings: &mut Vec<String>) -> Result<Option<IdPattern>, ExtensionError> {
-    let Some(table) = top.table("ids")? else { return Ok(None) };
-    let keys = Keys::new(table, "ids", &["pattern"]);
+/// matches, so one that breaks a rule refuses the manifest. Its `example`,
+/// when given, must be a code the pattern finds, else the manifest is
+/// refused too: the installer shows it as what the pattern recognises.
+fn id_pattern(top: &Keys<'_>, warnings: &mut Vec<String>) -> Result<(Option<IdPattern>, Option<String>), ExtensionError> {
+    let Some(table) = top.table("ids")? else { return Ok((None, None)) };
+    let keys = Keys::new(table, "ids", &["pattern", "example"]);
     warnings.extend(keys.unknown().into_iter().map(|k| format!("unknown key {k} left out")));
-    match keys.get("pattern") {
-        None => Ok(None),
-        Some(Value::String(text)) => IdPattern::parse(text).map(Some).map_err(err),
-        Some(_) => Err(err("ids.pattern must be text (one pattern)")),
-    }
+    let pattern = match keys.get("pattern") {
+        None => None,
+        Some(Value::String(text)) => Some(IdPattern::parse(text).map_err(err)?),
+        Some(_) => return Err(err("ids.pattern must be text (one pattern)")),
+    };
+    let example = match (keys.get("example"), &pattern) {
+        (None, _) => None,
+        (Some(Value::String(text)), Some(p)) => Some(p.check_example(text).map_err(err)?),
+        (Some(Value::String(_)), None) => return Err(err("ids.example needs ids.pattern, the pattern that finds it")),
+        (Some(_), _) => return Err(err("ids.example must be text (one code)")),
+    };
+    Ok((pattern, example))
 }
 
 fn network(top: &Keys<'_>) -> Result<Network, ExtensionError> {
