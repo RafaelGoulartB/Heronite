@@ -99,6 +99,10 @@ pub struct IndexEntry {
     pub applies_to: AppliesTo,
     pub asked: Asked,
     pub game_kind: Option<GameKind>,
+    /// `ids.example`: a code its `[ids] pattern` finds, in upper case, for
+    /// the gallery's "Recognises codes like …". The package checks it
+    /// against the pattern when it is installed.
+    pub id_example: Option<String>,
     /// As a manifest writes them (`*.example.org`, `http://old.example.org`).
     pub hosts: Vec<String>,
     /// Further hosts its pictures come from.
@@ -269,6 +273,7 @@ fn entry(value: &Value, i: usize) -> Result<IndexEntry, IndexError> {
         applies_to,
         asked,
         game_kind,
+        id_example: id_example_of(&e)?,
         hosts: e.hosts("hosts")?,
         images: e.hosts("images")?,
         adult: map.get("adult").and_then(Value::as_bool).unwrap_or(false),
@@ -278,6 +283,23 @@ fn entry(value: &Value, i: usize) -> Result<IndexEntry, IndexError> {
         script: e.file(SCRIPT, MAX_SCRIPT)?,
         id,
     })
+}
+
+/// `ids.example` of an entry, when it has one: a code of 64 bytes at most.
+fn id_example_of(e: &Entry<'_>) -> Result<Option<String>, IndexError> {
+    let Some(ids) = e.map.get("ids") else { return Ok(None) };
+    let ids = ids.as_object().ok_or_else(|| e.err("ids must be an object"))?;
+    match ids.get("example") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) => {
+            let s = s.trim();
+            if s.is_empty() || s.len() > 64 || s.chars().any(char::is_control) {
+                return Err(e.err("ids.example must be a code of 1 to 64 bytes"));
+            }
+            Ok(Some(s.to_ascii_uppercase()))
+        }
+        Some(_) => Err(e.err("ids.example must be text")),
+    }
 }
 
 /// Reads and checks a list.

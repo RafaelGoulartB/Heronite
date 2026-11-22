@@ -70,6 +70,7 @@
   "Reading the lists…": "Listen werden gelesen…",
   "Reading the package…": "Paket wird gelesen…",
   "Reads from your games: title, platform, year, file or install folder name (never a path), store and ids": "Liest aus deinen Spielen: Titel, Plattform, Jahr, Datei- oder Installationsordnername (nie ein Pfad), Store und IDs",
+  "Recognises codes like {example}": "Erkennt Codes wie {example}",
   "Remove {name}? Its files are deleted and it is no longer asked. What you set for it stays, in case you install it again.": "{name} entfernen? Die Dateien werden gelöscht, und die Quelle wird nicht mehr abgefragt. Was du dafür festgelegt hast, bleibt erhalten, falls du sie erneut installierst.",
   "SHA-256 {sha}": "SHA-256 {sha}",
   "Search sources": "Quellen suchen",

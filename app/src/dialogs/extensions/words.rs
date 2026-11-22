@@ -54,6 +54,13 @@ pub fn detail(e: &ExtensionError) -> Option<String> {
     }
 }
 
+/// What its `[ids] pattern` finds, by the example its manifest gives
+/// (checked at install), never the pattern itself.
+pub fn recognises(example: &str) -> String {
+    let example = example.to_owned();
+    tr!("Recognises codes like {example}", example)
+}
+
 /// Why a list could not be read or added, in a sentence.
 pub fn list_error(e: &ListError) -> String {
     match e {

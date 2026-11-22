@@ -87,6 +87,30 @@ impl IdPattern {
         self.regex.as_str()
     }
 
+    /// Checks `example` (`[ids] example`, a code the pattern is meant for):
+    /// the pattern must find that code in it, the whole of it, as it would
+    /// in a title. Gives the code as it is passed (upper case); the error
+    /// says what was found instead.
+    pub fn check_example(&self, example: &str) -> Result<String, String> {
+        let example = example.trim();
+        let pattern = self.as_str().chars().take(60).collect::<String>();
+        if example.is_empty() {
+            return Err("ids.example is empty".into());
+        }
+        if example.len() > MAX_MATCH_LEN {
+            return Err(format!("ids.example is longer than {MAX_MATCH_LEN} bytes"));
+        }
+        let wanted = example.to_ascii_uppercase();
+        match self.codes([example]).as_slice() {
+            [code] if *code == wanted => Ok(wanted),
+            [] => Err(format!("ids.pattern \"{pattern}\" does not find ids.example \"{example}\": fix the pattern or the example")),
+            found => Err(format!(
+                "ids.pattern \"{pattern}\" finds {} in ids.example \"{example}\", not the whole example: fix the pattern or the example",
+                found.join(", ")
+            )),
+        }
+    }
+
     /// The one code found in `texts` (a game's title and file name), in
     /// upper case. Two different codes are no sure id: none is returned.
     pub fn find<'a>(&self, texts: impl IntoIterator<Item = &'a str>) -> Option<String> {
@@ -242,5 +266,20 @@ mod tests {
         assert_eq!(p.find(["RJ123456Z"]), None, "a letter still joins");
         let serial = IdPattern::parse(r"\bSLUS_[0-9]{3}\.[0-9]{2}\b").unwrap();
         assert_eq!(serial.find(["SLUS_012.34"]), Some("SLUS_012.34".into()), "a pattern with _ still matches it");
+    }
+
+    #[test]
+    fn an_example_must_be_found_whole() {
+        let p = IdPattern::parse(r"\b(?:RJ|BJ|VJ)[0-9]{6,8}\b").unwrap();
+        assert_eq!(p.check_example("RJ01234567"), Ok("RJ01234567".into()));
+        assert_eq!(p.check_example(" rj123456 "), Ok("RJ123456".into()), "any case, passed in upper case");
+        assert!(p.check_example("SK123456").unwrap_err().contains("does not find ids.example \"SK123456\""));
+        assert!(p.check_example("RJ123").unwrap_err().contains("does not find"), "too short for the pattern");
+        assert!(p.check_example("RJ123456 VJ654321").unwrap_err().contains("not the whole example"), "two codes");
+        assert!(p.check_example("My Game RJ123456").unwrap_err().contains("finds RJ123456"), "more than the code");
+        assert!(p.check_example("").unwrap_err().contains("empty"));
+        assert!(p.check_example(&"RJ".repeat(40)).unwrap_err().contains("longer than"));
+        let serial = IdPattern::parse(r"\bSLUS_[0-9]{3}\.[0-9]{2}\b").unwrap();
+        assert_eq!(serial.check_example("slus_012.34"), Ok("SLUS_012.34".into()));
     }
 }

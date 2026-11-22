@@ -234,6 +234,8 @@ impl ExtensionsDialog {
                 .child(div().text_size(px(12.5)).line_height(px(17.)).text_color(theme::danger_text()).child(words::error(err)))
                 .children(words::detail(err).map(|d| div().text_size(px(11.5)).text_color(theme::text_dim()).child(d)))
         });
+        let recognises =
+            e.id_example.as_deref().map(|code| div().text_size(px(12.5)).text_color(theme::text_muted()).child(words::recognises(code)));
         let content = div()
             .id("ext-panel")
             .flex()
@@ -267,6 +269,7 @@ impl ExtensionsDialog {
             )
             .child(pills)
             .child(div().text_size(px(13.)).line_height(px(19.)).text_color(theme::text_primary()).child(e.description.clone()))
+            .children(recognises)
             .child(permissions::block(&Asks::of_entry(e)))
             .child(div().flex().flex_col().gap(px(6.)).child(field_label(tr!("Fills"))).child(fills));
         // The button stays in view however long the panel is.
