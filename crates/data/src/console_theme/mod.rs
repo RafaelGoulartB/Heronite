@@ -31,7 +31,7 @@ use crate::paths::AppPaths;
 /// `format` is refused on import (it may rely on things this app lacks).
 pub const FORMAT: u32 = 1;
 /// At most this many tabs (LB / RB).
-pub const MAX_TABS: usize = 4;
+pub const MAX_TABS: usize = 6;
 /// Interface scale, percent.
 pub const SCALE_RANGE: (u16, u16) = (80, 140);
 pub const DIM_MAX: u8 = 90;
@@ -208,7 +208,9 @@ str_enum! {
     pub enum Hints { Always = "always", Auto = "auto", Off = "off" } default Always
 }
 str_enum! {
-    pub enum GamePage { Classic = "classic", Hero = "hero", Tabs = "tabs", Sheet = "sheet" } default Classic
+    /// `showcase`: the game's page full screen, its sections on glass (the
+    /// sections of Spotlight's page, `layouts.spotlightSections`).
+    pub enum GamePage { Classic = "classic", Hero = "hero", Tabs = "tabs", Sheet = "sheet", Showcase = "showcase" } default Classic
 }
 str_enum! {
     /// `rail`: a column of icons always on screen that opens into the sidebar.
@@ -227,6 +229,15 @@ str_enum! {
 }
 str_enum! {
     pub enum WheelItems { Name = "name", Logo = "logo" } default Name
+}
+str_enum! {
+    /// What the screen shown while a game starts holds: its art with the
+    /// logo, the logo alone on black, or nothing (the console stays as it is).
+    pub enum LaunchScreen { ArtLogo = "art-logo", Logo = "logo", Off = "off" } default ArtLogo
+}
+str_enum! {
+    /// How much the launch screen darkens the game's art.
+    pub enum LaunchShade { None = "none", Soft = "soft", Dark = "dark" } default Soft
 }
 str_enum! {
     pub enum AutoConsole { Off = "off", Ask = "ask", On = "on" } default Off
@@ -484,12 +495,22 @@ impl Default for ControlOptions {
 }
 
 /// The controller's options, the same everywhere (console mode, the
-/// overlay, Settings): how its buttons are drawn and which one confirms.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// overlay, Settings): how its buttons are drawn, which one confirms and
+/// whether it drives the desktop too.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ControllerPrefs {
     pub glyphs: Glyphs,
     pub confirm: ConfirmButton,
+    /// The controller moves around the desktop (outside console mode) as
+    /// the keyboard and the mouse do.
+    pub desktop: bool,
+}
+
+impl Default for ControllerPrefs {
+    fn default() -> Self {
+        Self { glyphs: Glyphs::Auto, confirm: ConfirmButton::Auto, desktop: true }
+    }
 }
 
 impl ControllerPrefs {
@@ -504,7 +525,7 @@ impl ControllerPrefs {
             _ => Glyphs::Auto,
         };
         let east = controls.and_then(|c| c.get("swapAb")).and_then(Value::as_bool).unwrap_or(false);
-        Self { glyphs, confirm: if east { ConfirmButton::East } else { ConfirmButton::Auto } }
+        Self { glyphs, confirm: if east { ConfirmButton::East } else { ConfirmButton::Auto }, ..Self::default() }
     }
 }
 
@@ -564,6 +585,48 @@ impl Default for DashboardWidgets {
     }
 }
 
+/// Spotlight: the sections of the game's page under the buttons, reached
+/// going down (each one is left out when the game has nothing for it).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct SpotlightSections {
+    /// The store's trailers and screenshots.
+    pub media: bool,
+    /// The screenshots taken while playing.
+    pub screenshots: bool,
+    /// The game's description.
+    pub about: bool,
+    pub achievements: bool,
+    /// Developer, publisher, size, where it is installed, score and links.
+    pub details: bool,
+    /// More like this: the same series, developer or similar games.
+    pub related: bool,
+}
+
+impl Default for SpotlightSections {
+    fn default() -> Self {
+        Self { media: true, screenshots: true, about: true, achievements: true, details: true, related: true }
+    }
+}
+
+/// The screen shown while a game starts and the card shown when it ends.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LaunchOptions {
+    pub screen: LaunchScreen,
+    /// The art drifts slowly closer while the game starts.
+    pub motion: bool,
+    pub shade: LaunchShade,
+    /// "Session ended": the time of the session and the total, when a game closes.
+    pub session_card: bool,
+}
+
+impl Default for LaunchOptions {
+    fn default() -> Self {
+        Self { screen: LaunchScreen::ArtLogo, motion: true, shade: LaunchShade::Soft, session_card: true }
+    }
+}
+
 /// Options of one layout each.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -575,10 +638,14 @@ pub struct LayoutOptions {
     /// Spotlight: playtime, time to beat and journal cards.
     pub spotlight_cards: bool,
     pub spotlight_actions: SpotActions,
+    pub spotlight_sections: SpotlightSections,
     pub carousel_reflect: bool,
     /// Xbox: the shelves under the row of tiles.
     pub xbox_groups: bool,
     pub dashboard: DashboardWidgets,
+    /// The Showcase game page sets its sections on frosted glass panels;
+    /// off, they sit over the darkened art between thin rules (Cinema).
+    pub showcase_glass: bool,
 }
 
 impl Default for LayoutOptions {
@@ -589,9 +656,11 @@ impl Default for LayoutOptions {
             wheel_items: WheelItems::Name,
             spotlight_cards: true,
             spotlight_actions: SpotActions::Full,
+            spotlight_sections: SpotlightSections::default(),
             carousel_reflect: false,
             xbox_groups: true,
             dashboard: DashboardWidgets::default(),
+            showcase_glass: true,
         }
     }
 }
@@ -626,6 +695,7 @@ pub struct ConsoleTheme {
     pub game_page: GamePage,
     pub menu: MenuOptions,
     pub layouts: LayoutOptions,
+    pub launch: LaunchOptions,
     /// Keys this app does not know, kept as they are.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -774,7 +844,7 @@ impl Default for ConsolePrefs {
             last_tab: 0,
             kept_filters: KeptFilters::default(),
             controller: ControllerPrefs::default(),
-            extra: Map::new(),
+            extra: Map::from_iter([(MIGRATED.to_string(), Value::from(MIGRATIONS.to_vec()))]),
         }
     }
 }
@@ -783,14 +853,27 @@ impl Default for ConsolePrefs {
 /// Filters panel's) Show (index in All / Installed / Not installed), Sort
 /// (Title / Last played / Playtime) and Favourites only; Status and Category
 /// are left out, as they point into statuses and categories that change.
-/// `carousel`: the Carousel's pill (All / Installed / Favourites / Playing).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// `carousel`: the Carousel's pill, by what it shows, whatever order the pills
+/// are drawn in: 0 All, 1 Installed (the default), 2 Favourites, 3 Playing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct KeptFilters {
     pub show: usize,
+    /// Title, Last played (the default: what was played last first) or Playtime.
     pub sort: usize,
     pub favourites: bool,
     pub carousel: usize,
+}
+
+/// [`KeptFilters::sort`]: by when it was last played.
+pub const SORT_LAST_PLAYED: usize = 1;
+/// [`KeptFilters::carousel`]: the installed games.
+pub const CAROUSEL_INSTALLED: usize = 1;
+
+impl Default for KeptFilters {
+    fn default() -> Self {
+        Self { show: 0, sort: SORT_LAST_PLAYED, favourites: false, carousel: CAROUSEL_INSTALLED }
+    }
 }
 
 impl ConsolePrefs {
@@ -804,6 +887,11 @@ impl ConsolePrefs {
         match lenient::<ConsolePrefs>(value) {
             Some(mut p) => {
                 p.theme = p.theme.normalized();
+                upgrade_pulse(&mut p);
+                upgrade_minimal(&mut p);
+                upgrade_cinema(&mut p);
+                upgrade_arcade(&mut p);
+                upgrade_living_room(&mut p);
                 if let Some(old) = old {
                     p.controller = old;
                 }
@@ -818,6 +906,118 @@ impl ConsolePrefs {
 
     pub fn save(&self, paths: &AppPaths) -> Result<()> {
         json_store::write_indented(&paths.console_prefs(), self, b"  ")
+    }
+}
+
+/// Pulse in use with tabs it shipped with before (Games and Library, or the
+/// four Spotlight filters) takes the home it has now: Installed first, All
+/// games, Favourites and the whole library in a grid, played last first; the
+/// game's page below the buttons instead of the cards, Options opening a
+/// sheet. Its other options (colours, covers...) stay as the user left them.
+fn upgrade_pulse(p: &mut ConsolePrefs) {
+    let first = [TabSpec::new("Games", Layout::Spotlight, "all"), TabSpec::new("Library", Layout::Grid, "all")];
+    let filters = [
+        TabSpec::new("All games", Layout::Spotlight, "all"),
+        TabSpec::new("Installed", Layout::Spotlight, "installed"),
+        TabSpec::new("Favourites", Layout::Spotlight, "favourites"),
+        TabSpec::new("Not played yet", Layout::Spotlight, "status:not-played"),
+    ];
+    let theme = &mut p.theme;
+    if theme.id != "pulse" || (theme.tabs != first && theme.tabs != filters) {
+        return;
+    }
+    let now = presets::pulse();
+    theme.tabs = now.tabs;
+    theme.interface.tab_bar = now.interface.tab_bar;
+    theme.layouts.spotlight_cards = now.layouts.spotlight_cards;
+    theme.game_page = now.game_page;
+    if theme.description == "A console home: icons on top, the game's art and logo, a wide Play button and cards." {
+        theme.description = now.description;
+    }
+    p.kept_filters.sort = SORT_LAST_PLAYED;
+    p.last_tab = 0;
+}
+
+/// The built-in Classic (no longer listed) or an earlier Cinema, unchanged
+/// (but for `nav.aButton`, the user's own), takes Cinema as it is now: the
+/// two became one, then took its own look. A theme the user changed
+/// keeps its values (its layouts still load).
+fn upgrade_cinema(p: &mut ConsolePrefs) {
+    let earlier: Vec<ConsoleTheme> = match p.theme.id.as_str() {
+        "classic" => vec![presets::classic()],
+        "cinema" => vec![presets::first_cinema(), presets::second_cinema(), presets::five_tab_cinema()],
+        _ => return,
+    };
+    // The five-tab Cinema once set A to play: that is the user's to choose
+    // (`nav.aButton`), so it is compared without it and goes back to the default.
+    let mut seen = p.theme.clone();
+    seen.nav.a_button = AButton::default();
+    if earlier.into_iter().any(|t| seen == t.normalized()) {
+        p.theme = presets::cinema();
+        p.based_on = p.theme.id.clone();
+    }
+}
+
+/// The once-only migrations already done (`migrated` in `console.json`): a
+/// value they change is one the user can pick again afterwards, and it must
+/// then stay. Marked whatever theme is in use, so switching to the theme
+/// later never rewrites a choice either.
+const MIGRATED: &str = "migrated";
+/// Every once-only migration: prefs that start from the defaults (no file,
+/// or one that does not read) are already on today's presets.
+const MIGRATIONS: [&str; 3] = ["minimal-showcase", "arcade-covers", "living-room-badges"];
+
+/// Whether `name` runs now (it is then marked as done).
+fn first_time(p: &mut ConsolePrefs, name: &str) -> bool {
+    let done = p.extra.entry(MIGRATED).or_insert_with(|| Value::Array(Vec::new()));
+    let Value::Array(list) = done else {
+        *done = Value::Array(vec![Value::from(name)]);
+        return true;
+    };
+    if list.iter().any(|v| v.as_str() == Some(name)) {
+        return false;
+    }
+    list.push(Value::from(name));
+    true
+}
+
+/// Minimal as it shipped (its game page the Sheet, floating over the
+/// carousel) opens the game's page full screen now, as the preset does.
+/// A Minimal whose game page was changed to another one keeps it.
+fn upgrade_minimal(p: &mut ConsolePrefs) {
+    if !first_time(p, "minimal-showcase") {
+        return;
+    }
+    if p.theme.id == "minimal" && p.theme.game_page == GamePage::Sheet {
+        p.theme.game_page = presets::minimal().game_page;
+    }
+}
+
+/// Arcade as it shipped drew the wheel's games as logos, which come in
+/// every shape and overlapped; the preset now shows each one's cover beside
+/// its name. Only the built-in Arcade is moved (a theme of the user's keeps
+/// what it chose).
+fn upgrade_arcade(p: &mut ConsolePrefs) {
+    if !first_time(p, "arcade-covers") {
+        return;
+    }
+    if p.theme.id == "arcade" && p.theme.layouts.wheel_items == WheelItems::Logo {
+        p.theme.layouts.wheel_items = presets::arcade().layouts.wheel_items;
+        if p.theme.description == "A wheel of logos over the art, in neon colours, like an arcade cabinet." {
+            p.theme.description = presets::arcade().description;
+        }
+    }
+}
+
+/// Living room as it shipped wore every badge ("New" on recently added
+/// games, the favourite heart); the preset now keeps only "Playing". Only the
+/// built-in theme moves; a theme of the user's keeps its badges.
+fn upgrade_living_room(p: &mut ConsolePrefs) {
+    if !first_time(p, "living-room-badges") {
+        return;
+    }
+    if p.theme.id == "living-room" && p.theme.tiles.badges == Badges::All {
+        p.theme.tiles.badges = presets::living_room().tiles.badges;
     }
 }
 

@@ -111,6 +111,9 @@ impl SettingsPanel {
         if game && extras && self.shows("companions") {
             col = col.child(self.companions_section(cx));
         }
+        if game && extras && self.shows("antimicrox") {
+            col = col.child(self.antimicrox_section(cx));
+        }
         col = col.child(self.pair_table(ENV, cx));
 
         let mut advanced = rows();
@@ -146,7 +149,7 @@ impl SettingsPanel {
         let mut col = column();
         if heronite_launch::steam_extras::supported() {
             // Here they are all this group has: never folded.
-            col = col.child(self.scripts_card(false, cx)).child(self.companions_section(cx)).child(
+            col = col.child(self.scripts_card(false, cx)).child(self.companions_section(cx)).child(self.antimicrox_section(cx)).child(
                 help(tr!("Steam starts the game itself, as from its library. Heronite runs these when you play from Heronite.")).px(px(6.)),
             );
         }

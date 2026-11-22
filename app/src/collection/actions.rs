@@ -184,6 +184,8 @@ impl CollectionView {
     }
 
     pub(super) fn on_launch_event(&mut self, ev: LaunchEvent, cx: &mut Context<Self>) {
+        // Console mode's launch screen and "Session ended" card.
+        self.console_launch_event(&ev, cx);
         match ev {
             LaunchEvent::Launching { app_name } => {
                 self.preparing.insert(app_name.clone(), super::launch_progress::LaunchStep::starting());
@@ -258,8 +260,18 @@ impl CollectionView {
         self.acting_copy(key).map_or_else(|| key.clone(), |g| g.key.clone().into())
     }
 
-    /// Card play button / focus primary button.
+    /// Card play button / focus primary button. A game with actions that
+    /// count as playing asks how to play first ([`Self::ask_how_to_play`]).
     pub(super) fn primary_action(&mut self, key: &str, cx: &mut Context<Self>) {
+        if self.ask_how_to_play(key, cx) {
+            return;
+        }
+        self.play_now(key, cx);
+    }
+
+    /// [`Self::primary_action`] without asking how to play: the game's own
+    /// Play (or Stop, or Install).
+    pub(super) fn play_now(&mut self, key: &str, cx: &mut Context<Self>) {
         let Some(lib) = self.lib.clone() else { return };
         let Some(game) = self.copy_to_play(&lib, key).cloned() else { return };
         self.primary_action_on(&game, cx);
@@ -275,6 +287,10 @@ impl CollectionView {
             return self.cancel_launch(&game.app_name, cx);
         }
         if self.playing.contains_key(&game.app_name) {
+            // Console mode: Play on a game that runs is its Now Playing (Stop is there).
+            if crate::console::active() && self.playing.get(&game.app_name) == Some(&true) && self.show_now_playing(game) {
+                return;
+            }
             if !self.runtime.stop(&game.app_name) {
                 self.runtime.force_clear(&game.app_name);
             }

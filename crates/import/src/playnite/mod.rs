@@ -1,13 +1,20 @@
 //! Playnite (Windows): its library is `games.db` in its library folder, a
 //! LiteDB 4 file ([`crate::litedb`]), its emulators `emulators.db` beside it,
-//! and the games' covers and backgrounds are under `files`. A game starts
-//! with Playnite's link, `playnite://playnite/start/<id>`: the shell passes
-//! it on and returns, and Playnite (opened if it is closed) starts the game
-//! with the settings it has there. Play time is in seconds.
+//! and the games' covers and backgrounds are under `files`. Play time is in
+//! seconds.
 //!
-//! Its installed games come in, but the hidden ones and the ones of the
-//! stores this app brings in itself ([`LEFT_TO_STORES`]: Steam, and Epic, GOG,
-//! Amazon, Xbox, Battle.net, EA and Ubisoft where they are on).
+//! Its games are brought over as this app's own ([`crate::transfer`]): they
+//! start here the way Playnite starts them ([`start`]: a program or one of
+//! its emulators), with their details and the user's data ([`library`]). A
+//! game with no such start (one of an add-on, a link or a script) starts with
+//! Playnite's link, `playnite://playnite/start/<id>`: the shell passes it on
+//! and returns, and Playnite (opened if it is closed) starts the game with
+//! the settings it has there.
+//!
+//! Its installed games come in, but the ones of the stores this app brings
+//! in itself ([`LEFT_TO_STORES`]: Steam, and Epic, GOG, Amazon, Xbox,
+//! Battle.net, EA and Ubisoft where they are on). A hidden game comes in
+//! hidden when it starts here, else not at all.
 //!
 //! Where it is: the program the `playnite://` link opens (the last Playnite
 //! started, portable or not), else the usual install folder. A portable copy
@@ -15,6 +22,11 @@
 //! uninstaller) in `%APPDATA%\Playnite`; its settings may move the library
 //! (`DatabasePath`). Playnite holds its library open while it runs, and
 //! nothing can read it then ([`Found::in_use`]).
+
+mod library;
+mod start;
+#[cfg(test)]
+mod transfer_tests;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -25,6 +37,7 @@ use heronite_platform::Feature;
 
 use crate::litedb::{self, Bson, Document};
 use crate::{Found, Game};
+use start::{Emulator, Resolver, Vars};
 
 /// Playnite's library plugins of the stores this app has its own page for,
 /// with the part of the app that page is (Steam's is always there).
@@ -143,22 +156,23 @@ pub fn read(install: &Install) -> Result<Found> {
         Err(e) => return Err(e).with_context(|| format!("reading {}", file.display())),
     };
     let docs = litedb::documents(&bytes).with_context(|| format!("reading {}", file.display()))?;
-    let emulators = emulators(install);
-    found.games = docs.iter().filter_map(|d| game(d, install, &emulators)).collect();
+    let resolver = Resolver::new(install, emulators(install));
+    let names = library::Names::read(&install.library);
+    found.games = docs.iter().filter_map(|d| game(d, install, &resolver, &names)).collect();
     found.games.sort_by_cached_key(|g| g.title.to_lowercase());
     Ok(found)
 }
 
-/// The folders of Playnite's emulators, by their id. None when they cannot
-/// be read: the games then are followed by their own folder.
-fn emulators(install: &Install) -> HashMap<String, PathBuf> {
+/// Playnite's emulators, by their id. None when they cannot be read: their
+/// games then start through Playnite, followed by their own folder.
+fn emulators(install: &Install) -> HashMap<String, Emulator> {
     let file = install.library.join("emulators.db");
     let docs = std::fs::read(&file).map_err(anyhow::Error::from).and_then(|b| litedb::documents(&b));
     let docs = docs.unwrap_or_else(|e| {
         log::debug!("Reading {}: {e:#}", file.display());
         Vec::new()
     });
-    docs.iter().filter_map(|d| Some((d.guid("_id")?, absolute(&expand(d.str("InstallDir")?, &install.program, None))?))).collect()
+    docs.iter().filter_map(|d| Some((d.guid("_id")?, Emulator::read(d, &install.program)))).collect()
 }
 
 /// Playnite's variables in a path: `{PlayniteDir}`, and `{InstallDir}` (the
@@ -199,14 +213,14 @@ fn key(path: &Path) -> String {
 /// Where the program of the game's first play action runs from, when it is
 /// not the game's folder: an emulator's folder, or the folder of a program
 /// elsewhere. The session follows the programs running from there.
-fn runs_from(d: &Document, folder: Option<&Path>, install: &Install, emulators: &HashMap<String, PathBuf>) -> Option<String> {
+fn runs_from(d: &Document, folder: Option<&Path>, install: &Install, emulators: &HashMap<String, Emulator>) -> Option<String> {
     let Some(Bson::Array(actions)) = d.get("GameActions") else { return None };
     let action = actions.iter().find_map(|a| match a {
         Bson::Document(a) if a.bool("IsPlayAction") == Some(true) => Some(a),
         _ => None,
     })?;
     let dir = match action.str("Type")? {
-        "Emulator" => emulators.get(&action.guid("EmulatorId")?)?.clone(),
+        "Emulator" => emulators.get(&action.guid("EmulatorId")?)?.dir.clone()?,
         "File" => absolute(&expand(action.str("Path")?, &install.program, folder))?.parent()?.to_path_buf(),
         _ => return None,
     };
@@ -216,18 +230,27 @@ fn runs_from(d: &Document, folder: Option<&Path>, install: &Install, emulators: 
     Some(dir.to_string_lossy().into_owned())
 }
 
-/// One game of the library, unless it is not installed, hidden, has no name
-/// or is a game of a store this app brings in itself.
-fn game(d: &Document, install: &Install, emulators: &HashMap<String, PathBuf>) -> Option<Game> {
+/// One game of the library, unless it is not installed, has no name, is a
+/// game of a store this app brings in itself, or is hidden and only Playnite
+/// can start it.
+fn game(d: &Document, install: &Install, resolver: &Resolver, names: &library::Names) -> Option<Game> {
     let id = d.guid("_id")?;
     let title = d.str("Name").map(str::trim).filter(|t| !t.is_empty())?.to_string();
-    if !d.bool("IsInstalled").unwrap_or(false) || d.bool("Hidden").unwrap_or(false) {
+    if !d.bool("IsInstalled").unwrap_or(false) {
         return None;
     }
     if d.guid("PluginId").is_some_and(|p| left_to_stores(&p)) {
         return None;
     }
     let folder = d.str("InstallDirectory").and_then(|f| absolute(&expand(f, &install.program, None)));
+    let vars = Vars::of(d, install, folder.as_deref(), names.platform(d).as_deref());
+    let transfer = resolver.start(d, &vars).map(|(play, start)| {
+        let actions = start::other_actions(d, play, &vars);
+        Box::new(library::transfer(d, install, names, start, actions))
+    });
+    if transfer.is_none() && d.bool("Hidden").unwrap_or(false) {
+        return None;
+    }
     let seconds = d.int("Playtime").unwrap_or(0).max(0);
     let last_played = d
         .date("LastActivity")
@@ -237,7 +260,7 @@ fn game(d: &Document, install: &Install, emulators: &HashMap<String, PathBuf>) -
     let media = |key: &str| d.str(key).and_then(|v| media(v, &install.library));
     Some(Game {
         command: format!("explorer.exe playnite://playnite/start/{id}"),
-        runs_from: runs_from(d, folder.as_deref(), install, emulators),
+        runs_from: runs_from(d, folder.as_deref(), install, &resolver.emulators),
         folder: folder.map(|f| f.to_string_lossy().into_owned()),
         title,
         windows: true,
@@ -246,6 +269,7 @@ fn game(d: &Document, install: &Install, emulators: &HashMap<String, PathBuf>) -
         cover: media("CoverImage"),
         banner: media("BackgroundImage"),
         prefix: None,
+        transfer,
         id,
     })
 }
@@ -381,7 +405,7 @@ mod tests {
         assert!(found.in_use && found.games.is_empty());
         assert_eq!(found.count(), 0);
         assert!(
-            crate::sync(&heronite_data::DataPaths::at(d.path().join("data")), &found, &Default::default()).is_err(),
+            crate::sync(&heronite_data::DataPaths::at(d.path().join("data")), d.path(), &found, &Default::default()).is_err(),
             "nothing is marked as not installed"
         );
         drop(held);

@@ -89,8 +89,9 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      Moonlight; only entries marked as Heronite's  → data, platform
  └─ heronite-update     app updates: release check, signed download,
                         AppImage swap / package install, relaunch   → data
-epic-login (bin)        WebKit window for the Epic, GOG (`--store gog`) and Amazon
-                        (`--store amazon --url ..`) logins (keeps a web engine out of the app)
+epic-login (bin)        WebKit window for the Epic, GOG (`--store gog`), Amazon
+                        (`--store amazon --url ..`), Xbox and EA (`--store ea`) logins
+                        (keeps a web engine out of the app)
 ```
 
 Library crates never depend on GPUI. Their functions are blocking; the app
@@ -222,7 +223,10 @@ text size) and applies it.
   is kept in `local_library/gpu-preferences.json`; the registry is behind a trait), and
   `gpu::detect` asks DXGI (`heronite_platform::gpu_adapters`) which card each choice gets. `actions` turns a game's own actions (`heronite_data::game_actions`,
   `local_library/actions.json`) into something to open, spawn or launch as
-  the game's session. `galaxy` stands in for GOG Galaxy's communication service, which the GOG
+  the game's session. A game listed in that file's `askOnPlay` (the Actions tab's "Ask how to play", turned on
+  for Playnite games brought over with more than one play action) asks on Play which way to start it, Play or an
+  action that counts as playing (`dialogs/play_choice.rs`, `HERONITE_DEBUG_DIALOG=play-choice:<key>`); the menu
+  next to Play and a launch from a shortcut never ask. `galaxy` stands in for GOG Galaxy's communication service, which the GOG
   Galaxy SDK in a game talks to on `127.0.0.1:9977` for achievements, stats and leaderboards: a GOG plan of a
   Windows build sets `PrepSpec::galaxy` (not in a sandbox without the network), and the runtime starts Comet
   (`store_tools::COMET`, downloaded into `tools/bin` the first time, never taken from `PATH`) right before the
@@ -311,8 +315,19 @@ text size) and applies it.
   `games.db` and `emulators.db` with `litedb`, a reader of LiteDB 4 files;
   while Playnite runs it holds them open (`Found::in_use`) and nothing is
   synced. Its games of the stores this app brings in itself are left out.
+  Its games that can start without it (a program, or one of its emulators:
+  a custom profile, or a built-in one through the definitions in its
+  `Emulation` folder, `playnite::start`) are brought over as this app's own
+  (`transfer`): an `executable` sideload game (its arguments in its
+  `GamesConfig`, its working folder in `heroniteWorkingDir`) or an
+  `emulator` one (the emulator's command line in `launcherArgs`, its ROMs),
+  with its status, notes, favourite and hidden flags, score, categories,
+  other actions, the day it was added and its details (the `playnite`
+  metadata candidate, links and critic score included). From then on the
+  game is the user's: later imports only raise its play time; its folder
+  stays Playnite's (`launchers::managed_paths`), never deleted by an uninstall.
   `collection` writes the installed games of Lutris,
-  Bottles, Faugus and Playnite as sideload entries whose `launchKind` is
+  Bottles, Faugus and Playnite (the ones only it can start) as sideload entries whose `launchKind` is
   `launcher` (`heronite_data::launchers`): `launcherArgs` holds the command
   that asks the launcher to start them, the launcher's play time moves up
   when it is ahead, and a game gone from the launcher stays as not
@@ -390,6 +405,25 @@ text size) and applies it.
   (a client already open takes the same command as a request) and
   `Procs::prefix_programs` lists every program of the PC, the game being the
   ones running from its folder.
+  The EA account is optional (`ea_account`, as Lutris's and Playnite's EA
+  libraries do it): `heronite-epic-login --store ea` opens EA's own page for
+  a token of its web client (`connect/auth`, `ORIGIN_JS_SDK`) and prints the
+  window's `accounts.ea.com` cookies, never a password; `services::clients`
+  keeps them sealed with DPAPI on Windows (`local_library/ea-account.bin`)
+  and in the desktop's keyring elsewhere, and `clients.json` only says that
+  it is signed in (`accounts`). A read (after an EA app sync, at most every
+  six hours, after the sign-in and when asked; only with the EA app set up)
+  turns them into a token (`prompt=none`, renewed cookies are kept), asks
+  EA's GraphQL service for the owned base PC games (`ownedGameProducts`,
+  paged) and their content id and title (`legacyOffers`, `gameProducts`),
+  and `owned::sync` adds the ones the Collection has no EA entry for (by app
+  name, by a content id of an installed copy's link, by title) as not
+  installed, under the installed copy's app name (`ea_<content id>`), so an
+  install makes that same entry installed. It never takes an entry out or
+  changes one: a read that fails (`ea_account::Error`: signed out, a service
+  that changed, the network) leaves the Collection as the EA app's files
+  make it. A game the user removed stays out of it
+  (`clients.json`'s `removedOwned`, which the client's sync does not prune).
 
 - **heronite-steam:** Steam games keep launching through Steam
   (`steam://rungameid`), with Steam's Proton and prefix. Their game settings
@@ -948,9 +982,9 @@ text size) and applies it.
   folders; `tests/lists.rs` fails when it is out of date. The app's
   screens are `app/src/dialogs/extensions/` (gallery and installer) and
   Settings → Metadata's `extension.rs` / `more.rs`. `examples/run.rs` runs an extension against a
-  title. The example extensions are in `extensions/metadata/` (Wikipedia, VNDB),
-  each tested against recorded answers (`tests/examples.rs`,
-  `tests/vndb.rs`).
+  title. The example extensions are in `extensions/metadata/` (Wikipedia, VNDB,
+  DLsite), each tested against recorded answers (`tests/examples.rs`,
+  `tests/vndb.rs`, `tests/dlsite.rs`).
 - **heronite-achievements:** every game's achievements, whatever its store.
   `target` says which sources a Collection game has (its store, its Steam
   twin, RetroAchievements for a ROM). `sources/` reads them: `steam` the

@@ -27,12 +27,14 @@ Metadata extensions live under `extensions/metadata/` (in the repository
 and in the data folder) because other kinds of extensions may come later,
 each in a folder of its own.
 
-The repository has two complete examples: `extensions/metadata/wikipedia`
-(a details source asked as a fallback) and `extensions/metadata/vndb` (the
-Visual Novel Database: a details source asked as a fallback for visual
-novels,
-with settings, names in several scripts, pictures flagged adult one by
-one, and a service that asks clients to slow down).
+The repository has two examples maintained with Heronite:
+`extensions/metadata/wikipedia` (a details source asked as a fallback) and
+`extensions/metadata/vndb` (the Visual Novel Database: a details source
+asked as a fallback for visual novels, with settings, names in several
+scripts, pictures flagged adult one by one, and a service that asks clients
+to slow down), plus `extensions/metadata/dlsite` (unofficial, kept by a
+community member), which finds games only by a product code through an
+`[ids] pattern` and flags pictures adult by each product's age category.
 
 ## The manifest: `source.toml`
 
@@ -62,6 +64,10 @@ to = "all"                       # all | emulated | pc (not emulated) | steam (g
 asked = "always"                 # always | fallback
 # The kind of game it is about, for a fallback source:
 # game_kind = { name = "Visual novels", signals = ["Visual Novel"] }
+
+[ids]                            # optional: a code that names a game for sure
+pattern = '\b(?:EX|EY)[0-9]{6,8}\b'  # found in its title or file name: game.ids.exampledb
+example = "EX01234567"           # optional: a code it finds, shown in the installer
 
 [network]
 hosts = ["api.example.org", "*.cdn.example.org"]   # where the script may send requests
@@ -105,9 +111,11 @@ default = "us"
   matches `to = "emulated"` but no `platforms` list.
 - **asked = "fallback"**: asked only when no other online details source
   found the game for sure, when the record or the game's Steam tags carry
-  its `game_kind` signal, when the game was already matched with it, or
-  when the user asks it by name. The VNDB example is one, for the games
-  whose genres or Steam tags say "Visual Novel".
+  its `game_kind` signal, when the game's title or folder has exactly one
+  code of its `[ids] pattern`, when the game was already matched with it,
+  or when the user asks it by name. The VNDB example is one, for the games
+  whose genres or Steam tags say "Visual Novel". Being asked does not put
+  its fields first: the field order still decides whose values are used.
 - An extension's fields are taken after the sources already in a field's
   order; the user can move it like any source. It never goes ahead of
   them by itself: unlike a built-in source such as the LaunchBox Games
@@ -119,6 +127,7 @@ default = "us"
   that host. No IP addresses, ports or paths.
 - **adult = true**: every picture it gives counts as adult and is dropped
   unless the user allows adult covers.
+- **ids.pattern**: see [Product codes](#product-codes-ids-pattern) below.
 - **name**, **author**, a setting's **label** and the other short texts are
   one line: no line breaks (only `description` may have them), no control
   characters and no invisible formatting characters (direction overrides,
@@ -177,7 +186,9 @@ How sure a match is decides whether it is saved or sent to review:
   ("Doom" of 1993 and of 2016): they are guesses, unless the game's record
   has a year and exactly one of them has that `year`.
 - `matchedBy: { id: "steam" }`: you found it by one of `game.ids` (name
-  the key you used). Sure, if the game has that id.
+  the key you used). Sure, if the game has that id. For the code your
+  `[ids] pattern` found (`matchedBy: { id: "<your id>" }`), sure only when
+  the hit's `id` is that code (letter case aside); another `id` is a guess.
 - `matchedBy: { hash: "md5" }`: by one of `game.hashes`. Sure, if the game
   has that hash.
 
@@ -190,7 +201,7 @@ The `game` it gets:
   year: 2011,                // when the record already knows it, else null
   fileName: "Portal 2",      // see below; never a path; else null
   store: "steam",            // steam, epic, gog, amazon, xbox, emulator, ... or null
-  ids: { steam: "620", igdb: "72", lutris: "portal-2" },  // only those it has
+  ids: { steam: "620", igdb: "72", lutris: "portal-2" },  // only those it has, and your [ids] code
   hashes: {},                // ROM hashes by kind (crc32, md5, sha1), when the app has them (none yet)
   fields: null               // for a pictures source: the fields asked, else null
 }
@@ -207,6 +218,60 @@ The `game` it gets:
   folder.
 
 Nothing else about the user or their library is passed.
+
+### Product codes (`[ids] pattern`)
+
+Some games carry a code that names them for sure: a DLsite product code
+(`RJ01234567`) in the title or the folder of a doujin game, a disc's serial
+in a dump's name. A manifest may name one pattern for such a code:
+
+```toml
+[ids]
+pattern = '\b(?:RJ|BJ|VJ)[0-9]{6,8}\b'
+example = "RJ01234567"
+```
+
+The app looks for it in the game's `title` and `fileName`. When it finds
+exactly one code (the same code found in both counts as one), the script
+gets it as `game.ids.<your id>` (`game.ids.dlsite`, say), in upper case;
+two different codes pass none, and the log says so. A code typed in the
+search by name is passed the same way. For an `asked = "fallback"`
+extension, one code in the title or folder is also a reason to ask it,
+even when another source already found the game for sure. A hit with
+`matchedBy: { id: "<your id>" }` whose `id` is that code is a sure match,
+whatever its title, so the pattern is checked when the extension is
+installed or loaded, and a manifest whose pattern breaks a rule is
+refused, with the rule it breaks:
+
+- It is a regular expression in the syntax of Rust's `regex` crate, 200
+  characters at most, read in ASCII mode:
+  - letter case is ignored: `rj123456` is found, and passed as `RJ123456`;
+  - `\b`, `\d` and `\w` are ASCII: a code right against Japanese text
+    (`作品RJ123456`) is found;
+  - nothing in it may match any character: `.` and `[^…]` are refused;
+    name the characters (`[0-9]`, `[A-Z]`).
+- It starts and ends with a word boundary around the whole pattern: `\b`
+  (or `\b{start}`, `\b{end}`). `\bRJ[0-9]{6}\b|\bBJ[0-9]{6}\b` is
+  refused; write `\b(?:RJ|BJ)[0-9]{6}\b`.
+- What follows the first boundary is a literal prefix of two ASCII letters
+  or more, or a few of them (`RJ`, `(?:RJ|BJ|VJ)`, `[RBV]J`): never a class
+  such as `[A-Z]{2}` or `\d`.
+- What it matches is 4 to 64 bytes long: every repeat has an upper bound
+  (`{6,8}`, not `+`, `*` or `{6,}`).
+
+In the title and file name, `_` also counts as a space, since file names
+join words with it: `RJ123456_v1.02` gives `RJ123456`.
+
+`example` is optional: a code the pattern is meant for. The installer and
+the gallery show it ("Recognises codes like RJ01234567"), never the
+pattern itself, so give one. It is checked with the pattern: the pattern
+must find that code in it, the whole of it (letter case ignored; it is
+shown in upper case), or the manifest is refused, with what the pattern
+found instead. An `example` without a `pattern` is refused too.
+
+Only one pattern per manifest. A script still reads `game.title` and
+`game.fileName` as it likes, but what it finds there itself is a match by
+title.
 
 ### `fetch(id, ctx)` → record
 
@@ -522,6 +587,7 @@ a file was checked by nobody.
 - Each entry copies its manifest: `id`, `name`, `version`, `api`, `author`,
   `homepage` (optional), `kind`, `adult` (optional), `description`,
   `fields` (`[provides] fields`), `applies` (the `[applies]` table, as is;
+  optional), `ids` (only `example`, from `[ids]`, for the gallery;
   optional), `hosts` and `images` (`[network]`), `settings` (each
   setting's `label` and `required`; optional). An entry whose `api` is
   higher than the app's is listed but cannot be installed.
@@ -596,7 +662,9 @@ manifests of its version and older ones; a manifest with a higher `api` is
 refused at install ("made for a newer Heronite") and, once installed, shows
 as "Could not be loaded". Additions that old scripts do not notice (a new
 `ctx` helper, a new optional key) do not change the number; a change that
-would break a script does. `ctx.unreachable` and a hit's `altTitle` and
-`adult` are such additions.
+would break a script does. `ctx.unreachable`, a hit's `altTitle` and
+`adult`, and `[ids] pattern` and `example` are such additions (a build
+without `[ids]` leaves it out with a line in the log, and the script gets
+no code; one without `example` leaves only that out).
 
 Version 1 is the first.

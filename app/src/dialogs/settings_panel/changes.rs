@@ -71,6 +71,7 @@ pub(crate) const GROUPS: &[Group] = &[
     g("beforeScript", L, &["beforeLaunchScriptPath"], n_!("Before the game starts")).rare(),
     g("afterScript", L, &["afterLaunchScriptPath"], n_!("After the game exits")).rare(),
     g("companions", L, &[heronite_launch::companions::KEY], n_!("Programs alongside the game")).rare(),
+    g("antimicrox", L, &[heronite_launch::antimicrox::KEY], n_!("AntiMicroX profiles")).rare(),
     g("targetExe", L, &["targetExe"], n_!("Alternative executable")).rare(),
     g("verboseLogs", L, &["verboseLogs"], n_!("Detailed logs")).rare(),
     t("steam-runtime", L, &["steamRuntime"], n_!("Steam Runtime")).rare(),
@@ -440,11 +441,18 @@ impl SettingsPanel {
     pub(super) fn console_fold(&self, items: Vec<super::console::Item>) -> Vec<super::console::Item> {
         let mut folded = 0;
         let mut kept: Vec<super::console::Item> = Vec::new();
+        // The sub-settings of a folded row fold with it.
+        let mut hidden: Vec<SharedString> = Vec::new();
         for item in items {
+            if !self.show_rare && item.row.parent.as_ref().is_some_and(|p| hidden.contains(p)) {
+                hidden.push(item.row.id.clone());
+                continue;
+            }
             let rare = console_group(&item.row.id).filter(|g| g.rare && !self.changed(g));
             if rare.is_some() {
                 folded += 1;
                 if !self.show_rare {
+                    hidden.push(item.row.id.clone());
                     continue;
                 }
             }

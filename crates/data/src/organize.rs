@@ -453,9 +453,16 @@ pub fn group_games_with(filtered: &[Game], by: GroupBy, o: &Organize, smart: &[S
     out
 }
 
+/// The A-Z order of the Collection's title sort, for lists sorted outside
+/// it (console mode, the palette, a game page's related games): by
+/// [`CollectionGame::sort_key`], then by title.
+pub fn title_order(a: &CollectionGame, b: &CollectionGame) -> Ordering {
+    locale_cmp(&a.sort_key, &b.sort_key).then_with(|| locale_cmp(&a.title, &b.title))
+}
+
 /// Compares two games for `sort`: by its value (bigger and newer first,
 /// `descending` turns it around; games without one stay last), ties and the
-/// title sort by [`sort_name`].
+/// title sort by [`CollectionGame::sort_key`].
 pub(crate) fn compare_keyed(a: &Keyed, b: &Keyed, sort: SortMode, descending: bool) -> Ordering {
     let turn = |o: Ordering| if descending { o.reverse() } else { o };
     let by_name = || locale_cmp(&a.name, &b.name).then_with(|| locale_cmp(&a.title, &b.title));
@@ -479,7 +486,7 @@ pub(crate) struct Keyed {
 
 impl Keyed {
     pub fn of(g: &CollectionGame, sort: SortMode, o: &Organize) -> Self {
-        Self { value: sort_value(g, sort, o), name: sort_name(&g.title), title: g.title.clone() }
+        Self { value: sort_value(g, sort, o), name: g.sort_key.clone(), title: g.title.clone() }
     }
 }
 

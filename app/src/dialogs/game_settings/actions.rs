@@ -28,6 +28,8 @@ pub(super) struct ActionsState {
     /// Action asking "Delete?" in its row.
     pub(super) deleting: Option<String>,
     pub(super) saving: bool,
+    /// Play asks how to play (`game_actions::set_ask_on_play`).
+    pub(super) ask: bool,
 }
 
 pub(super) struct Editor {
@@ -72,7 +74,8 @@ pub(super) fn play_summary(game: &Game) -> String {
 impl GameSettingsDialog {
     pub(super) fn build_actions(game: &Game, paths: &heronite_data::DataPaths) -> ActionsState {
         let list = game_actions::load(paths).remove(&game.key).unwrap_or_default();
-        ActionsState { list, editor: None, deleting: None, saving: false }
+        let ask = game_actions::load_ask_on_play(paths).contains(&game.key);
+        ActionsState { list, editor: None, deleting: None, saving: false, ask }
     }
 
     /// Opens the editor on `id`, or on a new action.
@@ -178,6 +181,50 @@ impl GameSettingsDialog {
         cx.notify();
     }
 
+    /// "Ask how to play" switched: saved off the UI thread; the Collection
+    /// reloads it.
+    fn toggle_ask(&mut self, cx: &mut Context<Self>) {
+        let on = !self.actions.ask;
+        self.actions.ask = on;
+        self.error.clear();
+        let (paths, key) = (self.ctx.data_paths.clone(), self.game.key.clone());
+        cx.spawn(async move |this, cx| {
+            let res = cx.background_spawn(async move { game_actions::set_ask_on_play(&paths, &key, on) }).await;
+            this.update(cx, |this, cx| {
+                match res {
+                    Ok(()) => cx.emit(DialogEvent::Changed),
+                    Err(err) => {
+                        this.actions.ask = !on;
+                        this.error = format!("{err:#}");
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// Under the card, once an action counts as playing: whether Play asks
+    /// which way to start the game.
+    fn ask_card(&self, cx: &mut Context<Self>) -> Option<Div> {
+        if !self.actions.list.iter().any(Action::plays) {
+            return None;
+        }
+        Some(
+            card_box().child(
+                toggle_row(
+                    "gs-action-ask",
+                    tr!("Ask how to play"),
+                    Some(tr!("Pressing Play asks whether to start the game normally or with one of the actions that count as playing.")),
+                    self.actions.ask,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_ask(cx))),
+            ),
+        )
+    }
+
     /// The tab: Play, then the menu next to it, in one card.
     pub(super) fn actions_tab(&mut self, cx: &mut Context<Self>) -> Div {
         let play_open = self.launch.as_ref().is_some_and(|l| l.open);
@@ -213,7 +260,7 @@ impl GameSettingsDialog {
         } else {
             c = c.child(separator()).child(self.add_row(free, cx));
         }
-        div().flex().flex_col().child(c)
+        div().flex().flex_col().gap(px(12.)).child(c).children(self.ask_card(cx))
     }
 
     /// Play: what it starts, in one line. Local games open its editor here;

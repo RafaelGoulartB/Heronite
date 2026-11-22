@@ -98,6 +98,7 @@ pub fn platform_of(folder: &str) -> Option<&'static str> {
         "saturn" => "sega_saturn",
         "dreamcast" | "dc" => "sega_dreamcast",
         "xbox" => "microsoft_xbox",
+        "xbox360" | "x360" => "microsoft_xbox360",
         "arcade" | "mame" | "fbneo" => "arcade",
         "pcengine" | "tg16" | "turbografx16" => "nec_turbografx_16",
         "atari2600" => "atari_2600",
@@ -342,6 +343,7 @@ mod tests {
         assert_eq!(platform_of("PS2"), Some("sony_playstation2"));
         assert_eq!(platform_of("gc"), Some("nintendo_gamecube"));
         assert_eq!(platform_of("megadrive"), Some("sega_genesis"));
+        assert_eq!(platform_of("xbox360"), Some("microsoft_xbox360"));
         assert_eq!(platform_of("bios"), None);
         assert_eq!(platform_of("media"), None);
     }

@@ -236,6 +236,12 @@ impl Clients {
         if self.frozen == Some(client) || self.state(client).busy() || self.state(client).shortcut_busy {
             return;
         }
+        // The EA account's read or sign-in would bring its games back.
+        if client == Client::Ea && self.ea.busy() {
+            self.state_mut(client).notice = Some(Notice::info(super::ea_account::wait_note()));
+            cx.notify();
+            return;
+        }
         let st = self.state_mut(client);
         st.activity = Activity::Forgetting;
         st.notice = None;
@@ -263,6 +269,14 @@ impl Clients {
                         st.removed.clear();
                         st.shortcuts = Default::default();
                         cx.emit(ClientsEvent::Removed(removed));
+                        // Its account's games came for it: the sign-in goes too
+                        // (the keyring is only asked when there is one).
+                        if client == Client::Ea {
+                            this.ea.last = None;
+                            if this.ea.connected() {
+                                this.forget_ea(cx);
+                            }
+                        }
                         this.refresh(&[client], false, cx);
                     }
                     Err(e) => st.notice = Some(Notice::error(e)),

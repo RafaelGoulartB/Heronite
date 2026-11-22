@@ -4,6 +4,53 @@
   "name": "Heronite",
   "extensions": [
     {
+      "id": "dlsite",
+      "name": "DLsite",
+      "version": "1.0.0",
+      "api": 1,
+      "author": "lurebat",
+      "homepage": "https://www.dlsite.com",
+      "kind": "details",
+      "adult": false,
+      "description": "Unofficial, not affiliated with DLsite: reads the data behind its product pages, which may change or stop. Finds doujin and indie games by the DLsite product code (RJ01234567, VJ012345…) in their title or folder name. Pictures of products not rated for all ages are flagged adult.",
+      "fields": [
+        "description",
+        "releaseDate",
+        "developers",
+        "genres",
+        "themes",
+        "series",
+        "coverWide",
+        "hero"
+      ],
+      "applies": {
+        "to": "all",
+        "asked": "fallback"
+      },
+      "ids": {
+        "example": "RJ01234567"
+      },
+      "hosts": [
+        "www.dlsite.com"
+      ],
+      "images": [
+        "img.dlsite.jp"
+      ],
+      "settings": [],
+      "files": {
+        "source.toml": {
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/metadata/dlsite/source.toml",
+          "sha256": "d0a579d7ecff4b444926b824b2c5511446b4fb57192dfd141d604fda17821cd4",
+          "size": 1130
+        },
+        "source.js": {
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/metadata/dlsite/source.js",
+          "sha256": "d66624d83e12fe0384c53e12d297aee84deaa9923fdbfa664d54936e6fc3809f",
+          "size": 5890
+        }
+      }
+    },
+    {
       "id": "vndb",
       "name": "VNDB",
       "version": "1.0.0",

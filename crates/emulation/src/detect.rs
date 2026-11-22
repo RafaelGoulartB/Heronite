@@ -558,6 +558,19 @@ mod tests {
         assert!(found.iter().all(|d| d.launch_kind == "native" && d.flatpak_id.is_none()));
     }
 
+    #[test]
+    fn xenia_is_detected_by_any_of_its_builds() {
+        for bin in emulator_definition("xenia").unwrap().binaries.clone() {
+            let mut env = Fake::default();
+            env.bins.insert(bin.clone(), at(&format!("opt/xenia/{bin}")));
+            let found = detect_emulators(&env, &[]);
+            let got: Vec<(&str, Vec<&str>)> =
+                found.iter().map(|d| (d.definition_id.as_str(), d.profiles.iter().map(|p| p.id.as_str()).collect())).collect();
+            assert_eq!(got, [("xenia", vec!["x360"])], "{bin}");
+            assert_eq!(found[0].executable, at(&format!("opt/xenia/{bin}")));
+        }
+    }
+
     // Flatpak is Linux's.
     #[cfg(unix)]
     #[test]
@@ -602,6 +615,21 @@ mod tests {
                 pair("desmume", r"C:\Program Files\DeSmuME\DeSmuME_0.9.13_x64.exe"),
             ]
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn xenia_is_found_in_its_windows_folder_and_scoop() {
+        for (var, base, file) in [
+            ("ProgramFiles", r"C:\Program Files", r"C:\Program Files\xenia_edge\xenia_edge.exe"),
+            ("SCOOP", r"D:\Scoop", r"D:\Scoop\apps\xenia-canary\current\xenia_canary.exe"),
+        ] {
+            let mut env = Fake::default();
+            env.vars.insert(var.into(), base.into());
+            env.files.insert(file.into());
+            let found: Vec<(String, String)> = detect_emulators(&env, &[]).into_iter().map(|d| (d.definition_id, d.executable)).collect();
+            assert_eq!(found, [("xenia".to_string(), file.to_string())]);
+        }
     }
 
     #[test]

@@ -38,6 +38,7 @@ use crate::settings::GameSettings;
 
 pub use host::{detect, find_sandbox, join, Bwrap, OVERLAY_VERSION};
 pub use mounts::Mounts;
+pub(crate) use mounts::{clean, inside};
 
 pub const KEY: &str = "heroniteSandbox";
 /// Set inside the sandbox, so scripts and tools can tell.

@@ -118,8 +118,19 @@ impl CollectionView {
 
     /// "Covers…": the game's picture of each cover family and its background.
     pub(super) fn open_covers_for(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_covers_at(key, None, window, cx);
+    }
+
+    /// "Covers" of `key` on `slot` (the cover the library uses when `None`).
+    pub(super) fn open_covers_at(
+        &mut self,
+        key: &str,
+        slot: Option<crate::dialogs::covers::Slot>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(key)) else { return };
-        let view = cx.new(|cx| CoversDialog::new(ctx, game, None, window, cx));
+        let view = cx.new(|cx| CoversDialog::new(ctx, game, slot, window, cx));
         self.open_dialog(view, cx);
     }
 

@@ -295,6 +295,12 @@ impl CollectionView {
             }
             w if w.starts_with("mod") && self.mods_debug_dialog(w, window, cx) => {}
             "statuses" => self.open_manage_statuses(window, cx),
+            // hidden-pin:<unlock|set|change|remove>
+            w if w.starts_with("hidden-pin:") => {
+                if let Some(mode) = crate::dialogs::hidden_pin::PinMode::parse(&w["hidden-pin:".len()..]) {
+                    self.open_hidden_pin(mode, cx);
+                }
+            }
             "hltb" => self.open_hltb_match(window, cx),
             "batchedit" => self.open_batch_edit(window, cx),
             "batchremove" => self.open_batch_remove(cx),
@@ -308,6 +314,9 @@ impl CollectionView {
                 let field = w.strip_prefix("fields:").and_then(heronite_data::field_names::Field::parse);
                 self.open_manage_fields(field, window, cx);
             }
+            // play-choice:<key>: "Choose how to start the game" of that game, with
+            // its actions that count as playing (two made up when it has none).
+            w if w.starts_with("play-choice:") => self.debug_play_choice(&w["play-choice:".len()..], cx),
             // What Play shows for a store game whose folder is gone.
             w if w.starts_with("folder-missing:") => {
                 self.epic.pending = Some(super::epic::Request::FolderMissing(w["folder-missing:".len()..].to_string()));
@@ -318,7 +327,7 @@ impl CollectionView {
             }
             "wine-missing" => self.report_launch_error(heronite_launch::wine::no_wine_message(""), cx),
             "gallery" | "viewer" | "viewer-zoom" | "viewer-fit" | "confirm" | "delete" => self.shots.debug = Some(which),
-            // Game settings groups: gamesettings:wine|other|advanced|gamescope|gpu|saves|proton|backups|sandbox|start|graphics
+            // Game settings groups: gamesettings:wine|other|advanced|gamescope|gpu|saves|proton|backups|sandbox|start|graphics|actions
             w @ ("gamesettings:wine"
             | "gamesettings:gpu"
             | "gamesettings:sandbox"
@@ -329,11 +338,12 @@ impl CollectionView {
             | "gamesettings:proton"
             | "gamesettings:backups"
             | "gamesettings:start"
-            | "gamesettings:graphics") => {
+            | "gamesettings:graphics"
+            | "gamesettings:actions") => {
                 use crate::dialogs::game_settings::Tab;
                 let tab = match w {
                     "gamesettings:wine" | "gamesettings:proton" | "gamesettings:sandbox" => Tab::Compatibility,
-                    "gamesettings:advanced" | "gamesettings:start" => Tab::Start,
+                    "gamesettings:advanced" | "gamesettings:start" | "gamesettings:actions" => Tab::Start,
                     "gamesettings:saves" | "gamesettings:backups" => Tab::Saves,
                     "gamesettings:gpu" | "gamesettings:gamescope" | "gamesettings:graphics" => Tab::Graphics,
                     _ => Tab::Performance,

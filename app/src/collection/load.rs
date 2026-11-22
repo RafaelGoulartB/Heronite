@@ -22,6 +22,7 @@ struct Loaded {
     smart_groups: heronite_data::smart_groups::SmartGroups,
     extras: heronite_data::organize::GameExtras,
     actions: HashMap<String, Vec<heronite_data::game_actions::Action>>,
+    ask_on_play: std::collections::HashSet<String>,
     covers: HashMap<SharedString, Vec<ImageRef>>,
     stages: HashMap<SharedString, Vec<ImageRef>>,
     families: super::family_art::FamilyChains,
@@ -35,6 +36,7 @@ fn load_all(data_paths: &DataPaths, cache: &std::path::Path, include_hidden: boo
     let smart_groups = heronite_data::smart_groups::SmartGroups::load(data_paths);
     let extras = super::organize::game_extras(&lib, data_paths, cache);
     let actions = heronite_data::game_actions::load(data_paths);
+    let ask_on_play = heronite_data::game_actions::load_ask_on_play(data_paths);
     let shots = (!lib.settings.screenshots.folder.is_empty()).then(|| std::path::PathBuf::from(&lib.settings.screenshots.folder));
     let ctx = ArtContext::new(data_paths, shots.as_deref());
     let mut covers = HashMap::new();
@@ -47,7 +49,7 @@ fn load_all(data_paths: &DataPaths, cache: &std::path::Path, include_hidden: boo
         stages.insert(key, to_chain(&art::stage_art(&ctx, g)));
     }
     log::info!("library: {} games loaded in {:?}", lib.games.len(), t.elapsed());
-    Ok(Loaded { lib, wiki, categories, smart_groups, extras, actions, covers, stages, families })
+    Ok(Loaded { lib, wiki, categories, smart_groups, extras, actions, ask_on_play, covers, stages, families })
 }
 
 /// A first load started just before the window opens, so it runs while the
@@ -67,7 +69,8 @@ thread_local! {
 pub fn preload_library(cx: &App) {
     let data_paths = DataPaths::detect();
     let app_paths = heronite_data::AppPaths::for_data(&data_paths);
-    let include_hidden = heronite_data::ui_state::UiState::load(&app_paths).show_hidden;
+    let saved = heronite_data::ui_state::UiState::load(&app_paths).show_hidden;
+    let include_hidden = crate::services::hidden_lock::shown(saved, &app_paths);
     let (paths, cache) = (data_paths.clone(), app_paths.cache);
     let task = cx.background_spawn(async move { load_all(&paths, &cache, include_hidden) });
     PRELOAD.with(|p| *p.borrow_mut() = Some(Preload { root: data_paths.root, include_hidden, task }));
@@ -172,6 +175,7 @@ impl CollectionView {
         self.smart_groups = l.smart_groups;
         self.game_extras = Arc::new(l.extras);
         self.user_actions = l.actions;
+        self.ask_on_play = l.ask_on_play;
         self.prune_category_filter();
         self.prune_smart_group_filter();
         if self.groups_need_updates() {
@@ -188,7 +192,8 @@ impl CollectionView {
         crate::services::sunshine::library_loaded(&lib, cx);
         self.lib = Some(lib);
         if first {
-            if let Some((text, error)) = crate::services::upkeep::take_restore_notice() {
+            let notice = crate::services::upkeep::take_restore_notice().or_else(crate::system::interface_gpu::take_notice);
+            if let Some((text, error)) = notice {
                 self.show_toast(text, error, cx);
             }
         }

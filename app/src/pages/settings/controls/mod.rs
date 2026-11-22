@@ -75,7 +75,7 @@ impl State {
 }
 
 /// `HERONITE_DEBUG_CONTROLS=<tab>[:<popover>]` (for captures): the tab
-/// (`ingame`, `outside`, `overlay`, `console`) and a popover open in it
+/// (`ingame`, `outside`, `desktop`, `overlay`, `console`) and a popover open in it
 /// (`shot`, `replay`, `moment`, `volume`, `anywhere`, `console-button`,
 /// `key-overlay`, `key-shot`, `key-replay`, `console-a`, `glyphs`,
 /// `confirm`).
@@ -86,6 +86,7 @@ fn debug_start() -> (Option<Show>, Option<table::Edit>) {
     let show = match tab {
         "ingame" => Some(Show::InGame),
         "outside" => Some(Show::Outside),
+        "desktop" => Some(Show::Desktop),
         "overlay" => Some(Show::Overlay),
         "console" => Some(Show::Console),
         _ => None,
@@ -115,6 +116,8 @@ enum Show {
     InGame,
     /// Outside games, on this PC.
     Outside,
+    /// On the desktop, outside console mode.
+    Desktop,
     /// While the overlay is open.
     Overlay,
     /// In console mode.
@@ -443,6 +446,13 @@ fn device_bar(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
         table::with_popover(d, chip, pop, cx)
     };
     let confirm_chip = confirm_chip(d, CONFIRM_CHIP, true, cx);
+    let desktop = crate::ui::controls::toggle_row(
+        "controls-desktop",
+        tr!("Use the controller on the desktop"),
+        Some(tr!("Outside console mode it moves around as the keyboard and the mouse do: the d-pad steps, the right stick moves a pointer and RT clicks.")),
+        c.desktop,
+    )
+    .on_click(cx.listener(|d, _, _, cx| change_controller(d, cx, |p| p.desktop = !p.desktop)));
     let row = |label: &'static str, desc: String, control: AnyElement| {
         div().border_t_1().border_color(theme::row_separator()).child(crate::ui::controls::row(label, Some(&desc), control))
     };
@@ -459,6 +469,7 @@ fn device_bar(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
             tr!("The other of the two goes back. Console mode and the overlay follow it.").to_string(),
             confirm_chip,
         ))
+        .child(div().border_t_1().border_color(theme::row_separator()).child(desktop))
 }
 
 /// A controller family's name.
@@ -571,6 +582,7 @@ fn show_bar(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
         items.push((Show::InGame, tr!("In a game")));
     }
     items.push((Show::Outside, tr!("Outside games")));
+    items.push((Show::Desktop, tr!("On the desktop")));
     if supported(Feature::Overlay) {
         items.push((Show::Overlay, tr!("Overlay open")));
     }
@@ -595,6 +607,7 @@ fn show_bar(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
         )
         .to_string(),
         Show::Outside => tr!("On this PC, while no game runs. Click a shortcut to change it.").to_string(),
+        Show::Desktop => tr!("Outside console mode, in Heronite's window, while no game runs. The keys do the same.").to_string(),
         Show::Overlay => tr!("While the overlay is on screen. Only the confirm button changes; the others are fixed.").to_string(),
         Show::Console => {
             let name = console_theme(d).name;

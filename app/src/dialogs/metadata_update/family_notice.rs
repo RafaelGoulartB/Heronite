@@ -128,13 +128,23 @@ impl MetadataHub {
     /// Downloads `family`'s covers for the games of `games` (`None`: the
     /// whole Collection) that lack one, whatever `fillCoverFamilies` says:
     /// the games are found off the UI thread, then the job is queued (the
-    /// header pill follows it). Nothing when no game lacks one.
+    /// header pill follows it). When no game lacks one, `nothing_to_download` says so.
     pub fn download_family(&mut self, family: CoverFamily, games: Option<Vec<BulkItem>>, cx: &mut Context<Self>) {
         let service = self.service.clone();
         cx.spawn(async move |this, cx| {
             let lack = cx.background_spawn(async move { service.family_lack(family, games) }).await;
-            let Some(lack) = lack.filter(|l| !l.games.is_empty()) else { return };
-            this.update(cx, |hub, cx| hub.start(BulkArgs::download_covers(lack.games, family), cx)).ok();
+            this.update(cx, |hub, cx| match lack.filter(|l| !l.games.is_empty()) {
+                Some(lack) => {
+                    hub.start(BulkArgs::download_covers(lack.games, family), cx);
+                }
+                // Nothing to fetch: said so (console mode's activity).
+                None => {
+                    let n = hub.nothing_to_download.map_or(1, |(n, _)| n + 1);
+                    hub.nothing_to_download = Some((n, family));
+                    cx.notify();
+                }
+            })
+            .ok();
         })
         .detach();
     }

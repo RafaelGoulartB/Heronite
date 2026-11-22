@@ -1,0 +1,8 @@
+{
+  "Default order": "Orden predeterminado",
+  "Not unlocked": "Sin desbloquear",
+  "Unlocked": "Desbloqueado",
+  "{percent} of players": "{percent} de los jugadores",
+  "{unlocked} of {total} unlocked": "{unlocked} de {total} desbloqueados",
+  "{unlocked} of {total} unlocked · last on {date}": "{unlocked} de {total} desbloqueados · el último el {date}"
+}

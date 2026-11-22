@@ -6,8 +6,10 @@
 //!
 //! A fallback source ([`Asked::AsFallback`], an extension such as VNDB) is
 //! asked with the others when the game is identified with it (a pinned or
-//! stored match), when the request names it, or when the record or the game's Steam tags say the
-//! game is of its kind ([`GameKind`]). Otherwise it waits for the others:
+//! stored match), when the request names it, when the record or the game's Steam tags say the
+//! game is of its kind ([`GameKind`]), or when it claims the game
+//! ([`MetadataSource::claims`]: an extension's code in the title or file
+//! name). Otherwise it waits for the others:
 //! it is asked after them when none of the online details sources found
 //! the game for sure, or when one of their candidates says the game is of
 //! its kind. A game the others identify costs no request to it, and when
@@ -280,7 +282,7 @@ impl MetadataService {
                             .as_deref()
                             .is_some_and(|id| kind.said_by(steam_tags.get_or_insert_with(|| self.steam_tag_names(id)).iter()))
                 });
-                if of_kind || sources.names_fallback(&d.id, game.only_sources.as_deref()) {
+                if of_kind || source.claims(game_view) || sources.names_fallback(&d.id, game.only_sources.as_deref()) {
                     Plan::Ask(None)
                 } else {
                     Plan::Later

@@ -1,0 +1,50 @@
+[
+ {
+  "workno": "RJ345679",
+  "product_id": "RJ345679",
+  "work_name": "Drago Noka",
+  "maker_name": "GeSEI unkan",
+  "maker_name_en": "GeSEI unkan",
+  "regist_date": "2022-01-22 00:00:00",
+  "age_category": 1,
+  "age_category_string": "general",
+  "site_id": "home",
+  "work_type": "SLN",
+  "work_type_string": "Simulation",
+  "intro_s": "Manage and customize a village that sits atop a massive dragon! Arrange living quarters and place buildings to your own liking! Make a village that's uniquely yours!",
+  "series_name": null,
+  "image_thumb": "//img.dlsite.jp/resize/images2/work/doujin/RJ346000/RJ345679_img_main_240x240.jpg",
+  "genres": [
+   {
+    "name": "Slice of Life / Daily Living",
+    "id": 8
+   },
+   {
+    "name": "Fantasy",
+    "id": 16
+   }
+  ],
+  "image_main": {
+   "url": "//img.dlsite.jp/modpub/images2/work/doujin/RJ346000/RJ345679_img_main.jpg",
+   "width": "560",
+   "height": "420"
+  },
+  "image_samples": [
+   {
+    "url": "//img.dlsite.jp/modpub/images2/work/doujin/RJ346000/RJ345679_img_smp1.jpg",
+    "width": "1280",
+    "height": "720"
+   },
+   {
+    "url": "//img.dlsite.jp/modpub/images2/work/doujin/RJ346000/RJ345679_img_smp2.jpg",
+    "width": "1000",
+    "height": "806"
+   },
+   {
+    "url": "//img.dlsite.jp/modpub/images2/work/doujin/RJ346000/RJ345679_img_smp3.jpg",
+    "width": "1280",
+    "height": "720"
+   }
+  ]
+ }
+]

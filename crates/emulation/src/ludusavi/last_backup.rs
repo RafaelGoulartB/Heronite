@@ -30,6 +30,7 @@ pub struct LastBackup {
 /// (`emulator_id` from [`LudusaviGame::emulator_of`](super::LudusaviGame::emulator_of)),
 /// by the platform-suffixed names its manifest uses for the title, its
 /// tag-stripped form and the ROM's name (`rom_path`) — then by Steam app id.
+/// An emulator with a shared Ludusavi entry is looked up by that entry only.
 /// `None` when Ludusavi is off, has no backup root, or has no such game.
 pub fn last_backup(
     paths: &DataPaths,
@@ -42,7 +43,12 @@ pub fn last_backup(
     if !settings.enabled {
         return None;
     }
-    let engine = super::backup::emulator_engine(paths, emulator_id);
+    let naming = super::backup::emulator_naming(paths, emulator_id);
+    // An emulator's shared entry is the game's only name (see `backup_inner`).
+    let (title, steam_app_id, engine, rom_path) = match naming.entry.as_deref() {
+        Some(entry) => (entry, None, None, None),
+        None => (title, steam_app_id, naming.engine.as_deref(), rom_path),
+    };
     if cfg!(windows) {
         // No `HOME` there: the user's folder, and Ludusavi's config where
         // the program found (or set in Settings) keeps it.
@@ -51,7 +57,7 @@ pub fn last_backup(
         let binary = super::detect::resolve_binary(&probe, Some(settings.binary_path.as_str()));
         let config = super::detect::windows_config_file(&probe, binary.as_deref());
         let root = backup_root(settings.use_installed_config, &settings.backup_path, Some(Path::new(&config)), &probe.home())?;
-        return find_for(&root, title, steam_app_id, engine.as_deref(), rom_path);
+        return find_for(&root, title, steam_app_id, engine, rom_path);
     }
     let home = std::env::var_os("HOME");
     let config = ludusavi_config_path(std::env::var_os("XDG_CONFIG_HOME"), home.as_deref());
@@ -61,7 +67,7 @@ pub fn last_backup(
         config.as_deref(),
         &home.map(|h| h.to_string_lossy().into_owned()).unwrap_or_default(),
     )?;
-    find_for(&root, title, steam_app_id, engine.as_deref(), rom_path)
+    find_for(&root, title, steam_app_id, engine, rom_path)
 }
 
 /// `$XDG_CONFIG_HOME/ludusavi/config.yaml`, else `~/.config/ludusavi/config.yaml`.
@@ -257,6 +263,25 @@ mod tests {
         game(tmp.path(), "Great Adventure (RetroArch)", Some("name: Great Adventure (RetroArch)\n"));
         let b = find_for(tmp.path(), "MK3", None, Some("retroarch"), Some("/roms/Great Adventure (NA).sfc")).unwrap();
         assert_eq!(b.game_name, "Great Adventure (RetroArch)");
+    }
+
+    #[test]
+    fn an_emulators_shared_entry_is_its_games_backup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("backups");
+        game(&root, "Eden Saves", Some("name: Eden Saves\n"));
+        game(&root, "Moon Cheese Caper", Some("name: Moon Cheese Caper\n"));
+        let paths = DataPaths::at(tmp.path().join("data"));
+        fs::create_dir_all(paths.local_library()).unwrap();
+        let settings = serde_json::json!({"ludusavi": {"enabled": true, "useInstalledConfig": false, "backupPath": root}});
+        fs::write(paths.collection_settings(), settings.to_string()).unwrap();
+        let emulators =
+            serde_json::json!({"emulators": [{"id": "e1", "definitionId": "custom", "name": "Eden", "ludusaviEntry": "Eden Saves"}]});
+        fs::write(paths.emulators(), emulators.to_string()).unwrap();
+        // The entry wins even over a folder named after the game.
+        let b = last_backup(&paths, "Moon Cheese Caper", None, Some("e1"), None).unwrap();
+        assert_eq!(b.game_name, "Eden Saves");
+        assert_eq!(last_backup(&paths, "Moon Cheese Caper", None, None, None).unwrap().game_name, "Moon Cheese Caper");
     }
 
     #[test]

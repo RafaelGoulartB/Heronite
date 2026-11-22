@@ -201,9 +201,23 @@ fn lookup_of<T>(out: Result<Lookup<T>, CallError>) -> Lookup<T> {
     }
 }
 
-/// The game as a script sees it (see `docs/EXTENSIONS.md`).
-pub fn game_json(game: &SourceGame) -> Value {
+/// The code `manifest`'s `[ids] pattern` finds in `texts` (a game's
+/// title and file name), keyed by the extension's id.
+fn pattern_id<'a>(manifest: &Manifest, texts: impl IntoIterator<Item = &'a str>) -> Option<(String, String)> {
+    let mut codes = manifest.id_pattern.as_ref()?.codes(texts);
+    if codes.len() > 1 {
+        log::info!("Extension {}: {} different codes in the game's title or file name; none passed", manifest.id, codes.len());
+    }
+    (codes.len() == 1).then(|| (manifest.id.clone(), codes.remove(0)))
+}
+
+/// The game as `manifest`'s script sees it (see `docs/EXTENSIONS.md`).
+pub fn game_json(game: &SourceGame, manifest: &Manifest) -> Value {
     let mut ids = Map::new();
+    let texts = [Some(game.title.as_str()), game.file_name.as_deref()];
+    if let Some((key, code)) = pattern_id(manifest, texts.into_iter().flatten()) {
+        ids.insert(key, json!(code));
+    }
     if let Some(s) = game.steam_app_id.as_deref().filter(|s| !s.is_empty()) {
         ids.insert("steam".into(), json!(s));
     }
@@ -239,17 +253,25 @@ impl MetadataSource for ScriptSource {
         &self.descriptor
     }
 
+    /// Exactly one code of its `[ids] pattern` in the title or file name,
+    /// the code its script would get.
+    fn claims(&self, game: &SourceGame) -> bool {
+        let texts = [Some(game.title.as_str()), game.file_name.as_deref()];
+        self.manifest.id_pattern.as_ref().is_some_and(|p| p.find(texts.into_iter().flatten()).is_some())
+    }
+
     fn lookup(&self, ctx: &SourceContext<'_>, game: &SourceGame) -> Lookup<MetadataCandidate> {
         if self.lacks_required(ctx) {
             return Lookup::Skipped;
         }
-        let input = game_json(game);
+        let input = game_json(game, &self.manifest);
         let (pictures, title, year) = (self.pictures.clone(), game.title.clone(), game.year);
+        let own = self.descriptor.id.clone();
         let out = self.session(ctx, game.language.as_deref(), "find", move |calls| {
             let found = calls.call("find", Some(input.clone()))?;
             let ids = input["ids"].as_object().cloned().unwrap_or_default();
             let hashes = input["hashes"].as_object().cloned().unwrap_or_default();
-            let keys = GameKeys { title: &title, year, ids: &ids, hashes: &hashes };
+            let keys = GameKeys { title: &title, year, ids: &ids, hashes: &hashes, own: &own };
             let Some(best) = record::hits(&found, &keys, &pictures).into_iter().next() else {
                 return match calls.unreachable() {
                     Some(why) => Err(CallError::Unreachable(why)),
@@ -279,10 +301,12 @@ impl MetadataSource for ScriptSource {
         if self.lacks_required(ctx) {
             return Lookup::Skipped;
         }
-        let input = json!({ "title": query, "ids": {}, "hashes": {} });
+        // A code typed in the search is passed like one in a game's title.
+        let ids: Map<String, Value> = pattern_id(&self.manifest, [query]).map(|(k, c)| (k, json!(c))).into_iter().collect();
+        let input = json!({ "title": query, "ids": ids, "hashes": {} });
         let out = self.session(ctx, None, "search", move |calls| calls.call("find", Some(input)));
         let (empty_ids, empty_hashes) = (Map::new(), Map::new());
-        let keys = GameKeys { title: query, year: None, ids: &empty_ids, hashes: &empty_hashes };
+        let keys = GameKeys { title: query, year: None, ids: &empty_ids, hashes: &empty_hashes, own: &self.descriptor.id };
         lookup_of(out.map(|value| {
             let hits: Vec<SourceHit> = record::hits(&value, &keys, &self.pictures)
                 .into_iter()

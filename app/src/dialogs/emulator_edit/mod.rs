@@ -35,6 +35,27 @@ fn kind_of_pick(path: &str, current: &str) -> String {
     }
 }
 
+/// Whether the emulator offers its Ludusavi entry: only where save backups
+/// run.
+fn offers_saves() -> bool {
+    heronite_platform::supported(heronite_platform::Feature::SaveBackups)
+}
+
+/// The custom games of the Ludusavi set in Settings → Saves (spawns it:
+/// off the UI thread). Empty where save backups do not run.
+fn ludusavi_games(paths: &DataPaths) -> Vec<String> {
+    if !offers_saves() {
+        return vec![];
+    }
+    let binary = heronite_data::settings::load(paths).map(|s| s.ludusavi.binary_path).unwrap_or_default();
+    let runner = heronite_emulation::ludusavi::SystemRunner { timeout: std::time::Duration::from_secs(10) };
+    heronite_emulation::ludusavi::custom_games(
+        &runner,
+        &heronite_launch::SystemProbe,
+        Some(binary.as_str()).filter(|b| !b.trim().is_empty()),
+    )
+}
+
 /// RetroArch's core files on this system.
 const CORE_EXT: &str = if cfg!(windows) { "dll" } else { "so" };
 
@@ -77,6 +98,10 @@ pub struct EmulatorEditDialog {
     executable: Entity<InputState>,
     install_dir: Entity<InputState>,
     flatpak_id: Entity<InputState>,
+    /// `UserEmulator::ludusavi_entry`.
+    ludusavi_entry: Entity<InputState>,
+    /// The custom games of the user's Ludusavi, offered for the entry.
+    ludusavi_games: Vec<String>,
     open_profile: Option<usize>,
     form: Option<ProfileForm>,
     menu: Option<Menu>,
@@ -114,6 +139,8 @@ impl EmulatorEditDialog {
             executable: new_input(window, cx, if base.launch_kind == "flatpak" { "" } else { &base.executable }, ""),
             install_dir: new_input(window, cx, base.install_dir.as_deref().unwrap_or(""), ""),
             flatpak_id: new_input(window, cx, base.flatpak_id.as_deref().unwrap_or(""), "org.example.Emulator"),
+            ludusavi_entry: new_input(window, cx, base.ludusavi_entry().unwrap_or(""), tr!("Each game under its own name")),
+            ludusavi_games: vec![],
             base,
             open_profile: None,
             form: None,
@@ -128,6 +155,7 @@ impl EmulatorEditDialog {
         };
         // Folders that point at this emulator (profiles in use) and, for new
         // emulators, what is installed on this PC (prefills the executable).
+        let paths_for_games = paths.clone();
         let (p, want_detect) = (paths, create);
         let load = move || {
             let scanners = list_rom_scanners(&p).unwrap_or_default();
@@ -144,9 +172,21 @@ impl EmulatorEditDialog {
             let (scanners, detected) = load();
             this.scanners = scanners;
             this.detected = detected;
+            this.ludusavi_games = ludusavi_games(&paths_for_games);
             this.prefill_executable(cx);
             return this;
         }
+        // Apart from the load above: Ludusavi is spawned to find its config,
+        // and a slow one must not hold up the executable's prefill.
+        cx.spawn(async move |this, cx| {
+            let games = cx.background_spawn(async move { ludusavi_games(&paths_for_games) }).await;
+            this.update(cx, |this, cx| {
+                this.ludusavi_games = games;
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
         cx.spawn(async move |this, cx| {
             let (scanners, detected) = cx.background_spawn(async move { load() }).await;
             this.update(cx, |this, cx| {
@@ -272,6 +312,8 @@ impl EmulatorEditDialog {
         }
         let dir = text_of(&self.install_dir, cx);
         emulator.install_dir = (!dir.is_empty()).then_some(dir);
+        let entry = text_of(&self.ludusavi_entry, cx);
+        emulator.ludusavi_entry = (!entry.is_empty()).then_some(entry);
         if let Some(bad) = self.profiles.iter().find(|p| p.name.trim().is_empty()) {
             self.error = tr!("Every profile needs a name ({platform}).", platform = bad.platform_name.clone().unwrap_or_default());
             cx.notify();
@@ -320,6 +362,7 @@ impl Render for EmulatorEditDialog {
         let mut body = div().flex().flex_col().gap(px(12.));
         body = self.render_fields(body, cx);
         body = self.render_profiles(body, cx);
+        body = self.render_saves(body, cx);
         if !self.error.is_empty() {
             body = body.child(div().text_color(theme::danger_text()).text_size(px(13.33)).child(self.error.clone()));
         }

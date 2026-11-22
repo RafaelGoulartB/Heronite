@@ -229,11 +229,34 @@ fn console(d: &SettingsPage) -> Vec<Callout> {
     ]
 }
 
+/// On the desktop (`collection/desktop_pad.rs`), off while its setting is.
+fn desktop() -> Vec<Callout> {
+    let off = !crate::console::look::controls().desktop;
+    let (confirm, back) = super::table::confirm_parts();
+    vec![
+        callout(Part::LT, "LT", tr!("Right-click")),
+        callout(Part::LB, "LB", tr!("Page before")),
+        callout(Part::LStick, tr!("L stick"), tr!("Scroll")),
+        callout(Part::DPad, tr!("D-pad"), tr!("Move")),
+        callout(Part::RT, "RT", tr!("Click")),
+        callout(Part::RB, "RB", tr!("Page after")),
+        callout(Part::Y, "Y", tr!("Search everything")),
+        callout(Part::X, "X", tr!("The game's actions")),
+        callout(back, back.cap(), tr!("Back · close")),
+        callout(confirm, confirm.cap(), tr!("Confirm · play")),
+        callout(Part::RStick, tr!("R stick"), tr!("Move the pointer")),
+    ]
+    .into_iter()
+    .map(|c| c.off(off))
+    .collect()
+}
+
 /// The callouts of `show`.
 pub(super) fn callouts(d: &SettingsPage, show: Show) -> Vec<Callout> {
     match show {
         Show::InGame => in_game(d),
         Show::Outside => outside(d),
+        Show::Desktop => desktop(),
         Show::Overlay => overlay_open(),
         Show::Console => console(d),
     }

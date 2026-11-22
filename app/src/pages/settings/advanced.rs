@@ -1,14 +1,17 @@
 //! Settings → Advanced extras (below the panel's switches): folders, clear
-//! cache, the image cache limit and "copy all settings".
+//! cache, the image cache limit, "copy all settings" and, last, the
+//! graphics card of the interface (Linux, with two cards or more).
 
 use std::path::{Path, PathBuf};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::interface_gpu::{self, InterfaceGpu, Saved};
 use heronite_data::maintenance::{self, ClearReport};
 use heronite_data::settings as store;
 use heronite_data::{game_config, DataPaths};
 use heronite_i18n::{tr, trn};
+use heronite_launch::gpu::detect::{Card, Machine};
 
 use super::SettingsPage;
 use crate::pages::{PageCtx, PageEvent};
@@ -24,6 +27,11 @@ pub struct State {
     notice: Option<(SharedString, bool)>,
     copied: bool,
     limit_open: bool,
+    /// This computer's graphics cards (Linux; detected off the UI thread).
+    cards: Option<Vec<Card>>,
+    /// The card saved for the interface (`None`: automatic).
+    gpu_saved: Option<Saved>,
+    gpu_open: bool,
 }
 
 /// Image cache caps offered (MB; 0 = no cap).
@@ -38,6 +46,11 @@ fn limit_label(mb: u32) -> String {
 }
 
 impl State {
+    /// `HERONITE_DEBUG_SETTINGS_ACTION=gpu-menu`.
+    pub(super) fn debug_open_gpu_menu(&mut self) {
+        self.gpu_open = true;
+    }
+
     pub fn measure(&mut self, ctx: &PageCtx, cx: &mut Context<SettingsPage>) {
         let (data_paths, app) = (ctx.data_paths.clone(), ctx.app.clone());
         cx.spawn(async move |this, cx| {
@@ -49,6 +62,18 @@ impl State {
             .ok();
         })
         .detach();
+        if cfg!(target_os = "linux") && self.cards.is_none() {
+            self.gpu_saved = interface_gpu::load(&ctx.app);
+            cx.spawn(async move |this, cx| {
+                let cards = cx.background_spawn(async move { Machine::detect(&heronite_launch::SystemProbe).cards }).await;
+                this.update(cx, |this, cx| {
+                    this.advanced.cards = Some(cards);
+                    cx.notify();
+                })
+                .ok();
+            })
+            .detach();
+        }
     }
 }
 
@@ -263,11 +288,128 @@ impl SettingsPage {
         if let Some((text, error)) = self.advanced.notice.clone() {
             col = col.child(super::library::notice_line(text, error));
         }
+        if let Some(gpu) = self.interface_gpu(cx) {
+            col = col.child(caption(tr!("Troubleshooting"))).child(card([gpu.into_any_element()]));
+        }
         col
     }
 }
 
+/// `name (integrated)`.
+fn card_label(c: &Card) -> String {
+    match c.integrated {
+        Some(true) => format!("{} ({})", c.name, tr!("integrated")),
+        Some(false) => format!("{} ({})", c.name, tr!("dedicated")),
+        None => c.name.clone(),
+    }
+}
+
+fn ids_of(c: &Card) -> InterfaceGpu {
+    InterfaceGpu { vendor_id: c.vendor_id, device_id: c.device_id }
+}
+
 impl SettingsPage {
+    pub(super) fn set_interface_gpu(&mut self, gpu: Option<InterfaceGpu>, cx: &mut Context<Self>) {
+        if gpu == self.advanced.gpu_saved.map(|s| s.gpu) {
+            return;
+        }
+        let applied = crate::system::interface_gpu::applied();
+        let res = match gpu {
+            // Back to the card this run draws with: as it was at start.
+            Some(g) if applied.gpu == Some(g) => {
+                interface_gpu::write(&self.ctx.app, Some(Saved { gpu: g, confirmed: !applied.trial, tried: true }))
+            }
+            _ => interface_gpu::save(&self.ctx.app, gpu),
+        };
+        match res {
+            Ok(()) => self.advanced.gpu_saved = interface_gpu::load(&self.ctx.app),
+            Err(err) => self.advanced.notice = Some((format!("{err:#}").into(), true)),
+        }
+        cx.notify();
+    }
+
+    fn keep_interface_gpu(&mut self, cx: &mut Context<Self>) {
+        let Some(saved) = self.advanced.gpu_saved else { return };
+        match interface_gpu::confirm(&self.ctx.app, saved) {
+            Ok(()) => self.advanced.gpu_saved = interface_gpu::load(&self.ctx.app),
+            Err(err) => self.advanced.notice = Some((format!("{err:#}").into(), true)),
+        }
+        cx.notify();
+    }
+
+    /// "Graphics card for the interface": out of the way at the end of the
+    /// page, and only where there is a choice (two cards or more, or one
+    /// saved), since few computers need it.
+    fn interface_gpu(&mut self, cx: &mut Context<Self>) -> Option<Div> {
+        let cards = self.advanced.cards.clone()?;
+        let saved_state = self.advanced.gpu_saved;
+        let saved = saved_state.map(|s| s.gpu);
+        if cards.len() < 2 && saved.is_none() {
+            return None;
+        }
+        let mut choices: Vec<Option<InterfaceGpu>> = vec![None];
+        let mut options: Vec<(SharedString, bool)> = vec![(tr!("Automatic").into(), saved.is_none())];
+        for c in &cards {
+            choices.push(Some(ids_of(c)));
+            options.push((card_label(c).into(), saved == Some(ids_of(c))));
+        }
+        if let Some(gone) = saved.filter(|g| !cards.iter().any(|c| ids_of(c) == *g)) {
+            choices.push(Some(gone));
+            options.push((tr!("Card {id} (not connected)", id = gone.id()).into(), true));
+        }
+        let value = options.iter().find(|(_, on)| *on).map(|(l, _)| l.clone()).unwrap_or_default();
+        let select = select_field(
+            "adv-interface-gpu",
+            Some(tr!("Graphics card for the interface")),
+            value,
+            false,
+            self.advanced.gpu_open,
+            options,
+            cx,
+            |this: &mut SettingsPage, _, cx| {
+                this.advanced.gpu_open = !this.advanced.gpu_open;
+                cx.notify();
+            },
+            move |this: &mut SettingsPage, i, _, cx| {
+                this.advanced.gpu_open = false;
+                this.set_interface_gpu(choices[i], cx);
+            },
+        );
+        let mut col = div().flex().flex_col().gap(px(6.)).py(px(11.)).child(select).child(meta_text(tr!(
+            "The card that draws Heronite's own windows; games keep their own setting. Automatic uses the card the desktop draws on. On a laptop with two cards, if scrolling stutters, try the card the screen is connected to."
+        )));
+        let applied = crate::system::interface_gpu::applied();
+        if applied.from_environment {
+            col = col.child(meta_text(tr!("ZED_DEVICE_ID is set in the environment, so this setting is not used.")));
+        } else if saved.is_some() && saved == applied.gpu && saved_state.is_some_and(|s| !s.confirmed) {
+            col = col.child(row(
+                tr!("Keep this card?"),
+                Some(tr!("Heronite is drawing with it now. If it looks right, keep it; otherwise the next start goes back to Automatic.")),
+                action_button(
+                    "adv-interface-gpu-keep",
+                    ButtonKind::Primary,
+                    tr!("Keep this card"),
+                    true,
+                    cx.listener(|this, _, _, cx| this.keep_interface_gpu(cx)),
+                ),
+            ));
+        } else if saved != applied.gpu {
+            let blocker = crate::system::restart_blocker(cx);
+            col = col.child(row(
+                tr!("Takes effect after a restart."),
+                blocker.as_deref(),
+                action_button(
+                    "adv-interface-gpu-restart",
+                    ButtonKind::Glass,
+                    tr!("Restart now"),
+                    blocker.is_none(),
+                    cx.listener(|_, _, _, cx| crate::system::restart_now(cx)),
+                ),
+            ));
+        }
+        Some(col)
+    }
+
     fn image_cache_limit(&mut self, cx: &mut Context<Self>) -> Div {
         let now = self.settings.image_cache_limit_mb;
         let select = select_field(

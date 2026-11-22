@@ -172,7 +172,11 @@ impl SaveBackupsView {
         let active = !self.layer.is_open() && self.console_active;
         div()
             .size_full()
-            .child(self.console_list.render("console-save-backups", &rows, active).size_full())
+            .child({
+                // Settings cards, as the rest of the game's settings.
+                self.console_list.set_style(crate::console::list::RowStyle::Card);
+                self.console_list.render("console-save-backups", &rows, active).size_full()
+            })
             .children(self.layer.view())
             .into_any_element()
     }

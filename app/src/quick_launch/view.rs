@@ -14,6 +14,7 @@ use heronite_i18n::tr;
 use heronite_images::ImageRef;
 
 use super::run;
+use crate::collection::palette::launcher::{chosen, Chosen};
 use crate::collection::palette::{self, global_entries, library_entries, Act, Mode, PaletteEvent, PaletteView, Setup};
 use crate::images::to_chain;
 use crate::theme;
@@ -61,7 +62,8 @@ fn load(paths: &DataPaths, include_hidden: bool) -> anyhow::Result<Loaded> {
 impl QuickLauncher {
     pub fn new(query: &str, keys: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let data_paths = DataPaths::detect();
-        let ui = UiState::load(&AppPaths::for_data(&data_paths));
+        let app_paths = AppPaths::for_data(&data_paths);
+        let ui = UiState::load(&app_paths);
         // The open window's history may be newer than the file.
         let recent = crate::system::main_view(cx)
             .and_then(|v| v.upgrade())
@@ -109,7 +111,7 @@ impl QuickLauncher {
             opened: std::time::Instant::now(),
             pending_enter: None,
             load_failed: false,
-            include_hidden: ui.show_hidden,
+            include_hidden: crate::services::hidden_lock::shown(ui.show_hidden, &app_paths),
             debug_keys: keys,
             _subs: subs,
         };
@@ -184,7 +186,7 @@ impl QuickLauncher {
         self.palette.update(cx, |p, cx| {
             let game_entries = game.and_then(|(key, title)| {
                 let bits = entries.iter().find(|e| matches!(&e.act, Act::SelectGame(k) if *k == key))?.game.clone()?;
-                Some(palette::launcher::game_level(&title, &bits))
+                Some(game_level(&lib, &title, &bits))
             });
             p.refresh_entries(entries.clone(), game_entries, cx);
         });
@@ -229,19 +231,56 @@ impl QuickLauncher {
             PaletteEvent::Run { act: Act::Random(_), .. } => {}
             PaletteEvent::Run { act, id } => {
                 let bits = act.game().and_then(|k| view.read(cx).game_bits_of(k));
+                if let Chosen::BackToGame(key) = chosen(act, bits.as_ref()) {
+                    return self.back_to_game(key, window, cx);
+                }
                 run::run(act.clone(), id, bits, self.lib.clone(), &self.data_paths, cx);
                 let id = window.window_handle().window_id();
                 cx.defer(move |cx| super::close_window(id, cx));
             }
-            PaletteEvent::OpenGame(key) => {
-                let Some(bits) = view.read(cx).game_bits_of(key) else { return };
-                let title = bits.card.as_ref().map(|c| c.title.clone()).unwrap_or_else(|| key.clone().into());
-                let entries = palette::launcher::game_level(&title, &bits);
-                self.game_shown = Some((key.clone(), title.clone()));
-                view.update(cx, |p, cx| p.show_game(title, entries, window, cx));
-            }
+            PaletteEvent::OpenGame(key) => self.open_game(key, window, cx),
         }
     }
+
+    /// The actions of the game under `key`, in place of the list.
+    fn open_game(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let (Some(bits), Some(lib)) = (self.palette.read(cx).game_bits_of(key), self.lib.clone()) else { return };
+        let title = bits.card.as_ref().map(|c| c.title.clone()).unwrap_or_else(|| key.to_string().into());
+        let entries = game_level(&lib, &title, &bits);
+        self.game_shown = Some((key.to_string(), title.clone()));
+        self.palette.update(cx, |p, cx| p.show_game(title, entries, window, cx));
+    }
+
+    /// Gives the focus to the running game's window, and closes; when it has
+    /// none (or it cannot be found), its actions are shown instead, Stop
+    /// among them.
+    fn back_to_game(&mut self, key: String, window: &mut Window, cx: &mut Context<Self>) {
+        let pid = self.lib.as_ref().and_then(|l| l.get(&key)).and_then(|g| crate::system::game_pid(cx, &g.app_name));
+        let Some(pid) = pid else {
+            log::info!("quick launcher: back to the game: its process is not known yet");
+            return self.open_game(&key, window, cx);
+        };
+        cx.spawn_in(window, async move |this, cx| {
+            let res = cx.background_spawn(async move { heronite_overlay::game_window::focus(pid) }).await;
+            this.update_in(cx, |this, window, cx| match res {
+                Ok(()) => {
+                    let id = window.window_handle().window_id();
+                    cx.defer(move |cx| super::close_window(id, cx));
+                }
+                Err(e) => {
+                    log::info!("quick launcher: back to the game: {e}; showing its actions");
+                    this.open_game(&key, window, cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+}
+
+/// The quick launcher's actions of a game of `lib`.
+fn game_level(lib: &Library, title: &str, bits: &palette::GameBits) -> Vec<palette::Entry> {
+    palette::launcher::game_level(title, bits, &lib.statuses, palette::launcher::can_focus_games())
 }
 
 impl Render for QuickLauncher {

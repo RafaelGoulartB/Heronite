@@ -1652,13 +1652,13 @@ pub(super) fn prime_vulkan_context<W>(
     let surface = match unsafe { instance.create_surface_unsafe(target) } {
         Ok(surface) => surface,
         Err(err) => {
-            log::info!("no Vulkan surface ({err}); trying Vulkan and OpenGL");
+            log::info!(target: "gpui_linux::gpu", "no Vulkan surface ({err}); trying Vulkan and OpenGL");
             return;
         }
     };
     match gpui_wgpu::WgpuContext::new_rejecting_software(instance, &surface, compositor_gpu) {
         Ok(context) => *gpu_context.borrow_mut() = Some(context),
-        Err(err) => log::info!("no hardware Vulkan adapter ({err:#}); trying Vulkan and OpenGL"),
+        Err(err) => log::info!(target: "gpui_linux::gpu", "no hardware Vulkan adapter ({err:#}); trying Vulkan and OpenGL"),
     }
 }
 

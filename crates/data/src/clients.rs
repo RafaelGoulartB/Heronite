@@ -333,6 +333,19 @@ pub struct ClientPrefs {
     /// names): the sync leaves them out until they are installed again.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub removed: BTreeMap<Client, BTreeSet<String>>,
+    /// The same games, kept for the import of the account's library (EA),
+    /// which brings games that are not installed: unlike `removed`, they
+    /// stay on it when the client no longer has them.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub removed_owned: BTreeMap<Client, BTreeSet<String>>,
+    /// When the account's library was last read (`games`: what it owns).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub owned: BTreeMap<Client, LastSync>,
+    /// The clients whose account Heronite is signed in to (the EA account),
+    /// with the name the account shows (`""` when it gave none). The
+    /// session itself is never in this file.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub accounts: BTreeMap<Client, String>,
     #[serde(flatten)]
     pub extra: Extra,
 }

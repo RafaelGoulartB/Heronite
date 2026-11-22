@@ -58,6 +58,13 @@ fn a_good_list_reads_whole() {
 }
 
 #[test]
+fn an_example_code_is_listed_for_the_gallery() {
+    assert_eq!(parse(&list(vec![good_entry()])).unwrap().entries[0].id_example, None, "none by default");
+    let index = with(|e| e["ids"] = json!({ "example": "rj01234567" })).unwrap();
+    assert_eq!(index.entries[0].id_example.as_deref(), Some("RJ01234567"));
+}
+
+#[test]
 fn a_newer_contract_is_listed_but_not_supported() {
     let index = with(|e| e["api"] = json!(API_VERSION + 1)).unwrap();
     assert!(!index.entries[0].supported());
@@ -120,6 +127,10 @@ fn each_wrong_entry_refuses_the_list() {
         ("manifest too big", Box::new(|e| e["files"]["source.toml"]["size"] = json!(MAX_MANIFEST + 1))),
         ("empty file", Box::new(|e| e["files"]["source.toml"]["size"] = json!(0))),
         ("setting without label", Box::new(|e| e["settings"] = json!([{ "required": true }]))),
+        ("ids not an object", Box::new(|e| e["ids"] = json!("RJ01234567"))),
+        ("example not text", Box::new(|e| e["ids"] = json!({ "example": 1234 }))),
+        ("empty example", Box::new(|e| e["ids"] = json!({ "example": " " }))),
+        ("long example", Box::new(|e| e["ids"] = json!({ "example": "R".repeat(65) }))),
     ];
     for (what, edit) in cases {
         match with(edit) {

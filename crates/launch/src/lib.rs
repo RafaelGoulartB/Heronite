@@ -10,6 +10,7 @@
 
 pub mod actions;
 pub mod anticheat_data;
+pub mod antimicrox;
 mod args;
 mod clients;
 pub mod companions;

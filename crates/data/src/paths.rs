@@ -404,6 +404,10 @@ impl AppPaths {
     pub fn ui_state(&self) -> PathBuf {
         self.config.join("ui-state.json")
     }
+    /// The PIN that guards hidden games (see `heronite_data::hidden_lock`).
+    pub fn hidden_lock(&self) -> PathBuf {
+        self.config.join("hidden-lock.json")
+    }
     /// The getting-started checklist (see `heronite_data::onboarding`).
     pub fn onboarding(&self) -> PathBuf {
         self.config.join("onboarding.json")
@@ -421,6 +425,10 @@ impl AppPaths {
     /// (`HomeBackground::Custom`).
     pub fn home_background(&self) -> PathBuf {
         self.config.join("home-background-image")
+    }
+    /// The graphics card of this app's windows (see `heronite_data::interface_gpu`).
+    pub fn interface_gpu(&self) -> PathBuf {
+        self.config.join("interface-gpu.json")
     }
     /// Screenshot options specific to this app (see `heronite_data::screenshot_prefs`).
     pub fn screenshot_prefs(&self) -> PathBuf {

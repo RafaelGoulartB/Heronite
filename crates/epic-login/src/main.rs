@@ -14,6 +14,12 @@
 //!   URL is made by the app for this sign-in). What it prints is the whole
 //!   address the sign-in ends on (`login.live.com/oauth20_desktop.srf?code=…&state=…`,
 //!   or `?error=…` when the user said no): the app checks it is its sign-in.
+//! * `--store ea`: the EA account. The page asks EA for a token of its web
+//!   client ([`EA_LOGIN_URL`]): EA signs the user in first, then answers on
+//!   that address with the token as JSON. Once it did, what is printed is
+//!   the window's cookies for `accounts.ea.com` (`{"cookies":[{"name":…,
+//!   "value":…}]}`), the web session the app asks for tokens with; the
+//!   token itself is left behind.
 //!
 //! The main app spawns this helper and reads stdout; it lives in its own
 //! binary so the GPUI app does not carry a web engine.
@@ -52,6 +58,17 @@ const CLOSED: i32 = 4;
 /// takes the window for the launcher and waits for its JS bridge.
 const EPIC_LOGIN_URL: &str = "https://www.epicgames.com/id/login?responseType=code";
 const EPIC_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) EpicGamesLauncher";
+/// EA's token for the client of its web pages, answered as JSON
+/// (`nucleus:rest`); with no session EA shows its sign-in page first. The
+/// clients of Lutris and Playnite ask the same, with `prompt=none`.
+const EA_LOGIN_URL: &str = "https://accounts.ea.com/connect/auth?client_id=ORIGIN_JS_SDK&response_type=token&redirect_uri=nucleus:rest";
+/// The address whose cookies are the session (the app sends them there).
+const EA_COOKIES_URL: &str = "https://accounts.ea.com/connect/auth";
+/// What the EA sign-in hands over in place of a code: the cookies follow.
+const EA_DONE: &str = "ea-signed-in";
+/// How many times a page of EA's site other than its sign-in sends the
+/// window back to [`EA_LOGIN_URL`] (a link the user followed).
+const EA_MAX_RETURNS: u32 = 5;
 const GOG_LOGIN_URL: &str = "https://auth.gog.com/auth?client_id=46899977096215655&redirect_uri=https%3A%2F%2Fembed.gog.com%2Fon_login_success%3Forigin%3Dclient&response_type=code&layout=galaxy";
 /// A desktop browser: the GOG and Amazon pages refuse unknown web views.
 /// (WebView2's own user agent is one already: Microsoft Edge's.)
@@ -64,6 +81,7 @@ enum Store {
     Gog,
     Amazon,
     Xbox,
+    Ea,
 }
 
 impl Store {
@@ -73,6 +91,7 @@ impl Store {
             "gog" => Some(Self::Gog),
             "amazon" => Some(Self::Amazon),
             "xbox" => Some(Self::Xbox),
+            "ea" => Some(Self::Ea),
             _ => None,
         }
     }
@@ -83,6 +102,7 @@ impl Store {
             Self::Gog => "GOG login",
             Self::Amazon => "Amazon Games login",
             Self::Xbox => "Xbox sign-in",
+            Self::Ea => "EA sign-in",
         }
     }
 
@@ -90,7 +110,7 @@ impl Store {
     fn user_agent(self) -> &'static str {
         match self {
             Self::Epic => EPIC_USER_AGENT,
-            Self::Gog | Self::Amazon | Self::Xbox => BROWSER_USER_AGENT,
+            Self::Gog | Self::Amazon | Self::Xbox | Self::Ea => BROWSER_USER_AGENT,
         }
     }
 
@@ -105,6 +125,11 @@ impl Store {
                 && url.query_pairs().any(|(k, v)| (k == "code" || k == "error") && !v.is_empty());
             return done.then(|| address.to_string());
         }
+        // The token is sent to `nucleus:rest` when EA redirects instead of
+        // answering on its own address.
+        if self == Self::Ea {
+            return (url.scheme() == "nucleus").then(|| EA_DONE.to_string());
+        }
         let (host_ok, param) = match self {
             // Epic redirects to https://localhost/launcher/authorized?code=...
             Self::Epic => (url.host_str() == Some("localhost"), "code"),
@@ -113,7 +138,7 @@ impl Store {
             Self::Amazon => {
                 (url.host_str().is_some_and(|h| h == "amazon.com" || h.ends_with(".amazon.com")), "openid.oa2.authorization_code")
             }
-            Self::Xbox => return None,
+            Self::Xbox | Self::Ea => return None,
         };
         if !host_ok {
             return None;
@@ -144,6 +169,7 @@ fn parse_args(args: &[String]) -> Result<(Store, String), String> {
         (Store::Gog, None) => GOG_LOGIN_URL.to_string(),
         (Store::Amazon, None) => return Err("--store amazon needs --url".into()),
         (Store::Xbox, None) => return Err("--store xbox needs --url".into()),
+        (Store::Ea, None) => EA_LOGIN_URL.to_string(),
     };
     Ok((store, url))
 }
@@ -162,6 +188,51 @@ fn code_from_page_text(text: &str) -> Option<String> {
         .filter(|c| !c.is_empty())
         .map(str::to_string)
         .or_else(|| doc.get("redirectUrl").and_then(|u| u.as_str()).and_then(|u| Store::Epic.code_from_url(u)))
+}
+
+/// Where the EA sign-in is, by the address of the page shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EaPage {
+    /// `connect/auth` itself: its text may be the token.
+    Token,
+    /// Another page of EA's site (not its sign-in): the window goes back to
+    /// [`EA_LOGIN_URL`], which answers at once for a signed-in session.
+    Elsewhere,
+    /// The sign-in, or a page of another site.
+    Other,
+}
+
+fn ea_page(url: &str) -> EaPage {
+    let Ok(url) = Url::parse(url) else { return EaPage::Other };
+    let host = url.host_str().unwrap_or("");
+    if url.scheme() != "https" || !(host == "ea.com" || host.ends_with(".ea.com")) {
+        return EaPage::Other;
+    }
+    match host {
+        "accounts.ea.com" if url.path() == "/connect/auth" => EaPage::Token,
+        "accounts.ea.com" | "signin.ea.com" => EaPage::Other,
+        _ => EaPage::Elsewhere,
+    }
+}
+
+/// The text of `connect/auth` holds a token (JSON with `access_token`;
+/// `eval` hands it back JSON-encoded, and a JSON viewer may add text).
+fn ea_token_in(text: &str) -> bool {
+    let text = serde_json::from_str::<String>(text).unwrap_or_else(|_| text.to_string());
+    let json = match (text.find('{'), text.rfind('}')) {
+        (Some(a), Some(b)) if a < b => &text[a..=b],
+        _ => return false,
+    };
+    serde_json::from_str::<serde_json::Value>(json)
+        .ok()
+        .and_then(|d| d.get("access_token").and_then(|t| t.as_str()).map(|t| !t.is_empty()))
+        .unwrap_or(false)
+}
+
+/// What the EA sign-in prints: the cookies, as JSON.
+fn ea_cookies_json<'a>(cookies: impl IntoIterator<Item = (&'a str, &'a str)>) -> String {
+    let list: Vec<serde_json::Value> = cookies.into_iter().map(|(name, value)| serde_json::json!({"name": name, "value": value})).collect();
+    serde_json::json!({ "cookies": list }).to_string()
 }
 
 #[cfg(target_os = "linux")]
@@ -256,13 +327,36 @@ fn main() {
             .expect("creating the web view"),
     );
 
-    // Epic's JSON page of /id/api/redirect shows the code as text. Read
-    // again while it is open: the address changes before the text is there.
+    // Epic's JSON page of /id/api/redirect shows the code as text, and EA's
+    // connect/auth its token. Read again while it is open: the address
+    // changes before the text is there.
     let page_check = webview.clone();
     let tx_page = tx.clone();
+    let ea_returns = std::cell::Cell::new(0u32);
+    let ea_left_from = std::cell::RefCell::new(String::new());
     glib::timeout_add_local(Duration::from_millis(700), move || {
-        if smoke || store != Store::Epic {
+        if smoke || !matches!(store, Store::Epic | Store::Ea) {
             return glib::ControlFlow::Break;
+        }
+        if store == Store::Ea {
+            let Ok(url) = page_check.url() else { return glib::ControlFlow::Continue };
+            match ea_page(&url) {
+                EaPage::Token => {
+                    let tx = tx_page.clone();
+                    let _ = page_check.evaluate_script_with_callback("document.body ? document.body.innerText : ''", move |text| {
+                        if ea_token_in(&text) {
+                            let _ = tx.send(EA_DONE.to_string());
+                        }
+                    });
+                }
+                EaPage::Elsewhere if *ea_left_from.borrow() != url && ea_returns.get() < EA_MAX_RETURNS => {
+                    ea_returns.set(ea_returns.get() + 1);
+                    *ea_left_from.borrow_mut() = url;
+                    let _ = page_check.load_url(EA_LOGIN_URL);
+                }
+                _ => {}
+            }
+            return glib::ControlFlow::Continue;
         }
         if page_check.url().is_ok_and(|url| url.contains("/id/api/redirect")) {
             let tx = tx_page.clone();
@@ -277,8 +371,24 @@ fn main() {
 
     // Hand the code over on the main thread and finish.
     let started = std::time::Instant::now();
+    let session_view = webview.clone();
     glib::timeout_add_local(Duration::from_millis(100), move || {
         if let Ok(code) = rx.try_recv() {
+            if store == Store::Ea {
+                // EA's token came: the session is the window's cookies.
+                let cookies = match session_view.cookies_for_url(EA_COOKIES_URL) {
+                    Ok(c) if !c.is_empty() => c,
+                    other => {
+                        eprintln!("no EA cookies after the sign-in ({:?})", other.err());
+                        std::process::exit(1);
+                    }
+                };
+                println!("{}", ea_cookies_json(cookies.iter().map(|c| (c.name(), c.value()))));
+                use std::io::Write;
+                let _ = std::io::stdout().flush();
+                gtk::main_quit();
+                return glib::ControlFlow::Break;
+            }
             println!("{code}");
             use std::io::Write;
             let _ = std::io::stdout().flush();
@@ -407,6 +517,7 @@ mod tests {
             parse_args(&args(&["--store", "xbox", "--url", "https://login.live.com/oauth20_authorize.srf?x"])).unwrap().0,
             Store::Xbox
         );
+        assert_eq!(parse_args(&args(&["--store", "ea"])).unwrap(), (Store::Ea, EA_LOGIN_URL.to_string()));
         assert!(parse_args(&args(&["--store", "steam"])).is_err());
         assert!(parse_args(&args(&["--bogus"])).is_err());
     }
@@ -421,5 +532,33 @@ mod tests {
         let no_code = r#"{"redirectUrl":"https://localhost/launcher/authorized?code=fromurl","authorizationCode":null}"#;
         assert_eq!(code_from_page_text(no_code).as_deref(), Some("fromurl"));
         assert_eq!(code_from_page_text("\"<html>\""), None);
+    }
+
+    #[test]
+    fn the_ea_sign_in_ends_on_the_token_of_its_own_address() {
+        assert_eq!(ea_page(EA_LOGIN_URL), EaPage::Token);
+        assert_eq!(ea_page("https://accounts.ea.com/connect/auth?fid=abc"), EaPage::Token);
+        assert_eq!(ea_page("https://signin.ea.com/p/juno/login?fid=abc"), EaPage::Other);
+        assert_eq!(ea_page("https://accounts.ea.com/connect/logout"), EaPage::Other);
+        assert_eq!(ea_page("https://www.ea.com/pt-br"), EaPage::Elsewhere);
+        assert_eq!(ea_page("https://myaccount.ea.com/cp-ui/aboutme/index"), EaPage::Elsewhere);
+        assert_eq!(ea_page("https://evilea.com/connect/auth"), EaPage::Other);
+        assert_eq!(ea_page("http://accounts.ea.com/connect/auth"), EaPage::Other);
+        assert_eq!(ea_page("https://accounts.google.com/o/oauth2"), EaPage::Other);
+
+        let token = r#"{"access_token":"QVQx","token_type":"Bearer","expires_in":"3599"}"#;
+        assert!(ea_token_in(token));
+        assert!(ea_token_in(&serde_json::to_string(token).unwrap()), "as eval hands it back");
+        assert!(ea_token_in(&format!("Pretty-print\n{token}\n")), "inside a JSON viewer's text");
+        assert!(!ea_token_in(r#"{"error_code":"login_required","error":"login_required"}"#));
+        assert!(!ea_token_in(r#"{"access_token":""}"#));
+        assert!(!ea_token_in("<html>Sign in</html>"));
+
+        assert_eq!(Store::Ea.code_from_url("nucleus:rest#access_token=QVQx&expires_in=3599").as_deref(), Some(EA_DONE));
+        assert_eq!(Store::Ea.code_from_url("https://www.ea.com/?code=x"), None);
+        assert_eq!(
+            ea_cookies_json([("sid", "S1"), ("remid", "R\"1")]),
+            r#"{"cookies":[{"name":"sid","value":"S1"},{"name":"remid","value":"R\"1"}]}"#
+        );
     }
 }

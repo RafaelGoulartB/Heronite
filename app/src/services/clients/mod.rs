@@ -16,6 +16,8 @@
 //! `HERONITE_DISABLE_IDLE_JOBS` turns the timer off.
 
 mod debug;
+mod ea_account;
+mod ea_vault;
 mod run;
 mod setup;
 pub mod shortcuts;
@@ -35,6 +37,7 @@ use heronite_data::DataPaths;
 use heronite_i18n::tr;
 
 pub use debug::debug_client;
+pub use ea_account::EaAccount;
 
 use super::proton_setup::Setup as WineSetup;
 
@@ -172,6 +175,8 @@ pub struct Clients {
     /// `HERONITE_DEBUG_CLIENT`: this client shows invented facts and nothing
     /// is run for it.
     frozen: Option<Client>,
+    /// The EA account (optional): the games it owns that are not installed.
+    pub ea: EaAccount,
 }
 
 impl EventEmitter<ClientsEvent> for Clients {}
@@ -230,10 +235,14 @@ impl Clients {
             wine_sub: None,
             poller: None,
             frozen: None,
+            ea: EaAccount::default(),
         };
         if let Some((client, name)) = debug_client() {
             this.states.insert(client, debug::fake(client, &name));
             this.frozen = Some(client);
+        }
+        if heronite_platform::supported(heronite_platform::Feature::StoreClients) {
+            this.ea = EaAccount::from_prefs(&ClientPrefs::load(&this.paths));
         }
         if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") && heronite_platform::supported(heronite_platform::Feature::StoreClients) {
             cx.spawn(async move |this, cx| {
@@ -319,8 +328,9 @@ impl Clients {
     pub fn note_removed(&mut self, client: Client, app_name: &str, cx: &mut Context<Self>) {
         self.state_mut(client).removed.insert(app_name.to_string());
         let (paths, app_name) = (self.paths.clone(), app_name.to_string());
+        let installed = self.state(client).status.as_ref().map(|s| s.games.clone()).unwrap_or_default();
         cx.background_spawn(async move {
-            if let Err(e) = collection::mark_removed(&paths, client, &app_name) {
+            if let Err(e) = collection::mark_removed(&paths, client, &app_name, &installed) {
                 log::warn!("{}: leaving {app_name} out of the Collection: {e:#}", client.name());
             }
         })
@@ -362,6 +372,7 @@ impl Clients {
     fn refreshed(&mut self, reads: Vec<(Client, Read)>, cx: &mut Context<Self>) {
         let mut events = Vec::new();
         let mut again = Vec::new();
+        let mut ea_synced = false;
         for (client, read) in reads {
             let st = self.state_mut(client);
             st.reading = false;
@@ -385,6 +396,7 @@ impl Clients {
                     let games = read.status.games.len();
                     st.last = Some(LastSync { at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true), games });
                     events.push(ClientsEvent::Synced(client, report));
+                    ea_synced |= client == Client::Ea;
                 }
                 Some(Err(e)) => {
                     log::warn!("{}: bringing the games in: {e}", client.name());
@@ -406,6 +418,10 @@ impl Clients {
         }
         for ev in events {
             cx.emit(ev);
+        }
+        // After the installed games, so the account's are matched to them.
+        if ea_synced {
+            self.read_ea(false, cx);
         }
         self.ensure_polling(cx);
         cx.notify();

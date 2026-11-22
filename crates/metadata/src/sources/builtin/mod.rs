@@ -193,8 +193,8 @@ fn descriptors() -> Vec<SourceDescriptor> {
             searchable: true,
             ..source(LUTRIS, "Lutris", Details, &["description", "releaseDate", "genres", "platforms", "cover", "hero"])
         },
-        // Kept in saved priorities (Heronite's data) but not offered: nothing
-        // feeds this source here yet (no Playnite dump is set).
+        // Not offered: it is asked only once, when a game comes over from
+        // Playnite (`MetadataService::seed_playnite_metadata`).
         SourceDescriptor {
             finds_by: vec![SourceId],
             network: false,
@@ -214,6 +214,7 @@ fn descriptors() -> Vec<SourceDescriptor> {
                     "platforms",
                     "series",
                     "features",
+                    "criticScore",
                     "cover",
                     "hero",
                 ],

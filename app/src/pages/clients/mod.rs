@@ -8,6 +8,7 @@
 //! palette commands.
 
 mod console;
+mod ea;
 mod logic;
 mod palette;
 mod render;
@@ -71,6 +72,10 @@ pub struct ClientPage<K: ClientKind> {
     wine_for: Option<PathBuf>,
     dialog: Option<AnyView>,
     dialog_sub: Option<Subscription>,
+    /// The EA page's login window is open.
+    ea_window: bool,
+    /// Why the login window last failed, shown under the card.
+    ea_notice: Option<String>,
     /// Console mode: focused row and the open sheet / browser.
     console_list: crate::console::list::ListNav,
     layer: crate::console::Layer,
@@ -99,6 +104,8 @@ impl<K: ClientKind> ClientPage<K> {
             wine_for: None,
             dialog: None,
             dialog_sub: None,
+            ea_window: false,
+            ea_notice: None,
             console_list: Default::default(),
             layer: Default::default(),
             kind: PhantomData,

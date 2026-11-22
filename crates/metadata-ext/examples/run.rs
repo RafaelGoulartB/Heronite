@@ -106,7 +106,12 @@ fn main() {
         ..Default::default()
     };
     match command.as_str() {
-        "inspect" => println!("{}", serde_json::to_string_pretty(source.descriptor()).unwrap_or_default()),
+        "inspect" => {
+            println!("{}", serde_json::to_string_pretty(source.descriptor()).unwrap_or_default());
+            if let Some(p) = &source.manifest().id_pattern {
+                println!("ids.pattern: {}", p.as_str());
+            }
+        }
         "find" => print(source.lookup(&ctx, &game)),
         "search" => print(source.search(&ctx, &arg)),
         "fetch" => print(source.lookup_id(&ctx, &game, &arg)),

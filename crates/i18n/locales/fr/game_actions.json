@@ -34,5 +34,8 @@
   "Settings tool": "Outil de configuration",
   "Web page": "Page web",
   "What it opens": "Ce que l’action ouvre",
-  "Covers…": "Jaquettes…"
+  "Covers…": "Jaquettes…",
+  "Ask how to play": "Demander comment jouer",
+  "Pressing Play asks whether to start the game normally or with one of the actions that count as playing.": "Appuyer sur Jouer demande s’il faut lancer le jeu normalement ou avec l’une des actions qui comptent comme du jeu.",
+  "Choose how to start the game.": "Choisissez comment lancer le jeu."
 }

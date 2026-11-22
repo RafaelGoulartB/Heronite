@@ -197,6 +197,8 @@ const INDEX: &[(Section, &[&str])] = &[
         &[
             "Buttons drawn as",
             "Confirm button",
+            "Use the controller on the desktop",
+            "Move the pointer",
             "Open the overlay",
             "Take a screenshot",
             "Save the replay",

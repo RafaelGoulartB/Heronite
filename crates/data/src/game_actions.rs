@@ -2,11 +2,13 @@
 //! a program, a command or something to open (a web page, a file, a folder).
 //! Play itself never changes; the actions sit next to it.
 //!
-//! The file is `{ "games": { "<game key>": [ { action } ] } }`, keyed by
-//! `CollectionGame.key` like the ratings. Other fields in the file are kept on
+//! The file is `{ "games": { "<game key>": [ { action } ] }, "askOnPlay":
+//! ["<game key>"] }`, keyed by `CollectionGame.key` like the ratings. The
+//! games in `askOnPlay` ask on Play which way to start them: Play or one of
+//! their actions that count as playing. Other fields in the file are kept on
 //! write; an entry that does not read as an action is dropped on read.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 use indexmap::IndexMap;
@@ -56,9 +58,13 @@ impl Action {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ActionsFile {
     #[serde(default)]
     games: IndexMap<String, Vec<Value>>,
+    /// Games whose Play asks how to play.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    ask_on_play: Vec<String>,
     #[serde(flatten)]
     extra: Extra,
 }
@@ -78,6 +84,23 @@ pub fn load(paths: &DataPaths) -> HashMap<String, Vec<Action>> {
         })
         .filter(|(_, list)| !list.is_empty())
         .collect()
+}
+
+/// The games whose Play asks how to play (keys).
+pub fn load_ask_on_play(paths: &DataPaths) -> HashSet<String> {
+    let file: ActionsFile = json_store::read(&paths.game_actions()).unwrap_or_default();
+    file.ask_on_play.into_iter().collect()
+}
+
+/// Whether Play of the game under `key` asks how to play.
+pub fn set_ask_on_play(paths: &DataPaths, key: &str, on: bool) -> Result<()> {
+    json_store::update::<ActionsFile, _>(&paths.game_actions(), |file| {
+        file.ask_on_play.retain(|k| k != key);
+        if on {
+            file.ask_on_play.push(key.to_owned());
+        }
+        Ok(())
+    })
 }
 
 /// Replaces a game's actions (`[]` removes the game from the file).
@@ -148,6 +171,21 @@ mod tests {
         save(&p, "h", &[action("9", ActionKind::Open, "/x")]).unwrap();
         let raw: Value = serde_json::from_str(&std::fs::read_to_string(p.game_actions()).unwrap()).unwrap();
         assert_eq!(raw["note"], 1);
+    }
+
+    #[test]
+    fn asking_on_play_is_kept_per_game() {
+        let (_d, p) = paths();
+        assert!(load_ask_on_play(&p).is_empty());
+        save(&p, "a", &[action("1", ActionKind::Program, "/g/recomp.exe")]).unwrap();
+        set_ask_on_play(&p, "a", true).unwrap();
+        set_ask_on_play(&p, "a", true).unwrap();
+        set_ask_on_play(&p, "b", true).unwrap();
+        assert_eq!(load_ask_on_play(&p), HashSet::from(["a".to_string(), "b".to_string()]));
+        let raw: Value = serde_json::from_str(&std::fs::read_to_string(p.game_actions()).unwrap()).unwrap();
+        assert_eq!(raw["askOnPlay"], serde_json::json!(["a", "b"]));
+        set_ask_on_play(&p, "b", false).unwrap();
+        assert_eq!(load_ask_on_play(&p), HashSet::from(["a".to_string()]));
     }
 
     #[test]

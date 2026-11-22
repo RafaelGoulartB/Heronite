@@ -62,6 +62,12 @@ pub(super) fn console_rows(_: &SettingsPage) -> Vec<crate::console::list::Row> {
 
 pub(super) fn console_apply(_: &mut SettingsPage, _: crate::console::list::Outcome, _: &mut Context<SettingsPage>) {}
 
+/// Console mode: the viewer's hints, once it was shown.
+pub(super) fn console_hints(d: &SettingsPage, cx: &App) -> Vec<crate::console::Hint> {
+    use crate::console::PadTarget;
+    d.logs.viewer.as_ref().map(|v| v.read(cx).hints(cx)).unwrap_or_default()
+}
+
 impl SettingsPage {
     /// The viewer, created on first use (console mode).
     pub(super) fn logs_viewer(&mut self, cx: &mut Context<Self>) -> Entity<LogViewer> {

@@ -150,7 +150,8 @@ fn package(info: &PackageInfo) -> Div {
     for f in &info.provides {
         fills = fills.child(tag_pill(labels::field_name(f)));
     }
-    let about = [Some(info.description.clone()), labels::when_asked(d)].into_iter().flatten();
+    let about =
+        [Some(info.description.clone()), info.id_example.as_deref().map(words::recognises), labels::when_asked(d)].into_iter().flatten();
     div()
         .flex()
         .flex_col()

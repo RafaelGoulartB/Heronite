@@ -167,16 +167,56 @@ impl CollectionView {
     }
 
     /// "Show hidden games": persists the flag and reloads the library with or
-    /// without the games hidden in Heroic.
+    /// without the games hidden in Heroic. Behind a PIN, turning it on asks
+    /// for the PIN first; turning it off locks them again.
     pub(super) fn set_show_hidden(&mut self, on: bool, cx: &mut Context<Self>) {
-        if self.ui.show_hidden == on {
+        use crate::services::hidden_lock as lock;
+        if !on {
+            lock::lock();
+        } else if !lock::open(&self.app_paths) {
+            self.open_hidden_pin(crate::dialogs::hidden_pin::PinMode::Unlock, cx);
             return;
         }
-        self.ui.show_hidden = on;
-        self.save_ui();
-        self.refreshing = true;
-        self.spawn_load(cx);
+        if self.ui.show_hidden != on {
+            self.ui.show_hidden = on;
+            self.save_ui();
+            self.refreshing = true;
+            self.spawn_load(cx);
+            self.mirror_hidden_lock(cx);
+        }
         cx.notify();
+    }
+
+    /// The PIN dialog of hidden games, in `mode`.
+    pub(in crate::collection) fn open_hidden_pin(&mut self, mode: crate::dialogs::hidden_pin::PinMode, cx: &mut Context<Self>) {
+        use crate::dialogs::hidden_pin::{HiddenPinDialog, PinDone};
+        let app = self.app_paths.clone();
+        let view = cx.new(|cx| HiddenPinDialog::new(mode, app, cx));
+        cx.subscribe(&view, |this, _, done: &PinDone, cx| this.hidden_pin_done(done.0, cx)).detach();
+        // Settings follows whatever happened, even when closed after "Forgot
+        // the PIN?" turned the PIN off.
+        cx.subscribe(&view, |this, _, ev: &crate::dialogs::DialogEvent, cx| {
+            if *ev == crate::dialogs::DialogEvent::Close {
+                this.mirror_hidden_lock(cx);
+            }
+        })
+        .detach();
+        self.open_dialog(view, cx);
+    }
+
+    fn hidden_pin_done(&mut self, mode: crate::dialogs::hidden_pin::PinMode, cx: &mut Context<Self>) {
+        use crate::dialogs::hidden_pin::PinMode;
+        use crate::services::hidden_lock as lock;
+        match mode {
+            PinMode::Unlock => {
+                lock::unlock();
+                self.set_show_hidden(true, cx);
+            }
+            // A new PIN keeps hidden games as they are on screen now.
+            PinMode::Set | PinMode::Change if self.ui.show_hidden => lock::unlock(),
+            PinMode::Set | PinMode::Change => lock::lock(),
+            PinMode::Remove => {}
+        }
     }
 
     pub(super) fn set_install_filter(&mut self, f: InstallFilter, cx: &mut Context<Self>) {

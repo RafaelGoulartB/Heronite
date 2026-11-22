@@ -46,7 +46,12 @@ impl ClientSettingsDialog {
             game: None,
             sandbox: false,
         };
-        let panel = cx.new(|cx| SettingsPanel::new(data_paths, Target::Game(facts), SECTIONS[0], window, cx));
+        let panel = cx.new(|cx| {
+            let mut p = SettingsPanel::new(data_paths, Target::Game(facts), SECTIONS[0], window, cx);
+            // Console mode draws its rows as settings cards.
+            p.set_console_style(crate::console::list::RowStyle::Card);
+            p
+        });
         cx.observe(&panel, |_, _, cx| cx.notify()).detach();
         Self { client, panel, section: SECTIONS[0] }
     }
@@ -95,16 +100,14 @@ impl ClientSettingsDialog {
             )
             .child(div().flex_none().px(u(46.)).py(u(12.)).child(kit::tabs(&labels, active)))
             .child(
-                div().flex().flex_col().flex_1().min_h_0().px(u(46.)).pb(u(70.)).child(
-                    div()
-                        .w(u(900.))
-                        .max_w_full()
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_h_0()
-                        .child(div().flex().flex_col().size_full().child(self.panel.clone())),
-                ),
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h_0()
+                    .px(u(46.))
+                    .pb(u(70.))
+                    .child(kit::settings_column(div().flex().flex_col().size_full().child(self.panel.clone()))),
             )
             .into_any_element()
     }
