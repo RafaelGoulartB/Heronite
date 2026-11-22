@@ -3,7 +3,8 @@
 //!
 //! `HERONITE_FIXTURE` (default `/tmp/heronite-fixture`) is the Heroic data copy
 //! and `HERONITE_CAPTURES` (default: the folder from its `settings.json`) the
-//! captures folder. Nothing is ever written next to the originals.
+//! captures folder. Nothing is ever written next to the originals. Run with
+//! `cargo test -p heronite-media --features manual-tests --test real_data -- --nocapture`.
 
 use heronite_data::{DataPaths, Library};
 use heronite_media::list::{list_screenshots, GameQuery};

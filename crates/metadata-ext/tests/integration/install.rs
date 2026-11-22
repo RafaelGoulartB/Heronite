@@ -1,16 +1,14 @@
 //! Installing, updating, removing and listing extensions, and loading them
 //! at startup, with what the user set kept.
 
-mod support;
-
 use std::io::Write;
 use std::path::Path;
 
+use crate::support::{folder, manifest};
 use heronite_data::paths::DataPaths;
 use heronite_metadata::sources::{OptionValue, SourceStatus};
 use heronite_metadata::MetadataService;
 use heronite_metadata_ext::{Approval, ExtensionError, ExtensionState, ExtensionsExt, InstallAction, InstallOutcome};
-use support::{folder, manifest};
 
 const SCRIPT: &str = "export function find() { return []; }\nexport function fetch() { return null; }\n";
 

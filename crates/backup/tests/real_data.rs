@@ -1,6 +1,7 @@
 //! Backups of a copy of a real setup. Opt-in: `HERONITE_BACKUP_FIXTURE` names
 //! a folder holding `data/` (a data folder) and `config/` (an app state
-//! folder); the test copies nothing back into it.
+//! folder); the test copies nothing back into it. Run with
+//! `cargo test -p heronite-backup --features manual-tests --test real_data -- --nocapture`.
 
 use std::path::PathBuf;
 

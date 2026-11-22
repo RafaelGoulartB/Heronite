@@ -144,7 +144,12 @@ mod tests {
     }
 
     #[test]
-    fn a_client_not_set_up_can_only_be_set_up() {
+    fn the_commands_follow_the_clients_state() {
+        // While the service is not there, nothing is set up yet.
+        let cmds = commands(Client::BattleNet, None);
+        assert!(reason(&cmds, "setup").is_some(), "not looked at yet");
+        assert!(reason(&cmds, "open").is_some());
+        // Not set up: it can only be set up.
         let mut st = ClientState::default();
         st.status = Some(Status::default());
         let cmds = commands(Client::Ea, Some(&st));
@@ -152,31 +157,18 @@ mod tests {
         for id in ["open", "close", "sync"] {
             assert!(reason(&cmds, id).is_some_and(|r| r.contains("EA app")), "{id}");
         }
-    }
-
-    #[test]
-    fn a_client_that_is_set_up_can_be_opened_and_refreshed() {
+        // Set up: it can be opened and refreshed.
         let cmds = commands(Client::Ubisoft, Some(&installed()));
         assert!(reason(&cmds, "setup").is_some());
         assert_eq!(reason(&cmds, "open"), None);
         assert_eq!(reason(&cmds, "sync"), None);
         assert!(reason(&cmds, "close").is_some(), "it does not run");
-    }
-
-    #[test]
-    fn a_running_client_closes_unless_a_game_runs() {
+        // Running: it closes, unless a game runs.
         let mut st = installed();
         st.running = true;
         assert_eq!(reason(&commands(Client::Rockstar, Some(&st)), "close"), None);
         st.game_running = true;
         assert!(reason(&commands(Client::Rockstar, Some(&st)), "close").is_some());
-    }
-
-    #[test]
-    fn while_the_service_is_not_there_nothing_is_set_up_yet() {
-        let cmds = commands(Client::BattleNet, None);
-        assert!(reason(&cmds, "setup").is_some(), "not looked at yet");
-        assert!(reason(&cmds, "open").is_some());
     }
 
     #[test]

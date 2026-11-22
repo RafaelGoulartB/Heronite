@@ -1,14 +1,12 @@
 //! What the user sets per source (on or off, fields switched off, options)
 //! as the service obeys it, against a local mock of the remote services.
 
-mod common;
-
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use common::{fixture, Req, Resp, Server};
+use crate::common::{fixture, Req, Resp, Server};
 use heronite_data::json_store;
 use heronite_data::paths::DataPaths;
 use heronite_metadata::sources::{OptionValue, SourceStatus};

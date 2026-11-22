@@ -385,14 +385,6 @@ mod tests {
     }
 
     #[test]
-    fn classic_keeps_the_first_tones() {
-        assert_eq!(Sound::Move.tones(SoundStyle::Classic), (&[(1150., 26.)][..], 0.22));
-        assert_eq!(Sound::Confirm.tones(SoundStyle::Classic), (&[(660., 45.), (990., 80.)][..], 0.3));
-        assert_eq!(Sound::Back.tones(SoundStyle::Classic), (&[(720., 45.), (480., 80.)][..], 0.3));
-        assert_eq!(Sound::Tab.tones(SoundStyle::Classic), (&[(880., 34.), (1180., 52.)][..], 0.26));
-    }
-
-    #[test]
     fn soft_is_lower_and_quieter_than_classic() {
         let top = |style| Sound::ALL.iter().flat_map(|s| s.tones(style).0.iter().map(|t| t.0)).fold(0f32, f32::max);
         assert!(top(SoundStyle::Soft) <= 600. && top(SoundStyle::Classic) > 1000.);

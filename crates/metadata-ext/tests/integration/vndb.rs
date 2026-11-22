@@ -3,13 +3,12 @@
 //! each match is, when it is asked (only as a fallback), adult covers, a
 //! busy VNDB (429, server errors) and no network.
 
-mod support;
-
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock};
 
+use crate::support::{endpoints, example, fixture, Req, Resp, Server};
 use heronite_data::json_store;
 use heronite_data::paths::DataPaths;
 use heronite_metadata::record::{self, SourceMatch};
@@ -19,7 +18,6 @@ use heronite_metadata::*;
 use heronite_metadata_ext::manifest::Manifest;
 use heronite_metadata_ext::ExtensionsExt;
 use serde_json::{json, Value};
-use support::{endpoints, example, fixture, Req, Resp, Server};
 
 const API: &str = "/api.vndb.org/kana/vn";
 

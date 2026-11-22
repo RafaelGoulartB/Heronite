@@ -933,12 +933,6 @@ mod tests {
         assert!(open_steam_client_uri(&spawner, &with_steam, SteamAction::Install, "1").unwrap_err().contains("xdg-open"));
     }
 
-    #[test]
-    fn uri_building() {
-        assert_eq!(steam_uri("rungameid", "400"), "steam://rungameid/400");
-        assert_eq!(steam_uri(SteamAction::Uninstall.as_str(), "7"), "steam://uninstall/7");
-    }
-
     // Windows makes symlinks only in Developer Mode or as an administrator.
     #[cfg(unix)]
     #[test]

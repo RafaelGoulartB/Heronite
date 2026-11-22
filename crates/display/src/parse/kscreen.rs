@@ -132,11 +132,7 @@ mod tests {
         let panel = &snap.monitors[2];
         assert!(panel.builtin && !panel.enabled && !panel.primary);
         assert_eq!(panel.current, None);
-    }
-
-    #[test]
-    fn kde_uses_priority_for_the_main_display() {
-        let snap = Snapshot::new(Backend::Kde, parse(FIXTURE).unwrap());
+        // KDE uses the priority for the main display.
         assert_eq!(snap.capabilities.primary, PrimarySupport::Priority);
         assert!(snap.capabilities.hdr && snap.capabilities.vrr);
     }

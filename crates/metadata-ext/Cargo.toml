@@ -32,5 +32,15 @@ chrono = { version = "0.4", default-features = false, features = ["std", "clock"
 [dev-dependencies]
 tempfile = "3"
 
+[features]
+# Opt-in tests against the real services (`tests/live.rs`): built only
+# with `--features manual-tests`, so CI neither compiles nor links them.
+manual-tests = []
+
+[[test]]
+name = "live"
+path = "tests/live.rs"
+required-features = ["manual-tests"]
+
 [lints]
 workspace = true

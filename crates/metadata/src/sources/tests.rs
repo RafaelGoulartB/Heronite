@@ -31,6 +31,8 @@ fn lookups_keep_the_provider_order() {
     let reg = registry();
     let lookups: Vec<&str> = reg.lookups().map(|s| s.descriptor().id.as_str()).collect();
     assert_eq!(lookups, ["igdb", "steam", "store", "lutris", "playnite", "launchbox", "steamgriddb", "libretro"]);
+    let online: Vec<&str> = reg.lookups().map(|s| s.descriptor()).filter(|d| d.network).map(|d| d.id.as_str()).collect();
+    assert_eq!(online, ["igdb", "steam", "lutris", "steamgriddb", "libretro"], "the sources that use the network");
     assert_eq!(
         ids(reg.descriptors()),
         [
@@ -79,13 +81,6 @@ fn offered_details_sources_leave_playnite_out() {
     assert!(registry().get("playnite").is_some_and(|d| d.hidden));
     let names: Vec<&str> = offered(SourceKind::Details).map(|d| d.name.as_str()).collect();
     assert_eq!(names, ["IGDB", "Steam", "Store", "Lutris", "LaunchBox"]);
-}
-
-#[test]
-fn network_sources_are_igdb_steam_lutris_steamgriddb_and_libretro() {
-    let reg = registry();
-    let online: Vec<&str> = reg.lookups().map(|s| s.descriptor()).filter(|d| d.network).map(|d| d.id.as_str()).collect();
-    assert_eq!(online, ["igdb", "steam", "lutris", "steamgriddb", "libretro"]);
 }
 
 #[test]
