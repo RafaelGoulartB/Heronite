@@ -9,3 +9,8 @@ by the tests' fixture server.
   were rewritten for the tests, and no explicit text or picture is kept.
   `tests/vndb.rs` writes the cases the recordings lack (partial dates,
   formatting codes, kinds of tags and screenshots) itself.
+- `dlsite_product_*.json`: recorded from DLsite (`GET /maniax/api/=/product.json`,
+  `locale=en_US`) once, for two products rated for all ages, and trimmed to
+  the keys the extension reads (no prices, sales or files). `tests/dlsite.rs`
+  writes the adult-only product itself, with made-up picture addresses: no
+  adult picture or its address is kept.

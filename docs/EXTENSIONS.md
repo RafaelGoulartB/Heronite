@@ -27,12 +27,14 @@ Metadata extensions live under `extensions/metadata/` (in the repository
 and in the data folder) because other kinds of extensions may come later,
 each in a folder of its own.
 
-The repository has two complete examples: `extensions/metadata/wikipedia`
-(a details source asked as a fallback) and `extensions/metadata/vndb` (the
-Visual Novel Database: a details source asked as a fallback for visual
-novels,
-with settings, names in several scripts, pictures flagged adult one by
-one, and a service that asks clients to slow down).
+The repository has two examples maintained with Heronite:
+`extensions/metadata/wikipedia` (a details source asked as a fallback) and
+`extensions/metadata/vndb` (the Visual Novel Database: a details source
+asked as a fallback for visual novels, with settings, names in several
+scripts, pictures flagged adult one by one, and a service that asks clients
+to slow down), plus `extensions/metadata/dlsite` (unofficial, kept by a
+community member), which finds games only by a product code through an
+`[ids] pattern` and flags pictures adult by each product's age category.
 
 ## The manifest: `source.toml`
 
