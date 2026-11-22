@@ -2,13 +2,14 @@
 //! game's title or install folder reaches the script as
 //! `game.ids.<extension id>`, a hit found by it is sure only when it is
 //! that code, two different codes pass none, a code typed in the search is
-//! passed too, and a loose pattern is refused at install with the rule it
-//! breaks.
+//! passed too, a fallback extension is asked for a game whose title or
+//! folder has its one code even when another source found the game for
+//! sure, and a loose pattern is refused at install with the rule it breaks.
 
 mod support;
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use heronite_data::json_store;
 use heronite_data::paths::DataPaths;
@@ -52,6 +53,13 @@ fn mock() -> Server {
         }
         "/api.codedb.example.org/work/VJ0099887" => Resp::json(json!({ "title": "Midnight Garden", "description": "Also by code." })),
         "/api.codedb.example.org/work/RJ999999" => Resp::json(json!({ "title": "Something Else", "description": "Not it." })),
+        // Steam knows every id as Portal (`heronite-metadata`'s recording).
+        "/steam/api/appdetails" => {
+            let id = req.query("appids").unwrap_or_default();
+            let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../metadata/tests/fixtures/steam_appdetails_400.json");
+            let all: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+            Resp::json(json!({ id: all["400"].clone() }))
+        }
         _ => Resp::status(404),
     })
 }
@@ -62,7 +70,12 @@ fn write(path: &Path, v: Value) {
 }
 
 fn codedb(pattern: &str) -> String {
-    let body = format!("[ids]\npattern = '{pattern}'\n\n[network]\nhosts = [\"{HOST}\"]\nrate = \"10/s\"");
+    codedb_with(pattern, "")
+}
+
+/// `codedb` with `applies` (TOML lines) first.
+fn codedb_with(pattern: &str, applies: &str) -> String {
+    let body = format!("{applies}[ids]\npattern = '{pattern}'\n\n[network]\nhosts = [\"{HOST}\"]\nrate = \"10/s\"");
     manifest("codedb", "1.0.0", "details", &["description", "genres"], &body)
 }
 
@@ -144,6 +157,58 @@ fn a_code_in_the_title_or_folder_is_passed_and_matches_surely() {
     let search = svc.search_sources("RJ123456", Some(&["codedb".to_string()]));
     assert_eq!(search.asked, ["codedb"]);
     assert_eq!(last_code().as_deref(), Some("RJ123456"));
+}
+
+#[test]
+fn a_fallback_extension_is_asked_for_a_game_with_its_code_even_when_another_source_is_sure() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = DataPaths::at(dir.path());
+    // Every game has a Steam id: Steam finds it for sure.
+    let on_steam = |title: &str, folder: &str| {
+        let mut g = game(title, folder);
+        g["steamAppId"] = json!("400");
+        g
+    };
+    write(
+        &paths.local_meta(),
+        json!({"games": {
+            "Claimed [RJ123456]": on_steam("Claimed [RJ123456]", "Claimed"),
+            "In Folder": on_steam("In Folder", "VJ0099887_Midnight Garden"),
+            "Unclaimed": on_steam("Unclaimed", "Unclaimed"),
+            "Two RJ123456": on_steam("Two RJ123456", "VJ0099887"),
+        }}),
+    );
+    write(&paths.collection_settings(), json!({"metadata": {}}));
+    let server = mock();
+    let svc = MetadataService::with_endpoints(paths, endpoints(&server, &[HOST]));
+    let pkg = folder(&dir.path().join("packages"), "codedb", &codedb_with(PATTERN, "[applies]\nasked = \"fallback\"\n\n"), SCRIPT);
+    svc.install_extension(&pkg, true).unwrap();
+    let finds = || server.count(|r| r.path() == "/api.codedb.example.org/find");
+
+    // One code in the title: asked with the others, found by its code.
+    let preview = svc.preview_game_metadata(&args("Claimed [RJ123456]")).unwrap();
+    assert!(preview.candidates.iter().any(|c| c.source == "steam" && c.matched_by.is_none_or(MatchedBy::is_sure)));
+    assert_eq!(matched_by(&preview), Some(MatchedBy::SourceId));
+    assert_eq!(finds(), 1);
+    // Field priority is unchanged: Steam's description goes first.
+    let saved = svc.apply_game_metadata(&args("Claimed [RJ123456]")).unwrap();
+    assert_eq!(saved.field_sources.get("description").map(String::as_str), Some("steam"));
+    assert_ne!(saved.description.as_deref(), Some("Found by its code."));
+    assert_eq!(heronite_metadata::record::source_match(&saved, "codedb").map(|m| m.id), Some("RJ123456".to_string()));
+
+    // One code in the install folder: asked too.
+    let before = finds();
+    let preview = svc.preview_game_metadata(&args("In Folder")).unwrap();
+    assert_eq!(matched_by(&preview), Some(MatchedBy::SourceId));
+    assert_eq!(finds(), before + 1);
+
+    // No code, or two different codes: Steam identified it, so not asked.
+    let before = finds();
+    for app in ["Unclaimed", "Two RJ123456"] {
+        let preview = svc.preview_game_metadata(&args(app)).unwrap();
+        assert_eq!(found(&preview), Some(SourceAnswer::NotAsked { why: NotAsked::Fallback }), "{app}");
+    }
+    assert_eq!(finds(), before);
 }
 
 #[test]
