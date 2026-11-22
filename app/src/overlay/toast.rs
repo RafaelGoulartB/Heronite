@@ -566,6 +566,12 @@ mod tests {
         assert_eq!(titles[..QUEUE_MAX], ["a0", "a1", "a2", "a3"]);
         assert_eq!(titles[QUEUE_MAX], "3 more achievements");
         assert!(q.next().is_none());
+        // A single one past the queue shows as itself.
+        for i in 0..=QUEUE_MAX {
+            q.push(ach(format!("a{i}")));
+        }
+        let titles: Vec<String> = std::iter::from_fn(|| q.next()).map(|n| n.title).collect();
+        assert_eq!(titles, ["a0", "a1", "a2", "a3", "a4"]);
     }
 
     #[test]
@@ -588,16 +594,6 @@ mod tests {
         let after = q.ticket();
         q.arrive(after, ach("after"));
         assert_eq!(q.next().map(|n| n.title).as_deref(), Some("after"));
-    }
-
-    #[test]
-    fn a_single_one_past_the_queue_shows_as_itself() {
-        let mut q = Queue::default();
-        for i in 0..=QUEUE_MAX {
-            q.push(ach(format!("a{i}")));
-        }
-        let titles: Vec<String> = std::iter::from_fn(|| q.next()).map(|n| n.title).collect();
-        assert_eq!(titles, ["a0", "a1", "a2", "a3", "a4"]);
     }
 
     #[test]

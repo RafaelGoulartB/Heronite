@@ -2,13 +2,11 @@
 //! match per source (pins), field locks and the games that need attention,
 //! against a local mock of the remote services.
 
-mod common;
-
 use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use common::{fallback, fixture, Req, Resp, Server, FALLBACK};
+use crate::common::{fallback, fixture, Req, Resp, Server, FALLBACK};
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameMetadata, MetadataFile};
 use heronite_data::paths::DataPaths;

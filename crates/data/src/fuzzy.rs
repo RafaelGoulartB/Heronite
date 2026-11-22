@@ -194,14 +194,32 @@ mod tests {
     }
 
     #[test]
-    fn accents_in_the_query_or_the_title_match_either_way() {
-        assert!(s("pokemon", "Pokémon Sword").is_some());
-        assert!(s("pokémon", "Pokemon Sword").is_some());
-        assert!(s("CAFE", "Café del Mar").is_some());
+    fn a_token_matches_or_misses() {
+        let cases = [
+            // Accents in the query or the title match either way.
+            ("pokemon", "Pokémon Sword", true),
+            ("pokémon", "Pokemon Sword", true),
+            ("CAFE", "Café del Mar", true),
+            // Missing letters do not match.
+            ("xyz", "Wine Manager", false),
+            ("wq", "Wine Manager", false),
+            // One letter only matches as a substring, never fuzzy.
+            ("z", "Wine Manager", false),
+            ("w", "Wine Manager", true),
+            // Fuzzy needs the letters in order...
+            ("wmg", "Wine Manager", true),
+            ("gmw", "Wine Manager", false),
+            // ...and not scattered over a long title.
+            ("control", "Bridge Constructor: The Walking Dead", false),
+            ("ctrl", "Control", true),
+        ];
+        for (q, t, hit) in cases {
+            assert_eq!(s(q, t).is_some(), hit, "{q:?} in {t:?}");
+        }
     }
 
     #[test]
-    fn tiers_are_ordered() {
+    fn tiers_are_ordered_and_a_shorter_title_wins_inside_one() {
         let exact = s("wine", "Wine").unwrap();
         let prefix = s("wine", "Wine Manager").unwrap();
         let word = s("man", "Wine Manager").unwrap();
@@ -212,38 +230,14 @@ mod tests {
         assert!(word > sub, "{word} {sub}");
         assert!(sub > fuzzy, "{sub} {fuzzy}");
         assert!(fuzzy > 0);
-    }
-
-    #[test]
-    fn shorter_title_wins_inside_a_tier() {
-        assert!(s("control", "Control") > s("control", "Control: Ultimate Edition"));
-        assert!(s("hal", "Halo") > s("hal", "Halo Infinite Campaign"));
-    }
-
-    #[test]
-    fn word_start_beats_substring() {
-        assert!(s("ring", "Elden Ring").unwrap() > s("ring", "Spring Break").unwrap());
-    }
-
-    #[test]
-    fn missing_letters_do_not_match() {
-        assert_eq!(s("xyz", "Wine Manager"), None);
-        assert_eq!(s("wq", "Wine Manager"), None);
-        // One letter only matches as a substring, never fuzzy.
-        assert_eq!(s("z", "Wine Manager"), None);
-        assert!(s("w", "Wine Manager").is_some());
-    }
-
-    #[test]
-    fn fuzzy_needs_letters_in_order() {
-        assert!(s("wmg", "Wine Manager").is_some());
-        assert_eq!(s("gmw", "Wine Manager"), None);
-    }
-
-    #[test]
-    fn fuzzy_does_not_match_letters_scattered_over_a_long_title() {
-        assert_eq!(s("control", "Bridge Constructor: The Walking Dead"), None);
-        assert!(s("ctrl", "Control").is_some());
+        // Better first.
+        for (better, worse) in [
+            (("control", "Control"), ("control", "Control: Ultimate Edition")),
+            (("hal", "Halo"), ("hal", "Halo Infinite Campaign")),
+            (("ring", "Elden Ring"), ("ring", "Spring Break")),
+        ] {
+            assert!(s(better.0, better.1).unwrap() > s(worse.0, worse.1).unwrap(), "{better:?} over {worse:?}");
+        }
     }
 
     #[test]

@@ -2,13 +2,12 @@
 //! a pinned id, search, adult pictures, fields it does not provide, and a
 //! failing extension next to the others.
 
-mod support;
-
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::support::{endpoints, manifest, Resp, Server};
 use heronite_data::json_store;
 use heronite_data::paths::DataPaths;
 use heronite_metadata::record;
@@ -19,7 +18,6 @@ use heronite_metadata_ext::manifest::Manifest;
 use heronite_metadata_ext::source::ScriptSource;
 use heronite_metadata_ext::{ExtensionsExt, Limits};
 use serde_json::{json, Value};
-use support::{endpoints, manifest, Resp, Server};
 
 /// (app name, title, Steam id).
 const GAMES: [(&str, &str, Option<&str>); 5] = [

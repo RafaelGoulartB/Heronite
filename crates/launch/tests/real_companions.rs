@@ -1,8 +1,9 @@
 //! A program alongside a real game through real Proton: Wine's Notepad plays
-//! the game and Wine's Task Manager the trainer. Ignored by default (opens
-//! windows, needs a Proton build and umu). Run with a Proton folder:
+//! the game and Wine's Task Manager the trainer. Built only with
+//! `--features manual-tests` and ignored by default (opens windows, needs a
+//! Proton build and umu). Run with a Proton folder:
 //!   HERONITE_REAL_PROTON=~/.local/share/heronite/tools/proton/GE-Proton-latest \
-//!   cargo test -p heronite-launch --test real_companions -- --ignored --nocapture --test-threads=1
+//!   cargo test -p heronite-launch --features manual-tests --test real_companions -- --ignored --nocapture --test-threads=1
 
 // Real Proton: Linux only.
 #![cfg(unix)]

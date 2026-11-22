@@ -2,17 +2,15 @@
 //! to reach this computer, to leave a key in a message, or to pass its own
 //! failures off as an unreachable service.
 
-mod support;
-
 use std::net::TcpListener;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::support::{endpoints, Http, Resp, Server};
 use heronite_metadata_ext::engine::{session, CallError, HostEnv, Limit, Script};
 use heronite_metadata_ext::net::{HostRule, RateLimiter};
 use heronite_metadata_ext::Limits;
 use serde_json::{json, Value};
-use support::{endpoints, Http, Resp, Server};
 
 const HOSTS: [&str; 1] = ["api.example.org"];
 

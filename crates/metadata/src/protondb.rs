@@ -193,6 +193,9 @@ mod tests {
         assert_eq!(cached_tier(dir.path(), "1245620"), Some(("gold".into(), true)));
         put(dir.path(), "1245620", "Platinum", MAX_AGE_SECS as i64 + 60);
         assert_eq!(cached_tier(dir.path(), "1245620"), Some(("platinum".into(), false)));
+        // A timestamp from the future is not fresh.
+        put(dir.path(), "5", "gold", -3600);
+        assert_eq!(cached_tier(dir.path(), "5"), Some(("gold".into(), false)));
     }
 
     #[test]
@@ -230,12 +233,5 @@ mod tests {
         assert_eq!(cached_steam_id_for_title(dir.path(), "Not A Steam Game"), None);
         write_title(dir.path(), "Hades", Some("1145360"), now - Duration::days(31));
         assert_eq!(cached_steam_id_for_title(dir.path(), "Hades"), None);
-    }
-
-    #[test]
-    fn future_timestamps_are_not_fresh() {
-        let dir = tempfile::tempdir().unwrap();
-        put(dir.path(), "5", "gold", -3600);
-        assert_eq!(cached_tier(dir.path(), "5"), Some(("gold".into(), false)));
     }
 }

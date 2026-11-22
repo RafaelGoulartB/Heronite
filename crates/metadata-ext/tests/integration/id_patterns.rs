@@ -6,17 +6,15 @@
 //! folder has its one code even when another source found the game for
 //! sure, and a loose pattern is refused at install with the rule it breaks.
 
-mod support;
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::support::{endpoints, folder, manifest, Req, Resp, Server};
 use heronite_data::json_store;
 use heronite_data::paths::DataPaths;
 use heronite_metadata::*;
 use heronite_metadata_ext::{ExtensionError, ExtensionsExt};
 use serde_json::{json, Value};
-use support::{endpoints, folder, manifest, Req, Resp, Server};
 
 const HOST: &str = "api.codedb.example.org";
 const PATTERN: &str = r"\b(?:RJ|VJ)[0-9]{6,8}\b";

@@ -101,30 +101,30 @@ mod tests {
     }
 
     #[test]
-    fn moves_to_the_neighbour_in_each_direction() {
+    fn nearest_on_the_mosaic() {
         let r = mosaic();
-        assert_eq!(nearest(&r, 0, Dir::Right), Some(1));
-        assert_eq!(nearest(&r, 0, Dir::Down), Some(2));
-        assert_eq!(nearest(&r, 3, Dir::Left), Some(2));
-        assert_eq!(nearest(&r, 3, Dir::Up), Some(1));
-    }
-
-    #[test]
-    fn nothing_beyond_the_edge_is_none() {
-        let r = mosaic();
-        assert_eq!(nearest(&r, 0, Dir::Left), None);
-        assert_eq!(nearest(&r, 0, Dir::Up), None);
-        assert_eq!(nearest(&r, 4, Dir::Right), None);
-        assert_eq!(nearest(&r, 2, Dir::Down), None);
-    }
-
-    #[test]
-    fn a_tall_tile_is_reached_from_either_side() {
-        let r = mosaic();
-        assert_eq!(nearest(&r, 1, Dir::Right), Some(4));
-        assert_eq!(nearest(&r, 3, Dir::Right), Some(4));
-        // Back: the tile on the same row as the tall one's centre is a tie, the first wins.
-        assert_eq!(nearest(&r, 4, Dir::Left), Some(1));
+        for (from, dir, want) in [
+            // The neighbour in each direction.
+            (0, Dir::Right, Some(1)),
+            (0, Dir::Down, Some(2)),
+            (3, Dir::Left, Some(2)),
+            (3, Dir::Up, Some(1)),
+            // Nothing beyond the edge.
+            (0, Dir::Left, None),
+            (0, Dir::Up, None),
+            (4, Dir::Right, None),
+            (2, Dir::Down, None),
+            // A tall tile is reached from either side.
+            (1, Dir::Right, Some(4)),
+            (3, Dir::Right, Some(4)),
+            // Back: the tile on the same row as the tall one's centre is a tie, the first wins.
+            (4, Dir::Left, Some(1)),
+            // A bad start.
+            (9, Dir::Left, None),
+        ] {
+            assert_eq!(nearest(&r, from, dir), want, "{from} {dir:?}");
+        }
+        assert_eq!(nearest(&[], 0, Dir::Left), None);
     }
 
     #[test]
@@ -144,12 +144,6 @@ mod tests {
         let r = vec![Rect::new(0., 0., 2., 1.), Rect::new(1., 0., 2., 1.), Rect::new(2., 0., 1., 1.)];
         // 1 overlaps 0 (it starts inside), so only 2 lies to the right of 0.
         assert_eq!(nearest(&r, 0, Dir::Right), Some(2));
-    }
-
-    #[test]
-    fn a_bad_start_is_none() {
-        assert_eq!(nearest(&[], 0, Dir::Left), None);
-        assert_eq!(nearest(&mosaic(), 9, Dir::Left), None);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! Read-only checks against the user's real data: a copy of the data folder
 //! (`HERONITE_FIXTURE`, default `/tmp/heronite-fixture`), their ROM folders and
 //! emulator config files. Writes only go to temp directories. Run with
-//! `cargo test -p heronite-emulation --test real_data -- --nocapture`.
+//! `cargo test -p heronite-emulation --features manual-tests --test real_data -- --nocapture`.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};

@@ -62,31 +62,38 @@ mod tests {
     }
 
     #[test]
-    fn server_decorations_leave_the_whole_window() {
-        let b = inset(size(px(1920.), px(1080.)), frame_insets(Decorations::Server, pads(0.)));
-        assert_eq!(b, Bounds { origin: point(px(0.), px(0.)), size: size(px(1920.), px(1080.)) });
-    }
-
-    #[test]
-    fn a_floating_client_window_loses_its_shadow_and_border() {
-        let e = frame_insets(Decorations::Client { tiling: Tiling::default() }, pads(20.));
-        let b = inset(size(px(1874.), px(1000.)), e);
-        assert_eq!(b.origin, point(px(21.), px(21.)));
-        assert_eq!(b.size, size(px(1832.), px(958.)));
-    }
-
-    #[test]
-    fn a_maximized_client_window_has_no_frame() {
-        let b = inset(size(px(1920.), px(1080.)), frame_insets(Decorations::Client { tiling: Tiling::tiled() }, pads(0.)));
-        assert_eq!(b.size, size(px(1920.), px(1080.)));
-    }
-
-    #[test]
-    fn a_window_snapped_left_keeps_the_frame_on_its_free_side() {
-        let tiling = Tiling { top: true, bottom: true, left: true, right: false };
-        let paddings = Edges { top: px(0.), right: px(20.), bottom: px(0.), left: px(0.) };
-        let b = inset(size(px(960.), px(1080.)), frame_insets(Decorations::Client { tiling }, paddings));
-        assert_eq!(b.origin, point(px(0.), px(0.)));
-        assert_eq!(b.size, size(px(939.), px(1080.)));
+    fn the_drawable_area_leaves_out_the_frame() {
+        let free_right = Tiling { top: true, bottom: true, left: true, right: false };
+        let right_pad = Edges { top: px(0.), right: px(20.), bottom: px(0.), left: px(0.) };
+        for (what, decorations, paddings, window, origin, area) in [
+            ("server decorations leave the whole window", Decorations::Server, pads(0.), (1920., 1080.), (0., 0.), (1920., 1080.)),
+            (
+                "a floating client window loses its shadow and border",
+                Decorations::Client { tiling: Tiling::default() },
+                pads(20.),
+                (1874., 1000.),
+                (21., 21.),
+                (1832., 958.),
+            ),
+            (
+                "a maximized client window has no frame",
+                Decorations::Client { tiling: Tiling::tiled() },
+                pads(0.),
+                (1920., 1080.),
+                (0., 0.),
+                (1920., 1080.),
+            ),
+            (
+                "a window snapped left keeps the frame on its free side",
+                Decorations::Client { tiling: free_right },
+                right_pad,
+                (960., 1080.),
+                (0., 0.),
+                (939., 1080.),
+            ),
+        ] {
+            let b = inset(size(px(window.0), px(window.1)), frame_insets(decorations, paddings));
+            assert_eq!(b, Bounds { origin: point(px(origin.0), px(origin.1)), size: size(px(area.0), px(area.1)) }, "{what}");
+        }
     }
 }

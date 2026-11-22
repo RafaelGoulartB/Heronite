@@ -2,12 +2,10 @@
 //! there by its exact title: what is asked, what the record keeps, and that
 //! the game stays what it was (its own Steam id, its launch).
 
-mod common;
-
 use std::fs;
 use std::path::Path;
 
-use common::{fixture, Req, Resp, Server};
+use crate::common::{fixture, Req, Resp, Server};
 use heronite_data::json_store;
 use heronite_data::library::Library;
 use heronite_data::paths::DataPaths;
@@ -42,6 +40,7 @@ fn make_root(dir: &Path) -> DataPaths {
             "steam_620": {"appName": "steam_620", "runner": "sideload", "steamAppId": "620", "title": "Portal 2", "playniteId": "", "source": "steam", "launchKind": "steam-uri"}
         }}),
     );
+    w(paths.collection_settings(), json!({"metadata": {"steamTags": false}}));
     paths
 }
 

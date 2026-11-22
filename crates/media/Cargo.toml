@@ -57,9 +57,23 @@ windows = { version = "0.62", features = [
 ] }
 notify-rust = "4"
 
+[features]
+# Opt-in tests against real data, real tools or the network, and benchmarks:
+# `cargo test -p heronite-media --features manual-tests --test <name>`. Off by
+# default so CI does not build and link binaries that would skip anyway.
+manual-tests = []
+
 [dev-dependencies]
 tempfile = "3"
 serde_json = "1"
+
+[[test]]
+name = "compress_real"
+required-features = ["manual-tests"]
+
+[[test]]
+name = "real_data"
+required-features = ["manual-tests"]
 
 [lints]
 workspace = true

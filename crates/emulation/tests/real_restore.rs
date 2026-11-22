@@ -1,7 +1,8 @@
 //! Restores a real Ludusavi backup into a temporary prefix with the real
 //! binary. Needs Ludusavi and a backup folder (`HERONITE_LUDUSAVI_BACKUPS`,
 //! `HERONITE_LUDUSAVI_GAME`); skipped otherwise. Writes only to temp folders.
-//! Run with `cargo test -p heronite-emulation --test real_restore -- --nocapture`.
+//! Run with
+//! `cargo test -p heronite-emulation --features manual-tests --test real_restore -- --nocapture`.
 
 use std::path::PathBuf;
 

@@ -488,6 +488,8 @@ mod tests {
         ratings.sort();
         assert_eq!(ratings, [("classind".to_string(), "10".to_string()), ("usk".to_string(), "12".to_string())]);
         assert_eq!(md.age_ratings.iter().find(|r| r.system == "classind").unwrap().descriptors, ["Violência"]);
+        // No description: not details at all.
+        assert!(map_details("1", "english", &serde_json::json!({"name": "x"})).is_none());
     }
 
     #[test]
@@ -524,10 +526,5 @@ mod tests {
         // The data crate reads it.
         let read: heronite_data::focus::SteamDetails = serde_json::from_str(&json).unwrap();
         assert_eq!(read.name, "Portal");
-    }
-
-    #[test]
-    fn empty_description_is_not_details() {
-        assert!(map_details("1", "english", &serde_json::json!({"name": "x"})).is_none());
     }
 }

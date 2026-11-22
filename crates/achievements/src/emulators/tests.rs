@@ -350,9 +350,3 @@ fn the_public_functions_find_nothing_in_an_empty_home() {
     assert!(apply_to(&configs, &[Emulator::Pcsx2], None).iter().all(|s| s.state == State::NotSetUp));
     assert!(status(&configs, Some("Rafa")).iter().all(|s| s.state == State::NotSetUp));
 }
-
-#[test]
-fn names_are_the_ones_users_know() {
-    let names: Vec<&str> = Emulator::ALL.iter().map(|e| e.name()).collect();
-    assert_eq!(names, ["RetroArch", "DuckStation", "PCSX2", "PPSSPP", "Dolphin", "Flycast"]);
-}

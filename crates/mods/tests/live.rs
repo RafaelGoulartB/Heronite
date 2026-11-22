@@ -3,7 +3,7 @@
 //! BepInEx layout, mount over a fake game folder (Windows: put the files in
 //! it), take the mods away. Needs the network, and FUSE on Linux, so it only
 //! runs when asked:
-//! `cargo test -p heronite-mods --test live -- --ignored --nocapture`.
+//! `cargo test -p heronite-mods --features manual-tests --test live -- --ignored --nocapture`.
 
 use std::path::Path;
 use std::sync::atomic::AtomicBool;

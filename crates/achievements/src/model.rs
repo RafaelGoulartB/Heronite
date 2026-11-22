@@ -592,10 +592,6 @@ mod tests {
         assert!(s.sections().is_empty());
         s.groups = vec![g("0", "", Some(0)), g("1", "Unused", None)];
         assert!(s.sections().is_empty());
-    }
-
-    #[test]
-    fn one_group_plus_ungrouped_ones_is_still_a_flat_list() {
         // Portal (no sets) read from the Community page, then from a client
         // schema without groups that lists one more achievement.
         let mut s = set(vec![grouped("x", Some(1), Some("0")), grouped("y", None, Some("0")), grouped("new", None, None)]);

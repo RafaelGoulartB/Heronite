@@ -7,7 +7,8 @@
 //! copy (`ludusavi.portable` next to it), so its config, the "game" (a custom
 //! game whose save is a temp file), the backups and Heronite's data folder
 //! are all temporary: `%APPDATA%\ludusavi` and real saves are never touched.
-//! Run with `cargo test -p heronite-emulation --test real_windows -- --nocapture`.
+//! Run with
+//! `cargo test -p heronite-emulation --features manual-tests --test real_windows -- --nocapture`.
 #![cfg(windows)]
 
 use std::fs;

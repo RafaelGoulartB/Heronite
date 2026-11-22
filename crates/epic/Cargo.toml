@@ -23,5 +23,13 @@ chrono = { version = "0.4", default-features = false, features = ["std", "clock"
 heronite-data = { path = "../data", features = ["testing"] }
 tempfile = "3"
 
+[features]
+# Opt-in tests that need the network or a real account; not built in CI.
+manual-tests = []
+
+[[test]]
+name = "real_legendary"
+required-features = ["manual-tests"]
+
 [lints]
 workspace = true

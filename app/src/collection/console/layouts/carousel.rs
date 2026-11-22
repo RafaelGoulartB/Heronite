@@ -852,7 +852,6 @@ mod tests {
     /// Installed shows first; every pill once, each keeping its id.
     #[test]
     fn installed_comes_first() {
-        assert_eq!(FILTERS[ORDER[0]], "Installed");
         assert_eq!(ORDER.iter().map(|&id| FILTERS[id]).collect::<Vec<_>>(), ["Installed", "All", "Favourites", "Playing"]);
         for id in 0..FILTERS.len() {
             assert_eq!(ORDER[place_of(id)], id);

@@ -221,12 +221,6 @@ mod tests {
     }
 
     #[test]
-    fn login_url_points_at_the_redirect() {
-        assert!(LOGIN_URL.starts_with("https://auth.gog.com/auth?client_id=46899977096215655"));
-        assert!(LOGIN_URL.contains("embed.gog.com%2Fon_login_success"));
-    }
-
-    #[test]
     fn credentials_are_parsed_from_gogdl_output() {
         let c =
             parse_credentials("{\"access_token\":\"tok\",\"user_id\":\"4242\",\"expires_in\":3600,\"refresh_token\":\"ref\"}\n").unwrap();

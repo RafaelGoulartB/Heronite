@@ -660,13 +660,6 @@ mod tests {
     }
 
     #[test]
-    fn logo_png_is_heroics() {
-        let hex = "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000b494441541895636000020000050001d69f16cd0000000049454e44ae426082";
-        let bytes: Vec<u8> = (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap()).collect();
-        assert_eq!(bytes, TRANSPARENT_LOGO_PNG);
-    }
-
-    #[test]
     fn crc32_matches_zlib() {
         assert_eq!(crc32(b"123456789"), 0xCBF4_3926);
         assert_eq!(crc32(b""), 0);

@@ -28,9 +28,20 @@ sha2 = "0.10"
 [features]
 # Helpers for other crates' tests (`testing`): their `[dev-dependencies]` turn it on.
 testing = []
+# Opt-in tests against real data, real tools or the network, and benchmarks:
+# `cargo test -p heronite-data --features manual-tests --test <name>`. Off by
+# default so CI does not build and link binaries that would skip anyway.
+manual-tests = []
 
 [dev-dependencies]
 
+[[test]]
+name = "real_collection"
+required-features = ["manual-tests"]
+
+[[test]]
+name = "stats_scale"
+required-features = ["manual-tests"]
 
 [lints]
 workspace = true

@@ -312,23 +312,18 @@ mod tests {
     }
 
     #[test]
-    fn a_games_own_links_come_first() {
+    fn nexus_mods_find_their_game_by_its_links_the_table_then_the_title() {
+        // A game's own links come first.
         let linked = GameLinks { nexus_domain: Some("SkyrimSpecialEdition".into()), ..none() };
         let rows = [("My Skyrim", None, linked), ("The Elder Scrolls V: Skyrim Special Edition", Some("489830"), none())];
         assert_eq!(matching(&nexus("skyrimspecialedition", "Skyrim Special Edition"), &cands(&rows)), vec![0]);
-    }
-
-    #[test]
-    fn the_table_then_the_title_find_the_game() {
+        // Then the table, then the title.
         let rows = [("Fallout 4", Some("377160"), none()), ("Skyrim Special Edition", Some("489830"), none())];
         assert_eq!(matching(&nexus("skyrimspecialedition", ""), &cands(&rows)), vec![1]);
         let indie = [("Some Indie Game", None, none()), ("Other", None, none())];
         assert_eq!(matching(&nexus("someindiegame", "Some Indie Game"), &cands(&indie)), vec![0]);
         assert!(matching(&nexus("nothing", "Nothing Here"), &cands(&indie)).is_empty());
-    }
-
-    #[test]
-    fn two_games_that_fit_both_come_back() {
+        // Two games that fit both come back.
         let rows = [("Fallout 4", Some("377160"), none()), ("Fallout 4 GOTY", None, none())];
         assert_eq!(matching(&nexus("fallout4", "Fallout 4"), &cands(&rows)), vec![0, 1]);
     }

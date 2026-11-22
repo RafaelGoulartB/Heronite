@@ -1,6 +1,7 @@
 //! Lossless compression of real captures. `HERONITE_COMPRESS_SAMPLE` names a
 //! folder of PNGs; each is copied to a temp folder and converted there (the
-//! originals are only read). Skipped when the variable is not set.
+//! originals are only read). Skipped when the variable is not set. Run with
+//! `cargo test -p heronite-media --features manual-tests --test compress_real -- --nocapture`.
 
 use heronite_media::compress::{compress_file, usage, Outcome};
 use std::path::PathBuf;

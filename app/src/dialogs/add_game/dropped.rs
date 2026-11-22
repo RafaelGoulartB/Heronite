@@ -226,35 +226,28 @@ mod tests {
     use super::{classify, single_program, title_from_executable, title_from_name, Kind};
     use std::path::Path;
 
-    fn kind(name: &str) -> Kind {
-        classify(Path::new(name), false, false)
-    }
-
     #[test]
-    fn programs_are_told_by_extension() {
-        assert_eq!(kind("/g/Setup.EXE"), Kind::Windows);
-        assert_eq!(kind("/g/x.msi"), Kind::Windows);
-        assert_eq!(kind("/g/Game.AppImage"), Kind::Linux);
-        assert_eq!(kind("/g/start.sh"), Kind::Linux);
-        assert_eq!(kind("/g/notes.txt"), Kind::Other);
-    }
-
-    #[test]
-    fn roms_come_from_the_emulator_catalog() {
-        assert_eq!(kind("/r/Super Metroid.sfc"), Kind::Rom);
-        assert_eq!(kind("/r/Sonic.GBA"), Kind::Rom);
-        // Archives and programs are never ROMs by themselves.
-        assert_eq!(kind("/r/game.zip"), Kind::Other);
-        assert_eq!(kind("/r/game.exe"), Kind::Windows);
-    }
-
-    #[test]
-    fn folders_and_executable_files() {
-        assert_eq!(classify(Path::new("/g/My Game"), true, false), Kind::Folder);
-        assert_eq!(classify(Path::new("/g/game"), false, true), Kind::Linux);
-        assert_eq!(classify(Path::new("/g/game"), false, false), Kind::Other);
-        // A ROM that looks executable stays a ROM.
-        assert_eq!(classify(Path::new("/r/a.sfc"), false, true), Kind::Rom);
+    fn files_are_told_apart_by_extension_folder_and_executable_bit() {
+        for (path, folder, executable, want) in [
+            // Programs, by extension.
+            ("/g/Setup.EXE", false, false, Kind::Windows),
+            ("/g/x.msi", false, false, Kind::Windows),
+            ("/g/Game.AppImage", false, false, Kind::Linux),
+            ("/g/start.sh", false, false, Kind::Linux),
+            ("/g/notes.txt", false, false, Kind::Other),
+            // ROMs come from the emulator catalog; archives and programs are never ROMs by themselves.
+            ("/r/Super Metroid.sfc", false, false, Kind::Rom),
+            ("/r/Sonic.GBA", false, false, Kind::Rom),
+            ("/r/game.zip", false, false, Kind::Other),
+            ("/r/game.exe", false, false, Kind::Windows),
+            // Folders and executable files; a ROM that looks executable stays a ROM.
+            ("/g/My Game", true, false, Kind::Folder),
+            ("/g/game", false, true, Kind::Linux),
+            ("/g/game", false, false, Kind::Other),
+            ("/r/a.sfc", false, true, Kind::Rom),
+        ] {
+            assert_eq!(classify(Path::new(path), folder, executable), want, "{path}");
+        }
     }
 
     #[test]
