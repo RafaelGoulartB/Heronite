@@ -63,9 +63,13 @@ mod windows {
             let mut byte = [0u8];
             while line.len() <= self.key.len() {
                 match stream.read(&mut byte) {
-                    Ok(1) if byte[0] == b'\n' => return line == self.key.as_bytes(),
+                    Ok(1) if byte[0] == b'\n' => {
+                        return line == self.key.as_bytes();
+                    }
                     Ok(1) => line.push(byte[0]),
-                    _ => return false,
+                    _ => {
+                        return false;
+                    }
                 }
             }
             false

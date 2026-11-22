@@ -184,13 +184,17 @@ pub fn forward(socket: &Path, msg: &Message) -> std::io::Result<Forward> {
 pub fn forward_with(socket: &Path, msg: &Message, timeouts: Timeouts) -> std::io::Result<Forward> {
     let mut stream = match transport::connect(socket) {
         Ok(s) => s,
-        Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => return Ok(Forward::NoInstance),
+        Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => {
+            return Ok(Forward::NoInstance);
+        }
         Err(e) if matches!(e.kind(), std::io::ErrorKind::ConnectionRefused) => {
             // Stale file of a crashed instance.
             let _ = std::fs::remove_file(socket);
             return Ok(Forward::NoInstance);
         }
-        Err(e) => return Err(e),
+        Err(e) => {
+            return Err(e);
+        }
     };
     // From here on somebody is there: failures are `Unresponsive`, never a
     // reason to start a second instance.
@@ -252,27 +256,33 @@ impl Server {
     /// message received; it returns whether the message was delivered, which
     /// decides the answer (`ok` or `err`). Fails with `AddrInUse` when
     /// another live instance owns the socket.
-    pub fn bind(socket: &Path, on_message: impl Fn(Message) -> bool + Send + 'static) -> std::io::Result<Server> {
+    pub fn bind(socket: &Path, on_message: impl (Fn(Message) -> bool) + Send + 'static) -> std::io::Result<Server> {
         let listener = match transport::bind(socket) {
             Ok(l) => l,
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
                 // Alive? Then it is not ours to take.
                 match transport::connect(socket) {
-                    Ok(_) => return Err(e),
+                    Ok(_) => {
+                        return Err(e);
+                    }
                     Err(_) => {
                         std::fs::remove_file(socket)?;
                         transport::bind(socket)?
                     }
                 }
             }
-            Err(e) => return Err(e),
+            Err(e) => {
+                return Err(e);
+            }
         };
         let _ = heronite_platform::fs::set_mode(socket, 0o600);
         let closed = Arc::new(AtomicBool::new(false));
         let flag = closed.clone();
         std::thread::Builder::new().name("single-instance".into()).spawn(move || {
             for stream in listener.incoming() {
-                let Ok(stream) = stream else { continue };
+                let Ok(stream) = stream else {
+                    continue;
+                };
                 let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
                 let mut line = String::new();
                 if BufReader::new(&stream).read_line(&mut line).is_err() {
