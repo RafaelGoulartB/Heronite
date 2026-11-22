@@ -10,6 +10,9 @@ on Heronite's issue tracker and mention `@lurebat`. If it stays broken and
 nobody looks after it, it may be dropped from the Heronite list.
 
 It is asked as a fallback. That means it is asked only when:
+- the game's title or folder has one DLsite product code (even when another
+  source already found the game for sure; field priority still decides
+  whose values are used);
 - no other source found the game for sure;
 - the game was already matched with DLsite;
 - you ask it by name: the search in a game's Metadata, "Review matches", or
@@ -45,10 +48,11 @@ It is asked as a fallback. That means it is asked only when:
     contract lets it flag each picture by its product's rating. That keeps
     the pictures of all-ages games.
 - **Contacts:** `www.dlsite.com`, at most 20 requests a minute. A lookup is
-  two requests. Pictures come from `img.dlsite.jp`.
-  - When DLsite refuses (403, 429), has a server error, or answers with a
-    page instead of data, the game is left for later. It is not marked as
-    found in no source, and the extension is not stopped.
+  one request. Pictures come from `img.dlsite.jp`.
+  - When DLsite refuses (403, 429, 451), times out (408), has a server
+    error, or answers with a page instead of data, the game is left for
+    later. It is not marked as found in no source, and the extension is not
+    stopped.
 - **Needs:** nothing. No account and no key.
 
 Try it:

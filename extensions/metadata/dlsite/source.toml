@@ -19,11 +19,12 @@ asked = "fallback"
 [ids]
 # RJ/RE: doujin works, BJ: books and comics, VJ: commercial games.
 pattern = '\b(?:RJ|RE|BJ|VJ)[0-9]{6,8}\b'
+example = "RJ01234567"
 
 [network]
 hosts = ["www.dlsite.com"]
 # Covers and sample pictures.
 images = ["img.dlsite.jp"]
 # A scraper of a shop that offers no API: well under one request every
-# few seconds. A lookup is two requests (the hit, then its record).
+# few seconds. A lookup is one request (fetch reuses what find read).
 rate = "20/min"

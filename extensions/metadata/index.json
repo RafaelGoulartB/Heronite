@@ -27,6 +27,9 @@
         "to": "all",
         "asked": "fallback"
       },
+      "ids": {
+        "example": "RJ01234567"
+      },
       "hosts": [
         "www.dlsite.com"
       ],
@@ -37,13 +40,13 @@
       "files": {
         "source.toml": {
           "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/metadata/dlsite/source.toml",
-          "sha256": "6559b2fe169108f1b1f26b5314fa521c609768d4b8a4d356abc41a7e863737a0",
-          "size": 1105
+          "sha256": "d0a579d7ecff4b444926b824b2c5511446b4fb57192dfd141d604fda17821cd4",
+          "size": 1130
         },
         "source.js": {
           "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/metadata/dlsite/source.js",
-          "sha256": "90bb90fa981f3262d4f426443c5d373537607678dbca05196dadbdac93176d1c",
-          "size": 5209
+          "sha256": "d66624d83e12fe0384c53e12d297aee84deaa9923fdbfa664d54936e6fc3809f",
+          "size": 5890
         }
       }
     },

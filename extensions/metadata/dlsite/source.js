@@ -11,9 +11,10 @@
 // search by name: DLsite has none outside its HTML pages.
 //
 // Requests go out at the manifest's low rate. When DLsite refuses (403,
-// 429), has a server error or answers with something other than JSON (a
-// challenge page), the call ends as unreachable (`ctx.unreachable`): the
-// game is asked again later, and the extension is not stopped for it.
+// 429, 451), times out (408), has a server error or answers with something
+// other than JSON (a challenge page), the call ends as unreachable
+// (`ctx.unreachable`): the game is asked again later, and the extension is
+// not stopped for it.
 //
 // Adult pictures: DLsite rates each product (`age_category`: 1 all ages,
 // 2 R-15, 3 adult only). Every picture of a product not rated for all ages
@@ -27,14 +28,18 @@ const PAGE = "https://www.dlsite.com/";
 const CODE = /^(?:RJ|RE|BJ|VJ)[0-9]{6,8}$/;
 // DLsite's locales, by the app's interface language: genre names and the
 // short description come in that language where DLsite has them.
-const LOCALES = {
-  en: "en_US", ja: "ja_JP", "zh-CN": "zh_CN", "zh-TW": "zh_TW", zh: "zh_CN", ko: "ko_KR", es: "es_ES",
-  de: "de_DE", fr: "fr_FR", it: "it_IT", "pt-BR": "pt_BR", pt: "pt_BR", id: "id_ID", vi: "vi_VN", th: "th_TH", sv: "sv_SE",
-};
+const LOCALES = Object.assign(Object.create(null), {
+  en: "en_US", ja: "ja_JP", "zh-cn": "zh_CN", "zh-tw": "zh_TW", "zh-hant": "zh_TW", "zh-hk": "zh_TW", zh: "zh_CN",
+  ko: "ko_KR", es: "es_ES", de: "de_DE", fr: "fr_FR", it: "it_IT", "pt-br": "pt_BR", pt: "pt_BR",
+  id: "id_ID", vi: "vi_VN", th: "th_TH", sv: "sv_SE",
+});
 const ALL_AGES = 1;
+// find() and fetch() run in the same per-lookup runtime, so keep what
+// find() read instead of asking DLsite for the same product twice.
+const seen = new Map();
 
 function locale(ctx) {
-  const lang = String(ctx.language || "en");
+  const lang = String(ctx.language || "en").trim().replace(/_/g, "-").toLowerCase();
   return LOCALES[lang] || LOCALES[lang.split("-")[0]] || "en_US";
 }
 
@@ -45,9 +50,13 @@ function code(text) {
 
 // The product of `workno`, or null when DLsite has none.
 async function product(ctx, workno) {
-  const r = await ctx.http.get(API, { query: { workno, locale: locale(ctx) } });
-  if (r.status === 404) return null;
-  if (r.status === 403 || r.status === 429 || r.status >= 500) throw ctx.unreachable("DLsite answered " + r.status);
+  const loc = locale(ctx);
+  const key = workno + "\0" + loc;
+  if (seen.has(key)) return seen.get(key);
+  const r = await ctx.http.get(API, { query: { workno, locale: loc } });
+  if (r.status === 403 || r.status === 408 || r.status === 429 || r.status === 451 || r.status >= 500) {
+    throw ctx.unreachable("DLsite answered " + r.status);
+  }
   if (r.status !== 200) throw new Error("DLsite answered " + r.status);
   let rows;
   try {
@@ -55,9 +64,10 @@ async function product(ctx, workno) {
   } catch (e) {
     throw ctx.unreachable("DLsite answered with a page, not data");
   }
-  if (!Array.isArray(rows)) throw ctx.unreachable("DLsite answered with something else than a product list");
-  const p = rows.find((row) => row && code(row.workno) === workno);
-  return p || null;
+  if (!Array.isArray(rows)) throw ctx.unreachable("DLsite answered with something other than a product list");
+  const p = rows.find((row) => row && code(row.workno) === workno) || null;
+  seen.set(key, p);
+  return p;
 }
 
 // `//img.dlsite.jp/...` as an https address; others are left out.
@@ -107,17 +117,24 @@ export async function fetch(id, ctx) {
   const main = https(p.image_main && p.image_main.url);
   // The main picture is DLsite's landscape cover (4:3 or so).
   if (main) images.push({ kind: "cover", shape: "wide", url: main, adult: flagged });
-  const sample = (p.image_samples || []).find((s) => s && Number(s.width) > Number(s.height) && https(s.url));
+  const samples = Array.isArray(p.image_samples) ? p.image_samples : [];
+  const sample = samples.find((s) => {
+    if (!s || !https(s.url)) return false;
+    const w = Number(s.width);
+    const h = Number(s.height);
+    return h > 0 && w > h;
+  });
   if (sample) images.push({ kind: "background", url: https(sample.url), adult: flagged });
   const date = /^\d{4}-\d{2}-\d{2}/.exec(String(p.regist_date || ""));
-  const site = /^[a-z]+$/.test(p.site_id || "") ? p.site_id : "maniax";
+  const site = typeof p.site_id === "string" && /^[a-z]+(?:-[a-z]+)*$/.test(p.site_id) ? p.site_id : flagged ? "maniax" : "home";
+  const genres = Array.isArray(p.genres) ? p.genres : [];
   return {
     title: p.work_name,
     description: text(p.intro_s),
     releaseDate: date ? date[0] : undefined,
     developers: [text(p.maker_name)].filter(Boolean),
     genres: [text(p.work_type_string)].filter(Boolean),
-    themes: flagged ? [] : (p.genres || []).map((g) => g && text(g.name)).filter(Boolean),
+    themes: flagged ? [] : genres.map((g) => g && text(g.name)).filter(Boolean),
     series: text(p.series_name),
     websites: [PAGE + site + "/work/=/product_id/" + workno + ".html"],
     images,

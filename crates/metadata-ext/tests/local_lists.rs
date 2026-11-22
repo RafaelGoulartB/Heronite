@@ -29,7 +29,7 @@ fn offline(data: &Path) -> MetadataService {
 /// A copy of the repository's `extensions/metadata/` (the list and its
 /// folders) in `dir`; returns the list's path.
 fn copy_of_the_repository_list(dir: &Path) -> PathBuf {
-    for id in ["wikipedia", "vndb"] {
+    for id in ["dlsite", "vndb", "wikipedia"] {
         std::fs::create_dir_all(dir.join(id)).unwrap();
         for file in ["source.toml", "source.js"] {
             std::fs::copy(example(id).join(file), dir.join(id).join(file)).unwrap();
@@ -188,7 +188,10 @@ fn the_repository_list_read_from_this_checkout_installs_every_example() {
     let ids: Vec<&str> = installed.iter().map(|e| e.id.as_str()).collect();
     assert_eq!(ids, ["dlsite", "vndb", "wikipedia"]);
     assert!(installed.iter().all(|e| e.list.as_deref() == Some(key.as_str()) && own.origin(&svc, e) == Origin::Local(key.clone())));
-    assert!(svc.sources().get("wikipedia").is_some() && svc.sources().get("vndb").is_some(), "registered and asked");
+    assert!(
+        svc.sources().get("dlsite").is_some() && svc.sources().get("wikipedia").is_some() && svc.sources().get("vndb").is_some(),
+        "registered and asked"
+    );
     // Nothing updates while the list offers the versions installed.
     assert!(lists::updates(&own.refresh(&svc), &installed).is_empty());
 }
