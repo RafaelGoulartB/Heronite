@@ -135,7 +135,7 @@ mod windows {
                 put(game.join("a.txt"), "game");
                 let dirs = root.game(key);
                 put(dirs.mod_dir("m").join("a.txt"), "mod");
-                std::mem::forget(deploy(&dirs, &game, &[dirs.mod_dir("m")]).unwrap());
+                std::mem::forget(deploy(&dirs, &game, &[dirs.mod_dir("m")], &crate::write_rule::WriteRule::default()).unwrap());
                 games.push((dirs, game));
             }
             assert!(journal_for(&root, &games[0].1).is_some());

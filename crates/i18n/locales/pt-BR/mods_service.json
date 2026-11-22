@@ -80,7 +80,7 @@
   "{path} is no longer there: add the mod once more": "{path} não está mais lá: adicione o mod outra vez",
   "Could not change the game's executable: {error}": "Não foi possível mudar o executável do jogo: {error}",
   "Heronite can't find {game}'s folder, so it can't tell where the mod's files go. Install or locate the game first.": "O Heronite não encontra a pasta de {game}, então não sabe onde ficam os arquivos do mod. Instale ou localize o jogo primeiro.",
-  "What the game wrote while modded (settings, saves) stays in Overwrite. The game will not see it until mods are on again, unless you turn it into a mod.": "O que o jogo gravou com mods (configurações, saves) fica em Overwrite. O jogo só volta a ver isso quando os mods estiverem ligados, a menos que você transforme em mod.",
+  "What the game wrote into the mods' folders stays in Overwrite until mods are on again. Its saves stay in the game folder.": "O que o jogo escreveu nas pastas dos mods fica em Overwrite até os mods voltarem a ser ativados. Os saves dele ficam na pasta do jogo.",
   "{name} was installed, but its files don't match the game's folders. Check the mod's instructions; you can open its folder from the list.": "{name} foi instalado, mas os arquivos não combinam com as pastas do jogo. Veja as instruções do mod; dá para abrir a pasta dele pela lista.",
   "Install 7-Zip to install mods": "Instale o 7-Zip para instalar mods",
   "Install the 7zip package (p7zip on some distributions) with your package manager.": "Instale o pacote 7zip (p7zip em algumas distribuições) pelo seu gerenciador de pacotes.",

@@ -120,6 +120,9 @@ pub fn apply(req: &ApplyRequest, progress: &mut dyn FnMut(Progress), cancel: &At
     // Nothing to download on Windows.
     #[cfg(windows)]
     let _ = (progress, cancel);
+    // What the game writes under these folders stays with the mods; the rest
+    // (saves) with the game.
+    let rule = crate::write_rule::WriteRule::new(&layers, req.known.map_or(&[], |k| k.keep));
     // Before mounting: the game's own folders, not the mods'.
     let exe_dirs = crate::install::exe_dirs(req.game_dir);
 
@@ -157,12 +160,12 @@ pub fn apply(req: &ApplyRequest, progress: &mut dyn FnMut(Progress), cancel: &At
     }
     #[cfg(not(windows))]
     let (deployment, how) = {
-        let mount = crate::deploy::mount(&overlay, &dirs, req.game_dir, &layers).map_err(failed)?;
+        let mount = crate::deploy::mount(&overlay, &dirs, req.game_dir, &layers, &rule).map_err(failed)?;
         let how = format!("mounted over {} with fuse-overlayfs", mount.game_dir().display());
         (Deployment::Mount(mount), how)
     };
     #[cfg(windows)]
-    let (deployment, how) = deploy_files(&dirs, req.game_dir, &layers).map_err(failed)?;
+    let (deployment, how) = deploy_files(&dirs, req.game_dir, &layers, &rule).map_err(failed)?;
     let mut summary = format!("Mods: {} of {} enabled, {how}{summary}", layers.len(), list.mods.len());
 
     // Looked at again now, not only at install: mods installed before a DLL
@@ -181,8 +184,13 @@ pub fn apply(req: &ApplyRequest, progress: &mut dyn FnMut(Progress), cancel: &At
 
 /// Windows: the files go into the game folder ([`crate::journal_deploy`]).
 #[cfg_attr(not(windows), allow(dead_code))]
-fn deploy_files(dirs: &GameDirs, game_dir: &Path, layers: &[PathBuf]) -> Result<(Deployment, String), String> {
-    let deployed = crate::journal_deploy::deploy(dirs, game_dir, layers)?;
+fn deploy_files(
+    dirs: &GameDirs,
+    game_dir: &Path,
+    layers: &[PathBuf],
+    rule: &crate::write_rule::WriteRule,
+) -> Result<(Deployment, String), String> {
+    let deployed = crate::journal_deploy::deploy(dirs, game_dir, layers, rule)?;
     let s = deployed.summary();
     let how = format!(
         "{} files put into {} ({} linked, {} copied, {} game files set aside until the game ends)",

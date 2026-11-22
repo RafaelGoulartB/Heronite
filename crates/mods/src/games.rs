@@ -55,6 +55,11 @@ pub struct KnownGame {
     pub loose: &'static [(&'static str, &'static str)],
     /// What to expect of the game's mods here ([`crate::support`]).
     pub fit: Fit,
+    /// Folders (relative to the game folder) where the game keeps its saves
+    /// or settings: what it writes there while modded stays in the game
+    /// folder even when a mod has the folder too ([`crate::write_rule`]).
+    /// Folders named like saves need no entry.
+    pub keep: &'static [&'static str],
 }
 
 const SKYRIM_SE_MASTERS: &[&str] = &["Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm"];
@@ -88,6 +93,7 @@ const fn bethesda(
         markers: &[],
         loose: &[],
         fit: Fit::Steps(Step::ScriptExtender),
+        keep: &[],
     }
 }
 
@@ -109,6 +115,7 @@ const fn bepinex(
         markers: &[],
         loose: &[],
         fit: Fit::Folder,
+        keep: &[],
     }
 }
 
@@ -125,6 +132,7 @@ const fn generic(name: &'static str, steam_app_ids: &'static [&'static str], nex
         markers: &[],
         loose: &[],
         fit: Fit::Folder,
+        keep: &[],
     }
 }
 
@@ -134,6 +142,10 @@ const fn with_markers(game: KnownGame, markers: &'static [&'static str]) -> Know
 
 const fn with_fit(game: KnownGame, fit: Fit) -> KnownGame {
     KnownGame { fit, ..game }
+}
+
+const fn with_keep(game: KnownGame, keep: &'static [&'static str]) -> KnownGame {
+    KnownGame { keep, ..game }
 }
 
 /// Game folders of the RE Engine; REFramework sits next to them.
@@ -227,6 +239,7 @@ pub const KNOWN: &[KnownGame] = &[
         markers: &[],
         loose: &[],
         fit: Fit::Steps(Step::PluginList),
+        keep: &[],
     },
     with_fit(generic("The Elder Scrolls IV: Oblivion Remastered", &["2623190"], "oblivionremastered", ""), Fit::Steps(Step::PluginList)),
     KnownGame {
@@ -270,7 +283,8 @@ pub const KNOWN: &[KnownGame] = &[
         with_markers(generic("Resident Evil Village", &["1196590"], "residentevilvillage", ""), RE_ENGINE),
         Fit::Steps(Step::ReFramework),
     ),
-    generic("Starbound", &["211820"], "starbound", "mods"),
+    // Characters and worlds are in `storage`.
+    with_keep(generic("Starbound", &["211820"], "starbound", "mods"), &["storage"]),
     bepinex("Lethal Company", &["1966720"], "lethal-company", Some("lethalcompany")),
     bepinex("Risk of Rain 2", &["632360"], "riskofrain2", Some("riskofrain2")),
     bepinex("Valheim", &["892970"], "valheim", Some("valheim")),
@@ -282,7 +296,7 @@ pub const KNOWN: &[KnownGame] = &[
     bepinex("Sun Haven", &["1432860"], "sun-haven", None),
     bepinex("Muck", &["1625450"], "muck", None),
     bepinex("Lethal League Blaze", &["553310"], "lethal-league-blaze", None),
-    bepinex("ULTRAKILL", &["1229490"], "ultrakill", None),
+    with_keep(bepinex("ULTRAKILL", &["1229490"], "ultrakill", None), &["Saves", "Preferences"]),
     // Hades II is modded through Hell2Modding / ReturnOfModding, not BepInEx.
     KnownGame { thunderstore: Some("hades-ii"), nexus_domain: None, ..generic("Hades II", &["1145350"], "", "") },
 ];
@@ -352,6 +366,8 @@ pub struct Profile {
     pub markers: &'static [&'static str],
     /// [`KnownGame::loose`].
     pub loose: &'static [(&'static str, &'static str)],
+    /// [`KnownGame::keep`].
+    pub keep: &'static [&'static str],
 }
 
 impl Profile {
@@ -375,6 +391,7 @@ impl Profile {
             plugins: known.and_then(|k| k.plugins),
             markers: known.map_or(&[], |k| k.markers),
             loose: known.map_or(&[], |k| k.loose),
+            keep: known.map_or(&[], |k| k.keep),
         }
     }
 }
@@ -433,6 +450,7 @@ mod tests {
         assert_eq!(Profile::of(&GameLinks::default(), hades).kind, Kind::Generic);
         assert_eq!(by_thunderstore("hades-ii").map(|g| g.name), Some("Hades II"));
         assert!(Profile::of(&GameLinks::default(), find(Some("1091500"), "")).loose.contains(&("archive", "archive/pc/mod")));
+        assert_eq!(Profile::of(&GameLinks::default(), find(Some("1229490"), "")).keep, ["Saves", "Preferences"]);
     }
 
     #[test]

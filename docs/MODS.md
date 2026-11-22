@@ -6,7 +6,9 @@ own and, on Linux, the game's folder is never written (Windows: see
 from Heronite, `fuse-overlayfs` is mounted **over the game's own folder**: the
 enabled mods are layers above the game's files (the last mod of the list wins
 a file), and whatever the game writes while it runs lands in the game's
-*overwrite* folder. When the game ends the folder is unmounted and the game is
+*overwrite* folder. When the game ends the folder is unmounted, the files the
+game wrote outside the mods' folders (saves) move back into the game folder
+([What the game writes](#what-the-game-writes-write_rule)), and the game is
 vanilla again. Turning a mod off or on, reordering, removing: nothing is
 reinstalled or copied, the next launch simply mounts other layers.
 
@@ -92,11 +94,16 @@ Mods.
    with mods are built with a probe that also sees the mods' files
    (`services::mods::ModsProbe`), because the plan checks the executable
    before the overlay exists.
-7. **What the game wrote.** Configs, logs and saves the game writes inside its
-   folder while modded are in the *overwrite* folder (the last row of the
-   list when it is not empty, deletions included): open it, turn it into a
-   mod, or empty it. Turning "Play with mods" off keeps it (a notice says the
-   game will not see it until mods are on again); "Remove all mods" deletes it
+7. **What the game wrote.** What the game writes into the mods' folders while
+   modded (their configs, logs) is in the *overwrite* folder; its saves and
+   anything else stay in the game folder (see
+   [What the game writes](#what-the-game-writes-write_rule)). The overwrite
+   folder is the last row of the list when it is not empty, deletions
+   included: its files by top-level folder (files and size, and which lie
+   outside the mods' folders), the newest 30 files on request, and Open,
+   Turn into a mod, Empty. Once, when it holds files outside the mods'
+   folders, it offers to move them back into the game folder. Turning "Play
+   with mods" off keeps it (a notice says so); "Remove all mods" deletes it
    and says so.
 8. **Limits the manager says out loud.** The manager is labelled
    "Experimental" and every game has a label for what to expect of its mods
@@ -145,7 +152,9 @@ tried.
     mods.json                   ModList: order, switches, sources, choices
     mods/<mod id>/              the mod's files, relative to the GAME folder
     downloads/                  archives kept for reinstall / FOMOD
-    overwrite/                  upperdir: what the game wrote while modded
+    overwrite/                  upperdir: what the game wrote into the mods' folders
+    write-session.json          Linux, while mounted: the write rule and what
+                                overwrite/ held before (write_rule)
     .work/                      fuse-overlayfs workdir
     .layers/<nnn>               short symlinks to the layers (mount options)
 ```
@@ -165,6 +174,8 @@ the game from starting. The Nexus Mods key is typed again after a restore.
   fuse-overlayfs opens its layers before mounting, so mounting over the game
   folder works and the game folder is its own bottom layer.
 - Unmount with `fusermount3 -u`, retried for a few seconds, then `-uz` (lazy).
+  Once the folder is free, `write_rule::settle` moves what the game wrote
+  outside the mods' folders from the upper layer back into the game folder.
 - Before mounting, a mount already there (a crash) is unmounted; at app start
   every stale mount of ours whose game is not running is unmounted.
 - The sandbox (`heronite_launch::sandbox`) binds the game folder read-only:
@@ -194,6 +205,47 @@ Bethesda games' file times are computed from the real game folder.
 A game picked up again after the app restarted (`Launcher::adopt`) has no
 guard: when it ends, `GameMods::release` unmounts the overlay of ours that is
 still on its folder (`deploy::unmount_ours`).
+
+## What the game writes (`write_rule`)
+
+Discussion #294, point 2. A save made while modded must still be there in
+unmodded play, and Steam Cloud must see it, so only what the game writes
+under the **mods' own folders** is kept in the overwrite folder:
+
+- **The mods' folders** are the top-level folders of the enabled mods
+  (`BepInEx`, `Data`, `r6`, `Mods`…), compared ignoring case. A file the game
+  makes anywhere else, or at the root of its folder, stays in the game
+  folder. Files of a mod that the game rewrote are the mod's, and go to
+  overwrite wherever they are.
+- **Folders that always stay**, even under a mod's folder: those the known
+  games table lists for the game (`KnownGame::keep`: ULTRAKILL's `Saves` and
+  `Preferences`, Starbound's `storage`), and any folder named like saves
+  (`Save`, `Saves`, `Saved`, `SaveGames`, `Save Data`, `SaveFiles`,
+  `SaveSlots`, ignoring case, spaces and `_`).
+- **Windows**: `journal_deploy::restore` applies the rule to the files the
+  game created; the rest stay where the game put them. The rule is in the
+  journal; a journal from before the rule has none, and every new file goes
+  to overwrite, as it did then.
+- **Linux**: the overlay writes everything into its upper layer. Before
+  mounting, `write-session.json` notes the rule and the size and time of each
+  file the overwrite folder holds. After the unmount (the guard, an adopted
+  game's release, the start-up sweep, the next mount after a crash),
+  `settle` moves each file of this session outside the mods' folders into
+  the game folder, replacing the game's copy (the game wrote over it, as it
+  would unmodded). It removes the folders it emptied and the overlay's
+  "replaced folder" mark (`.wh..wh..opq` and the `opaque` extended
+  attributes) of each folder it took files from, which would otherwise hide
+  the game's folder in the next modded run. Deletions stay in the overwrite
+  folder: the next modded run still hides the file, unmodded play shows it.
+- **The one-time offer.** Before the rule, Linux kept every file in the
+  overwrite folder, saves included. When the overwrite folder holds files
+  outside the folders of the game's installed mods (enabled or not, so a
+  disabled mod's settings are not taken for the game's), the overwrite row
+  offers to move them into the game folder (`write_rule::migrate`). A file
+  the game folder already has is left in overwrite unless both are the same,
+  so nothing of the game's is replaced; the notice says how many stayed. The
+  answer, either way, is kept in `mods.json` (`outsideFilesAnswered`), and
+  the offer is not made again. It is refused while the mods are applied.
 
 ## Service (`services::mods`)
 
@@ -250,12 +302,13 @@ its folder**, and they come out again when it ends (`journal_deploy`):
   next restore or at start. A game file that was copied back whole but whose
   backup was not removed yet matches the backup's size and time, and is not
   taken for something the game wrote.
-- **What the game wrote** goes to the overwrite folder, as on Linux: files
-  that were not in the snapshot, and copies of ours whose size or time
-  changed. The overwrite folder is the top layer of the next deployment. Not
-  caught: changes to the game's own files no mod replaced (they stay, as
-  without mods), game files the game deleted, and in-place writes into a
-  linked file.
+- **What the game wrote** under the mods' folders goes to the overwrite
+  folder: files that were not in the snapshot, and copies of ours whose size
+  or time changed. Files it created elsewhere stay in the game folder
+  ([What the game writes](#what-the-game-writes-write_rule)). The overwrite
+  folder is the top layer of the next deployment. Not caught: changes to the
+  game's own files no mod replaced (they stay, as without mods), game files
+  the game deleted, and in-place writes into a linked file.
 - While a journal exists the game counts as running with mods
   (`deployment::in_use`): removing, updating and emptying are refused.
 - **Proxy DLLs** need nothing: Windows loads the DLL in the game folder before

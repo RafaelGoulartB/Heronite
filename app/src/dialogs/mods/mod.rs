@@ -139,6 +139,8 @@ pub struct ModsDialog {
     debug_tip: Option<render_support::Tip>,
     /// "Turn into a mod": the name being typed.
     naming_overwrite: Option<Entity<InputState>>,
+    /// The overwrite card lists its newest files.
+    overwrite_files_open: bool,
     browse: browse::Browse,
     links: game_tab::LinksForm,
     fixture: Option<fixture::Fixture>,
@@ -183,6 +185,7 @@ impl ModsDialog {
             checking: HashSet::new(),
             debug_tip: None,
             naming_overwrite: None,
+            overwrite_files_open: false,
             browse,
             links,
             fixture,

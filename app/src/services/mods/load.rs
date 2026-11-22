@@ -7,6 +7,7 @@ use std::sync::Arc;
 use gpui_kit::*;
 use heronite_data::{anticheat, CollectionGame};
 use heronite_mods::games::{self, Profile};
+use heronite_mods::write_rule::WriteRule;
 use heronite_mods::{conflicts, links, overwrite, store, tool, GameLinks};
 
 use super::facts;
@@ -53,7 +54,7 @@ impl ModsService {
                         info,
                         list,
                         conflicts: kept.as_ref().and_then(|g| g.conflicts.clone()),
-                        overwrite: kept.as_ref().map(|g| g.overwrite).unwrap_or_default(),
+                        overwrite: kept.as_ref().map(|g| g.overwrite.clone()).unwrap_or_default(),
                         loaders: kept.as_ref().map(|g| g.loaders.clone()).unwrap_or_default(),
                         steam_overrides_missing: kept.and_then(|g| g.steam_overrides_missing),
                     },
@@ -148,7 +149,9 @@ impl ModsService {
                         (Some(game), Some(dir)) => super::loaders::cards(&loaders_paths, game, &dirs, &list, dir, through_steam, native),
                         _ => Vec::new(),
                     };
-                    (conflicts::compute(&dirs, &list), overwrite::summary(&dirs), changed, loaders, misplaced)
+                    let keep = profile.as_ref().map_or(&[][..], |p| p.keep);
+                    let written = overwrite::summary(&dirs, &WriteRule::for_list(&dirs, &list, keep));
+                    (conflicts::compute(&dirs, &list), written, changed, loaders, misplaced)
                 })
                 .await;
             let k = key.clone();

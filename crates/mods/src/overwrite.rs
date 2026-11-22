@@ -6,6 +6,7 @@ use std::io;
 #[cfg(unix)]
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::Path;
+use std::time::SystemTime;
 
 use heronite_i18n::tr;
 
@@ -14,6 +15,10 @@ use crate::install::scan;
 use crate::model::{ModEntry, ModList, ModSource};
 use crate::paths::GameDirs;
 use crate::store;
+use crate::write_rule::WriteRule;
+
+/// How many of the newest files [`summary`] names.
+pub const NEWEST: usize = 30;
 
 /// An entry that says "this file of a lower layer was deleted": a character
 /// device 0/0, or a `.wh.<name>` file. Windows has no devices here: an
@@ -29,13 +34,31 @@ pub(crate) fn is_whiteout(name: &str, meta: &fs::Metadata) -> bool {
 }
 
 /// What is in the overwrite folder.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Written {
     /// Files the game wrote.
     pub files: u64,
     pub bytes: u64,
     /// Files of the game or of a mod that the game deleted.
     pub deleted: u64,
+    /// The written files by top-level folder, sorted by name; files at the
+    /// root of the game folder are the group `""`.
+    pub groups: Vec<Group>,
+    /// The newest written files (up to [`NEWEST`]), newest first.
+    pub newest: Vec<String>,
+    /// Written files that lie outside the mods' folders: saves or settings
+    /// of the game, kept here before [`crate::write_rule`].
+    pub outside: u64,
+}
+
+/// The written files under one top-level folder.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Group {
+    pub folder: String,
+    pub files: u64,
+    pub bytes: u64,
+    /// How many of them lie outside the mods' folders.
+    pub outside: u64,
 }
 
 impl Written {
@@ -50,21 +73,37 @@ fn is_marker(name: &str) -> bool {
     name.rsplit('/').next().is_some_and(|n| n.starts_with(".wh..wh."))
 }
 
-/// What the game wrote and deleted. Deleting is counted apart from writing:
-/// a folder with only deletions still has something to show.
-pub fn summary(dirs: &GameDirs) -> Written {
+/// What the game wrote and deleted, by folder. Deleting is counted apart
+/// from writing: a folder with only deletions still has something to show.
+/// `rule` (over every installed mod, [`WriteRule::for_list`]) tells which
+/// files lie outside the mods' folders.
+pub fn summary(dirs: &GameDirs, rule: &WriteRule) -> Written {
     let mut out = Written::default();
+    let mut groups: std::collections::BTreeMap<String, Group> = Default::default();
+    let mut times: Vec<(SystemTime, String)> = Vec::new();
     walk_files(&dirs.overwrite(), &mut |rel, meta| {
-        if is_marker(rel) {
+        if is_marker(rel) || crate::journal_fs::is_partial(rel) {
             return;
         }
         if is_whiteout(rel, meta) {
             out.deleted += 1;
-        } else {
-            out.files += 1;
-            out.bytes += meta.len();
+            return;
         }
+        out.files += 1;
+        out.bytes += meta.len();
+        let folder = rel.split_once('/').map_or("", |(f, _)| f).to_string();
+        let g = groups.entry(folder.to_lowercase()).or_insert_with(|| Group { folder, ..Default::default() });
+        g.files += 1;
+        g.bytes += meta.len();
+        if !rule.to_overwrite(rel) {
+            g.outside += 1;
+            out.outside += 1;
+        }
+        times.push((meta.modified().unwrap_or(SystemTime::UNIX_EPOCH), rel.to_string()));
     });
+    out.groups = groups.into_values().collect();
+    times.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    out.newest = times.into_iter().take(NEWEST).map(|(_, rel)| rel).collect();
     out
 }
 
@@ -166,15 +205,39 @@ mod tests {
         (t, dirs)
     }
 
+    fn counts(w: &Written) -> (u64, u64, u64) {
+        (w.files, w.bytes, w.deleted)
+    }
+
     #[test]
     fn deletions_are_counted_apart_from_files() {
         let (t, dirs) = setup();
-        assert_eq!(summary(&dirs), Written { files: 2, bytes: 12, deleted: 1 });
+        let rule = WriteRule { mod_folders: ["data".to_string()].into(), keep: Vec::new() };
+        let w = summary(&dirs, &rule);
+        assert_eq!(counts(&w), (2, 12, 1));
         assert_eq!(list_files(&dirs, 10), ["Data/Config/game.ini", "save.txt"]);
         assert_eq!(list_files(&dirs, 1).len(), 1);
         let empty = ModsRoot::at(t.path()).game("none");
-        assert_eq!(summary(&empty), Written::default());
-        assert!(summary(&empty).is_empty() && !summary(&dirs).is_empty());
+        assert_eq!(summary(&empty, &rule), Written::default());
+        assert!(summary(&empty, &rule).is_empty() && !w.is_empty());
+    }
+
+    #[test]
+    fn files_are_grouped_by_folder_and_the_newest_come_first() {
+        let (_t, dirs) = setup();
+        put(dirs.overwrite().join("Saves/slot.sav"), "sav");
+        put(dirs.overwrite().join("Data/cache.bin"), "c");
+        put(dirs.overwrite().join("Data/Config/game.ini.heronite-partial"), "half");
+        let old = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        fs::File::options().write(true).open(dirs.overwrite().join("save.txt")).unwrap().set_modified(old).unwrap();
+        let rule = WriteRule { mod_folders: ["data".to_string()].into(), keep: Vec::new() };
+        let w = summary(&dirs, &rule);
+        let groups: Vec<_> = w.groups.iter().map(|g| (g.folder.as_str(), g.files, g.bytes, g.outside)).collect();
+        assert_eq!(groups, [("", 1, 5, 1), ("Data", 2, 8, 0), ("Saves", 1, 3, 1)]);
+        assert_eq!(w.outside, 2);
+        assert_eq!(w.files, 4, "a partial copy is not a file of the game");
+        assert_eq!(w.newest.last().map(String::as_str), Some("save.txt"), "the oldest last");
+        assert_eq!(w.newest.len(), 4);
     }
 
     #[test]
@@ -184,8 +247,8 @@ mod tests {
         put(dirs.overwrite().join("Data/.wh.a.esp"), "");
         put(dirs.overwrite().join(".wh.b.txt"), "");
         put(dirs.overwrite().join("Data/.wh..wh..opq"), "");
-        let w = summary(&dirs);
-        assert_eq!(w, Written { files: 0, bytes: 0, deleted: 2 });
+        let w = summary(&dirs, &WriteRule::default());
+        assert_eq!(counts(&w), (0, 0, 2));
         assert!(!w.is_empty());
     }
 
@@ -215,7 +278,7 @@ mod tests {
         assert!(dirs.overwrite().join("Data/.wh.removed.esp").exists(), "deletions stay");
         assert!(!dirs.overwrite().join("save.txt").exists() && !dirs.overwrite().join("Data/Config").exists());
         assert_eq!(store::load(&dirs), list);
-        assert_eq!(summary(&dirs).files, 0);
+        assert_eq!(summary(&dirs, &WriteRule::default()).files, 0);
         assert_eq!(into_mod(&dirs, &mut list, "Again").unwrap_err(), "The overwrite folder is empty");
         assert!(!dirs.mods_dir().join("again.partial").exists());
     }

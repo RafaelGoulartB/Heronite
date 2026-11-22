@@ -3,7 +3,7 @@
 //!
 //! `HERONITE_DEBUG_MODS_FIXTURE=1` (or a `,`-separated list of `nodir`,
 //! `steam`, `account`, `premium`, `fuse`, `jobs`, `running`, `native`,
-//! `anticheat`, `deleted`, `misplaced`, `warned`, `loader`, `loader-on`, `loader-steam`) shows the
+//! `anticheat`, `deleted`, `outside`, `misplaced`, `warned`, `loader`, `loader-on`, `loader-steam`) shows the
 //! `mods.json` of the game under the data folder, with invented conflicts, an
 //! overwrite folder and jobs, for as long as the service has not loaded the game.
 
@@ -14,7 +14,7 @@ use heronite_data::CollectionGame;
 use heronite_mods::conflicts::{Conflicts, ModConflicts};
 use heronite_mods::games::{self, Profile};
 use heronite_mods::nexus::{Account, StoredAccount};
-use heronite_mods::overwrite::Written;
+use heronite_mods::overwrite::{Group, Written};
 use heronite_mods::{store, ModsRoot, Progress};
 
 use super::DialogCtx;
@@ -90,11 +90,7 @@ pub(super) fn load(ctx: &DialogCtx, game: &CollectionGame) -> Option<Fixture> {
             info,
             list,
             conflicts: Some(Arc::new(Conflicts { per_mod })),
-            overwrite: if has("deleted") {
-                Written { files: 0, bytes: 0, deleted: 2 }
-            } else {
-                Written { files: 23, bytes: 1_258_291, deleted: 2 }
-            },
+            overwrite: overwrite(&has),
             loaders: loaders(&has),
             steam_overrides_missing: has("steam").then(|| "winhttp=n,b".to_string()),
         },
@@ -103,6 +99,26 @@ pub(super) fn load(ctx: &DialogCtx, game: &CollectionGame) -> Option<Fixture> {
         support_problem: has("fuse").then(|| "Heronite needs FUSE (fusermount3) to apply mods. Install the fuse3 package.".to_string()),
         misplaced: if has("misplaced") { enabled.iter().take(1).cloned().collect() } else { HashSet::new() },
     })
+}
+
+/// What the overwrite folder holds: deletions only (`deleted`), or files,
+/// with saves from before the rule (`outside`).
+fn overwrite(has: &dyn Fn(&str) -> bool) -> Written {
+    if has("deleted") {
+        return Written { deleted: 2, ..Default::default() };
+    }
+    let group = |folder: &str, files, bytes, outside| Group { folder: folder.to_string(), files, bytes, outside };
+    let mut groups = vec![group("BepInEx", 19, 1_204_224, 0), group("", 1, 2_067, 0)];
+    let mut newest = vec!["BepInEx/LogOutput.log", "BepInEx/config/BepInEx.cfg", "BepInEx/config/com.example.mod.cfg", "output_log.txt"];
+    if has("outside") {
+        groups.push(group("Saves", 3, 52_000, 3));
+        groups[1].outside = 1;
+        newest.splice(1..1, ["Saves/slot1.sav", "Saves/slot2.sav", "Saves/slot3.sav"]);
+    }
+    groups.sort_by_key(|g| g.folder.to_lowercase());
+    let (files, bytes) = groups.iter().fold((0, 0), |(f, b), g| (f + g.files, b + g.bytes));
+    let outside = groups.iter().map(|g| g.outside).sum();
+    Written { files, bytes, deleted: 2, groups, newest: newest.into_iter().map(String::from).collect(), outside }
 }
 
 fn jobs(key: &str) -> Vec<Job> {

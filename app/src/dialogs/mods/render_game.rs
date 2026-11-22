@@ -71,54 +71,55 @@ impl ModsDialog {
         );
 
         let n = v.g.list.mods.len();
-        let danger =
-            if self.confirm == Some(Confirm::ForgetGame) {
-                let written = v.g.overwrite;
-                let overwrite = (!written.is_empty()).then(|| {
+        let danger = if self.confirm == Some(Confirm::ForgetGame) {
+            let written = &v.g.overwrite;
+            let overwrite = (!written.is_empty()).then(|| {
                     div().text_size(px(13.)).line_height(px(18.)).text_color(theme::warning()).child(tr!(
-                    "The overwrite folder is deleted too: {files}, {size}. It holds what the game wrote while modded (settings, saves).",
+                    "The overwrite folder is deleted too: {files}, {size}. It holds what the game wrote into the mods' folders while modded (their settings and logs).",
                     files = format::files(written.files),
                     size = format::size(written.bytes)
                 ))
                 });
-                panel()
-                    .child(div().text_size(px(13.5)).line_height(px(19.)).child(tr!(
-                        "Remove all {n} mods of {game}? Their files are deleted; the game is not touched.",
-                        n = n,
-                        game = self.game.title.clone()
-                    )))
-                    .children(overwrite)
-                    .child(
-                        div()
-                            .flex()
-                            .gap(px(8.))
-                            .child(button_sm("mods-forget-no", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(|this, _, _, cx| {
-                                this.confirm = None;
-                                cx.notify();
-                            })))
-                            .child(button_sm("mods-forget-yes", ButtonKind::Danger, tr!("Remove all mods")).on_click(cx.listener(
-                                |this, _, _, cx| {
-                                    this.forget_game(cx);
-                                    this.tab = super::Tab::Installed;
-                                },
-                            ))),
-                    )
-            } else {
-                panel()
-                    .flex_row()
-                    .items_center()
-                    .justify_between()
-                    .gap(px(12.))
-                    .child(div().min_w_0().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_muted()).child(tr!(
+            panel()
+                .child(div().text_size(px(13.5)).line_height(px(19.)).child(tr!(
+                    "Remove all {n} mods of {game}? Their files are deleted; the game is not touched.",
+                    n = n,
+                    game = self.game.title.clone()
+                )))
+                .children(overwrite)
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(8.))
+                        .child(button_sm("mods-forget-no", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(|this, _, _, cx| {
+                            this.confirm = None;
+                            cx.notify();
+                        })))
+                        .child(button_sm("mods-forget-yes", ButtonKind::Danger, tr!("Remove all mods")).on_click(cx.listener(
+                            |this, _, _, cx| {
+                                this.forget_game(cx);
+                                this.tab = super::Tab::Installed;
+                            },
+                        ))),
+                )
+        } else {
+            panel()
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .gap(px(12.))
+                .child(
+                    div().min_w_0().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_muted()).child(tr!(
                         "Removes every mod of this game and everything Heronite keeps for it: downloads and the overwrite folder."
-                    )))
-                    .child(
-                        div().flex_none().child(
-                            button("mods-forget", ButtonKind::Danger, tr!("Remove all mods"))
-                                .on_click(cx.listener(|this, _, _, cx| this.ask(Confirm::ForgetGame, cx))),
-                        ),
-                    )
-            };
+                    )),
+                )
+                .child(
+                    div().flex_none().child(
+                        button("mods-forget", ButtonKind::Danger, tr!("Remove all mods"))
+                            .on_click(cx.listener(|this, _, _, cx| this.ask(Confirm::ForgetGame, cx))),
+                    ),
+                )
+        };
 
         div()
             .flex()

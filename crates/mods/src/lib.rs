@@ -13,7 +13,8 @@
 //! * [`deploy`] mounts and unmounts the layers on Linux ([`tool`] finds or
 //!   downloads `fuse-overlayfs`), [`journal_deploy`] puts the files in place
 //!   on Windows, [`deployment`] answers the app for both; [`apply`] is what a
-//!   launch calls.
+//!   launch calls. [`write_rule`] says which files the game writes while
+//!   modded go to the overwrite folder and which stay with the game.
 //! * [`nexus`] and [`thunderstore`] talk to the sites, [`download`] fetches
 //!   files, [`links`] matches Collection games to the sites' games.
 //!
@@ -46,6 +47,7 @@ pub mod store;
 pub mod support;
 pub mod thunderstore;
 pub mod tool;
+pub mod write_rule;
 
 pub use model::*;
 pub use paths::{GameDirs, ModsRoot};

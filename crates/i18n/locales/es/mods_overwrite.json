@@ -1,0 +1,17 @@
+{
+  "Keep them here": "Dejarlos aquí",
+  "Move to the game folder": "Mover a la carpeta del juego",
+  "Newest files": "Archivos más recientes",
+  "The game folder itself": "La propia carpeta del juego",
+  "What the game writes into the mods' folders while modded (their settings, logs) is kept here and comes back at the next modded launch. Saves and anything else stay in the game folder.": "Lo que el juego escribe en las carpetas de los mods mientras tiene mods (configuración, registros) se guarda aquí y vuelve en el siguiente inicio con mods. Las partidas guardadas y todo lo demás se quedan en la carpeta del juego.",
+  "and {n} more folder": "y {n} carpeta más",
+  "and {n} more folders": "y {n} carpetas más",
+  "outside the mods' folders": "fuera de las carpetas de los mods",
+  "{n} file here lies outside the mods' folders: probably a save or setting of the game, kept here before Heronite left those in the game folder. Move it back into the game folder? A file the game folder has already is not replaced.": "{n} archivo de aquí está fuera de las carpetas de los mods: probablemente una partida guardada o un ajuste del juego, guardado aquí antes de que Heronite dejara esos archivos en la carpeta del juego. ¿Devolverlo a la carpeta del juego? Un archivo que la carpeta del juego ya tiene no se reemplaza.",
+  "{n} file moved into the game folder.": "{n} archivo movido a la carpeta del juego.",
+  "{n} file stays in Overwrite: the game folder has its own copy.": "{n} archivo se queda en Sobrescritura: la carpeta del juego tiene su propia copia.",
+  "{n} files here lie outside the mods' folders: probably saves or settings of the game, kept here before Heronite left those in the game folder. Move them back into the game folder? A file the game folder has already is not replaced.": "{n} archivos de aquí están fuera de las carpetas de los mods: probablemente partidas guardadas o ajustes del juego, guardados aquí antes de que Heronite dejara esos archivos en la carpeta del juego. ¿Devolverlos a la carpeta del juego? Un archivo que la carpeta del juego ya tiene no se reemplaza.",
+  "{n} files moved into the game folder.": "{n} archivos movidos a la carpeta del juego.",
+  "{n} files stay in Overwrite: the game folder has its own copy.": "{n} archivos se quedan en Sobrescritura: la carpeta del juego tiene su propia copia.",
+  "{n} outside the mods' folders": "{n} fuera de las carpetas de los mods"
+}
