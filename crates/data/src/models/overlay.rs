@@ -171,6 +171,10 @@ pub struct CollectionGameMetadata {
     pub steam_app_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// What the A-Z sorts read instead of the title (never shown); only the
+    /// user sets it, so fetching metadata never changes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

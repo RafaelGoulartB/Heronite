@@ -110,12 +110,22 @@ fn request(app: &str, plan: LaunchPlan) -> LaunchRequest {
 
 /// The next event, past the preparation steps (tested on their own).
 fn next(rx: &Receiver<LaunchEvent>) -> LaunchEvent {
+    next_within(rx, Duration::from_secs(5))
+}
+
+fn next_within(rx: &Receiver<LaunchEvent>, wait: Duration) -> LaunchEvent {
     loop {
-        match rx.recv_timeout(Duration::from_secs(5)).expect("event") {
+        match rx.recv_timeout(wait).expect("event") {
             LaunchEvent::Preparing { .. } => continue,
             ev => return ev,
         }
     }
+}
+
+/// The end of a game whose programs may be handing their work over: its
+/// end waits up to 5 s for them first (see the runtime's `HANDOVER_TAKES`).
+fn next_after_handovers(rx: &Receiver<LaunchEvent>) -> LaunchEvent {
+    next_within(rx, Duration::from_secs(20))
 }
 
 /// The next event, whatever it is.
@@ -424,6 +434,7 @@ fn steam_extras_run_around_the_game_steam_starts() {
             path: trainer.clone(),
             command: Command { program: trainer.clone(), ..Default::default() },
             delay: Duration::ZERO,
+            ..Default::default()
         }],
     };
     let plan = LaunchPlan::SteamUri { app_id: "400".into(), uri: "steam://rungameid/400".into(), extras };
@@ -1137,6 +1148,7 @@ fn companion(path: &std::path::Path, program: &str, delay_ms: u64) -> CompanionP
         path: path.to_string_lossy().into_owned(),
         command: Command { program: program.into(), ..Default::default() },
         delay: Duration::from_millis(delay_ms),
+        ..Default::default()
     }
 }
 
@@ -1161,6 +1173,113 @@ fn a_program_alongside_starts_after_its_delay_and_closes_with_the_game() {
     r.spawner.finish(0, 0);
     assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
     assert!(r.spawner.handle(1).unwrap().lock().unwrap().terminated, "closed with the game");
+}
+
+#[test]
+fn a_program_that_handed_its_work_over_gets_it_taken_back_when_the_game_ends() {
+    let r = rig();
+    let mut plan = process_plan("/games/run.sh", &[]);
+    let undo = |program: &str| Some(Command { program: program.into(), args: vec!["--unload".into()], ..Default::default() });
+    // One hands its work to an instance already running and exits; one is
+    // that instance itself and stays until the game ends; one fails, so it
+    // handed nothing over.
+    let handed_over = CompanionPlan { undo: undo("/bin/handed-over"), ..companion(&trainer_file(&r), "/bin/handed-over", 0) };
+    let stays = CompanionPlan { undo: undo("/bin/stays"), ..companion(&trainer_file(&r), "/bin/stays", 0) };
+    let failed = CompanionPlan { undo: undo("/bin/failed"), ..companion(&trainer_file(&r), "/bin/failed", 0) };
+    plan.companions = vec![handed_over, stays, failed];
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    wait_until("the programs", || r.spawner.spawned().len() == 4);
+    let at = |program: &str| r.spawner.spawned().iter().position(|c| c.program == program).unwrap();
+    let second = at("/bin/stays");
+    r.spawner.finish(at("/bin/handed-over"), 0);
+    r.spawner.finish(at("/bin/failed"), 1);
+    // The session sees them exit before the game does.
+    std::thread::sleep(Duration::from_millis(200));
+    r.spawner.finish(0, 0);
+    assert!(matches!(next_after_handovers(&r.rx), LaunchEvent::Exited { .. }));
+    let spawned = r.spawner.spawned();
+    let undone: Vec<_> = spawned.iter().filter(|c| c.args == ["--unload"]).map(|c| c.program.as_str()).collect();
+    assert_eq!(undone, ["/bin/handed-over"], "only what was handed over is taken back");
+    assert!(r.spawner.handle(second).unwrap().lock().unwrap().terminated, "the instance it started closes with the game");
+}
+
+/// What a program with the shared undo does in [`shared_undo_runs`].
+#[derive(Clone, Copy)]
+enum Amx {
+    /// Hands its work over and exits 0 before the game ends.
+    HandsOver,
+    /// Hands it over but is still at it when the game ends: exits 0 that
+    /// long after.
+    HandsOverLate(Duration),
+    /// Fails right away with an error code: held nothing.
+    FailsAtOnce,
+    /// Was the instance and crashed (killed by a signal) during the game.
+    Crashes,
+    /// Is the instance, still running when the game ends.
+    Runs,
+}
+
+/// Runs a game with one program per entry of `exits`, all with the same
+/// undo (like AntiMicroX's players), and returns how many times it ran.
+fn shared_undo_runs(exits: &[Amx]) -> usize {
+    let r = rig();
+    let mut plan = process_plan("/games/run.sh", &[]);
+    let undo = Command { program: "/bin/amx".into(), args: vec!["--unload".into()], ..Default::default() };
+    plan.companions = (0..exits.len())
+        .map(|i| CompanionPlan { undo: Some(undo.clone()), ..companion(&trainer_file(&r), &format!("/bin/amx{i}"), 0) })
+        .collect();
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    wait_until("the programs", || r.spawner.spawned().len() == exits.len() + 1);
+    let at = |program: &str| r.spawner.spawned().iter().position(|c| c.program == program).unwrap();
+    for (i, exit) in exits.iter().enumerate() {
+        let index = at(&format!("/bin/amx{i}"));
+        match *exit {
+            Amx::HandsOver => r.spawner.finish(index, 0),
+            Amx::FailsAtOnce => r.spawner.finish(index, 1),
+            Amx::Crashes => r.spawner.crash(index, 11),
+            Amx::HandsOverLate(late) => {
+                let spawner = r.spawner.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(late);
+                    spawner.finish(index, 0);
+                });
+            }
+            Amx::Runs => {}
+        }
+    }
+    std::thread::sleep(Duration::from_millis(200));
+    r.spawner.finish(0, 0);
+    assert!(matches!(next_after_handovers(&r.rx), LaunchEvent::Exited { .. }));
+    r.spawner.spawned().iter().filter(|c| c.program == "/bin/amx").count()
+}
+
+#[test]
+fn a_shared_undo_runs_once_when_every_program_handed_over() {
+    assert_eq!(shared_undo_runs(&[Amx::HandsOver, Amx::HandsOver, Amx::HandsOver]), 1);
+}
+
+#[test]
+fn a_shared_undo_is_skipped_while_one_of_them_is_the_running_instance() {
+    assert_eq!(shared_undo_runs(&[Amx::Runs, Amx::HandsOver]), 0, "closing the instance takes the work with it");
+}
+
+#[test]
+fn a_shared_undo_is_skipped_after_the_instance_crashed() {
+    assert_eq!(shared_undo_runs(&[Amx::Crashes, Amx::HandsOver]), 0, "the work went with the crash");
+}
+
+#[test]
+fn one_that_fails_at_once_does_not_keep_the_others_work_loaded() {
+    assert_eq!(shared_undo_runs(&[Amx::HandsOver, Amx::FailsAtOnce]), 1);
+}
+
+#[test]
+fn a_handover_under_way_when_the_game_ends_is_waited_for() {
+    assert_eq!(shared_undo_runs(&[Amx::HandsOverLate(Duration::from_millis(800))]), 1);
 }
 
 // Wine and Proton: Linux only.

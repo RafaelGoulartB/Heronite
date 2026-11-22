@@ -187,6 +187,96 @@ pub fn parse_config(yaml: &str, home: &str) -> (Option<String>, Option<String>, 
     (backup_path, format, compression)
 }
 
+/// The names of the custom games (`customGames:`) of Ludusavi's
+/// `config.yaml` that it backs up: those marked `ignore: true` are left out.
+/// Ludusavi writes the list with two-space indentation, one `- name:` per
+/// entry; the nested lists (`files:`) sit deeper and are skipped.
+pub fn parse_custom_games(yaml: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut inside = false;
+    let mut item_indent: Option<usize> = None;
+    // The entry being read: its name and whether it is ignored.
+    let mut entry: Option<(Option<String>, bool)> = None;
+    let mut flush = |entry: &mut Option<(Option<String>, bool)>| {
+        if let Some((Some(name), false)) = entry.take() {
+            if !name.is_empty() && !out.contains(&name) {
+                out.push(name);
+            }
+        }
+    };
+    for raw in yaml.lines() {
+        let trimmed = raw.trim_start();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let indent = raw.len() - trimmed.len();
+        if indent == 0 {
+            flush(&mut entry);
+            // Some YAML writers put a list's items unindented under its key.
+            if let Some(rest) = trimmed.strip_prefix("- ").filter(|_| inside && item_indent.is_none_or(|i| i == 0)) {
+                item_indent = Some(0);
+                entry = Some((None, false));
+                read_field(rest, entry.as_mut());
+            } else {
+                inside = trimmed.starts_with("customGames:");
+                item_indent = None;
+            }
+            continue;
+        }
+        if !inside {
+            continue;
+        }
+        let item = *item_indent.get_or_insert(indent);
+        if indent == item {
+            if let Some(rest) = trimmed.strip_prefix("- ") {
+                flush(&mut entry);
+                entry = Some((None, false));
+                read_field(rest, entry.as_mut());
+            }
+        } else if indent == item + 2 {
+            read_field(trimmed, entry.as_mut());
+        }
+    }
+    flush(&mut entry);
+    out
+}
+
+/// One `key: value` line of a custom game.
+fn read_field(line: &str, entry: Option<&mut (Option<String>, bool)>) {
+    let Some(entry) = entry else { return };
+    if let Some(value) = line.strip_prefix("name:") {
+        entry.0 = Some(yaml_scalar(value.trim()));
+    } else if let Some(value) = line.strip_prefix("ignore:") {
+        entry.1 = value.trim() == "true";
+    }
+}
+
+/// A plain, single-quoted or double-quoted YAML scalar.
+fn yaml_scalar(text: &str) -> String {
+    if text.len() >= 2 && text.starts_with('\'') && text.ends_with('\'') {
+        return text[1..text.len() - 1].replace("''", "'");
+    }
+    if text.len() >= 2 && text.starts_with('"') && text.ends_with('"') {
+        return unescape_double_quoted(&text[1..text.len() - 1]);
+    }
+    text.to_string()
+}
+
+/// The custom games of the Ludusavi Heronite runs (`preferred`: the binary
+/// set in Settings → Saves), read from its `config.yaml`. Empty when
+/// Ludusavi or its config is not found. Spawns `ludusavi`: call it off the
+/// UI thread.
+pub fn custom_games(runner: &dyn CommandRunner, probe: &dyn Probe, preferred: Option<&str>) -> Vec<String> {
+    let Some(config) = detect_ludusavi(runner, probe, preferred).and_then(|d| d.config_path) else { return Vec::new() };
+    match std::fs::read_to_string(&config) {
+        Ok(yaml) => parse_custom_games(&yaml),
+        Err(e) => {
+            log::warn!("Failed to read Ludusavi config {config}: {e}");
+            Vec::new()
+        }
+    }
+}
+
 /// `restore.path` of Ludusavi's `config.yaml`.
 pub fn parse_restore_path(yaml: &str, home: &str) -> Option<String> {
     expand_home(yaml_get(yaml, &["restore", "path"]), home)
@@ -232,10 +322,39 @@ pub fn detect_ludusavi(runner: &dyn CommandRunner, probe: &dyn Probe, preferred:
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::ludusavi::fake::{out, Fake};
     use heronite_launch::probe::FakeProbe;
 
     const YAML: &str = "runtime:\n  threads: ~\nbackup:\n  path: ~/Saves\n  ignoredGames:\n    - X\n  format:\n    chosen: zip\n    zip:\n      compression: zstd\n    compression:\n      deflate:\n        level: 6\nrestore:\n  path: /elsewhere\n";
+
+    #[test]
+    fn custom_games_are_read_from_the_config() {
+        let yaml = "\
+backup:
+  path: ~/ludusavi-backup
+customGames:
+  - name: RetroArch Saves
+    integration: override
+    files:
+      - \"~/.config/retroarch/saves\"
+      - name: not a game
+    registry: []
+  - name: 'Eden''s Saves'
+    ignore: false
+    files: []
+  - name: \"Old Emulator\"
+    ignore: true
+  - name: RetroArch Saves
+restore:
+  path: ~/ludusavi-backup
+";
+        assert_eq!(parse_custom_games(yaml), ["RetroArch Saves", "Eden's Saves"]);
+        assert!(parse_custom_games("customGames: []\n").is_empty());
+        assert!(parse_custom_games("backup:\n  path: /b\n").is_empty());
+        // Unindented list items, as some YAML writers put them.
+        assert_eq!(parse_custom_games("customGames:\n- name: A\n  files: []\n- name: B\nroots: []\n"), ["A", "B"]);
+    }
 
     #[test]
     fn yaml_paths() {

@@ -262,7 +262,7 @@ impl CollectionView {
                 self.media_play(0, 0., false, cx);
             }
         }
-        if !shown() || crate::console::active() {
+        if !self.media_wanted() {
             if self.media.game.is_some() {
                 self.media.reset();
             }
@@ -275,6 +275,32 @@ impl CollectionView {
             self.media.kinds = kinds;
             self.load_store_media(cx);
         }
+    }
+
+    /// Whether the focused game's store media are read: on the desktop while
+    /// the section shows; in console mode while a Spotlight page wants them
+    /// (its screenshots only: nothing plays there).
+    fn media_wanted(&self) -> bool {
+        if crate::console::active() {
+            self.console_wants_store_media()
+        } else {
+            shown()
+        }
+    }
+
+    /// The store media of `key` once read (`None` while they are asked, and
+    /// for a game without any).
+    pub(in crate::collection) fn store_media_of(&self, key: &str) -> Option<Arc<Media>> {
+        match &self.media.list {
+            List::Ready(m) if self.media.game.as_deref() == Some(key) => Some(m.clone()),
+            _ => None,
+        }
+    }
+
+    /// Whether the store media of `key` are still being asked for (not yet
+    /// known to be there or missing).
+    pub(in crate::collection) fn store_media_pending(&self, key: &str) -> bool {
+        self.media.game.as_deref() != Some(key) || matches!(self.media.list, List::None | List::Loading)
     }
 
     /// How the focused game's store page is found: the Steam app id of any

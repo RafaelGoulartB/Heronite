@@ -1,0 +1,8 @@
+{
+  "Default order": "Standardreihenfolge",
+  "Not unlocked": "Nicht freigeschaltet",
+  "Unlocked": "Freigeschaltet",
+  "{percent} of players": "{percent} der Spieler",
+  "{unlocked} of {total} unlocked": "{unlocked} von {total} freigeschaltet",
+  "{unlocked} of {total} unlocked · last on {date}": "{unlocked} von {total} freigeschaltet · zuletzt am {date}"
+}

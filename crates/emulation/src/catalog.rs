@@ -226,6 +226,18 @@ static TABLE: &[D] = &[
         profiles: &[p("xbox", "Xbox", "microsoft_xbox", "Xbox", &["iso", "xiso"])],
     },
     D {
+        id: "xenia",
+        name: "Xenia",
+        website: Some("https://github.com/has207/xenia-edge"),
+        // Xenia Edge (its AUR package's name), Canary, then master.
+        binaries: &["xenia_edge", "xenia_canary", "xenia"],
+        win_binaries: &["xenia_edge.exe", "xenia_canary.exe", "xenia.exe"],
+        win_folders: &["xenia_edge", "xenia_canary", "xenia-canary", "Xenia"],
+        core_dir_hints: None,
+        // Disc images and archives, and extracted games (`default.xex`).
+        profiles: &[p("x360", "Xbox 360", "microsoft_xbox360", "Xbox 360", &["iso", "xex", "zar"]).indicator("default.xex")],
+    },
+    D {
         id: "melonds",
         name: "melonDS",
         website: Some("https://melonds.kuribo64.net/"),
@@ -497,6 +509,7 @@ pub fn guess_definition_id(name: Option<&str>) -> String {
         ("cemu", "cemu"),
         ("ryujinx", "ryujinx"),
         ("xemu", "xemu"),
+        ("xenia", "xenia"),
         ("melonds", "melonds"),
         ("mgba", "mgba"),
         ("flycast", "flycast"),
@@ -572,7 +585,7 @@ mod tests {
                 assert!(l.profiles.iter().any(|lp| lp.id == pr.id), "{}:{} missing in launch catalog", d.id, pr.id);
             }
         }
-        assert_eq!(emulator_definitions().len(), 23);
+        assert_eq!(emulator_definitions().len(), 24);
     }
 
     #[test]
@@ -585,6 +598,7 @@ mod tests {
         assert_eq!(guess_definition_id(Some("Gopher64")), "gopher64");
         assert_eq!(guess_definition_id(Some("ePSXe (Wine)")), "epsxe");
         assert_eq!(guess_definition_id(Some("DeSmuME 0.9.13")), "desmume");
+        assert_eq!(guess_definition_id(Some("Xenia Canary")), "xenia");
         assert_eq!(guess_definition_id(Some("whatever")), "custom");
         assert_eq!(guess_definition_id(None), "custom");
     }

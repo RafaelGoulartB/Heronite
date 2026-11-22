@@ -34,5 +34,8 @@
   "Settings tool": "Einstellungsprogramm",
   "Web page": "Webseite",
   "What it opens": "Was es öffnet",
-  "Covers…": "Cover…"
+  "Covers…": "Cover…",
+  "Ask how to play": "Fragen, wie gespielt wird",
+  "Pressing Play asks whether to start the game normally or with one of the actions that count as playing.": "Beim Drücken auf Spielen wird gefragt, ob das Spiel normal oder mit einer der Aktionen startet, die als Spielen zählen.",
+  "Choose how to start the game.": "Wähle, wie das Spiel starten soll."
 }

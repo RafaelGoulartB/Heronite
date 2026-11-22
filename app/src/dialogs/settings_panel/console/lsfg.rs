@@ -39,7 +39,7 @@ impl SettingsPanel {
                 Row::action("d:lsfg-look-again", tr!("Look again")).icon(Icon::Refresh).desc(m.steps().join(" ")),
                 Act::Do(Rc::new(|this, _, cx| this.load_lsfg(cx))),
             ));
-            return v;
+            return under_switch(v);
         }
         let Some(install) = &self.lsfg else { return v };
         let uses_profile = install.uses_profile(&s.profile);
@@ -66,7 +66,7 @@ impl SettingsPanel {
             if let Some(program) = self.lsfg_ui.clone() {
                 v.push(Self::c_do("lsfg-ui", tr!("Open lsfg-vk-ui"), Icon::OpenInNew, true, move |_, _, _| open_ui(&program)));
             }
-            return v;
+            return under_switch(v);
         }
         let multipliers = lsfg::MULTIPLIERS.iter().map(|n| SharedString::from(format!("{n}×"))).collect();
         let at = lsfg::MULTIPLIERS.iter().position(|n| *n == s.multiplier).unwrap_or(0);
@@ -92,6 +92,14 @@ impl SettingsPanel {
             disabled,
         ));
         v.push(self.c_toggle(lsfg::KEY_HDR, false, "HDR", Some(tr!("Turn on when the game outputs HDR")), disabled));
-        v
+        under_switch(v)
     }
+}
+
+/// The rows after the switch (the heading and the switch first) as its
+/// sub-settings.
+fn under_switch(v: Vec<Item>) -> Vec<Item> {
+    let mut v = v.into_iter();
+    let head: Vec<Item> = v.by_ref().take(1).collect();
+    head.into_iter().chain(super::grouped(v.collect())).collect()
 }

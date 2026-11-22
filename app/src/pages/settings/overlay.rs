@@ -509,22 +509,27 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     };
     let mut rows = vec![
         Row::toggle("enabled", tr!("Turn on the overlay"), p.enabled).desc(labels::turn_on_short()),
-        Row::toggle("without-game", tr!("Open it without a game too"), p.without_game).desc(labels::without_game_short()),
+        Row::toggle("without-game", tr!("Open it without a game too"), p.without_game)
+            .desc(labels::without_game_short())
+            .child_of("enabled"),
         Row::header(tr!("Keyboard")),
         Row::toggle("keyboard", tr!("Open it with a keyboard shortcut"), p.keyboard_shortcut)
             .desc(tr!("The keyboard drives it while open: arrows, Enter, Esc, Q / E")),
         Row::choice("accelerator", tr!("Keyboard shortcut"), accelerators.into_iter().map(SharedString::from).collect(), accel_index)
-            .desc(hotkey_status(d, cx).map(|(text, _)| text).unwrap_or_default()),
+            .desc(hotkey_status(d, cx).map(|(text, _)| text).unwrap_or_default())
+            .child_of("keyboard"),
         Row::header(tr!("Shortcuts without opening it")),
     ];
     rows.extend(console_pad_shot_rows(d));
     rows.extend([
         Row::toggle("volume", labels::volume(), p.volume_shortcut),
+        // How much a press changes belongs to the volume shortcut.
+        Row::choice("step", tr!("Volume step"), VOLUME_STEPS.iter().map(|s| SharedString::from(step_label(*s))).collect(), step_index)
+            .child_of("volume"),
         Row::toggle("moment", labels::moment(), p.moment_shortcut).desc(moment_desc(p)),
     ]);
     rows.extend(console_replay_rows(d));
     rows.extend([
-        Row::choice("step", tr!("Volume step"), VOLUME_STEPS.iter().map(|s| SharedString::from(step_label(*s))).collect(), step_index),
         Row::header(tr!("Position")),
         Row::choice("side", tr!("Side of the screen"), vec![tr!("Left").into(), tr!("Right").into()], usize::from(p.side == Side::Right)),
         Row::header(tr!("Status")),

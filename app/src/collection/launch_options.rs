@@ -94,7 +94,7 @@ impl CollectionView {
         self.facts.launch_menu_open = false;
         self.context_menu = None;
         self.set_launch_option(key, choice, cx);
-        self.primary_action(key, cx);
+        self.play_now(key, cx);
     }
 
     /// The arrow next to Play of an installed game with another way to start
@@ -127,7 +127,8 @@ impl CollectionView {
     }
 
     /// Next to Stop: back to the game's window (the in-game overlay's "Back
-    /// to game"). Only where that window can be found (Hyprland).
+    /// to game"). Only where that window can be looked for (Hyprland,
+    /// Sway, X11, Windows: `heronite_overlay::game_window`).
     pub(super) fn back_to_game_button(&self, key: &str, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
         if !heronite_overlay::game_window::supported() {
             return None;
@@ -198,7 +199,7 @@ impl CollectionView {
                 )
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.facts.launch_menu_open = false;
-                    this.primary_action(&k, cx);
+                    this.play_now(&k, cx);
                     cx.notify();
                 })),
             );

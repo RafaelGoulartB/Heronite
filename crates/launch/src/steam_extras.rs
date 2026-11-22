@@ -43,18 +43,24 @@ pub fn attach(plan: &mut LaunchPlan, probe: &dyn Probe, game: &GameInfo, setting
     if !supported() {
         return;
     }
+    let mut companions: Vec<CompanionPlan> = settings
+        .companions
+        .iter()
+        .map(|c| CompanionPlan {
+            path: c.path.clone(),
+            command: crate::companions::direct_command(game, settings, &c.path),
+            delay: std::time::Duration::from_secs(c.delay_secs.into()),
+            ..Default::default()
+        })
+        .collect();
+    match crate::antimicrox::plans(probe, &settings.antimicrox) {
+        Ok(profiles) => companions.extend(profiles),
+        Err(e) => log::warn!("{}: the AntiMicroX profiles will not load: {e}", game.app_name),
+    }
     *extras = SteamExtras {
         before_script: script_command(probe, game, settings, ScriptKind::Before),
         after_script: script_command(probe, game, settings, ScriptKind::After),
-        companions: settings
-            .companions
-            .iter()
-            .map(|c| CompanionPlan {
-                path: c.path.clone(),
-                command: crate::companions::direct_command(game, settings, &c.path),
-                delay: std::time::Duration::from_secs(c.delay_secs.into()),
-            })
-            .collect(),
+        companions,
     };
 }
 

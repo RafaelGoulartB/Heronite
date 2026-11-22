@@ -33,6 +33,11 @@ pub struct UserEmulator {
     pub flatpak_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub playnite_id: Option<String>,
+    /// The Ludusavi game (often a custom entry) that holds the saves of every
+    /// game this emulator runs; backed up in place of each game's own name.
+    /// `None` or blank: each game is looked up by its own name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ludusavi_entry: Option<String>,
     #[serde(default)]
     pub profiles: Vec<UserEmulatorProfile>,
     #[serde(flatten)]
@@ -75,6 +80,11 @@ impl EmulatorsFile {
 }
 
 impl UserEmulator {
+    /// [`Self::ludusavi_entry`], trimmed; `None` when blank.
+    pub fn ludusavi_entry(&self) -> Option<&str> {
+        self.ludusavi_entry.as_deref().map(str::trim).filter(|e| !e.is_empty())
+    }
+
     /// `getUserProfile`: by id, then by catalog profile id, then the first.
     pub fn profile(&self, profile_id: &str) -> Option<&UserEmulatorProfile> {
         self.profiles
@@ -185,6 +195,8 @@ static CATALOG: &[CatalogEmulator] = &[
         stop_pattern: Some("xemu"),
         profiles: &[p("xbox", "-full-screen -dvd_path {ImagePath}")],
     },
+    // Xenia Edge, Canary or master: the game is the one positional argument.
+    CatalogEmulator { id: "xenia", flatpak_id: None, stop_pattern: Some("xenia"), profiles: &[p("x360", "--fullscreen {ImagePath}")] },
     CatalogEmulator {
         id: "melonds",
         flatpak_id: Some("net.kuribo64.melonDS"),
@@ -483,6 +495,18 @@ mod tests {
         assert_eq!(definition_profile("retroarch", "snes").unwrap().arguments, RA);
         assert_eq!(definition_profile("mame", "arcade").unwrap().working_dir, Some("rom"));
         assert!(emulator_definition("custom").unwrap().stop_pattern.is_none());
+    }
+
+    #[test]
+    fn xenia_starts_the_game_in_fullscreen() {
+        let rom = vars_for_rom("/roms/x360/Halo 3 (USA).iso", None, None, "Halo 3");
+        assert_eq!(
+            expand_argv(definition_profile("xenia", "x360").unwrap().arguments, &rom),
+            ["--fullscreen", "/roms/x360/Halo 3 (USA).iso"]
+        );
+        let xenia = emulator_definition("xenia").unwrap();
+        assert_eq!(xenia.stop_pattern, Some("xenia"));
+        assert!(xenia.flatpak_id.is_none());
     }
 
     #[test]

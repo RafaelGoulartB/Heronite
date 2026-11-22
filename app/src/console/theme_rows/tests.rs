@@ -206,6 +206,12 @@ fn layout_options_wait_for_a_tab_that_uses_them() {
     assert!(applies("layouts.dashboard.week", &p.theme));
     assert!(!applies("layouts.carousel_reflect", &p.theme));
     assert!(applies("nav.wrap", &p.theme));
+    // Spotlight's sections are also the Showcase game page's (Minimal has no Spotlight tab).
+    let minimal = presets::minimal();
+    assert!(applies("layouts.spotlight_sections.media", &minimal));
+    assert!(!applies("layouts.spotlight_cards", &minimal));
+    let classic = presets::classic();
+    assert!(!applies("layouts.spotlight_sections.media", &classic));
 }
 
 #[test]

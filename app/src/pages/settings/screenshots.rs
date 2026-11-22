@@ -622,15 +622,16 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
             Row::header(tr!("Lossless compression")),
             Row::toggle("compress", tr!("Compress without quality loss"), c.enabled())
                 .desc(tr!("PNG captures become lossless WebP: same pixels, about half the space")),
-            Row::info("compress-status", label, "").desc(desc),
-            Row::action("compress-now", tr!("Compress now")).enabled(c.enabled() && !c.busy() && !c.game_running()),
+            Row::info("compress-status", label, "").desc(desc).child_of("compress"),
+            Row::action("compress-now", tr!("Compress now")).enabled(c.enabled() && !c.busy() && !c.game_running()).child_of("compress"),
         ]);
     }
     rows.extend([
         Row::header(tr!("Capture")),
         Row::toggle("capture", tr!("Capture screenshots while a game runs"), s.capture_enabled),
         Row::choice("shortcut", tr!("Screenshot shortcut"), shortcuts.into_iter().map(SharedString::from).collect(), si)
-            .desc(tr!("Captures go to the game's folder and show up in the Collection")),
+            .desc(tr!("Captures go to the game's folder and show up in the Collection"))
+            .child_of("capture"),
     ]);
     if supported(Feature::Overlay) {
         rows.push(Row::header(tr!("With the controller")));

@@ -21,6 +21,7 @@ pub fn hook_for(view: &AnyView) -> Option<PadHook> {
         crate::dialogs::store_install::StoreInstallDialog,
         crate::dialogs::remove_game::RemoveGameDialog,
         crate::dialogs::quit_confirm::QuitConfirmDialog,
+        crate::dialogs::hidden_pin::HiddenPinDialog,
         crate::dialogs::ludusavi_backup::LudusaviBackupDialog,
         crate::dialogs::epic_import::EpicImportPicker,
         crate::dialogs::store_import::StoreImportPicker,
@@ -35,6 +36,7 @@ pub fn hook_for(view: &AnyView) -> Option<PadHook> {
         crate::dialogs::rom_folder::RomFolderDialog,
         crate::dialogs::scan_roms::ScanRomsDialog,
         crate::dialogs::pick_rom::PickRomDialog,
+        crate::dialogs::play_choice::PlayChoiceDialog,
         crate::dialogs::launch_state::LaunchStateDialog,
         crate::dialogs::launch_problem::LaunchProblemDialog,
     );

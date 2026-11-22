@@ -132,13 +132,20 @@ pub struct ClientHandoff {
 }
 
 /// A program run alongside the game (see [`crate::companions`]).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CompanionPlan {
     /// The file the user picked (the command may run it through Wine).
     pub path: String,
     pub command: Command,
     /// Time after the game started.
     pub delay: std::time::Duration,
+    /// Run when the game ends if the program had already exited by itself:
+    /// it handed its work to an instance of itself that was running before
+    /// the game and stays, as AntiMicroX does. `None`: nothing to take back.
+    pub undo: Option<Command>,
+    /// Starts on the host even when the game runs in the sandbox: the
+    /// program needs the devices the sandbox hides.
+    pub on_host: bool,
 }
 
 /// What Heronite runs around a Steam game it opens, on Windows (see

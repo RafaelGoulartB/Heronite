@@ -8,6 +8,7 @@ mod section_title;
 pub(super) use section_title::{section_title, MenuEntry, OnTitle, TitleAction, TitleMenu, TitleState};
 
 pub use description::html_image_size;
+pub(in crate::collection) use panels::{format_hours as hltb_hours, hltb_marker, hltb_note_text, HLTB_COLOURS};
 pub(super) use panels::{RELATED_COVER_H, RELATED_COVER_W};
 
 use std::collections::BTreeSet;

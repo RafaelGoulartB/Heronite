@@ -29,6 +29,7 @@ use crate::system::settings::KEY_RESTORE_AFTER_GAME;
 use heronite_i18n::tr;
 use heronite_launch::steam::KEY_CLOSE_AFTER_GAME;
 
+mod antimicrox;
 mod fps;
 mod gpu;
 mod lsfg;
@@ -70,6 +71,21 @@ impl Item {
         self.row = self.row.desc(d.to_string());
         self
     }
+
+    /// Makes the row a sub-setting of the row `parent` (`t:<key>`, `c:<id>`...).
+    pub(super) fn under(mut self, parent: &str) -> Self {
+        self.row = self.row.child_of(parent.to_string());
+        self
+    }
+}
+
+/// The items of `list` after the first made sub-settings of the first.
+pub(super) fn grouped(mut list: Vec<Item>) -> Vec<Item> {
+    let Some(parent) = list.first().map(|i| i.row.id.to_string()) else { return list };
+    for i in list.iter_mut().skip(1) {
+        i.row = i.row.clone().child_of(parent.clone());
+    }
+    list
 }
 
 impl SettingsPanel {
@@ -145,29 +161,7 @@ impl SettingsPanel {
         if self.winetricks_open() {
             return self.c_winetricks(cx);
         }
-        let mut v = match self.section {
-            Section::Compatibility if self.is_steam() => self.c_proton(),
-            Section::Performance if self.is_steam() => self.c_steam_other(cx),
-            Section::Launch if self.is_steam() => self.c_steam_advanced(cx),
-            Section::Gpu if self.is_steam() => self.c_steam_gpu(),
-            Section::Compatibility => self.c_wine(cx),
-            Section::Performance => self.c_other(cx),
-            Section::Gpu => self.c_gpu(false),
-            Section::Launch => self.c_advanced(cx),
-            Section::Saves => self.c_saves(cx),
-            Section::Sandbox => self.c_sandbox(),
-            Section::General => match self.global_view {
-                GlobalView::General => self.c_general(cx),
-                GlobalView::Downloads => self.c_downloads(cx),
-                GlobalView::Advanced => vec![self.c_toggle(
-                    "disableLogs",
-                    false,
-                    tr!("Disable logs"),
-                    Some(tr!("Most log writes stop (critical information is always logged)")),
-                    false,
-                )],
-            },
-        };
+        let mut v = self.console_items_at(self.section, self.global_view, cx);
         if let Some(n) = &self.notice {
             v.push(Self::c_info("notice", if n.error { tr!("Problem") } else { tr!("Done") }, n.text.clone()));
         }
@@ -192,6 +186,50 @@ impl SettingsPanel {
             v.insert(0, reset);
         }
         v
+    }
+
+    /// The items of tab `section` (the global panel: of its `view`).
+    fn console_items_at(&self, section: Section, view: GlobalView, cx: &App) -> Vec<Item> {
+        match section {
+            Section::Compatibility if self.is_steam() => self.c_proton(),
+            Section::Performance if self.is_steam() => self.c_steam_other(cx),
+            Section::Launch if self.is_steam() => self.c_steam_advanced(cx),
+            Section::Gpu if self.is_steam() => self.c_steam_gpu(),
+            Section::Compatibility => self.c_wine(cx),
+            Section::Performance => self.c_other(cx),
+            Section::Gpu => self.c_gpu(false),
+            Section::Launch => self.c_advanced(cx),
+            Section::Saves => self.c_saves(cx),
+            Section::Sandbox => self.c_sandbox(),
+            Section::General => match view {
+                GlobalView::General => self.c_general(cx),
+                GlobalView::Downloads => self.c_downloads(cx),
+                GlobalView::Advanced => vec![self.c_toggle(
+                    "disableLogs",
+                    false,
+                    tr!("Disable logs"),
+                    Some(tr!("Most log writes stop (critical information is always logged)")),
+                    false,
+                )],
+            },
+        }
+    }
+
+    /// The rows of tab `section` (the global panel: of its `view`) as console
+    /// mode draws them, without showing them (Settings' Search).
+    pub fn console_rows_of(&self, section: Section, view: GlobalView, cx: &App) -> Vec<Row> {
+        self.console_items_at(section, view, cx).into_iter().map(|i| i.row).collect()
+    }
+
+    /// Focuses the row `id` of the tab shown (a Search result).
+    pub fn console_focus_row(&mut self, id: &str, cx: &App) {
+        let rows: Vec<Row> = self.console_items(cx).into_iter().map(|i| i.row).collect();
+        self.console_list.focus_id(&rows, id);
+    }
+
+    /// Draws the rows as cards (Settings) or on the focus pill.
+    pub fn set_console_style(&mut self, style: crate::console::list::RowStyle) {
+        self.console_list.set_style(style);
     }
 
     fn c_wine(&self, cx: &App) -> Vec<Item> {
@@ -280,6 +318,14 @@ impl SettingsPanel {
             Some(tr!("DLSS and other NVIDIA features (needs DXVK)")),
             !dxvk_on || busy,
         ));
+        // VKD3D and NVAPI need DXVK: its sub-settings.
+        if logic::offers_dxvk(&wine) {
+            let n = v.len();
+            let at = v.iter().position(|i| i.row.id.as_ref() == "t:autoInstallDxvk").unwrap_or(n);
+            for i in v.iter_mut().skip(at + 1) {
+                i.row = i.row.clone().child_of("t:autoInstallDxvk");
+            }
+        }
         if self.is_game() && logic::offers_system_libs(&wine) {
             v.push(self.c_toggle(
                 "preferSystemLibs",
@@ -300,9 +346,10 @@ impl SettingsPanel {
             Some(tr!("Runs the game on Wayland instead of X11; needs a Wine build that has it")),
             false,
         ));
-        if self.flag("enableWineWayland", false) {
-            v.push(self.c_toggle("enableHDR", false, "HDR", Some(tr!("The screen and the game must support it")), false));
-        }
+        v.push(
+            self.c_toggle("enableHDR", false, "HDR", Some(tr!("The screen and the game must support it")), false)
+                .under("t:enableWineWayland"),
+        );
         v.push(self.c_toggle("enableWoW64", false, "WoW64", Some(tr!("32-bit games on 64-bit Wine; can break older games")), false));
         if self.is_game() {
             v.push(Self::c_header(tr!("Tools")));
@@ -366,10 +413,13 @@ impl SettingsPanel {
         if self.flag("enableFSR", false) {
             let sharp = self.number("maxSharpness").unwrap_or(5).clamp(1, 5);
             let opts = (1..=5).map(|n| SharedString::from(n.to_string())).collect();
-            v.push(item(
-                Row::choice("c:sharp", tr!("FSR sharpness"), opts, (sharp - 1) as usize),
-                Act::Choice(Rc::new(|this, i, cx| this.set("maxSharpness", json!(i as i64 + 1), cx))),
-            ));
+            v.push(
+                item(
+                    Row::choice("c:sharp", tr!("FSR sharpness"), opts, (sharp - 1) as usize),
+                    Act::Choice(Rc::new(|this, i, cx| this.set("maxSharpness", json!(i as i64 + 1), cx))),
+                )
+                .under("t:enableFSR"),
+            );
         }
         v
     }
@@ -394,8 +444,13 @@ impl SettingsPanel {
     }
 
     fn c_pairs(&self, t: PairTable) -> Vec<Item> {
-        let mut v = vec![Self::c_header(heronite_i18n::tr(t.title).trim_end_matches(':'))];
-        for (i, (a, b)) in pairs(self.settings.get(t.setting), t.k1, t.k2).into_iter().enumerate() {
+        // A group: its list, Add (and typing several) inside.
+        let list = pairs(self.settings.get(t.setting), t.k1, t.k2);
+        let summary =
+            if list.is_empty() { tr!("None").to_string() } else { list.iter().map(|(a, _)| a.as_str()).collect::<Vec<_>>().join(", ") };
+        let title = heronite_i18n::tr(t.title).trim_end_matches(':').to_string();
+        let mut v = vec![item(Row::group(format!("grp:{}", t.id), title).summary(summary), Act::None)];
+        for (i, (a, b)) in list.into_iter().enumerate() {
             v.push(item(
                 Row::info(SharedString::from(format!("pair:{}:{i}", t.id)), a.clone(), b.clone()),
                 Act::Do(Rc::new(move |this, window, cx| this.console_pair_sheet(t, i, window, cx))),
@@ -423,14 +478,16 @@ impl SettingsPanel {
         if t.env && !self.env_error.is_empty() {
             v.push(Self::c_info("env-error", tr!("Problem"), self.env_error.clone()));
         }
-        v
+        grouped(v)
     }
 
     /// One row per program (left / right change its delay), then add and remove.
     fn c_companions(&self) -> Vec<Item> {
         use super::companions::{delay_index, delay_label, file_name, DELAYS};
         let list = self.companions();
-        let mut v = vec![Self::c_header(tr!("Programs alongside the game"))];
+        let names: Vec<String> = list.iter().map(|c| file_name(&c.path)).collect();
+        let summary = if names.is_empty() { tr!("None").to_string() } else { names.join(", ") };
+        let mut v = vec![item(Row::group("grp:companions", tr!("Programs alongside the game")).summary(summary), Act::None)];
         for (i, c) in list.iter().enumerate() {
             let options = DELAYS.iter().map(|d| SharedString::from(delay_label(*d))).collect();
             let row = Row::choice(SharedString::from(format!("companion:{i}")), file_name(&c.path), options, delay_index(c.delay_secs));
@@ -449,7 +506,7 @@ impl SettingsPanel {
                 this.console_companion_remove(window, cx)
             }));
         }
-        v
+        grouped(v)
     }
 
     fn console_prefix_sheet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -504,6 +561,7 @@ impl SettingsPanel {
                 v.push(self.c_path("beforeScript", tr!("Script before launch"), false, cx));
                 v.push(self.c_path("afterScript", tr!("Script after exit"), false, cx));
                 v.extend(self.c_companions());
+                v.extend(self.c_antimicrox());
             }
             if self.steam_line_only() {
                 v.push(Self::c_header("Steam"));
@@ -552,6 +610,7 @@ impl SettingsPanel {
         }
         if game && extras {
             v.extend(self.c_companions());
+            v.extend(self.c_antimicrox());
         }
         if extras {
             v.extend(self.c_presets(false));
@@ -612,7 +671,7 @@ impl SettingsPanel {
             v.push(gs_toggle("enableForceGrabCursor", tr!("Keep the mouse in the game")));
             v.push(self.c_text("gs.additionalOptions", tr!("Extra gamescope options"), cx));
         }
-        v
+        grouped(v)
     }
 
     fn c_gog_saves(&self, cx: &App) -> Vec<Item> {
@@ -752,9 +811,7 @@ impl SettingsPanel {
         if supported(Feature::Autostart) {
             v.extend([Self::c_header(tr!("Startup")), self.c_toggle("startWithSystem", false, tr!("Start with the system"), None, false)]);
             // Starting minimized belongs to starting with the system, as on the desktop.
-            if with_system {
-                v.push(self.c_toggle("startInTray", false, tr!("Start minimized"), None, no_tray));
-            }
+            v.push(self.c_toggle("startInTray", false, tr!("Start minimized"), None, no_tray || !with_system).under("t:startWithSystem"));
         }
         if supported(Feature::Tray) {
             v.extend([
@@ -773,9 +830,10 @@ impl SettingsPanel {
             self.c_toggle("minimizeOnLaunch", false, tr!("Minimize when a game starts"), None, false),
         ]);
         // Bringing the window back belongs to minimizing it.
-        if self.flag("minimizeOnLaunch", false) {
-            v.push(self.c_toggle(KEY_RESTORE_AFTER_GAME, false, tr!("Show Heronite again when the game ends"), None, false));
-        }
+        v.push(
+            self.c_toggle(KEY_RESTORE_AFTER_GAME, false, tr!("Show Heronite again when the game ends"), None, false)
+                .under("t:minimizeOnLaunch"),
+        );
         v.extend([
             self.c_toggle("hideWindowOnProtocolLaunch", false, tr!("Hide the window for heronite:// launches"), None, false),
             self.c_toggle(
@@ -807,9 +865,13 @@ impl SettingsPanel {
                 false,
             ),
             self.c_toggle("downloadProtonToSteam", false, tr!("Download GE-Proton to Steam"), None, false),
-            Self::c_header(tr!("Custom Wine / Proton paths")),
         ]);
-        for (i, p) in self.custom_paths().into_iter().enumerate() {
+        // The other builds: a group, their list inside.
+        let paths = self.custom_paths();
+        let summary = if paths.is_empty() { tr!("None").to_string() } else { paths.join(", ") };
+        v.push(item(Row::group("g:wine-paths", tr!("Custom Wine / Proton paths")).summary(summary), Act::None));
+        let first = v.len();
+        for (i, p) in paths.into_iter().enumerate() {
             v.push(item(
                 Row::info(SharedString::from(format!("wp:{i}")), p.clone(), tr!("A removes")),
                 Act::Do(Rc::new(move |this, _, cx| {
@@ -830,6 +892,9 @@ impl SettingsPanel {
                 }
             })
         }));
+        for i in &mut v[first..] {
+            i.row = i.row.clone().child_of("g:wine-paths");
+        }
         v
     }
 
@@ -1058,12 +1123,19 @@ impl PadTarget for SettingsPanel {
         if let Some(h) = self.console_layer.hints(cx) {
             return h;
         }
-        let mut v = vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change")), hint(Btn::X, tr!("Clear"))];
+        // What the focused row takes: A or ◀ ▶, X on a text or a path, Y once changed.
         let items = self.console_items(cx);
-        let rows: Vec<Row> = items.into_iter().map(|i| i.row).collect();
-        if self.console_list.focused(&rows).is_some_and(|r| r.changed) {
+        let rows: Vec<Row> = items.iter().map(|i| i.row.clone()).collect();
+        let Some(row) = self.console_list.focused(&rows) else { return Vec::new() };
+        let mut v = Vec::new();
+        if row.changed {
             v.push(hint(Btn::Y, tr!("Reset")));
         }
+        let clears = items.iter().any(|i| i.row.id == row.id && matches!(i.act, Act::Path(..) | Act::Text(..)));
+        if clears && row.enabled {
+            v.push(hint(Btn::X, tr!("Clear")));
+        }
+        v.extend(self.console_list.hints(&rows));
         v
     }
 }

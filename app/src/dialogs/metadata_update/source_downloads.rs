@@ -72,6 +72,17 @@ impl MetadataHub {
         }
     }
 
+    /// The databases downloading now, by source id, with their progress
+    /// (console mode's activity pill).
+    pub fn running_source_downloads(&self) -> Vec<(String, ProgressSnapshot)> {
+        if let Some(f) = &self.fake_download {
+            return f.ui.progress.map(|p| (f.source.clone(), p)).into_iter().collect();
+        }
+        let mut running: Vec<_> = self.source_downloads.iter().filter_map(|(id, ui)| Some((id.clone(), ui.progress?))).collect();
+        running.sort_by(|a, b| a.0.cmp(&b.0));
+        running
+    }
+
     /// Whether the database of `id` is downloading.
     pub fn source_downloading(&self, id: &str) -> bool {
         self.source_download(id).progress.is_some()

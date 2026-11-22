@@ -26,7 +26,9 @@ pub use backup::{
 pub use commands::{
     backup_command, best_find_match, find_commands, game_names, parse_json, total_games, wine_prefix_for_ludusavi, BackupCommand,
 };
-pub use detect::{detect_ludusavi, parse_config, parse_restore_path, resolve_binary, yaml_get, LudusaviDetected};
+pub use detect::{
+    custom_games, detect_ludusavi, parse_config, parse_custom_games, parse_restore_path, resolve_binary, yaml_get, LudusaviDetected,
+};
 pub use last_backup::{last_backup, LastBackup};
 pub use periodic::{periodic_backup, PeriodicBackups, PeriodicTick};
 pub use runner::{CommandOutput, CommandRunner, SystemRunner, LUDUSAVI_TIMEOUT};

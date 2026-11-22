@@ -3,6 +3,11 @@
 //!
 //! Linux limits: a game using `hidraw` (SDL's HIDAPI drivers, Steam Input)
 //! is not affected by the grab; it also sees the initial Guide press.
+//! Steam Input's virtual pad copies a controller whose node we read too:
+//! its presses count only while no physical controller is connected (the
+//! Steam Deck), but it is grabbed with the others. So with Steam running, a
+//! Steam Deck or Steam Controller next to another controller does not drive
+//! the overlay: Steam's pads cannot be told apart.
 //!
 //! Windows polls documented XInput. Back+Start acts as Guide; neither that
 //! combination nor navigation is exclusive: the game can receive both. The

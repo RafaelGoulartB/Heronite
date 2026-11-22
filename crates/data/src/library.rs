@@ -51,6 +51,9 @@ pub struct CollectionGame {
     /// override, else the store title.
     pub title: String,
     pub title_lower: String,
+    /// What the A-Z sorts compare: [`sort_name`](crate::organize::sort_name)
+    /// of the Collection metadata's sorting name, else of the title.
+    pub sort_key: String,
     /// "Library" of the Details panel: Steam, Emulator, Epic, GOG, Amazon,
     /// Xbox, Local, Other.
     pub source_label: &'static str,
@@ -228,6 +231,7 @@ impl CollectionGame {
             runner: game.runner.clone(),
             app_name: game.app_name.clone(),
             title_lower: title.to_lowercase(),
+            sort_key: crate::organize::sort_name(sorting_name(metadata.as_deref()).unwrap_or(&title)),
             title,
             source_label: if family.is_some() { FAMILY_LABEL } else { source_label(meta.as_deref(), &game.runner) },
             installed: game.is_installed || via_steam,
@@ -354,6 +358,11 @@ fn display_title(game: &GameInfo, overrides: Option<&GameOverride>, metadata: Op
         .unwrap_or_else(|| game.title.clone())
 }
 
+/// The sorting name the user set, when it is not blank.
+fn sorting_name(metadata: Option<&CollectionGameMetadata>) -> Option<&str> {
+    metadata.and_then(|m| m.sort_name.as_deref()).map(str::trim).filter(|t| !t.is_empty())
+}
+
 pub fn metadata_key(runner: &str, app_name: &str) -> String {
     format!("{}:{app_name}", if runner == "zoom" { "sideload" } else { runner })
 }
@@ -396,6 +405,10 @@ struct RawGame {
     /// (`crate::sideload::COMMAND_KEY`).
     #[serde(rename = "heroniteCommand")]
     command: Option<String>,
+    /// Kept in `GameInfo::rest`: the folder a Windows game starts in
+    /// (`crate::sideload::WORKING_DIR_KEY`).
+    #[serde(rename = "heroniteWorkingDir")]
+    working_dir: Option<String>,
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -444,6 +457,9 @@ impl From<RawGame> for GameInfo {
                 }
                 if let Some(c) = g.command.filter(|s| !s.trim().is_empty()) {
                     rest.insert(crate::sideload::COMMAND_KEY.to_string(), Value::String(c));
+                }
+                if let Some(d) = g.working_dir.filter(|s| !s.trim().is_empty()) {
+                    rest.insert(crate::sideload::WORKING_DIR_KEY.to_string(), Value::String(d));
                 }
                 rest
             },
@@ -881,6 +897,8 @@ pub(crate) mod tests_support {
         pub genres: Vec<String>,
         pub game_modes: Vec<String>,
         pub series: Option<String>,
+        /// The Collection metadata's sorting name.
+        pub sort_name: Option<String>,
         pub status: Option<String>,
         pub runner: Option<String>,
         pub favourite: bool,
@@ -907,7 +925,11 @@ pub(crate) mod tests_support {
         }
         // The Collection title wins over the store's, as metadata would.
         let overrides = spec.store_title.is_some().then(|| GameOverride { title: Some(title.into()), ..Default::default() });
-        let has_metadata = !spec.developers.is_empty() || !spec.genres.is_empty() || !spec.game_modes.is_empty() || spec.series.is_some();
+        let has_metadata = !spec.developers.is_empty()
+            || !spec.genres.is_empty()
+            || !spec.game_modes.is_empty()
+            || spec.series.is_some()
+            || spec.sort_name.is_some();
         let metadata = has_metadata.then(|| {
             Arc::new(CollectionGameMetadata {
                 app_name: app.into(),
@@ -916,6 +938,7 @@ pub(crate) mod tests_support {
                 genres: spec.genres.clone(),
                 game_modes: spec.game_modes.clone(),
                 series: spec.series.clone(),
+                sort_name: spec.sort_name.clone(),
                 ..Default::default()
             })
         });

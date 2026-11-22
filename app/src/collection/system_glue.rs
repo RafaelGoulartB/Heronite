@@ -61,8 +61,10 @@ impl CollectionView {
             log::info!("[fake-launch] window {} ({}/{}) installed={}", game.title, game.runner, game.app_name, game.installed);
             return;
         }
+        // A shortcut or a link starts the game the way it always did: the
+        // window may be hidden, so it is not asked how to play.
         let key = game.key.clone();
-        self.primary_action(&key, cx);
+        self.play_now(&key, cx);
     }
 
     /// What the window-independent post-game service reports.

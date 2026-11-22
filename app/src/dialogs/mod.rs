@@ -28,6 +28,7 @@ pub mod epic_modify;
 pub mod extensions;
 pub mod game_links;
 pub mod game_settings;
+pub mod hidden_pin;
 pub mod hltb_match;
 pub mod launch_problem;
 pub mod launch_state;
@@ -44,6 +45,7 @@ pub mod mod_link_game;
 pub mod mods;
 pub mod onboarding;
 pub mod pick_rom;
+pub mod play_choice;
 pub mod quit_confirm;
 pub mod remove_game;
 pub mod rom_folder;
@@ -83,6 +85,9 @@ pub enum DialogEvent {
 /// dialog used the key: it closed something inside itself (an image picker,
 /// a question) or asked before throwing away what was typed.
 pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool {
+    if let Ok(d) = view.clone().downcast::<hidden_pin::HiddenPinDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
     if let Ok(d) = view.clone().downcast::<add_game::AddGameDialog>() {
         return d.update(cx, |d, cx| d.on_escape(cx));
     }
@@ -132,10 +137,17 @@ pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool 
 }
 
 /// A key other than Esc, offered to the open dialog before the Collection
-/// sees it. True when the dialog used it ("Review matches": ↑ ↓, Enter, S).
+/// sees it. True when the dialog used it ("Review matches": ↑ ↓, Enter, S;
+/// "Choose how to start the game": ↑ ↓, Enter, 1–9).
 pub fn handle_key(view: &AnyView, ev: &KeyDownEvent, window: &mut Window, cx: &mut App) -> bool {
+    if let Ok(d) = view.clone().downcast::<hidden_pin::HiddenPinDialog>() {
+        return d.update(cx, |d, cx| d.on_key(ev, cx));
+    }
     if let Ok(d) = view.clone().downcast::<metadata_review::MetadataReview>() {
         return d.update(cx, |d, cx| d.on_key(ev, window, cx));
+    }
+    if let Ok(d) = view.clone().downcast::<play_choice::PlayChoiceDialog>() {
+        return d.update(cx, |d, cx| d.on_key(ev, cx));
     }
     false
 }

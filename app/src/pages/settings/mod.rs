@@ -361,7 +361,8 @@ impl SettingsPage {
     /// `unhide:<app>`, `unhide-all`, `fav-clear`, `recent-clear`, `max-recent:<n>`, `show-hidden:on|off`,
     /// `clear-cache`, and on Backups `backup-now`, `backup-open:<n>` (the n-th backup's details),
     /// `backup-confirm:<n>` (its restore question). `ask:<hidden|favourites|recent|launcher id>`
-    /// only opens that question.
+    /// only opens that question; `gpu-menu` opens Advanced's interface card list, `gpu-pick:<vendor:device>`
+    /// picks a card there.
     fn debug_action(&mut self, cx: &mut Context<Self>) {
         let Some(action) = crate::env::value("HERONITE_DEBUG_SETTINGS_ACTION") else { return };
         match action.split_once(':').unwrap_or((action.as_str(), "")) {
@@ -372,6 +373,8 @@ impl SettingsPage {
             ("max-recent", n) => self.set_max_recent(n.parse().unwrap_or(5), cx),
             ("show-hidden", v) => self.set_show_hidden(v == "on", cx),
             ("clear-cache", _) => self.clear_cache(cx),
+            ("gpu-menu", _) => self.advanced.debug_open_gpu_menu(),
+            ("gpu-pick", id) => self.set_interface_gpu(heronite_data::interface_gpu::InterfaceGpu::parse(id), cx),
             ("ask", which) => {
                 if !library::debug_ask(self, which) {
                     self.launchers.debug_ask(which);

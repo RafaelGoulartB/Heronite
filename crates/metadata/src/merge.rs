@@ -451,6 +451,21 @@ mod tests {
     }
 
     #[test]
+    fn fetching_with_overwrite_keeps_the_sort_name() {
+        let current = md(|m| m.sort_name = Some("Pokemon 3".into()));
+        let igdb = md(|m| {
+            m.sort_name = Some("from a source".into());
+            m.description = Some("d".into());
+        });
+        let pr = priority();
+        let cands = [MergeCandidate { source: "igdb", metadata: &igdb }];
+        let out = merge(Some(&current), &cands, &pr, true, false, None);
+        assert_eq!(out.sort_name.as_deref(), Some("Pokemon 3"));
+        assert_eq!(out.description.as_deref(), Some("d"));
+        assert_eq!(merge(None, &cands, &pr, true, false, None).sort_name, None);
+    }
+
+    #[test]
     fn preferred_source_goes_first() {
         let pr = priority();
         let out = with_preferred_source(&pr, Some("lutris"));

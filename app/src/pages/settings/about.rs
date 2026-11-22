@@ -297,11 +297,14 @@ pub(super) fn console_rows(p: &SettingsPage, cx: &App) -> Vec<crate::console::li
             },
         ),
         Row::info("i:config", tr!("Data folder"), p.ctx.data_paths.root.display().to_string()),
-        Row::header(tr!("System")),
     ]);
     if s.os.is_empty() {
+        rows.push(Row::header(tr!("System")));
         rows.push(Row::info("i:reading", tr!("Reading system information\u{2026}"), ""));
     } else {
+        // The system's details are a group: closed, it names the system.
+        let first = rows.len();
+        rows.push(Row::group("g:system", tr!("System")).summary(format!("{} \u{b7} {}", s.os, s.cpu)));
         rows.push(Row::info("i:os", tr!("OS"), s.os.clone()));
         rows.push(Row::info("i:kernel", tr!("Kernel"), s.kernel.clone()));
         rows.push(Row::info("i:cpu", "CPU", tr!("{cpu} ({threads} threads)", cpu = s.cpu, threads = s.cores)));
@@ -316,6 +319,9 @@ pub(super) fn console_rows(p: &SettingsPage, cx: &App) -> Vec<crate::console::li
             Row::action("copy", if a.copied { tr!("Copied to the clipboard") } else { tr!("Copy the system information") })
                 .desc(tr!("For bug reports")),
         );
+        for r in &mut rows[first + 1..] {
+            r.parent = Some("g:system".into());
+        }
     }
     rows
 }

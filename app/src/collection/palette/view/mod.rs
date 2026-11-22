@@ -229,7 +229,8 @@ impl PaletteView {
     }
 
     /// Runs the selected item. A disabled one only tells why (it is shown).
-    /// In the quick launcher a game of the list is played (or stopped).
+    /// In the quick launcher a game of the list is played (or, running, goes
+    /// back to its window or opens its actions).
     pub fn activate(&mut self, cx: &mut Context<Self>) {
         let Some(e) = self.selected_entry() else { return };
         if e.disabled.is_some() {

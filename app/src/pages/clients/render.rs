@@ -12,7 +12,7 @@ use crate::pages::{caption_with, columns, empty_row, list_item, status_pill, sto
 use crate::services::clients::{Activity, ClientState};
 use crate::services::widgets::{busy_bar, progress_bar};
 use crate::theme;
-use crate::ui::controls::{action_button, button, button_sm, caption, card, icon_button_sm, row, toggle, ButtonKind};
+use crate::ui::controls::{action_button, button, button_sm, button_sm_enabled, caption, card, icon_button_sm, row, toggle, ButtonKind};
 use crate::ui::icon;
 
 fn home() -> String {
@@ -175,6 +175,7 @@ impl<K: ClientKind> ClientPage<K> {
     /// "Remove from Heronite", and its question once asked.
     fn render_forget(&mut self, st: &ClientState, cx: &mut Context<Self>) -> AnyElement {
         let client = K::CLIENT;
+        let can_forget = !st.busy() && !st.shortcut_busy && !self.ea_busy(cx);
         if !self.confirm_forget {
             // The label lines up with the rows above (the button's padding is 12).
             return div()
@@ -182,8 +183,9 @@ impl<K: ClientKind> ClientPage<K> {
                 .py(px(10.))
                 .ml(px(-12.))
                 .child(
-                    button_sm(self.id("forget"), ButtonKind::Ghost, tr!("Remove from Heronite"))
-                        .when(!st.busy() && !st.shortcut_busy, |b| b.on_click(act!(cx, "forget"))),
+                    // Drawn disabled while it cannot run (the EA account reads or connects, too).
+                    button_sm_enabled(self.id("forget"), ButtonKind::Ghost, tr!("Remove from Heronite"), can_forget)
+                        .when(can_forget, |b| b.on_click(act!(cx, "forget"))),
                 )
                 .into_any_element();
         }
@@ -208,7 +210,7 @@ impl<K: ClientKind> ClientPage<K> {
             .py(px(12.))
             .child(text)
             .child(button(self.id("forget-no"), ButtonKind::Ghost, tr!("Cancel")).on_click(act!(cx, "forget-no")))
-            .child(button(self.id("forget-yes"), ButtonKind::Danger, tr!("Remove")).on_click(act!(cx, "forget-yes")))
+            .child(action_button(self.id("forget-yes"), ButtonKind::Danger, tr!("Remove"), !self.ea_busy(cx), act!(cx, "forget-yes")))
             .into_any_element()
     }
 
@@ -334,6 +336,9 @@ impl<K: ClientKind> Render for ClientPage<K> {
         let mut right = div();
         if st.installed() {
             left = left.child(self.render_account(&st));
+            if K::CLIENT == heronite_data::clients::Client::Ea {
+                left = left.child(self.render_ea_library(cx));
+            }
             right = right.child(self.render_games(&st, cx));
         }
         if logic::shows_shortcuts(&st) {

@@ -39,7 +39,7 @@ pub enum Engine {
 }
 
 /// Emulators without a CLI way to load a state at boot (melonDS, Azahar,
-/// Cemu, Ryujinx, Vita3K, shadPS4, xemu) have no engine.
+/// Cemu, Ryujinx, Vita3K, shadPS4, xemu, Xenia) have no engine.
 pub fn engine_for(id: &str) -> Option<Engine> {
     Some(match id {
         "pcsx2" => Engine::Pcsx2,

@@ -214,7 +214,7 @@ impl EpicPage {
     pub(super) fn render_console(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let rows = self.console_rows(cx);
         let error = self.svc.read(cx).last_error.clone().and_then(|e| e.lines().next().map(str::to_owned));
-        let list = self.console_list.render("console-epic", &rows, !self.layer.is_open() && self.dialog.is_none());
+        let list = self.console_list.render_cards("console-epic", &rows, !self.layer.is_open() && self.dialog.is_none());
         div()
             .relative()
             .flex()
@@ -242,7 +242,7 @@ impl EpicPage {
                     .gap(u(10.))
                     .px(u(46.))
                     .pb(u(16.))
-                    .child(div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(list.flex_1().min_h_0()))
+                    .child(list)
                     .children(error.map(|e| kit::body_text(e).text_color(crate::theme::danger_text()))),
             )
             .children(self.layer.view())

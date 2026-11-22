@@ -58,7 +58,7 @@ fn text_shade(hero_h: f32) -> Div {
 }
 
 /// The tile at the end of a cut shelf: "View all" and how many games it has.
-fn more_tile(id: impl Into<ElementId>, focused: bool, total: usize, w: f32, h: f32) -> Div {
+pub(super) fn more_tile(id: impl Into<ElementId>, focused: bool, total: usize, w: f32, h: f32) -> Div {
     let radius = u(look::tile_radius());
     let (disc, mark) = if focused {
         (Hsla::from(theme::console_focus()), Hsla::from(theme::console_on_focus()))

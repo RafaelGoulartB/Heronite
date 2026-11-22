@@ -60,8 +60,9 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   them; mirrored in `ui-state.json` so the overlay never reads `console.json`). Both are automatic by default: the
   drawing follows the controller in use (`look::glyphs_for_controller`), and a Nintendo drawing confirms with the east
   button (its A) and goes back with the south one, in console mode (`console::input`), the overlay (`panel::pad_of`)
-  and every hint (`kit::glyph`). Then one tab at a time (In a game, Outside games, Overlay
-  open, Console mode): the drawn controller of the buttons in use (`pad/model.rs`: an Xbox Series controller, a DualSense or a Switch Pro Controller, from Zacksly's CC BY 3.0 drawings without the makers' logos: their geometry read once with `usvg` and painted as paths in the theme's colours, no picture rasterized or kept) with the tab's buttons lit and a callout per button in a column on its side
+  and every hint (`kit::glyph`). A last switch, "Use the controller on the desktop" (`ControllerPrefs::desktop`, on by
+  default), turns the controller on the desktop on or off. Then one tab at a time (In a game, Outside games, On the
+  desktop, Overlay open, Console mode): the drawn controller of the buttons in use (`pad/model.rs`: an Xbox Series controller, a DualSense or a Switch Pro Controller, from Zacksly's CC BY 3.0 drawings without the makers' logos: their geometry read once with `usvg` and painted as paths in the theme's colours, no picture rasterized or kept) with the tab's buttons lit and a callout per button in a column on its side
   (Guide, View and Menu on top), joined by lines that never cross (`pad.rs`, tested; a click on a button or callout lights
   it and its table row), then the tab's shortcuts in a table (`table.rs`: action, controller, keyboard). Every button is
   drawn as the controller has it (✕ ○ □ △ and L1 / Options for PlayStation, B A Y X and ZL / + for Nintendo). Every shortcut
@@ -298,7 +299,7 @@ background that is a video (WebM, MP4, MKV, MOV; a game's background may be one,
 or an animated GIF or PNG (`heronite_images::animation`; an animated WebP stays on its first frame: ffmpeg loops it
 badly, and older ones cannot decode it) plays behind the Collection and behind console mode (`collection/live_stage.rs`;
 console mode: the theme's Art or its own picture, `console::backdrop::console_live`, sharp, its still kept for the
-cross-fade between games; console's Settings → Appearance has the switch too):
+cross-fade between games; console's Settings shows the switch under Console mode, after the theme's background; Appearance, the desktop's alone, is not in console mode):
 ffmpeg (`heronite_media::stream`, `fill` + `looped`) at 24 fps into the still stage's small raster
 (`heronite_images::stage_frame_size`, at most 640 wide, also in console mode: 960 looked the same there and cost ffmpeg
 twice as much), with the still stage's blur and colour done by ffmpeg (`gblur`,
@@ -448,7 +449,9 @@ settings panel bound to the client's own settings), the sign-in the client's fil
 switch for the Desktop and one for the application menu: `heronite-client-<id>.desktop` running `--open-client <id>`,
 with the icon read from the client's `.exe`; `services/clients/shortcuts.rs`, `HERONITE_DEBUG_CLIENT=<id>:shortcuts`),
 the games it installed (Show selects one in the Collection) and an About card with the anti-cheats that keep some of
-its games off Linux.
+its games off Linux. The EA page adds "Your EA library" under the sign-in: the optional EA account, connected in the
+login window, with the games it owns, "Read library now" and "Disconnect" (`pages/clients/ea.rs`;
+`HERONITE_DEBUG_EA_ACCOUNT=signed|out|error`).
 The ☰ Emulators page (`pages/emulators/`) has the same layout (`side_nav`): the list holds "All emulators" (counts, what
 needs attention with its fix, every ROM folder, "Scan all folders now"), then each emulator with its icon
 (`emulators::icon`: Dolphin's and RetroArch's logos, an icon drawn for each other emulator of the catalog, a gamepad
@@ -1153,7 +1156,7 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   bring the focus to what was clicked, then A: a row of a `console::list` is used at once (`ListNav::click`; the ‹ › of
   a value press ◀ ▶), a cover takes the focus on the first click and opens on the second (`pointer::focus_or_activate`).
   Hints, tabs and LB / RB glyphs press their button (`kit::hint_item`, `kit::tabs`). The wheel moves the focus one
-  press per notch (← → on Carousel and Spotlight; on a game page with long text it scrolls the text, as the right
+  press per notch (← → on Carousel, and on Spotlight and Cinema while their row has the focus; on a game page with long text it scrolls the text, as the right
   stick does), the right and back buttons are B (`pointer::layer`, before the scroll areas). A hint bar faded out
   (`Hints::Auto`) takes no clicks (`kit::hint_bar_with`). Row clicks are worked out when clicked, from one pass over
   the rows (`list::Clicks`), so long lists stay cheap. Focus a press cannot reach in a few steps is set directly (`console_click`, `cover_click`: the menu's items,
@@ -1173,6 +1176,33 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   `Outcome` tells the owner what happened; `simple_dialog` for confirmations), `console::sheet::Sheet`,
   `console::osk::Osk` (on-screen keyboard; never use text inputs in console layouts), `console::browser::Browser`
   (folder / file picker; the portal file chooser cannot be driven by a controller).
+- Settings (`pages/settings/console/`): a sidebar (the app's icon, name and version; Search; every section under
+  its group heading in one scrolling list, the one shown on the solid focus pill; LB / RB jump between groups) and the
+  section's settings as card rows (`ListNav::set_style(RowStyle::Card)`: title and description on the left, a switch,
+  `‹ chip ›` or an accent text action on the right, the focused card ringed), under a "Group · Section" breadcrumb.
+  Search types on the keyboard and matches section names and the labels and descriptions of every section's rows (the
+  Heroic panel's through `SettingsPanel::console_rows_of`). A on a result opens its section on that row. Appearance is
+  the desktop's and is not listed (its Animated backgrounds switch shows under Console mode). Debug:
+  `HERONITE_DEBUG_PAGE=settings:<section>`, `HERONITE_DEBUG_SETTINGS_SEARCH=<text>`.
+- Full-screen console config screens use the Settings card system: their rows are `RowStyle::Card` in a
+  `kit::settings_column` (one call: `ListNav::render_cards`, or `set_style(RowStyle::Card)` / the settings panel's
+  `set_console_style` where the screen lays out its own column), with accent headings, groups and the same hints; a
+  long read-only value reads as the card's description. That covers Game settings (and its Saves tab), the Wine
+  settings of a client, the Epic / store install dialogs, Add game, the Stores and clients' pages, Emulators and Wine
+  Manager. Modals, sheets, keyboards, pickers and the ☰ Customize side panel keep their bare rows.
+- Groups in a console list (`console::list`): a row made `Row::child_of(parent_id)` (right after its parent or its
+  other sub-settings; `Row::group` for a parent that only gathers) is a sub-setting, drawn inside the parent's card
+  beside a guide line, smaller (bare rows: indented by a guide line too). A group of two sub-settings or more folds:
+  closed by default, the parent shows ⌄ and a one-line summary under its label (`Row::summary`, else its sub-settings'
+  values as "Label: value", never texts; red when one warns), open it shows ⌃ and its sub-settings slide in. ▶ opens
+  and ◀ closes a group under a switch or a plain row (A still flips the switch; ◀ on a closed one goes back, never
+  flips it); A opens and closes one whose parent ◀ ▶ change; B on an open parent closes it, B on a sub-setting goes
+  back to the parent. `ListNav::hints` names only the arrow that works (`Btn::Left` / `Btn::Right`). A group of one is
+  always open (no chevron, no press of its own) unless its parent is `Row::always_folds` (one whose sub-settings come and go, like Maximum FPS). Under a switch that is off the sub-settings fade (the ring does not)
+  and say "Turn on … first" while focused. The open groups survive `reset`; Settings keeps them per section, a search
+  result inside a group opens it (`focus_id`), and moving a metadata source or a console tab keeps the focus and the
+  open state on it. Used by Metadata (each source), the Heroic panel's dependent rows, lists (hidden games, wrappers,
+  disk groups) and Console mode's tabs ("Tab 1 · Installed").
 - Motion (`console::motion`): scroll areas that follow the focus use a `Glide` (`go(Goal::Reveal{..})` / `Start` /
   `by(px)`, its `driver()` as the last child of the area) instead of `scroll_to_item`, so they glide on a spring;
   `row_base` focus pills pop in on every press; covers lift with `motion::spring`; one value that drives many
@@ -1181,7 +1211,16 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   things request frames; `HERONITE_NO_ANIMATIONS=1` jumps instead. Off-screen covers are empty boxes of the same size.
 - Layout: top bar = the theme's tabs (`kit::tabs`; `interface.tabBar` may move them to a bar along the bottom, show only
   the current one as a centred title, or show the names alone) + `kit::clock` (pages keep their own title with `kit::wordmark`), content padded `u(46.)`, lists about `u(900.)`
-  wide; the shell draws the hint bar from `hints()` (it adds Back / Menu). B goes back; Start opens the menu.
+  wide; the shell draws the hint bar from `hints()` (it adds Back / Menu): no surface of its own over a shade fading
+  up from the bottom (`kit::hint_shade`), the menu and tabs on the left, the actions on the right with A last, the
+  glyphs monochrome (a disc of the strong ink with its letter or symbol cut out, outlined caps for the shoulders),
+  whatever the controller's glyph set. B goes back; Start opens the menu.
+  `u()` follows the window's height, so a 4:3 or small window has fewer design px across than the design's 1280
+  (1730×1280: about 1080; `kit::vw()` gives it each frame): whatever sits side by side works from it, never from a
+  fixed width. Rows of tabs that do not fit show the ones around the current tab (`kit::fit_row`, `tabs_within`);
+  layouts measure their room with `layouts::body_width` (less the menu's rail); Spotlight's and Showcase's page puts
+  its sidebar under the left column below `page::STACK_BELOW`. Check new screens at 1280×800, 1730×1280, 1920×1080,
+  2560×1080 and 3440×1440 (a floating window resized with `hl.dsp.window.resize`).
 - **Console themes** (`heronite_data::console_theme`, shareable JSON; `console.json` holds the one in use and the
   machine options, `console-themes/` the saved ones, each with its picture as `<id>.background-<hash>.<ext>`; an
   export carries the picture inside as a `data:` URL and leaves out a local path it does not use, an import writes it
@@ -1192,40 +1231,118 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   covers come from `tile.rs` (shape, size, corners, focus style, badges and "New", store strip, name below or in a
   bar), the background from `backdrop.rs`, names / logos / facts (a line or chips and genre tags) and the stats panel
   from `hero.rs` (logos: `art.rs`), shelves and tab games from `sources.rs`; game pages (`game/`: classic, hero, tabs,
-  sheet) and the ☰ menu (`sidebar.rs`: sidebar, grid, dock, rail — the rail stays on screen and insets the content)
+  sheet, showcase) and the ☰ menu (`sidebar.rs`: sidebar, grid, dock, rail — the rail stays on screen and insets the content)
   follow the theme too. A light `colors.background` (`ColourOptions::is_light`, `look::light()`) makes the console
   light: dark text and focus, white panels, the art washed out; surfaces use the scheme's ink, never a bare white.
   The built-in themes (`presets.rs`), in the order they are listed: Minimal (what a new install uses,
-  `presets::DEFAULT`, and what Reset goes back to), Classic (the base the others start from and what missing keys of a
-  theme file read as), and Cinema, Pulse, Arcade (Wheel), Hub (Dashboard, the rail) and Living room (Series X),
-  modelled on other launchers' fullscreen themes and consoles' home screens. Classic's screens: Shelves count a shelf's games
+  `presets::DEFAULT`, and what Reset goes back to), Pulse, Cinema, Arcade (Wheel), Hub (Dashboard, the rail) and Living
+  room (Series X), modelled on other launchers' fullscreen themes and consoles' home screens. Classic
+  (`presets::classic`) is no longer listed: it stays the base the others start from and what missing keys of a theme
+  file read as. Cinema took over from it and from the first Cinema (one row of covers, tabs along the bottom): a
+  console.json on either (or on the Cinema of shelves that came between), unchanged, becomes today's Cinema on load
+  (`upgrade_cinema`; a changed one keeps its values, and `Layout::Shelves` / `Layout::Cinema` still load from theme
+  files; an earlier Cinema that set `nav.aButton: play` is compared without it and goes back to the default, as A and
+  X are the user's choice). Cinema (`layouts/cinema.rs`): the focused game's key art full bleed under a soft vignette
+  on the left and the bottom and a little at the top (`Scrim::Cinema`); at the left edge of the row of covers its logo
+  large (no logo: no title in its place, only the name in a quiet line over the facts; a logo that arrives late comes
+  in then, nothing reserved for it), a line
+  of facts (spaced small-caps labels over values between thin champagne rules: playtime, last played, platform with the
+  store's icon, released, time to beat) and the genres as plain words, each line from the block's left edge, over a
+  soft shade of its own; on the right, level with the facts, its achievements (a dark trophy disc ringed in gold, n / N,
+  the share and a thin bar, over a smaller shade) when it has a list; along the bottom one row of large portrait covers
+  (about a third of the screen) that keeps the focused cover whole in view (`row_offset`, from the row's fixed
+  geometry), ringed in the theme's champagne gold (`presets::CINEMA_GOLD`, its accent). While the focus moves along
+  the row the game's block steps aside so the art shows whole; 400 ms after it rests it comes back (`motion::reveal`:
+  the logo, then the rest; a return replays it, the same game never does). Under the row, the theme's shelves over the
+  tab's games (`console_shelves`, less the shelf the row already is): smaller covers, a title with its count over a thin
+  champagne rule, a cut shelf ending with "View all" (A opens the Library with the same filters); on the home only the
+  first one's title peeks in above the hints. ↓ goes down to them: the view glides so the focused shelf sits near the
+  top (`Geo::view_offset`, from fixed heights), the row and the game's block fade out, the art steps back and the
+  shelves passing under the hints fade into the dark; ↑ ↓ between shelves, ← → along one (LT / RT a page), ↑ from the
+  first back to the row and its block; the art follows the focused cover. Tabs Installed, All games, Recently played
+  (`recent`: played games) and Favourites (the most recently played first), then Library (a Grid of every game), as a
+  centred gold pill between LB and RB; tabs that would come within 48 px of the clock show around the current one with
+  a muted "+N" for the others. On the right only the clock (and the shared activity pill while something runs), the
+  bar's right edge level with the row's. Hints always on, floating over the art from the row's left edge, the shared
+  ones (A and X as `nav.aButton` says, Y the search and filters, the tabs, the menu); `Hint::sub` adds a small second
+  line (Menu: what it leads to; Tabs: the next one). The game's actions (with "Change background…", the Covers dialog
+  on its Background slot, for art that fights the logo) are on its page's Options. Its page is Showcase without glass
+  (`layouts.showcaseGlass: false`): the home's block at the page's left edge with Play / Options / ♥ under it, the
+  sections over the darkened art with their titles over a thin champagne rule, no cards or boxed buttons, the gold
+  focus, the page fading into the dark under the hint bar.
+  Shelves (the base's home and Hub's): Shelves count a shelf's games
   before `shelfLimit` cuts it and end a cut one with a "View all" tile (A opens the first Grid tab with the filters
   that show them, `grid::Nav::show_like`), LT / RT page along a shelf, the focused game's text slides in from the side
   the focus came from (with "Last played", a long name shrinks) over a soft shade of its own; the Grid without a panel
   puts the game's facts beside its name over a denser scrim (`Scrim::Library`); the Classic game page has the time
-  played, last played, time to beat and score above the overview and the facts not shown elsewhere; new art settles
-  in from a touch closer on these screens (`Scrim::Classic` / `Library`, not with Reduced motion).
+  played, last played, time to beat and score above the overview and the facts not shown elsewhere. The background
+  art (every theme, `backdrop::ArtLayers`) loads once the focus rests 150 ms and cross-fades: the new art fades in
+  over what shows in 0.4 s (ease in-out), nothing under it moves, a new game mid-fade freezes it and fades in on top,
+  covered layers go; the same game's texture again is swapped in place, never faded.
   Minimal's Carousel: covers spaced evenly (a fixed gap at every step of the turn), the far ones smaller, darker and
   rising a little, each over its real reflection (`heronite_images::Variant::Reflection`, `cr:` textures) on the
   blurred cover glowing through a vignette (`Scrim::Carousel`); a thin ring a little way out marks the focus; under it
-  the name (long ones shrink), the facts and the place in the list (letter, a line with a gliding mark, "n of N"),
-  sliding in from the side the focus came from, each line of a fixed height so the covers never move. LT / RT jump by letter (the letter flashes over the covers), LB / RB
+  the name (long ones shrink), the facts as Pulse's (small-caps labels over values: playtime, last played, platform,
+  and the status with a dot of its colour) and the place in the list (letter, a line with a gliding mark, "n of N"),
+  each line of a fixed height so the covers never move. A new game's name holds 0.3 s, then fades in over 0.45 s
+  sliding from the side the focus came from; the facts and the place follow 0.15 s later over 0.3 s (the place never
+  from blank, so a held direction reads); the same game never replays it. The filters are Installed (the default),
+  All, Favourites and Playing: with one tab they sit in the top bar like Pulse's tabs (LB, the names, the current one
+  in a pill, RB; centred, Pulse's clock at the right; ↑ rings the current one), else in a row above the covers.
+  `KeptFilters::carousel` keeps the filter by what it shows (0 All, 1 Installed, ...), not by its place in the row,
+  so a choice saved before Installed came first still shows the same games. An empty filter says what it has none
+  of, with LB / RB for another. LT / RT jump by letter (the letter flashes over the covers), LB / RB
   change the filter when the theme has one tab (the focused game stays when it passes it), the covers fan out from the
-  middle on first show and on a new filter; A opens the Sheet game page over the carousel: a window floating
-  along the left edge (inset, round corners) over a dim of the whole window, sliding in from the left
-  (`render_console_game_layer`, drawn by the shell above the top bar).
-  Pulse's Spotlight (`layouts/spotlight/`), a console's home: a row of square icons along the top, the focused one at
-  the left edge, larger, with a thin ring a little way out and its name beside it; the next icons after the name, the
-  ones before it sliding off to the left. Every icon's place and size and the names come from one number, the row's
-  position gliding on a spring (`motion::Follow`, stepped each frame with a `FrameClock`), so a held direction glides
-  and the room for a longer name opens smoothly (an arriving name is revealed as its room opens, the leaving one fades
-  with its icon). Below, the logo (or the name) with a wide Play and More, then when it was last played; the cards
-  (playtime, How Long To Beat with a bar of how far along the main story, journal) peek in at the bottom, and going
-  down to them slides the whole screen up, the row fading and the art darkening from the bottom. Buttons and cards
-  ease into the focus colour. The art is shaded for the row, the logo and the cards (`Scrim::Home`) and settles in
-  like Classic's. With `Hints::Auto` the hint bar floats over the bottom and fades in and out
-  (`layouts::hints_float`) instead of taking room, so nothing moves when it comes and goes; the cards that peek step
-  back while it shows.
+  middle on first show and on a new filter; A opens the Showcase game page (`game/showcase.rs`): the game full screen
+  over the theme's background (Minimal: its blurred cover, `Scrim::Carousel`), rising in a little as it fades in, its
+  logo (or name), Play / Options / ♥, facts and genres, then Spotlight's sections (`spotlight::Host::Game`: the same
+  page, focus, viewers and `spotlightSections`, no row, the art dimmed lightly) on panels of frosted glass
+  (`glass_panel`); Options lists the game's actions in a side sheet, X plays, B goes back to the carousel as it was.
+  A saved Minimal still on the Sheet (the floating window it had) opens Showcase (`upgrade_minimal`); any theme can
+  choose it.
+  Pulse's Spotlight (`layouts/spotlight/`), a console's home whose game page goes on below it. Its top bar
+  (`layouts::{layout_tabs, layout_clock}`) centres the tabs between LB and RB, the current one in a pill, with a large
+  clock; Pulse's tabs are Installed (first), All games and Favourites as Spotlight filters, then the whole library as a Grid; rows and grids put the game played last first (`KeptFilters` sorts by Last played unless changed). The row: the tab's games, the
+  last played first, as square icons, the focused one larger (reaching lower) with a ring a little way out and its
+  name just right of it on its bottom edge, under the smaller icons, up to two before it in sight; every place and size come from the row's position gliding on a spring (`motion::Follow`
+  stepped with a `FrameClock`). Below, the logo in a fixed box (none: nothing in its place, as the name is beside the
+  icon, and the head starts with the buttons, no room kept, `Shape::layout`; a late logo comes in then), Play / Options
+  / ♥ as pills, the facts (small labels over Playtime, Last played, Platform with the store's logo, Released; no genre
+  chips, which only Showcase's page keeps, `Shape::chips`), then a
+  strip of the store's screenshots (`store_media_of`, read in console mode only for Spotlight, never played)
+  dissolving at the bottom. A new game's logo hides, holds 0.3 s, then fades in (0.45 s) sliding in from 30 px to
+  the left (0.55 s, cubic ease-out); the buttons, facts, genres and strip fade in 0.42 s after the change, in place
+  (Reduced motion: the fades alone). Leaving the row lifts the whole screen (the row and the top bar fade, the art darkens, the
+  wheel turns to ↑ ↓) into the page (`page.rs`), in two columns, nothing spanning both: on the left the strip, the
+  player's screenshots (a glass card of as many thumbnails as fit, "+N" on the last; the strip shows them instead
+  when that card is off and the store has none), About this game (clamped, "Read more" opens the whole text in a
+  sheet), the cards and More like this (A jumps the row to the game, else opens its page); on the right, from the
+  first left section down, a sidebar with Achievements (A: `open_console_achievements`), Details with link buttons
+  (folder, store page) and How Long To Beat (the desktop section's bar, times and match note, `focus::hltb_*`; A opens
+  its page; "no times" when it has none), each when `spotlightSections` keeps it and the game has data. Every section's place
+  comes from counts and fixed heights, never a measure, so nothing jumps; the page rises on a slow spring until the
+  focused section's title nears the top, never past the page's end. ↑ ↓ along a column, ← → along a strip or the
+  links and, at their ends, across to the other column's part nearest in height (`Shape::step`), B back to the buttons then the row, X plays anywhere; clicks focus then use (`cover_click`). A screenshot
+  opens full screen (store ones in `viewer.rs`, the user's in the game page's viewer). Options opens the theme's game
+  page (Pulse: the Sheet over Spotlight, which also opens the player's screenshots). With `Hints::Auto` the hint bar floats (`layouts::hints_float`).
+  `HERONITE_DEBUG_SPOTLIGHT=<zone>[:<n>|:<name>]` (`actions`, `media`, `viewer`, `about`, `sheet`, `achievements`,
+  `links`, `hltb`, `cards`, `shots`, `related`) opens a section, on the row's `n`th game or the first whose name holds
+  `<name>` (on the first tab that has it).
+  **Achievements (console)** (`collection/console/achievements/`): one game's achievements full screen over its art
+  (no top bar), reached from the game page's "Achievements" action in every theme (a row of the actions, a button on
+  Hero, a row of the Sheet) and from anything that calls `open_console_achievements(key)`; B goes back to where it
+  was opened. The logo and "Recently unlocked" (12 icons, look only) on the left; on the right the rarity tiers'
+  trophies with unlocked / total, the percentage with its bar and "n of N unlocked · last on <day>" (at 100% a gold
+  medallion instead); pills All / Unlocked / Locked with their counts between LB and RB (both clickable); a
+  one-column list (icon, name, description; tier, rarity and the unlock day or "Not unlocked" / a counted progress on
+  the right) with a ring on the focused row, gliding to it (`Goal::Offset` from the fixed row pitch; only the rows near
+  the view are built, so long lists stay cheap) and fading at its top once scrolled and above the floating hint bar.
+  Y switches the order (Default order, the game's; Newest first; Rarest first), a new filter or order starts at the
+  top. A opens a card over a dim (big icon with its tier on the corner, the whole name and description, "<n>% of
+  players", "Unlocked <day>"); ↑ ↓ step it through the list, X reveals a hidden secret, A / B or a click on the dim
+  close it. The wheel and the right stick scroll the list, and the next arrow brings the focus back into view. A ROM
+  without the RetroAchievements account, an unmatched ROM, loading and an empty game each get a message.
+  `HERONITE_DEBUG_CONSOLE_ACH=<game key or app name>[:detail]` opens it at start (with the card).
   Y on any tab opens the Filters panel along the right edge (`collection/console/filters.rs`): the search field first
   and focused (A opens the keyboard, a physical keyboard types into it), Show with counts, Sort, Favourites only,
   Status, Category and Smart group (every group, by name; the grid's Show chip then reads "<group> · <show>"); X resets them. They edit the filters of the tab's grid, else the theme's first Grid tab (the
@@ -1267,6 +1384,49 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   `ConsoleTheme` (with a default and `#[serde(default)]`, so old and new theme files keep loading), its rows in
   `theme_rows`, and its use. Nothing console-only may run, read files or allocate while console mode is off;
   no "HERONITE" wordmark in console screens (the theme's `interface.label` may add a text of its own).
+- Launch screen, Now Playing and session card (the theme's `launch`; `collection/console/launch_screen.rs`,
+  `now_playing.rs`, `session_card.rs`, drawn by the shell over everything): any launch while console mode is in front
+  (Play, X, the quick launcher, the tray) covers the window so the desktop never shows: black, then (`art-logo`) the
+  game's art, still (a slow pan or zoom moves it by less than a pixel a frame, which pixel snapping turns into a
+  judder) under the `shade` (none / 35 % / 60 % black), and the logo (the name, large, in a box of its own
+  width so it wraps only between words, when no logo came within 2.5 s; a later logo still replaces it) fading in
+  while it rises 26 px after the screen's 360 ms fade; `logo` is the logo on black, `off` nothing. Near the bottom a
+  thin line with a light sweeping along it and the launch's step (`preparing`, else "Starting..."). A failed launch
+  shows why with B until read (10 s); B or a click puts the screen away; it gives up after 120 s. Once the game runs
+  and is in front (our window lost the focus, or Hyprland lists a window of the game's pid,
+  `heronite_overlay::game_window::shown`, the game then focused; or 8 s after it runs where nothing can tell, 60 s
+  at most where Hyprland can) the screen becomes Now Playing and minimize on launch closes the window
+  (`system::hide_after_cover`). Now Playing: the art, still, and over it, left of centre, a frosted card (the art
+  blurred, aligned with the window and clipped to the card, under a dark wash): the box cover, the logo or name,
+  developer · year · genres, "Playing now" with the session's clock and the total, and Back to game (only where the
+  game's window can be focused: Hyprland and a real pid), Stop game (asks first, a `simple_dialog`, then
+  `system::stop_running`) and Back to console (B), ← → and A or a click; hints A and B. Back to console hides it with
+  the game running; it comes back when the window returns from the game or Play is pressed on the game (its tile or
+  page: Play on a running game opens Now Playing in console mode instead of stopping it). It takes every press while
+  up. The session's start is kept per game by the hub (`now_playing::note`), so a window reopened from the tray shows
+  Now Playing again with the right time (the runtime's replayed `Running` in the first 1.5 s of console mode, which
+  are not new launches). When the game ends the screen fades out (300 ms to black, 300 ms out) and "Session ended"
+  shows top right 1.5 s after the console is in front again (not a failed start, at least 5 s), for 8 s: the name,
+  "<session> this session · <total> total" (`<1m` under a minute), the logo at the right over the art at 42 % fading
+  out under the words, the confirm sound when sounds are on; it takes no input and a newer session replaces it. One
+  that ends with the window in the tray waits for the window (`session_card::remember`).
+  `HERONITE_DEBUG_LAUNCH_SCREEN=<app name or key>[:error|:<step>]` shows the screen for that game, frozen (nothing
+  launched); `HERONITE_DEBUG_NOW_PLAYING=<app name or key>[:stop]` Now Playing 47 minutes in (`:stop`: with the
+  question open); `HERONITE_DEBUG_SESSION_CARD=<app name or key>` the card, staying. `HERONITE_DEBUG_FAKE_SESSION=<app
+  name>:<secs>@<delay ms>[+<prep secs>]` (the app name, e.g. `Calluna`, not the Collection key) plays the whole flow
+  without a game; it counts as in front. Springs do not advance on a hidden workspace: the card and toasts only show in
+  captures with animations off.
+- Activity (`collection/console/activity.rs`): what runs in the background, read every 400 ms from the places the
+  desktop header's pills read (the metadata hub's job, cover downloads included, and a source's database; the
+  downloads service's install or update; the updater's download; ffmpeg's install). A pill beside the clock (top right
+  under the page's clock where the top bar is hidden: pages, game pages, Achievements): the task's icon pulsing, "Downloading square
+  covers · 12 / 195", "Installing Elden Ring · 43%", or "3 tasks" with the first named, and a thin bar (a sweep when
+  not counted); a click opens Downloads while a game downloads, else it takes no input. Toasts in the top right,
+  in one column with the session card: a start ("Downloading square covers…", 3.5 s), an end ("Square covers
+  downloaded", "182 updated · 13 not found"; "Elden Ring installed", 5 s), a failure (8 s), and "Nothing to download"
+  when a cover download finds every game with that cover (the hub's `nothing_to_download`). A job that brought nothing
+  says "No new square covers" (never "0 updated"). `HERONITE_DEBUG_CONSOLE_ACTIVITY=metadata|download|many|done|error|nothing`
+  shows made-up states (nothing runs); `=start:square|wide` starts the real download the Settings row starts.
 - Navigation sounds (`controls.sounds`, off by default; `console/sound.rs`): four short tones (move, confirm, back,
   tab) written as WAV files in `cache/console-sounds` and played by `pw-play`, `paplay` or `aplay` from a worker thread
   (Linux only). `controls.soundStyle` is `soft` (the default: ~320-590 Hz with a round start, quiet) or `classic` (the
@@ -1291,6 +1451,21 @@ the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
 `HERONITE_DEBUG_DROPDOWN=nav|view|view:<text>|groups-select|more-filters|manage`, `HERONITE_DEBUG_MENU=<key>`,
 `HERONITE_DEBUG_DIALOG=...`, `HERONITE_DEBUG_PAGE=...`. Copy
 `~/.local/share/heronite/images-cache` into the fixture or no art appears at all.
+
+**The controller on the desktop** (`collection/desktop_pad.rs`): outside console mode the controller drives the desktop
+as it is; the layout never changes and nothing is drawn for it but a pointer. It types the keys the desktop already
+takes: the d-pad is the arrows (with repeats), A Enter, B Esc, Y the palette (Ctrl K, which reaches every page, command
+and game), X the selected game's actions in the palette, LB / RB the page before / after in the ☰ menu's order (the
+palette's filters while it is open; nothing while LB + RB is the button held to enter console mode). The right stick moves a pointer painted over the window (a white disc, above menus
+and popovers) and RT / LT click and right-click with it, so dialog buttons and switches are reachable; the first RT shows
+the pointer without clicking, and it hides when the mouse moves or a key-like button is pressed. The left stick scrolls
+what is under the pointer, else the mouse, else the middle of the window (synthesized wheel events). Guide, Start and Back are left to console mode's shortcut and the
+overlay (`console::summon`). Cost: the reader blocks between events (`input::start_desktop`; sticks are sent only when
+they move by a step), the pointer and scrolling move on a 16 ms timer only while a stick is tilted, and the reader stops
+while a game runs and, on Windows, while the window is in the background (SDL reads open controllers every 8 ms; the
+window's activation starts and stops it, as a minimized window draws no frame). Presses only count while
+the window is in front, no game runs and "Use the controller on the desktop" (Settings › Controller) is on; the
+Controller page's On the desktop tab lists the buttons.
 
 **Entering console mode from anywhere** (`app/src/console/summon.rs`, by user decision: the corner notice with a ring,
 issue #253): the app's, not the window's, so it works with the window closed to the tray or behind another app. "When a
@@ -1500,6 +1675,10 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   `HERONITE_DEBUG_DIALOG=settings|statuses|gamesettings:<tab>|onboarding[:<step>]|achievements` (extend the match in
   `CollectionView::render` for new dialogs; `settings:<section>` opens that Settings section,
   `onboarding:<step>` "Getting started" where that step lives: `steam`, `stores` or `emulators` open its games view, `appearance` its look view, any other step the three cards).
+  `hidden-pin:<unlock|set|change|remove>` opens the PIN pad of hidden games (`dialogs/hidden_pin/`);
+  `HERONITE_DEBUG_PIN=<digits>[,enter|,forgot]…` types into it, one step every 0.6 s (another word waits a step;
+  `forgot` presses "Forgot the PIN?", answered by `HERONITE_DEBUG_SYSTEM_PASSWORD=given|refused|unavailable` instead of
+  the desktop's password window). Its PIN goes to `<data folder>.heronite/config/hidden-lock.json` of a data copy.
   `scripts/shot.sh` sets `HERONITE_NO_ONBOARDING=1`: "Getting started" does not open by itself on a new state folder.
   Settings → Metadata (`pages/settings/metadata/`): `HERONITE_DEBUG_METADATA_OPEN=<source id>[,<source id>…]` opens
   those sources' rows (`advanced`: "Order for one field") and scrolls to the last; with `HERONITE_DEBUG_PAGE=settings:metadata`.
