@@ -1,8 +1,8 @@
 //! The connection between instances. Unix: a unix socket. Windows: Rust has
 //! no unix sockets there, so the instance listens on a loopback port and
-//! writes the port and a random key into the file at the socket's path (in
-//! the user's own temp folder); a connection starts with the key, so other
-//! users of the computer cannot send requests.
+//! writes the port, a random key and its pid into the file at the socket's
+//! path (in the user's own temp folder); a connection starts with the key, so
+//! other users of the computer cannot send requests.
 
 #[cfg(unix)]
 pub(super) use std::os::unix::net::UnixStream as Stream;
@@ -89,15 +89,23 @@ mod windows {
             ErrorKind::AlreadyExists => io::Error::new(ErrorKind::AddrInUse, e),
             _ => e,
         })?;
-        writeln!(file, "{} {key}", inner.local_addr()?.port())?;
+        writeln!(file, "{} {key} {}", inner.local_addr()?.port(), std::process::id())?;
         Ok(Listener { inner, key })
     }
 
     pub(in super::super) fn connect(path: &Path) -> io::Result<Stream> {
         let text = std::fs::read_to_string(path)?;
         let refused = || io::Error::from(ErrorKind::ConnectionRefused);
-        let (port, key) = text.trim().split_once(' ').ok_or_else(refused)?;
+        let mut fields = text.split_whitespace();
+        let port = fields.next().ok_or_else(refused)?;
+        let key = fields.next().ok_or_else(refused)?;
         let port: u16 = port.parse().map_err(|_| refused())?;
+        // Old two-field files have no pid; keep connecting to those as before.
+        if let Some(pid) = fields.next().and_then(|pid| pid.parse::<u32>().ok()) {
+            if !heronite_platform::process::is_alive(pid) {
+                return Err(refused());
+            }
+        }
         let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
         let mut stream = Stream::connect_timeout(&addr, Duration::from_secs(2)).map_err(|e| match e.kind() {
             ErrorKind::TimedOut => refused(),

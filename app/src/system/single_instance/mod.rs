@@ -409,6 +409,67 @@ mod tests {
         Timeouts { write: Duration::from_millis(500), answer: Duration::from_millis(300) }
     }
 
+    #[cfg(windows)]
+    fn tcp_listener_that_hangs_up() -> (std::net::TcpListener, std::thread::JoinHandle<()>) {
+        let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let acceptor = listener.try_clone().unwrap();
+        let task = std::thread::spawn(move || {
+            let (stream, _) = acceptor.accept().unwrap();
+            drop(stream);
+        });
+        (listener, task)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn file_of_a_dead_owner_is_stale_even_if_the_port_is_taken() {
+        let mut child = std::process::Command::new("cmd").args(["/c", "exit"]).spawn().unwrap();
+        let dead_pid = child.id();
+        child.wait().unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("s.sock");
+        let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::fs::write(&sock, format!("{port} dead-owner-key {dead_pid}\n")).unwrap();
+
+        assert_eq!(forward_with(&sock, &msg(), quick()).unwrap(), Forward::NoInstance);
+        assert!(!sock.exists(), "stale file removed");
+        drop(listener);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_live_owner_that_hangs_up_is_still_unresponsive() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("s.sock");
+        let (listener, task) = tcp_listener_that_hangs_up();
+        let port = listener.local_addr().unwrap().port();
+        std::fs::write(&sock, format!("{port} live-owner-key {}\n", std::process::id())).unwrap();
+
+        let got = forward_with(&sock, &msg(), quick()).unwrap();
+        assert!(matches!(got, Forward::Unresponsive(_)), "{got:?}");
+        assert!(sock.exists(), "a live owner's file must not be removed");
+        task.join().unwrap();
+        drop(listener);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_legacy_two_field_file_still_connects() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("s.sock");
+        let (listener, task) = tcp_listener_that_hangs_up();
+        let port = listener.local_addr().unwrap().port();
+        std::fs::write(&sock, format!("{port} legacy-key\n")).unwrap();
+
+        let got = forward_with(&sock, &msg(), quick()).unwrap();
+        assert!(matches!(got, Forward::Unresponsive(_)), "{got:?}");
+        assert!(sock.exists(), "legacy file remains on the connect path");
+        task.join().unwrap();
+        drop(listener);
+    }
+
     #[test]
     fn a_listener_that_never_answers_is_unresponsive_not_absent() {
         let dir = tempfile::tempdir().unwrap();
