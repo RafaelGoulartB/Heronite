@@ -13,6 +13,7 @@ mod fixture;
 mod format;
 mod game_tab;
 mod render_browse;
+mod render_drive;
 mod render_game;
 mod render_jobs;
 mod render_list;
@@ -21,6 +22,9 @@ mod render_notes;
 mod render_plugins;
 mod render_row;
 mod render_support;
+
+pub(crate) use format::size as format_size;
+pub(crate) use render_drive::drive_name;
 
 pub use render_support::experimental_pill;
 

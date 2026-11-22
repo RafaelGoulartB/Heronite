@@ -14,6 +14,8 @@
 //!   downloads `fuse-overlayfs`), [`journal_deploy`] puts the files in place
 //!   on Windows, [`deployment`] answers the app for both; [`apply`] is what a
 //!   launch calls.
+//! * [`game_drive`] keeps a game's mods on the game's own drive (Windows:
+//!   hard links instead of a copy at each launch).
 //! * [`nexus`] and [`thunderstore`] talk to the sites, [`download`] fetches
 //!   files, [`links`] matches Collection games to the sites' games.
 //!
@@ -29,6 +31,7 @@ pub mod download;
 mod file_swap;
 pub mod fomod;
 mod fsutil;
+pub mod game_drive;
 pub mod games;
 pub mod http;
 pub mod install;

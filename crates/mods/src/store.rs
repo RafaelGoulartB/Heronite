@@ -66,7 +66,7 @@ pub fn game_keys(root: &ModsRoot) -> Vec<String> {
         .into_iter()
         .flatten()
         .flatten()
-        .filter(|e| e.path().join("mods.json").is_file())
+        .filter(|e| root.game(&e.file_name().to_string_lossy()).list_file().is_file())
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     keys.sort();
@@ -128,7 +128,8 @@ fn is_plain_name(name: &str) -> bool {
     !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\', '\0'])
 }
 
-/// Deletes everything the mods root keeps for the game. Refused while the
+/// Deletes everything the mods root keeps for the game, on the game's own
+/// drive too ([`crate::game_drive`]). Refused while the
 /// game's folder has our overlay mounted over it, or our files in it on
 /// Windows (`game_dir`).
 pub fn forget_game(root: &ModsRoot, game_key: &str, game_dir: Option<&Path>) -> Result<(), String> {
@@ -139,12 +140,14 @@ pub fn forget_game(root: &ModsRoot, game_key: &str, game_dir: Option<&Path>) -> 
     if applied {
         return Err(tr!("The game is running with mods; close it first").to_string());
     }
-    let dirs = root.game(game_key);
-    let dir = dirs.root();
+    let home = root.home_of(game_key);
+    let dir = home.as_path();
     // The folder is `<root>/<safe name>`: never the root, never a link out.
     if dir.parent() != Some(root.path()) {
         return Err(tr!("Not a valid game key: {key}", key = game_key));
     }
+    crate::game_drive::forget(root, game_key)
+        .map_err(|e| tr!("Could not delete {path}: {error}", path = root.game(game_key).root().display(), error = e))?;
     remove_any(dir).map_err(|e| tr!("Could not delete {path}: {error}", path = dir.display(), error = e))
 }
 

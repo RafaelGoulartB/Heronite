@@ -3939,6 +3939,7 @@ dependencies = [
  "heronite-data",
  "heronite-i18n",
  "heronite-installer",
+ "heronite-platform",
  "libc",
  "log",
  "roxmltree 0.21.1",

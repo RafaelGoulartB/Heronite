@@ -251,7 +251,7 @@ impl ModsService {
                     Change::Name(name) => j.name = name,
                     Change::Stage(stage) => {
                         j.stage = stage;
-                        if stage != JobStage::Downloading && stage != JobStage::Tool {
+                        if !matches!(stage, JobStage::Downloading | JobStage::Tool | JobStage::Moving) {
                             j.progress = Progress::default();
                         }
                     }
@@ -296,6 +296,7 @@ impl ModsService {
         }
         let title = self.game_title(&game_key);
         let job = &mut self.jobs[at];
+        let moved = job.moving;
         let notice = match outcome {
             Outcome::Installed { name, updated, dependencies, misplaced } => {
                 job.stage = JobStage::Done;
@@ -322,6 +323,11 @@ impl ModsService {
                 self.prune_later(id, cx);
                 Some((line, false))
             }
+            Outcome::Failed(error) if moved => {
+                job.stage = JobStage::Failed;
+                job.error = Some(error.clone());
+                Some((tr!("Could not move the mods of {game}: {error}", game = title.clone(), error = error), true))
+            }
             Outcome::Cancelled => {
                 job.stage = JobStage::Cancelled;
                 None
@@ -334,7 +340,16 @@ impl ModsService {
         };
         cx.emit(ModsEvent::Jobs);
         if let Some((message, error)) = notice {
-            cx.emit(ModsEvent::Notice { game_key, message, error });
+            cx.emit(ModsEvent::Notice { game_key: game_key.clone(), message, error });
+        }
+        if moved {
+            // Its folders are elsewhere now (or still where they were): read again.
+            if let Some(game) = self.sources.get(&game_key).cloned() {
+                if self.games.contains_key(&game_key) {
+                    self.load_game(&game, cx);
+                }
+            }
+            self.refresh_drives(cx);
         }
     }
 
@@ -377,6 +392,9 @@ impl ModsService {
         cx: &mut Context<Self>,
         run: impl FnOnce(&JobEnv) -> Result<Outcome, String> + Send + 'static,
     ) -> Option<u64> {
+        if self.refuse_while_moving(game_key, cx) {
+            return None;
+        }
         let Some(game) = self.sources.get(game_key).cloned() else {
             log::warn!("mods: a job for {game_key}, which is not known");
             cx.emit(ModsEvent::Notice {
@@ -409,6 +427,7 @@ impl ModsService {
             error: None,
             warning: None,
             dependencies: 0,
+            moving: false,
         });
         let thread_env = env.clone();
         let spawned = std::thread::Builder::new().name("mods-job".into()).spawn(move || {

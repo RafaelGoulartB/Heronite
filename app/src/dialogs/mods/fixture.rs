@@ -49,6 +49,13 @@ pub(super) fn load(ctx: &DialogCtx, game: &CollectionGame) -> Option<Fixture> {
         nexus_domain: list.links.nexus_domain.clone().or_else(|| known.and_then(|k| k.nexus_domain.map(str::to_string))),
         thunderstore: list.links.thunderstore.clone().or_else(|| known.and_then(|k| k.thunderstore.map(str::to_string))),
         anticheat: if has("anticheat") { vec!["EAC".to_string()] } else { Vec::new() },
+        // `drive`: the game is on another drive than its mods, not asked yet.
+        placement: if has("drive") {
+            let volume = std::path::PathBuf::from(if cfg!(windows) { "D:\\" } else { "/mnt/games" });
+            heronite_mods::game_drive::Placement::Ask { store: heronite_mods::game_drive::store_of(&volume), volume }
+        } else {
+            heronite_mods::game_drive::Placement::Linked
+        },
     };
     let enabled: Vec<String> = list.enabled().map(|m| m.id.clone()).collect();
     let mut per_mod = std::collections::HashMap::new();
@@ -77,6 +84,7 @@ pub(super) fn load(ctx: &DialogCtx, game: &CollectionGame) -> Option<Fixture> {
                 heronite_i18n::tr!("Installed, but the game will probably not see it. See \"Check files\" on the mod below.").into(),
             ),
             dependencies: 0,
+            moving: false,
         });
     }
     let account = if has("premium") || has("account") {
@@ -115,6 +123,7 @@ fn jobs(key: &str) -> Vec<Job> {
         error: error.map(str::to_string),
         warning: None,
         dependencies: 0,
+        moving: false,
     };
     let mut done = job(3, "Better Combat", JobStage::Done, 0, 0, None);
     done.dependencies = 2;

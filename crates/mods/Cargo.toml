@@ -9,6 +9,7 @@ description = "Per-game mods: install, load order, fuse-overlayfs layers, Nexus 
 heronite-data = { path = "../data" }
 heronite-i18n = { path = "../i18n" }
 heronite-installer = { path = "../installer" }
+heronite-platform = { path = "../platform" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 anyhow = "1"

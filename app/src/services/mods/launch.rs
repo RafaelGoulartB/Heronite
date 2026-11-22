@@ -100,6 +100,8 @@ pub fn startup(paths: &DataPaths, running: &[String], unmount_stale: bool) {
         return;
     }
     let root = ModsRoot::default_for(paths);
+    // A move to the game's drive a crash cut short: finished or undone.
+    heronite_mods::game_drive::sweep(&root);
     for entry in std::fs::read_dir(root.path()).into_iter().flatten().flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         if entry.path().is_dir() && entry.path() != root.cache_dir() {

@@ -11,6 +11,7 @@
 //! the sibling modules.
 
 mod account;
+mod drives;
 mod edit;
 mod facts;
 mod handlers;
@@ -24,6 +25,7 @@ mod probe;
 mod steam;
 mod updates;
 
+pub use drives::{offered as drives_offered, DriveRow, DrivesInfo};
 pub use launch::{startup, ModsLaunch};
 pub use probe::ModsProbe;
 
@@ -63,6 +65,8 @@ pub struct GameModInfo {
     pub thunderstore: Option<String>,
     /// The anti-cheat systems the game uses, short names (`EAC`), when known.
     pub anticheat: Vec<String>,
+    /// Where its mods are against its folder (Windows: the drive question).
+    pub placement: heronite_mods::game_drive::Placement,
 }
 
 /// A script extender or mod loader that an enabled mod brings, and whether
@@ -118,6 +122,8 @@ pub enum JobStage {
     /// The FOMOD installer waits for the user ([`ModsService::fomod`]).
     NeedsChoices,
     Installing,
+    /// The game's mods being moved to its drive (or back).
+    Moving,
     Done,
     Failed,
     Cancelled,
@@ -139,6 +145,13 @@ pub struct Job {
     pub warning: Option<String>,
     /// Thunderstore dependencies installed along ("+2 dependencies").
     pub dependencies: usize,
+    /// A move of the game's mods, not an install.
+    pub moving: bool,
+}
+
+/// Whether a job in this stage is still at work.
+pub(crate) fn is_running(stage: JobStage) -> bool {
+    !matches!(stage, JobStage::Done | JobStage::Failed | JobStage::Cancelled)
 }
 
 /// A FOMOD installer waiting for the user's choices. The wizard dialog drives
@@ -185,6 +198,8 @@ pub enum ModsEvent {
     PickGame,
     /// The Nexus account or the link handlers changed.
     Account,
+    /// The drives' answers or their stored games changed ([`ModsService::drives`]).
+    Drives,
     /// Show the manager of this game (a link was accepted for it).
     OpenManager { game_key: String },
     /// A job ended: a short line for a toast ("SkyUI installed for Skyrim").
@@ -216,6 +231,7 @@ pub struct ModsService {
     flagged: HashMap<String, HashSet<String>>,
     /// The alternative executable a game had before a loader was set, for Undo.
     previous_exe: HashMap<String, String>,
+    drives: DrivesInfo,
 }
 
 impl EventEmitter<ModsEvent> for ModsService {}
@@ -279,6 +295,7 @@ impl ModsService {
             links: links::Links::default(),
             flagged: HashMap::new(),
             previous_exe: HashMap::new(),
+            drives: DrivesInfo::default(),
         };
         // Every event is also a change of what the views read: observers redraw.
         cx.subscribe_self(|_, _: &ModsEvent, cx| cx.notify()).detach();

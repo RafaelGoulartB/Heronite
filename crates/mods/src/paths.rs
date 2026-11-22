@@ -32,8 +32,17 @@ impl ModsRoot {
         self.0.join("links-cache")
     }
 
+    /// The folders of the game: under the root, or on the game's own drive
+    /// when its mods were moved there ([`crate::game_drive`]).
     pub fn game(&self, game_key: &str) -> GameDirs {
-        GameDirs(self.0.join(safe_name(game_key)))
+        let home = self.home_of(game_key);
+        GameDirs(crate::game_drive::pointed(&home).unwrap_or(home))
+    }
+
+    /// `<root>/<game key>`: the game's folder under the root, also when its
+    /// mods are on another drive (it then holds only the pointer to them).
+    pub fn home_of(&self, game_key: &str) -> PathBuf {
+        self.0.join(safe_name(game_key))
     }
 }
 

@@ -84,6 +84,7 @@ impl ModsDialog {
                     .into_any_element(),
             );
         }
+        out.extend(self.drive_notice(v, cx));
         if self.running {
             out.push(
                 tinted(Tone::Info, Icon::InfoOutlined)
