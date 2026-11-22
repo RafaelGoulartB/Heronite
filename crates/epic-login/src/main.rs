@@ -602,6 +602,8 @@ mod tests {
         assert!(EA_READ_SCRIPT.contains(&format!("location.replace('{EA_LOGIN_URL}')")), "signed out: back to EA's sign-in");
 
         assert_eq!(Store::Ea.code_from_url("nucleus:rest#access_token=QVQx&expires_in=3599").as_deref(), Some(EA_DONE));
+        let error = Store::Ea.code_from_url("nucleus:rest#error=login_required");
+        assert_eq!(error.as_deref(), Some(EA_DONE), "ends the window: the app tells a signed-out session");
         assert_eq!(Store::Ea.code_from_url("https://www.ea.com/?code=x"), None);
         assert_eq!(
             ea_cookies_json([("sid", "S1"), ("remid", "R\"1")]),
