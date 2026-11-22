@@ -1,5 +1,4 @@
 //! Real Windows scripts and native programs, all confined to temporary folders.
-#![cfg(windows)]
 
 use std::fs;
 use std::path::{Path, PathBuf};

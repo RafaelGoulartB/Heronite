@@ -3,12 +3,11 @@
 //! the copy kept offline, what is refused, updates, a list removed,
 //! installing an entry through to a gather).
 
-mod support;
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::support::{endpoints, example, fixture, Resp, Server};
 use heronite_data::json_store;
 use heronite_data::paths::DataPaths;
 use heronite_metadata::*;
@@ -19,7 +18,6 @@ use heronite_metadata_ext::{ExtensionError, ExtensionsExt, InstallOutcome};
 use parking_lot::Mutex;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use support::{endpoints, example, fixture, Resp, Server};
 
 const LIST: &str = "https://lists.example.org/index.json";
 const OTHER: &str = "https://other.example.net/heronite.json";

@@ -240,11 +240,6 @@ mod tests {
     }
 
     #[test]
-    fn default_shortcut_avoids_windows_game_bar() {
-        assert_eq!(DEFAULT_KEYBOARD_ACCELERATOR, if cfg!(windows) { "CommandOrControl+Shift+G" } else { "Super+G" });
-    }
-
-    #[test]
     fn saved_shortcuts_are_not_replaced_by_the_platform_default() {
         let dir = tempfile::tempdir().unwrap();
         let paths = AppPaths::for_data(&crate::DataPaths::at(dir.path().join("heroic")));

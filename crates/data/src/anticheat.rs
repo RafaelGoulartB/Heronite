@@ -97,11 +97,7 @@ mod tests {
         assert_eq!(info.status, "Denied");
         assert_eq!(info.anticheats.len(), 2);
         assert_eq!(lookup(&paths, Some("1"), "elden-ring").unwrap().status, "Supported");
-    }
-
-    #[test]
-    fn steam_id_wins_over_title() {
-        let (_dir, paths) = paths_with(Some(FILE));
+        // The Steam id wins over the title.
         assert_eq!(lookup(&paths, Some("1245620"), "Fortnite").unwrap().status, "Supported");
     }
 

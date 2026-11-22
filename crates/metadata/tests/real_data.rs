@@ -1,6 +1,7 @@
 //! Writes against a tempdir copy of real data. Run with
-//! `HERONITE_FIXTURE=/tmp/heronite-fixture cargo test -p heronite-metadata`
-//! (skipped when unset). The real data folder is never touched.
+//! `HERONITE_FIXTURE=/tmp/heronite-fixture cargo test -p heronite-metadata
+//! --features manual-tests --test real_data` (built only with that feature,
+//! skipped when the variable is unset). The real data folder is never touched.
 
 use std::fs;
 use std::path::{Path, PathBuf};

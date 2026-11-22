@@ -4,16 +4,14 @@
 //! against it, nothing outside its folder read, and the repository's own
 //! `extensions/metadata/index.json` installing every example.
 
-mod support;
-
 use std::path::{Path, PathBuf};
 
+use crate::support::example;
 use heronite_data::paths::DataPaths;
 use heronite_metadata::{Endpoints, MetadataService};
 use heronite_metadata_ext::index::{self, IndexError};
 use heronite_metadata_ext::lists::{self, ListError, ListLocation, Lists, Origin};
 use heronite_metadata_ext::{ExtensionError, ExtensionsExt, InstallOutcome};
-use support::example;
 
 fn repo_index() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions/metadata/index.json").canonicalize().unwrap()

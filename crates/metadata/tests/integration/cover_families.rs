@@ -3,13 +3,11 @@
 //! "download the <family> covers" job with its locks and Undo, the job a
 //! view that starts using a family queues, and removing a game.
 
-mod common;
-
 use std::fs;
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
-use common::{fixture, png, Req, Resp, Server};
+use crate::common::{fixture, png, Req, Resp, Server};
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameMetadata, MetadataFile};
 use heronite_data::paths::DataPaths;

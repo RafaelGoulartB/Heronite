@@ -2,15 +2,13 @@
 //! chosen fields and sources, per-game results, Undo, the queue, the idle
 //! fills meeting a job, and the counts shown before a job.
 
-mod common;
-
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use common::{fallback, fixture, png, Req, Resp, Server, FALLBACK};
+use crate::common::{fallback, fixture, png, Req, Resp, Server, FALLBACK};
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameMetadata, MetadataFile};
 use heronite_data::paths::DataPaths;

@@ -382,22 +382,20 @@ mod tests {
     use super::cut_words;
 
     #[test]
-    fn text_that_fits_is_left_whole() {
-        assert_eq!(cut_words("Short and sweet.", None), "Short and sweet.");
-        assert_eq!(cut_words("Short and sweet.", Some(16)), "Short and sweet.");
-    }
-
-    #[test]
     fn a_cut_keeps_whole_words_and_ends_with_an_ellipsis() {
         let text = "and the dark depths of the underworld";
-        // The next line would start at "dark": "the" goes too, for the mark.
-        assert_eq!(cut_words(text, Some(8)), "and\u{2026}");
-        assert_eq!(cut_words(text, Some(text.find("depths").unwrap())), "and the\u{2026}");
-        assert_eq!(cut_words("One, two, three", Some(10)), "One\u{2026}");
-    }
-
-    #[test]
-    fn a_cut_off_a_char_boundary_is_ignored() {
-        assert_eq!(cut_words("Pokémon Emerald", Some(4)), "Pokémon Emerald");
+        for (text, at, want) in [
+            // Text that fits is left whole.
+            ("Short and sweet.", None, "Short and sweet."),
+            ("Short and sweet.", Some(16), "Short and sweet."),
+            // The next line would start at "dark": "the" goes too, for the mark.
+            (text, Some(8), "and\u{2026}"),
+            (text, text.find("depths"), "and the\u{2026}"),
+            ("One, two, three", Some(10), "One\u{2026}"),
+            // A cut off a char boundary is ignored.
+            ("Pokémon Emerald", Some(4), "Pokémon Emerald"),
+        ] {
+            assert_eq!(cut_words(text, at), want, "{text} at {at:?}");
+        }
     }
 }

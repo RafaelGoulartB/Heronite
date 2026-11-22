@@ -6,12 +6,11 @@
 //! LaunchBox leading for the emulated games it found surely, and an
 //! extension removed while the app runs.
 
-mod support;
-
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use crate::support::{endpoints, example, folder, manifest, pc_extras, Req, Resp, Server, PC_EXTRAS_HOST};
 use heronite_data::json_store;
 use heronite_data::paths::DataPaths;
 use heronite_metadata::record;
@@ -19,7 +18,6 @@ use heronite_metadata::sources::{AppliesTo, SourceStatus};
 use heronite_metadata::*;
 use heronite_metadata_ext::ExtensionsExt;
 use serde_json::{json, Value};
-use support::{endpoints, example, folder, manifest, pc_extras, Req, Resp, Server, PC_EXTRAS_HOST};
 
 const HOSTS: [&str; 3] = ["en.wikipedia.org", PC_EXTRAS_HOST, "api.retrodb.org"];
 const ARCHIVE: &str = "/launchbox/Metadata.zip";

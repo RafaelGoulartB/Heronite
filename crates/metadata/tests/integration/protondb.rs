@@ -1,11 +1,9 @@
 //! ProtonDB tier lookup against a local mock server.
 
-mod common;
-
 use std::fs;
 use std::path::Path;
 
-use common::{Resp, Server};
+use crate::common::{Resp, Server};
 use heronite_metadata::protondb::{cached_tier, tier};
 use heronite_metadata::Http;
 use serde_json::{json, Value};

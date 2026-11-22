@@ -22,8 +22,26 @@ indexmap = { version = "2", features = ["serde"] }
 # Windows' Documents and AppData folders (known folders, not variables).
 dirs = "6"
 
+[features]
+# Opt-in tests against real data, real tools or the network, and benchmarks:
+# `cargo test -p heronite-emulation --features manual-tests --test <name>`. Off by
+# default so CI does not build and link binaries that would skip anyway.
+manual-tests = []
+
 [dev-dependencies]
 tempfile = "3"
+
+[[test]]
+name = "real_data"
+required-features = ["manual-tests"]
+
+[[test]]
+name = "real_restore"
+required-features = ["manual-tests"]
+
+[[test]]
+name = "real_windows"
+required-features = ["manual-tests"]
 
 [lints]
 workspace = true

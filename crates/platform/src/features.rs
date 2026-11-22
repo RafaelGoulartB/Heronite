@@ -246,6 +246,9 @@ mod tests {
         assert_eq!(unknown, ["nope"]);
         assert_eq!(parse_overrides("-epic,+epic").0, [(Feature::EpicStore, true)], "the last one wins");
         assert!(parse_overrides("").0.is_empty());
+        // Overlay and replay are independent capabilities.
+        assert_eq!(parse_overrides("+overlay,-replay").0, [(Feature::Overlay, true), (Feature::Replay, false)]);
+        assert_eq!(parse_overrides("-overlay,+replay").0, [(Feature::Overlay, false), (Feature::Replay, true)]);
     }
 
     #[test]
@@ -257,15 +260,11 @@ mod tests {
     }
 
     #[test]
-    fn overlay_and_replay_are_independent_capabilities() {
+    fn linux_has_everything_but_windows_own_store_and_the_heroic_copy() {
         assert_eq!(built_in(Feature::Overlay), cfg!(any(target_os = "linux", windows)));
         assert_eq!(built_in(Feature::Replay), cfg!(target_os = "linux"));
-        assert_eq!(parse_overrides("+overlay,-replay").0, [(Feature::Overlay, true), (Feature::Replay, false)]);
-        assert_eq!(parse_overrides("-overlay,+replay").0, [(Feature::Overlay, false), (Feature::Replay, true)]);
-    }
-
-    #[test]
-    fn linux_has_everything_but_windows_own_store_and_the_heroic_copy() {
+        // Heroic's games come in only from Settings → Other launchers.
+        assert!(!built_in(Feature::HeroicMigration));
         if cfg!(target_os = "linux") {
             assert!(Feature::ALL.into_iter().filter(|f| !matches!(f, Feature::XboxStore | Feature::HeroicMigration)).all(built_in));
             assert!(!built_in(Feature::XboxStore));
@@ -275,11 +274,5 @@ mod tests {
             assert!(built_in(Feature::SteamGameSettings), "the launch options line");
             assert!(!built_in(Feature::Mods), "the mod manager is Linux only for now");
         }
-    }
-
-    /// Heroic's games come in only from Settings → Other launchers.
-    #[test]
-    fn heroic_is_never_copied_at_the_first_start() {
-        assert!(!built_in(Feature::HeroicMigration));
     }
 }

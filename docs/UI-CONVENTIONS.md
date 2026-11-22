@@ -1140,7 +1140,7 @@ Statistics performance: the page renders again on every scroll frame and mouse m
   cell under the cursor comes from its rectangle). The month strip builds only the cards in view.
 - Lists are capped: Journeys lanes by 40 with "Show more", "Show all" games at 100, the Backlog's covers at the latest 60.
 - `crates/data/tests/stats_scale.rs` times every period function on 3,000 games and ~180,000 sessions
-  (`cargo test --release -p heronite-data --test stats_scale -- --ignored --nocapture`).
+  (`cargo test --release -p heronite-data --features manual-tests --test stats_scale -- --ignored --nocapture`).
 
 **Console mode** (`app/src/console/`, shell in `collection/console/`): an extra controller-first TV mode
 entered from ☰ › Console mode or the palette,

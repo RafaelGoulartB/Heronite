@@ -1,6 +1,8 @@
 //! The example extensions against the real services, to check the scripts
-//! and the recorded fixtures against today's answers. Opt in with
-//! `HERONITE_LIVE=1`. Writes go to a tempdir.
+//! and the recorded fixtures against today's answers. Built only with
+//! `--features manual-tests`; opt in with `HERONITE_LIVE=1 cargo test -p
+//! heronite-metadata-ext --features manual-tests --test live`. Writes go to
+//! a tempdir.
 
 mod support;
 

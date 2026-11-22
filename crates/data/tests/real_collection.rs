@@ -1,5 +1,5 @@
 //! End-to-end checks against a copy of the real data.
-//! `HERONITE_FIXTURE=/tmp/heronite-fixture cargo test -p heronite-data`
+//! `HERONITE_FIXTURE=/tmp/heronite-fixture cargo test -p heronite-data --features manual-tests --test real_collection`
 
 use heronite_data::collection::*;
 use heronite_data::{art, DataPaths, Library};

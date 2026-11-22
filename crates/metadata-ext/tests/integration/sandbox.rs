@@ -1,17 +1,15 @@
 //! The sandbox: what a script cannot do, the limits of a call, and the
 //! host API (`ctx`), against the fixture server.
 
-mod support;
-
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::support::{endpoints, Http, Resp, Server};
 use heronite_metadata::http::APP_UA;
 use heronite_metadata_ext::engine::{session, CallError, HostEnv, Limit, Script};
 use heronite_metadata_ext::net::{HostRule, RateLimiter};
 use heronite_metadata_ext::{ExtensionError, Limits};
 use serde_json::{json, Value};
-use support::{endpoints, Http, Resp, Server};
 
 const HOSTS: [&str; 2] = ["api.example.org", "other.example.org"];
 
@@ -181,19 +179,26 @@ fn a_poisoned_prototype_does_not_reach_the_host() {
 
 #[test]
 fn an_endless_loop_is_stopped() {
+    // Each case waits out the time limit: they run at once, one engine each.
     let started = Instant::now();
-    let e = run("while (true) {}").unwrap_err();
-    assert!(matches!(e, CallError::Limit(Limit::Time, _)), "{e:?}");
-    assert!(started.elapsed() < Duration::from_secs(5));
-    // Not even a catch keeps it going.
-    let e = run("try { while (true) {} } catch (e) {} return 'escaped';").unwrap_err();
-    assert!(matches!(e, CallError::Limit(Limit::Time, _)), "{e:?}");
-    // Nor a loop of jobs.
-    let e = run("const spin = () => Promise.resolve().then(spin); await spin();").unwrap_err();
-    assert!(matches!(e, CallError::Limit(Limit::Time | Limit::Memory | Limit::NeverSettled, _)), "{e:?}");
-    // Nor a regular expression that backtracks for ever.
-    let e = run("return /^(a+)+$/.test('a'.repeat(40) + 'b');").unwrap_err();
-    assert!(matches!(e, CallError::Limit(Limit::Time, _)), "{e:?}");
+    let [plain, caught, jobs, backtracks] = std::thread::scope(|s| {
+        [
+            "while (true) {}",
+            // Not even a catch keeps it going.
+            "try { while (true) {} } catch (e) {} return 'escaped';",
+            // Nor a loop of jobs.
+            "const spin = () => Promise.resolve().then(spin); await spin();",
+            // Nor a regular expression that backtracks for ever.
+            "return /^(a+)+$/.test('a'.repeat(40) + 'b');",
+        ]
+        .map(|code| s.spawn(move || run(code).unwrap_err()))
+        .map(|call| call.join().unwrap())
+    });
+    assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());
+    for e in [plain, caught, backtracks] {
+        assert!(matches!(e, CallError::Limit(Limit::Time, _)), "{e:?}");
+    }
+    assert!(matches!(jobs, CallError::Limit(Limit::Time | Limit::Memory | Limit::NeverSettled, _)), "{jobs:?}");
 }
 
 #[test]
@@ -435,7 +440,7 @@ fn settings_are_the_extensions_own() {
 #[test]
 fn a_runtime_per_call_is_cheap() {
     let env = env(Http::default(), Limits::default());
-    let source = std::fs::read_to_string(support::example("wikipedia").join("source.js")).unwrap();
+    let source = std::fs::read_to_string(crate::support::example("wikipedia").join("source.js")).unwrap();
     let started = Instant::now();
     let script = Script::compile(&source, &env).unwrap();
     let compile = started.elapsed();

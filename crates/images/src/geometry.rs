@@ -78,28 +78,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn wide_source_crops_sides() {
-        // 1920x620 hero into a 250x375 tile: keep full height, crop width.
-        let c = cover_crop(1920, 620, 250, 375);
-        assert_eq!(c.h, 620.0);
-        assert!((c.w - 620.0 * 250.0 / 375.0).abs() < 1e-9);
-        assert!((c.x - (1920.0 - c.w) / 2.0).abs() < 1e-9);
-        assert_eq!(c.y, 0.0);
-    }
-
-    #[test]
-    fn tall_source_crops_top_bottom() {
-        let c = cover_crop(600, 900, 400, 400);
-        assert_eq!(c.w, 600.0);
-        assert_eq!(c.h, 600.0);
-        assert_eq!(c.x, 0.0);
-        assert_eq!(c.y, 150.0);
-    }
-
-    #[test]
-    fn same_aspect_is_identity() {
-        let c = cover_crop(600, 900, 200, 300);
-        assert_eq!(c, CropRect { x: 0.0, y: 0.0, w: 600.0, h: 900.0 });
+    fn cover_crops_the_center_at_the_target_aspect() {
+        let wide_w = 620.0 * 250.0 / 375.0;
+        for (src, dst, want) in [
+            // A 1920x620 hero into a 250x375 tile: the full height, the width cropped.
+            ((1920, 620), (250, 375), CropRect { x: (1920.0 - wide_w) / 2.0, y: 0.0, w: wide_w, h: 620.0 }),
+            // A tall source into a square: the top and bottom cropped.
+            ((600, 900), (400, 400), CropRect { x: 0.0, y: 150.0, w: 600.0, h: 600.0 }),
+            // The same aspect: the whole source.
+            ((600, 900), (200, 300), CropRect { x: 0.0, y: 0.0, w: 600.0, h: 900.0 }),
+        ] {
+            let c = cover_crop(src.0, src.1, dst.0, dst.1);
+            let close = |a: f64, b: f64| (a - b).abs() < 1e-9;
+            assert!(close(c.x, want.x) && close(c.y, want.y) && close(c.w, want.w) && close(c.h, want.h), "{src:?} -> {dst:?}: {c:?}");
+        }
     }
 
     #[test]

@@ -528,22 +528,17 @@ mod tests {
     }
 
     #[test]
-    fn saved_backup_is_a_desktop_notice() {
+    fn a_backup_after_play_says_what_happened() {
+        // Saved: a desktop notice.
         let r = LudusaviBackupResult { ran: true, game_name: Some("Hades".into()), backup_path: Some("/b".into()), ..Default::default() };
         let n = backup_notice(&r, "hades").unwrap();
         assert_eq!(n, Notice { title: "Ludusavi".into(), text: "Saved Hades to /b".into(), error: false, desktop: true });
-    }
-
-    #[test]
-    fn failed_backup_is_an_error_only_for_the_desktop_without_window() {
+        // Failed: an error, for the desktop only without the window.
         let r = LudusaviBackupResult { error: Some("boom".into()), ..Default::default() };
         let n = backup_notice(&r, "x").unwrap();
         assert!(n.error && !n.desktop);
         assert_eq!(n.text, "Ludusavi backup failed: boom");
-    }
-
-    #[test]
-    fn skipped_backup_says_nothing() {
+        // Skipped: nothing.
         let r = LudusaviBackupResult { skipped_reason: Some("disabled".into()), ..Default::default() };
         assert_eq!(backup_notice(&r, "x"), None);
     }

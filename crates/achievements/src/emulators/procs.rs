@@ -118,16 +118,28 @@ mod tests {
     }
 
     #[test]
-    fn binaries_and_appimages_match() {
-        assert!(matches(Emulator::Pcsx2, &proc("pcsx2-qt", &[])));
-        assert!(matches(Emulator::Pcsx2, &proc("AppRun.wrapped", &["/opt/pcsx2-v2.4.0-linux-appimage-x64-Qt.AppImage"])));
-        assert!(matches(Emulator::Ppsspp, &proc("PPSSPPSDL", &[])));
-        assert!(matches(Emulator::DuckStation, &proc("duckstation-qt", &["duckstation-qt", "game.chd"])));
-        assert!(matches(Emulator::Dolphin, &proc("dolphin-emu", &[])));
-        assert!(matches(Emulator::Flycast, &proc("flycast", &[])));
-        assert!(matches(Emulator::RetroArch, &proc("retroarch", &[])));
-        assert!(matches(Emulator::RetroArch, &proc("RETROARCH.EXE", &[])));
-        assert!(matches(Emulator::RetroArch, &proc("", &[r"C:\Emulators\RetroArch\retroarch.exe"])));
+    fn binaries_appimages_and_flatpak_ids_match_and_other_programs_do_not() {
+        let flatpak = ["flatpak", "run", "org.libretro.RetroArch"];
+        let cases: &[(Emulator, &str, &[&str], bool)] = &[
+            (Emulator::Pcsx2, "pcsx2-qt", &[], true),
+            (Emulator::Pcsx2, "AppRun.wrapped", &["/opt/pcsx2-v2.4.0-linux-appimage-x64-Qt.AppImage"], true),
+            (Emulator::Ppsspp, "PPSSPPSDL", &[], true),
+            (Emulator::DuckStation, "duckstation-qt", &["duckstation-qt", "game.chd"], true),
+            (Emulator::Dolphin, "dolphin-emu", &[], true),
+            (Emulator::Flycast, "flycast", &[], true),
+            (Emulator::RetroArch, "retroarch", &[], true),
+            (Emulator::RetroArch, "RETROARCH.EXE", &[], true),
+            (Emulator::RetroArch, "", &[r"C:\Emulators\RetroArch\retroarch.exe"], true),
+            (Emulator::RetroArch, "flatpak", &flatpak, true),
+            (Emulator::Dolphin, "flatpak", &flatpak, false),
+            // KDE's file manager, a shell naming one, Heronite itself.
+            (Emulator::Dolphin, "dolphin", &["/usr/bin/dolphin"], false),
+            (Emulator::Pcsx2, "zsh", &["zsh", "-c", "echo pcsx2"], false),
+            (Emulator::Flycast, "heronite", &["heronite"], false),
+        ];
+        for &(emulator, comm, args, expected) in cases {
+            assert_eq!(matches(emulator, &proc(comm, args)), expected, "{emulator:?}: {comm} {args:?}");
+        }
     }
 
     #[test]
@@ -168,19 +180,6 @@ mod tests {
         );
         let programs = vec![program];
         assert!(running(&programs)(Emulator::RetroArch));
-    }
-
-    #[test]
-    fn flatpak_runs_match_by_id() {
-        assert!(matches(Emulator::RetroArch, &proc("flatpak", &["flatpak", "run", "org.libretro.RetroArch"])));
-        assert!(!matches(Emulator::Dolphin, &proc("flatpak", &["flatpak", "run", "org.libretro.RetroArch"])));
-    }
-
-    #[test]
-    fn other_programs_do_not_match() {
-        assert!(!matches(Emulator::Dolphin, &proc("dolphin", &["/usr/bin/dolphin"])));
-        assert!(!matches(Emulator::Pcsx2, &proc("zsh", &["zsh", "-c", "echo pcsx2"])));
-        assert!(!matches(Emulator::Flycast, &proc("heronite", &["heronite"])));
     }
 
     #[test]

@@ -1,9 +1,10 @@
 //! Opt-in checks against the real legendary and the real Epic account
 //! (READ-ONLY commands: `list`, `info`). Needs a data folder whose
 //! `legendaryConfig` is a symlink to the real one (legendary rotates its login
-//! token, so it must never run on a copy):
+//! token, so it must never run on a copy). Built only with
+//! `--features manual-tests`:
 //!
-//! `HERONITE_EPIC_FIXTURE=/tmp/heronite-fixture-epic cargo test -p heronite-epic --test real_legendary -- --nocapture`
+//! `HERONITE_EPIC_FIXTURE=/tmp/heronite-fixture-epic cargo test -p heronite-epic --features manual-tests --test real_legendary -- --nocapture`
 
 use heronite_data::DataPaths;
 use heronite_epic::cmd::Legendary;

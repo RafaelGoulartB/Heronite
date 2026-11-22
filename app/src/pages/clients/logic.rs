@@ -248,6 +248,9 @@ mod tests {
     fn a_client_goes_from_not_set_up_to_ready_to_running() {
         let mut st = ClientState::default();
         assert_eq!(pill(&st), Pill::NotSetUp);
+        // Nothing is offered before the first look.
+        let m = main_action(Client::Ubisoft, &st);
+        assert_eq!((m.id, m.enabled), ("setup", false));
         st.status = Some(Status::default());
         let m = main_action(Client::Ea, &st);
         assert_eq!((m.id, m.enabled), ("setup", true));
@@ -257,12 +260,6 @@ mod tests {
         st.running = true;
         assert_eq!(pill(&st), Pill::Running);
         assert_eq!(main_action(Client::Ea, &st).id, "close");
-    }
-
-    #[test]
-    fn nothing_is_offered_before_the_first_look() {
-        let m = main_action(Client::Ubisoft, &ClientState::default());
-        assert_eq!((m.id, m.enabled), ("setup", false));
     }
 
     #[test]
@@ -375,8 +372,7 @@ mod tests {
     fn no_desktop_folder_means_no_desktop_switch() {
         use super::shortcut_switches;
         use crate::services::clients::shortcuts::Shortcuts;
-        let mut st = ClientState::default();
-        st.status = Some(Status { prefix: Some("/p".into()), exe: Some("/p/x.exe".into()), ..Default::default() });
+        let mut st = installed();
         assert_eq!(shortcut_switches(&st), (false, true));
         st.shortcuts = Shortcuts { has_desktop: true, ..Default::default() };
         assert_eq!(shortcut_switches(&st), (true, true));

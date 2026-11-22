@@ -562,24 +562,18 @@ mod tests {
     use crate::theme;
 
     #[test]
-    fn wide_panel_keeps_two_detail_columns() {
+    fn the_panel_width_picks_columns_stacked_or_narrow() {
+        // Wide: two detail columns.
         let lay = layout(1920. - theme::LIST_COL_W);
         assert!(!lay.narrow && !lay.stacked);
         assert!(lay.main_w >= MAIN_MIN_W);
         assert_eq!(lay.side_w, SIDE_MAX_W);
-    }
-
-    #[test]
-    fn medium_panel_stacks_the_side_sections() {
-        // 1600 px window next to the 3-cover list: two columns would leave
-        // the main one about 380 px wide.
+        // Medium: a 1600 px window next to the 3-cover list would leave the
+        // main column about 380 px wide, so the side sections stack.
         let lay = layout(1600. - theme::LIST_COL_W);
         assert!(!lay.narrow && lay.stacked);
         assert_eq!(lay.left_w, 232.);
-    }
-
-    #[test]
-    fn small_panel_is_narrow() {
+        // Small: narrow.
         let lay = layout(1000. - theme::LIST_COL_W_MD);
         assert!(lay.narrow && lay.stacked);
         assert_eq!(lay.left_w, 0.);

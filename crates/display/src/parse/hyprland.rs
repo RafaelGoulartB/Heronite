@@ -126,11 +126,7 @@ mod tests {
         assert_eq!(tv.current, None);
         // An older Hyprland without hardwareDetails, VRR and HDR off: unknown.
         assert_eq!((tv.hdr, tv.vrr), (None, None));
-    }
-
-    #[test]
-    fn hyprland_has_no_primary_monitor() {
-        let snap = Snapshot::new(Backend::Hyprland, parse(FIXTURE).unwrap());
+        // Hyprland has no primary monitor.
         assert_eq!(snap.capabilities.primary, PrimarySupport::None);
         assert!(snap.capabilities.hdr && snap.capabilities.vrr);
     }

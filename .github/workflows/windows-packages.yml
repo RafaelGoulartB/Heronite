@@ -33,6 +33,14 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
+      - name: Exclude build paths from Windows Defender
+        shell: pwsh
+        run: |
+          try {
+            Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, "$env:USERPROFILE\.cargo", $env:RUNNER_TEMP
+          } catch {
+            Write-Warning "Defender exclusion skipped: $_"
+          }
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Inno Setup

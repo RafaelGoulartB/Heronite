@@ -26,5 +26,30 @@ zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2
 heronite-data = { path = "../data", features = ["testing"] }
 tempfile = "3"
 
+[features]
+# Opt-in tests that need a real machine (Proton, Wine, umu), the network or
+# downloads; not built in CI.
+manual-tests = []
+
+[[test]]
+name = "real_comet"
+required-features = ["manual-tests"]
+
+[[test]]
+name = "real_companions"
+required-features = ["manual-tests"]
+
+[[test]]
+name = "real_launch_speed"
+required-features = ["manual-tests"]
+
+[[test]]
+name = "real_network"
+required-features = ["manual-tests"]
+
+[[test]]
+name = "real_sandbox"
+required-features = ["manual-tests"]
+
 [lints]
 workspace = true

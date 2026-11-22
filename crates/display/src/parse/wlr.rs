@@ -124,11 +124,7 @@ mod tests {
         assert!(panel.builtin && !panel.enabled);
         assert_eq!((panel.current, panel.vrr), (None, None));
         assert_eq!(panel.preferred.map(|m| m.width), Some(2256));
-    }
-
-    #[test]
-    fn wlroots_has_no_primary_and_no_hdr() {
-        let snap = Snapshot::new(Backend::Wlroots, parse(FIXTURE).unwrap());
+        // wlroots has no primary and no HDR.
         assert_eq!(snap.capabilities.primary, PrimarySupport::None);
         assert!(!snap.capabilities.hdr && snap.capabilities.vrr);
     }
