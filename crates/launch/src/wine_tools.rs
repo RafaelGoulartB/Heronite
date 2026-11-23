@@ -161,6 +161,7 @@ pub fn kill_prefix_command(ctx: &PlanContext, probe: &dyn Probe, settings: &Game
     let s = &wine.settings;
     let mut env = setup_env_vars(s, None, probe);
     env.extend(setup_wine_env_vars(s, "0", &ctx.runtime_dir(), probe));
+    env.entry("GAMEID".into()).or_insert_with(|| "umu-0".into());
     confined(ctx, probe, s, wine.shutdown_command(&env), None, Vec::new())
 }
 
@@ -255,6 +256,7 @@ fn run_in_prefix_at(
     let mut env = setup_env_vars(s, install_path, probe);
     env.extend(setup_wine_env_vars(s, "0", &ctx.runtime_dir(), probe));
     quiet_wine_debug(&mut env, s);
+    env.entry("GAMEID".into()).or_insert_with(|| "umu-0".into());
     env.insert("PROTON_VERB".into(), "run".into());
     if wine.runtime == WineRuntime::Proton {
         parts.insert(0, "run".into());
@@ -466,6 +468,12 @@ mod tests {
         assert_eq!(t.command.program, "/usr/bin/umu-run");
         assert_eq!(t.command.args, ["/games/g.exe"]);
         assert_eq!(t.command.env["PROTONPATH"], "/p/GE");
+        assert_eq!(t.command.env["GAMEID"], "umu-0");
+
+        let mut custom = settings("proton", "/p/GE/proton");
+        custom.env_options.push(("GAMEID".into(), "umu-123".into()));
+        let t = build_tool_command(&ctx(), &probe(), &custom, &WineTool::RunExe("/games/g.exe".into())).unwrap();
+        assert_eq!(t.command.env["GAMEID"], "umu-123");
     }
 
     #[test]
@@ -573,6 +581,12 @@ mod tests {
         assert_eq!((c[0].program.as_str(), c[0].args.as_slice()), ("/usr/bin/umu-run", &["createprefix".to_string()][..]));
         let k = kill_prefix_command(&ctx(), &probe(), &settings("wine", "/w/bin/wine")).unwrap();
         assert_eq!((k.program.as_str(), k.args.as_slice()), ("/w/bin/wineserver", &["-k".to_string()][..]));
+        let kp = kill_prefix_command(&ctx(), &probe(), &settings("proton", "/p/GE/proton")).unwrap();
+        assert_eq!((kp.program.as_str(), kp.args.as_slice()), ("/usr/bin/umu-run", &["wineboot".to_string(), "-k".to_string()][..]));
+        assert_eq!(kp.env["GAMEID"], "umu-0");
+        let mut custom = settings("proton", "/p/GE/proton");
+        custom.env_options.push(("GAMEID".into(), "umu-42".into()));
+        assert_eq!(kill_prefix_command(&ctx(), &probe(), &custom).unwrap().env["GAMEID"], "umu-42");
     }
 
     #[test]

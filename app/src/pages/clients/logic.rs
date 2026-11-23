@@ -99,6 +99,7 @@ pub(super) fn step_text(client: Client, progress: &Progress, cancelling: bool) -
         Progress::Wine(_) => tr!("Looking for a Proton\u{2026}").to_string(),
         Progress::Step(Step::Downloading(Some(p))) => tr!("Downloading the installer\u{2026} {percent}%", percent = percent(*p)),
         Progress::Step(Step::Downloading(None)) => tr!("Downloading the installer\u{2026}").to_string(),
+        Progress::Step(Step::DownloadingUmu) => tr!("Downloading the umu runtime\u{2026}").to_string(),
         Progress::Step(Step::CreatingPrefix) => tr!("Creating the Wine prefix\u{2026}").to_string(),
         Progress::Step(Step::Installing) => tr!("Installing {client}\u{2026} this can take a few minutes", client = client.name()),
     }
@@ -289,9 +290,14 @@ mod tests {
         let ea = Client::Ea;
         let say = |p: Progress| step_text(ea, &p, false);
         assert!(say(Progress::Step(Step::Downloading(Some(41.6)))).contains("42"));
-        assert!(!say(Progress::Step(Step::Downloading(None))).contains('%'));
+        assert!(
+            say(Progress::Step(Step::Downloading(None))).contains("installer")
+                && !say(Progress::Step(Step::Downloading(None))).contains('%')
+        );
+        assert!(say(Progress::Step(Step::DownloadingUmu)).contains("umu"));
         assert!(say(Progress::Step(Step::Installing)).contains("EA app"));
         assert_eq!(step_percent(&Progress::Step(Step::Downloading(Some(10.)))), Some(10.));
+        assert_eq!(step_percent(&Progress::Step(Step::DownloadingUmu)), None);
         assert_eq!(step_percent(&Progress::Step(Step::Installing)), None);
         let wine = Progress::Wine(WineSetup::Downloading { version: "GE".into(), percentage: 7. });
         assert!(say(wine.clone()).contains('7'));

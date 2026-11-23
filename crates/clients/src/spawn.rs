@@ -5,15 +5,20 @@ use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Child;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Result};
+use heronite_data::clients::Client;
 use heronite_data::proc::{Cancel, Run};
 use heronite_data::DataPaths;
 use heronite_i18n::tr;
 use heronite_launch::log_writer::LogPaths;
+use heronite_launch::net::{Net, CANCELLED};
 use heronite_launch::procs::{Procs, Sig};
-use heronite_launch::Command;
+use heronite_launch::runtimes::{self, Runtime};
+use heronite_launch::settings::GameSettings;
+use heronite_launch::{Command, PlanContext, Probe};
 
 /// `<logs>/clients/<file>`.
 pub(crate) fn log_path(paths: &DataPaths, file: &str) -> PathBuf {
@@ -38,6 +43,63 @@ pub(crate) fn std_command(command: &Command) -> std::process::Command {
     }
     heronite_launch::wine::drop_host_certs(command, &mut cmd);
     cmd
+}
+
+/// Downloads the umu runtime when `settings` run a Proton build through it
+/// and neither `umu-run` on `$PATH` nor the bundled copy is present yet.
+/// `Ok(true)` when umu was downloaded, `Ok(false)` when nothing was needed.
+/// `can_disable_umu` includes the hint to turn on "Disable umu" in Wine
+/// settings (available once the client is installed, hidden during first setup).
+pub(crate) fn ensure_umu(
+    ctx: &PlanContext,
+    probe: &dyn Probe,
+    net: &dyn Net,
+    settings: &GameSettings,
+    cancel: &Cancel,
+    can_disable_umu: bool,
+    before_download: impl FnOnce(),
+) -> Result<bool, String> {
+    if !heronite_launch::wine::prepare_for_launch(ctx, probe, settings)?.umu_download {
+        return Ok(false);
+    }
+    static UMU_LOCK: Mutex<()> = Mutex::new(());
+    let _guard = UMU_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !heronite_launch::wine::prepare_for_launch(ctx, probe, settings)?.umu_download {
+        return Ok(false);
+    }
+    if cancel.is_requested() {
+        return Err(tr!("Cancelled").into());
+    }
+    if !net.is_online() {
+        return Err(umu_download_failed("no internet connection", can_disable_umu));
+    }
+    before_download();
+    let check = || cancel.is_requested();
+    match runtimes::download(&ctx.paths, net, Runtime::Umu, &check) {
+        Ok(()) => Ok(true),
+        Err(e) if e == CANCELLED => Err(tr!("Cancelled").into()),
+        Err(e) => Err(umu_download_failed(&e, can_disable_umu)),
+    }
+}
+
+fn umu_download_failed(error: &str, can_disable_umu: bool) -> String {
+    if can_disable_umu {
+        tr!(
+            "The umu runtime is not installed and could not be downloaded ({error}). Enable \"Disable umu\" in Wine settings to run Proton directly.",
+            error
+        )
+    } else {
+        tr!("The umu runtime is not installed and could not be downloaded ({error}).", error)
+    }
+}
+
+/// Logs the runner, Proton build (if any) and log file of a client command to
+/// the main app log, so launcher logs show what ran.
+pub(crate) fn log_launch(client: Client, action: &str, command: &Command, log_file: &Path) {
+    match command.env.get("PROTONPATH") {
+        Some(proton) => log::info!("{}: {action} via {} (proton: {}, log: {})", client.name(), command.program, proton, log_file.display()),
+        None => log::info!("{}: {action} via {} (log: {})", client.name(), command.program, log_file.display()),
+    }
 }
 
 /// Runs `command` until it ends (it ends with the app, as a helper does),
@@ -145,7 +207,7 @@ fn stop_group(child: &mut Child, procs: &dyn Procs) {
 }
 
 #[cfg(all(test, unix))]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use heronite_launch::procs::{FakeProcs, SystemProcs};
     use std::cell::Cell;
@@ -246,5 +308,160 @@ mod tests {
             .unwrap_err()
             .to_string()
             .starts_with("Could not start /nope/never"));
+    }
+
+    /// Real filesystem probe that hides any host `umu-run` on `$PATH`, so tests
+    /// behave the same on machines with and without a system umu install.
+    pub(crate) struct DiskProbeNoUmu(pub String);
+
+    impl Probe for DiskProbeNoUmu {
+        fn exists(&self, path: &str) -> bool {
+            !path.is_empty() && Path::new(path).exists()
+        }
+        fn read_head(&self, _path: &str, _n: usize) -> Option<Vec<u8>> {
+            None
+        }
+        fn which(&self, _name: &str) -> Option<String> {
+            None
+        }
+        fn env_var(&self, _key: &str) -> Option<String> {
+            None
+        }
+        fn home(&self) -> String {
+            self.0.clone()
+        }
+        fn steam_roots(&self) -> Vec<PathBuf> {
+            Vec::new()
+        }
+        fn steam_system_roots(&self) -> Vec<PathBuf> {
+            Vec::new()
+        }
+    }
+
+    /// A `FakeNet` serving a `umu` archive whose `umu_run.py` runs `script`.
+    pub(crate) fn umu_net(dir: &Path, script: &str) -> heronite_launch::net::FakeNet {
+        let src = dir.join("umu-src/umu");
+        std::fs::create_dir_all(&src).unwrap();
+        let py = src.join("umu_run.py");
+        std::fs::write(&py, script).unwrap();
+        heronite_platform::fs::make_executable(&py).unwrap();
+        let archive = dir.join("umu.tar.gz");
+        let ok = std::process::Command::new("tar")
+            .args(["-czf"])
+            .arg(&archive)
+            .arg("-C")
+            .arg(dir.join("umu-src"))
+            .arg("umu")
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok);
+        let bytes = std::fs::read(&archive).unwrap();
+        heronite_launch::net::FakeNet::online()
+            .with_json(runtimes::RUNTIMES_URL, serde_json::json!([{"name": "umu", "url": "http://x/umu.tar.gz", "created_at": "T1"}]))
+            .with_file("http://x/umu.tar.gz", bytes)
+    }
+
+    #[test]
+    fn ensure_umu_downloads_for_proton_when_missing_and_skips_otherwise() {
+        use heronite_launch::net::FakeNet;
+        use heronite_launch::probe::FakeProbe;
+        use heronite_launch::settings::WineVersion;
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("data"));
+        let ctx = PlanContext::load(&paths);
+        let mut proton = GameSettings {
+            wine_version: WineVersion { bin: "/p/GE/proton".into(), name: "GE".into(), kind: "proton".into(), ..Default::default() },
+            wine_prefix: "/pfx".into(),
+            ..Default::default()
+        };
+        let probe = FakeProbe::new("/h").with_path("/p/GE/proton");
+
+        // Plain Wine, disableUMU, sandbox, or an existing umu: no network call.
+        let quiet = FakeNet::online();
+        let wine = GameSettings {
+            wine_version: WineVersion { bin: "/w/wine".into(), name: "W".into(), kind: "wine".into(), ..Default::default() },
+            ..proton.clone()
+        };
+        let wine_probe = FakeProbe::new("/h").with_path("/w/wine").with_path("/w/wineserver");
+        assert_eq!(ensure_umu(&ctx, &wine_probe, &quiet, &wine, &Cancel::new(), true, || panic!("no download")), Ok(false));
+
+        let mut no_umu = proton.clone();
+        no_umu.disable_umu = Some(true);
+        assert_eq!(ensure_umu(&ctx, &probe, &quiet, &no_umu, &Cancel::new(), true, || panic!("no download")), Ok(false));
+
+        let with_sys_umu = probe.clone().with_bin("umu-run", "/usr/bin/umu-run");
+        assert_eq!(ensure_umu(&ctx, &with_sys_umu, &quiet, &proton, &Cancel::new(), true, || panic!("no download")), Ok(false));
+        assert!(quiet.requests().is_empty());
+
+        // Offline: installed client points to "Disable umu", first-time setup does not.
+        let err = ensure_umu(&ctx, &probe, &FakeNet::offline(), &proton, &Cancel::new(), true, || panic!("offline")).unwrap_err();
+        assert!(err.contains("umu") && err.contains("Disable umu"), "{err}");
+        let setup_err = ensure_umu(&ctx, &probe, &FakeNet::offline(), &proton, &Cancel::new(), false, || panic!("offline")).unwrap_err();
+        assert!(setup_err.contains("umu") && !setup_err.contains("Wine settings"), "{setup_err}");
+
+        // Cancelled before download.
+        let cancel = Cancel::new();
+        cancel.request();
+        let err = ensure_umu(&ctx, &probe, &FakeNet::online(), &proton, &cancel, true, || panic!("cancelled")).unwrap_err();
+        assert_eq!(err, "Cancelled");
+
+        // Missing and online: downloads and unpacks `umu_run.py`.
+        let net = umu_net(dir.path(), "#!/bin/sh\n");
+        let notified = Cell::new(false);
+        assert_eq!(ensure_umu(&ctx, &probe, &net, &proton, &Cancel::new(), true, || notified.set(true)), Ok(true));
+        assert!(notified.get());
+        assert!(runtimes::umu_script(&paths).is_file());
+
+        // Sandbox skips umu too.
+        proton.sandbox.enabled = true;
+        assert_eq!(ensure_umu(&ctx, &probe, &quiet, &proton, &Cancel::new(), true, || panic!("sandbox")), Ok(false));
+    }
+
+    #[test]
+    fn concurrent_ensure_umu_downloads_once() {
+        use heronite_launch::settings::WineVersion;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{Arc, Barrier};
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("data"));
+        let proton_bin = dir.path().join("proton");
+        std::fs::write(&proton_bin, "#!/bin/sh\n").unwrap();
+        let settings = GameSettings {
+            wine_version: WineVersion {
+                bin: proton_bin.to_string_lossy().into_owned(),
+                name: "GE".into(),
+                kind: "proton".into(),
+                ..Default::default()
+            },
+            wine_prefix: dir.path().join("pfx").to_string_lossy().into_owned(),
+            ..Default::default()
+        };
+        let net = Arc::new(umu_net(dir.path(), "#!/bin/sh\n"));
+        let barrier = Arc::new(Barrier::new(2));
+        let downloads = Arc::new(AtomicUsize::new(0));
+        let results: Vec<bool> = std::thread::scope(|s| {
+            let mut handles = Vec::new();
+            for _ in 0..2 {
+                let (paths, settings, net, barrier, downloads) =
+                    (paths.clone(), settings.clone(), net.clone(), barrier.clone(), downloads.clone());
+                let home = dir.path().to_string_lossy().into_owned();
+                handles.push(s.spawn(move || {
+                    let ctx = PlanContext::load(&paths);
+                    let probe = DiskProbeNoUmu(home);
+                    barrier.wait();
+                    ensure_umu(&ctx, &probe, net.as_ref(), &settings, &Cancel::new(), true, || {
+                        downloads.fetch_add(1, Ordering::SeqCst);
+                    })
+                    .unwrap()
+                }));
+            }
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        assert_eq!(downloads.load(Ordering::SeqCst), 1);
+        assert_eq!(results.iter().filter(|&&d| d).count(), 1);
+        assert!(runtimes::umu_script(&paths).is_file());
     }
 }
