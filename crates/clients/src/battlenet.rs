@@ -130,6 +130,10 @@ fn game(place: &Place, install: Install) -> Option<ClientGame> {
         }
     };
     let folder = path.as_deref().and_then(|p| place.local_path(p));
+    // A folder deleted outside Battle.net leaves a stale entry in `product.db`.
+    if folder.as_ref().is_some_and(|d| !d.is_dir()) {
+        return None;
+    }
     let launch = format!("--exec=\"launch {}\"", code.replace('"', ""));
     Some(ClientGame { id, title, folder, launch })
 }
@@ -190,11 +194,22 @@ mod tests {
         db.extend(product("diablo3", "d3", Some("C:/Games/Diablo III"), None));
         db.extend(product("prometheus", "prometheus", Some("C:/Program Files (x86)/Overwatch"), Some(false)));
         db.extend(product("newgame", "NGM", Some("C:/Program Files (x86)/The New Game"), Some(true)));
+        db.extend(product("s2", "s2", Some("C:/Program Files (x86)/StarCraft II"), Some(true)));
+        db.extend(product("w3", "w3", Some("D:/Games/Warcraft III"), Some(true)));
         db.extend(product("ghost", "GHO", None, None));
         // Fields this reader does not know are skipped.
         db.extend(Writer::default().text(2, "x").fixed64(3, 1).num(4, 1).0);
         let dir = prefix_with_db(&db);
-        std::fs::create_dir_all(dir.path().join("drive_c/Program Files (x86)/World of Warcraft")).unwrap();
+        for rel in [
+            "drive_c/Program Files (x86)/World of Warcraft",
+            "drive_c/Program Files (x86)/Diablo IV",
+            "drive_c/Games/Diablo III",
+            "drive_c/Program Files (x86)/The New Game",
+        ] {
+            std::fs::create_dir_all(dir.path().join(rel)).unwrap();
+        }
+        // StarCraft II's folder is missing on disk: skipped as stale.
+        // Warcraft III is on an unmapped drive (`folder` is `None`): kept.
 
         let games = games(&dir.path().into());
         let got: Vec<_> = games.iter().map(|g| (g.id.as_str(), g.title.as_str(), g.launch.as_str())).collect();
@@ -205,11 +220,13 @@ mod tests {
                 ("fenris", "Diablo IV", r#"--exec="launch Fen""#),
                 ("diablo3", "Diablo III", r#"--exec="launch D3""#),
                 ("newgame", "The New Game", r#"--exec="launch NGM""#),
+                ("w3", "Warcraft III: Reforged", r#"--exec="launch W3""#),
             ]
         );
         assert_eq!(games[0].folder.as_deref(), Some(dir.path().join("drive_c/Program Files (x86)/World of Warcraft").as_path()));
+        assert_eq!(games[4].folder, None);
         // The launch text is one argument for the launch side.
-        assert_eq!(shlex::split(&games[0].launch).unwrap(), [r#"--exec=launch WoW"#]);
+        assert_eq!(heronite_launch::split_windows_args(&games[0].launch), [r#"--exec=launch WoW"#]);
     }
 
     #[test]

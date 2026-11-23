@@ -24,11 +24,7 @@ const CLOSE_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// What the client is started with.
 fn open_args(client: Client) -> Vec<String> {
-    match client {
-        // Without it the window stays white under Proton.
-        Client::BattleNet => vec!["--in-process-gpu".into()],
-        Client::Ea | Client::Ubisoft | Client::Rockstar => Vec::new(),
-    }
+    client.wine_open_args().iter().map(|a| (*a).to_string()).collect()
 }
 
 /// The client's prefix and the settings it runs with.
@@ -208,7 +204,7 @@ mod tests {
 
         /// The client's program in the prefix.
         fn install(&self, client: Client) -> PathBuf {
-            let exe = self.prefix().join("drive_c").join(client.exe_candidates()[0]);
+            let exe = client.exe_candidates()[0].split('/').fold(self.prefix().join("drive_c"), |p, part| p.join(part));
             std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
             std::fs::write(&exe, "MZ").unwrap();
             exe

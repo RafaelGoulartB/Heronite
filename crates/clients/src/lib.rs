@@ -134,10 +134,7 @@ pub fn status_in(client: Client, place: &Place) -> Status {
 /// also where the registry says the user installed it
 /// (`Client::install_keys`).
 pub fn find_exe(client: Client, place: &Place) -> Option<PathBuf> {
-    let usual = match place {
-        Place::Prefix(prefix) => client.exe_in(prefix),
-        Place::Machine(_) => client.exe_candidates().iter().map(|rel| place.drive(rel)).find(|p| p.is_file()),
-    };
+    let usual = client.exe_candidates().iter().map(|rel| place.drive(rel)).find(|p| p.is_file());
     usual
         .or_else(|| match client {
             Client::Ea => ea::versioned_exe(place),
@@ -272,6 +269,16 @@ mod tests {
         std::fs::write(&exe, "MZ").unwrap();
         assert_eq!(find_exe(Client::Ea, &dir.path().into()), Some(exe));
         assert_eq!(find_exe(Client::Ubisoft, &dir.path().into()), None);
+    }
+
+    #[test]
+    fn finds_a_client_program_in_a_prefix_regardless_of_case() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("drive_c/program files (x86)/ubisoft/ubisoft game launcher/upc.exe");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, "MZ").unwrap();
+        let found = find_exe(Client::Ubisoft, &dir.path().into()).unwrap();
+        assert_eq!(found.canonicalize().unwrap(), exe.canonicalize().unwrap());
     }
 
     /// Ubisoft Connect on a PC: its program where the installer puts it,
