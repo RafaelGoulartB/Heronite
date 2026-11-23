@@ -34,16 +34,23 @@ impl Clients {
         let st = self.state_mut(client);
         st.activity = Activity::Opening;
         st.notice = None;
-        // Followed until it closes: its games may have changed by then.
-        st.watched = true;
-        st.opened_at = Some(Instant::now());
-        self.ensure_polling(cx);
+        // Clear any stale watch from a prior setup/game launch so the poller
+        // cannot expire `Activity::Opening` while umu is downloading.
+        st.watched = false;
+        st.opened_at = None;
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
             let res = cx.background_spawn(async move { heronite_clients::run::open(&paths, client, &home()) }).await;
             this.update(cx, |this, cx| {
                 match res {
-                    Ok(child) => this.reap(client, child, cx),
+                    Ok(child) => {
+                        // Followed from launch (after any umu download) until it closes.
+                        let st = this.state_mut(client);
+                        st.watched = true;
+                        st.opened_at = Some(Instant::now());
+                        this.ensure_polling(cx);
+                        this.reap(client, child, cx);
+                    }
                     Err(e) => {
                         let text = tr!("Could not open {client}: {error}", client = client.name(), error = e);
                         if notify {

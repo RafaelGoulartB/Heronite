@@ -3,7 +3,7 @@
 //! a few tens of milliseconds at most; the per-game lookups (asked many
 //! times per frame) must be next to free. Ignored by default (it times, it
 //! does not check behaviour); run with
-//! `cargo test --release -p heronite-data --test stats_scale -- --ignored --nocapture`.
+//! `cargo test --release -p heronite-data --features manual-tests --test stats_scale -- --ignored --nocapture`.
 
 use std::time::{Duration as StdDuration, Instant};
 

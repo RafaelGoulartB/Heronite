@@ -102,12 +102,4 @@ mod tests {
         assert_eq!(decode_value(b"\x00h\x00i\x00").as_deref(), Some("hi"));
         assert_eq!(key_name(b"_file://\x00\x01collection_sort"), Some("collection_sort"));
     }
-
-    #[test]
-    fn imports_real_heronite_state_when_available() {
-        let Some(home) = dirs::config_dir() else { return };
-        if let Some(state) = import(&home.join("heroic")) {
-            eprintln!("{:?}", state.to_value());
-        }
-    }
 }

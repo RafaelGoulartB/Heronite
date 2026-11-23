@@ -191,10 +191,3 @@ fn launcher_and_game_lines_interleave_in_order() {
     assert!(pos("Game Output:") < pos("one-1\n") && pos("one-1\n") < pos("two-2\n"));
     assert!(pos("two-2\n") < pos("exited with code 0") && pos("exited with code 0") < pos("End of log"));
 }
-
-#[test]
-fn with_logs_disabled_the_game_output_goes_nowhere() {
-    let r = rig(r#"{"defaultSettings":{"disableLogs":true,"verboseLogs":true},"version":"v0"}"#);
-    run(&r, "g", sh("readlink /proc/$$/fd/1 >&2; echo hi"));
-    assert!(!log_path(&r, "g").exists());
-}

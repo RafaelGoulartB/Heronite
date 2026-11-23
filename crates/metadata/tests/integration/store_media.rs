@@ -2,12 +2,10 @@
 //! "Store media" field that has anything to show, against a local mock of
 //! the remote services.
 
-mod common;
-
 use std::fs;
 use std::path::Path;
 
-use common::{Resp, Server};
+use crate::common::{Resp, Server};
 use heronite_data::json_store;
 use heronite_data::paths::DataPaths;
 use heronite_data::settings::STORE_MEDIA;

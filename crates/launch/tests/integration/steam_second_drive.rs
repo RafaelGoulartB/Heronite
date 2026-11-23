@@ -4,8 +4,6 @@
 //! `libraryfolders.vdf` lists a library on an HDD. Real files on disk, read
 //! through the same refresh the app runs to set Play / Install.
 
-#![cfg(unix)]
-
 use std::fs;
 use std::path::{Path, PathBuf};
 

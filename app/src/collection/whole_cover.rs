@@ -126,46 +126,37 @@ mod tests {
     }
 
     #[test]
-    fn a_row_of_2_3_covers_fills_its_places() {
-        for b in row(&[(600, 900), (600, 900), (300, 450)]) {
-            assert!(near(b, (162., 243.)), "{b:?}");
+    fn a_row_takes_the_cut_of_its_shortest_box_and_families_keep_their_height() {
+        for (what, sizes, want) in [
+            ("2:3 covers fill their places", &[(600, 900), (600, 900), (300, 450)][..], &[(162., 243.), (162., 243.), (162., 243.)][..]),
+            (
+                "a 3:4 box brings the tall covers to its height",
+                &[(600, 900), (300, 400), (500, 700), (440, 720)],
+                &[(144., 216.), (162., 216.), (154.29, 216.), (132., 216.)],
+            ),
+            // 162 / (5/7) = 226.8: the 2:3 covers come down 16 px, not 27.
+            ("a 5:7 box among 2:3 ones sets a smaller cut", &[(600, 900), (500, 700)], &[(151.2, 226.8), (162., 226.8)]),
+            // Tall, square (PS1, DS), wide (SNES).
+            (
+                "families keep their own height on one row",
+                &[(600, 900), (600, 600), (546, 600), (700, 490)],
+                &[(162., 243.), (162., 162.), (147.42, 162.), (162., 113.4)],
+            ),
+        ] {
+            let boxes = row(sizes);
+            assert_eq!(boxes.len(), want.len());
+            for (b, w) in boxes.iter().zip(want) {
+                assert!(near(*b, *w), "{what}: {b:?} vs {w:?}");
+            }
         }
     }
 
     #[test]
-    fn a_3_4_box_brings_the_row_tall_covers_to_its_height() {
-        let boxes = row(&[(600, 900), (300, 400), (500, 700), (440, 720)]);
-        for (b, w) in boxes.iter().zip([144., 162., 154.29, 132.]) {
-            assert!(near(*b, (w, 216.)), "{b:?}");
-        }
-    }
-
-    #[test]
-    fn a_5_7_box_among_2_3_ones_sets_a_smaller_cut() {
-        // 162 / (5/7) = 226.8: the 2:3 covers come down 16 px, not 27.
-        for b in row(&[(600, 900), (500, 700)]) {
-            assert!((b.1 - 226.8).abs() < 0.01, "{b:?}");
-        }
-    }
-
-    #[test]
-    fn families_keep_their_own_height_on_one_row() {
-        // Tall, square (PS1, DS), wide (SNES).
-        let boxes = row(&[(600, 900), (600, 600), (546, 600), (700, 490)]);
-        assert!(near(boxes[0], (162., 243.)));
-        assert!(near(boxes[1], (162., 162.)));
-        assert!(near(boxes[2], (147.42, 162.)));
-        assert!(near(boxes[3], (162., 113.4)));
-    }
-
-    #[test]
-    fn a_picture_loaded_after_the_shelf_still_fits() {
+    fn a_picture_the_shelf_did_not_measure_still_fits_and_wide_places_cap_the_height() {
+        // Loaded after the shelf was made.
         let shelf = Shelf::of_sizes([(600, 900)], 162., 243.);
         assert!(near(shelf.box_of((300, 400)), (162., 216.)));
-    }
-
-    #[test]
-    fn a_tall_cover_in_a_wide_place_takes_its_height() {
+        // A tall cover in a wide place takes its height.
         let shelf = Shelf::of_sizes([(600, 900), (300, 400)], 288., 162.);
         assert!(near(shelf.box_of((600, 900)), (108., 162.)));
         assert!(near(shelf.box_of((300, 400)), (121.5, 162.)));

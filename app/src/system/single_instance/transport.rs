@@ -1,11 +1,40 @@
 //! The connection between instances. Unix: a unix socket. Windows: Rust has
 //! no unix sockets there, so the instance listens on a loopback port and
-//! writes the port and a random key into the file at the socket's path (in
-//! the user's own temp folder); a connection starts with the key, so other
-//! users of the computer cannot send requests.
+//! writes the port, a random key and its pid into the file at the socket's
+//! path (in the user's own temp folder); a connection starts with the key, so
+//! other users of the computer cannot send requests. On Windows the instance
+//! also keeps that file open without write-sharing, so a second invocation can
+//! tell a live owner from a stale file whose port (or pid) another process has
+//! since taken (after a crash or forced restart).
 
 #[cfg(unix)]
 pub(super) use std::os::unix::net::UnixStream as Stream;
+
+/// Keeps the socket file claimed while the listener lives. Unix sockets are
+/// bound in the kernel by the listener itself, so there is nothing extra to
+/// hold or release there.
+#[cfg(unix)]
+pub(super) struct Lock;
+
+#[cfg(unix)]
+impl Lock {
+    pub(super) fn release(&self) {}
+}
+
+#[cfg(unix)]
+pub(super) fn lock(_listener: &std::os::unix::net::UnixListener) -> Lock {
+    Lock
+}
+
+/// Removes a stale socket file during takeover. `NotFound` is ignored in case
+/// another starting process already removed it.
+#[cfg(unix)]
+pub(super) fn remove_stale(path: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::remove_file(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        other => other,
+    }
+}
 
 /// Listens at `path`; `AddrInUse` when something is there already (a live
 /// instance or a stale file: the caller tells them apart with [`connect`]).
@@ -22,22 +51,50 @@ pub(super) fn connect(path: &std::path::Path) -> std::io::Result<Stream> {
 }
 
 #[cfg(windows)]
-pub(super) use windows::{bind, connect};
+pub(super) use windows::{bind, connect, lock, remove_stale, Lock};
 
 #[cfg(windows)]
 mod windows {
     use std::collections::hash_map::RandomState;
+    use std::fs::{File, OpenOptions};
     use std::hash::{BuildHasher, Hasher};
     use std::io::{self, ErrorKind, Read, Write};
     use std::net::{Ipv4Addr, SocketAddr, TcpListener};
+    use std::os::windows::fs::OpenOptionsExt;
     use std::path::Path;
-    use std::time::Duration;
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
 
     pub(in super::super) use std::net::TcpStream as Stream;
+
+    /// Win32 `FILE_SHARE_READ`: other processes may read the port, key and
+    /// pid, while opening the file for writing fails with
+    /// `ERROR_SHARING_VIOLATION` as long as the owning instance is alive (the
+    /// kernel closes the handle on crash or forced restart).
+    const FILE_SHARE_READ: u32 = 1;
+    /// Win32 `ERROR_SHARING_VIOLATION`.
+    const ERROR_SHARING_VIOLATION: i32 = 32;
+
+    /// Handle to the open socket file held by [`Listener`]. Released right
+    /// before removing the file on shutdown, so Windows deletes it immediately
+    /// instead of leaving it delete-pending while the accept thread runs.
+    #[derive(Clone)]
+    pub(in super::super) struct Lock(Arc<Mutex<Option<File>>>);
+
+    impl Lock {
+        pub(in super::super) fn release(&self) {
+            self.0.lock().unwrap_or_else(|e| e.into_inner()).take();
+        }
+    }
+
+    pub(in super::super) fn lock(listener: &Listener) -> Lock {
+        listener.lock.clone()
+    }
 
     pub(in super::super) struct Listener {
         inner: TcpListener,
         key: String,
+        lock: Lock,
     }
 
     impl Listener {
@@ -82,26 +139,98 @@ mod windows {
         format!("{:016x}{:016x}", half(), half())
     }
 
+    fn parse_endpoint(text: &str) -> Option<(u16, String, Option<u32>)> {
+        let line = text.split_once('\n')?.0;
+        let mut fields = line.split_whitespace();
+        let port: u16 = fields.next()?.parse().ok()?;
+        let key = fields.next()?;
+        let pid = fields.next().and_then(|p| p.parse::<u32>().ok());
+        Some((port, key.to_string(), pid))
+    }
+
+    /// Removes a stale socket file during takeover. `NotFound` means another
+    /// process already removed it; `ERROR_SHARING_VIOLATION` means another
+    /// live instance won the race and bound `path` (`AddrInUse`).
+    pub(in super::super) fn remove_stale(path: &Path) -> io::Result<()> {
+        match std::fs::remove_file(path) {
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+            Err(e) if e.raw_os_error() == Some(ERROR_SHARING_VIOLATION) => Err(io::Error::new(ErrorKind::AddrInUse, e)),
+            other => other,
+        }
+    }
+
+    /// Probes whether a live owner currently holds `path` open without
+    /// write-sharing: `Ok(true)` on `ERROR_SHARING_VIOLATION`, `Ok(false)`
+    /// when unlocked (stale), and `Err` for `NotFound` or other open errors.
+    fn is_held(path: &Path) -> io::Result<bool> {
+        match OpenOptions::new().write(true).open(path) {
+            Ok(_) => Ok(false),
+            Err(e) if e.raw_os_error() == Some(ERROR_SHARING_VIOLATION) => Ok(true),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Reads `<port> <key> [pid]\n` from a live owner's socket file. If the
+    /// owner just created the file and has not finished writing the line yet,
+    /// wait briefly for the trailing newline to appear.
+    fn read_endpoint(path: &Path) -> io::Result<(u16, String, Option<u32>)> {
+        let deadline = Instant::now() + Duration::from_millis(500);
+        loop {
+            let text = std::fs::read_to_string(path)?;
+            if text.contains('\n') {
+                return parse_endpoint(&text).ok_or_else(|| io::Error::from(ErrorKind::InvalidData));
+            }
+            if Instant::now() >= deadline {
+                return Err(io::Error::from(ErrorKind::TimedOut));
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     pub(in super::super) fn bind(path: &Path) -> io::Result<Listener> {
         let inner = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
+        let port = inner.local_addr()?.port();
         let key = new_key();
-        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(path).map_err(|e| match e.kind() {
-            ErrorKind::AlreadyExists => io::Error::new(ErrorKind::AddrInUse, e),
-            _ => e,
-        })?;
-        writeln!(file, "{} {key}", inner.local_addr()?.port())?;
-        Ok(Listener { inner, key })
+        let mut file =
+            OpenOptions::new().write(true).create_new(true).share_mode(FILE_SHARE_READ).open(path).map_err(|e| match e.kind() {
+                ErrorKind::AlreadyExists => io::Error::new(ErrorKind::AddrInUse, e),
+                _ => e,
+            })?;
+        let line = format!("{port} {key} {}\n", std::process::id());
+        if let Err(e) = file.write_all(line.as_bytes()).and_then(|_| file.flush()) {
+            drop(file);
+            let _ = std::fs::remove_file(path);
+            return Err(e);
+        }
+        Ok(Listener { inner, key, lock: Lock(Arc::new(Mutex::new(Some(file)))) })
     }
 
     pub(in super::super) fn connect(path: &Path) -> io::Result<Stream> {
-        let text = std::fs::read_to_string(path)?;
         let refused = || io::Error::from(ErrorKind::ConnectionRefused);
-        let (port, key) = text.trim().split_once(' ').ok_or_else(refused)?;
-        let port: u16 = port.parse().map_err(|_| refused())?;
+        // Nobody holds the file open without write-sharing: the instance that
+        // created it is gone (crash or forced restart), even if another
+        // process has since taken its ephemeral TCP port or recycled its pid.
+        if !is_held(path)? {
+            return Err(refused());
+        }
+        let timeout_or_stale = |e: io::Error| match is_held(path) {
+            Ok(false) => refused(),
+            Ok(true) => e,
+            Err(probe_err) => probe_err,
+        };
+        let (port, key, pid) = read_endpoint(path).map_err(|e| if e.kind() == ErrorKind::TimedOut { timeout_or_stale(e) } else { e })?;
+        // Defense in depth: even if a transient scanner held a stale 3-field
+        // file without write-sharing, a dead owner pid still marks it stale.
+        if pid.is_some_and(|pid| !heronite_platform::process::is_alive(pid)) {
+            return Err(refused());
+        }
         let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
-        let mut stream = Stream::connect_timeout(&addr, Duration::from_secs(2)).map_err(|e| match e.kind() {
-            ErrorKind::TimedOut => refused(),
-            _ => e,
+        let mut stream = Stream::connect_timeout(&addr, Duration::from_secs(2)).map_err(|e| {
+            if e.kind() == ErrorKind::TimedOut {
+                timeout_or_stale(e)
+            } else {
+                e
+            }
         })?;
         stream.write_all(format!("{key}\n").as_bytes())?;
         Ok(stream)

@@ -310,19 +310,20 @@ mod tests {
     }
 
     #[test]
-    fn letters_and_digits_start_a_search() {
-        assert_eq!(search_char(&ks("a", Some("a"), Modifiers::default())), Some("a"));
-        assert_eq!(search_char(&ks("a", Some("A"), Modifiers::shift())), Some("A"));
-        assert_eq!(search_char(&ks("7", Some("7"), Modifiers::default())), Some("7"));
-        assert_eq!(search_char(&ks("c", Some("ç"), Modifiers::default())), Some("ç"));
-    }
-
-    #[test]
-    fn shortcuts_space_and_punctuation_do_not() {
-        assert_eq!(search_char(&ks("a", Some("a"), Modifiers::control())), None);
-        assert_eq!(search_char(&ks("space", Some(" "), Modifiers::default())), None);
-        assert_eq!(search_char(&ks("/", Some("/"), Modifiers::default())), None);
-        assert_eq!(search_char(&ks("f5", None, Modifiers::default())), None);
+    fn letters_and_digits_start_a_search_shortcuts_space_and_punctuation_do_not() {
+        let plain = Modifiers::default();
+        for (key, ch, modifiers, want) in [
+            ("a", Some("a"), plain, Some("a")),
+            ("a", Some("A"), Modifiers::shift(), Some("A")),
+            ("7", Some("7"), plain, Some("7")),
+            ("c", Some("ç"), plain, Some("ç")),
+            ("a", Some("a"), Modifiers::control(), None),
+            ("space", Some(" "), plain, None),
+            ("/", Some("/"), plain, None),
+            ("f5", None, plain, None),
+        ] {
+            assert_eq!(search_char(&ks(key, ch, modifiers)), want, "{key}");
+        }
     }
 
     #[test]

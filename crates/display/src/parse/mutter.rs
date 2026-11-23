@@ -161,12 +161,7 @@ mod tests {
         assert!(panel.builtin && !panel.enabled && !panel.primary);
         assert_eq!(panel.current, None);
         assert_eq!((panel.hdr, panel.vrr), (None, None));
-    }
-
-    #[test]
-    fn gnome_has_a_primary_monitor_and_switches_hdr() {
-        let (mons, logical) = fixture();
-        let snap = Snapshot::new(Backend::Gnome, monitors(mons, &logical));
+        // GNOME has a primary monitor and switches HDR.
         assert_eq!(snap.capabilities.primary, PrimarySupport::Primary);
         assert!(snap.capabilities.hdr && snap.capabilities.vrr);
     }

@@ -5,6 +5,7 @@
 
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 use heronite_data::DataPaths;
 use heronite_i18n::tr;
@@ -115,6 +116,12 @@ pub fn update_installed(paths: &DataPaths, net: &dyn Net, cancel: Cancel, report
 /// `download`: fetches Lutris' archive and replaces `runtimes/<name>`. The old
 /// folder stays until the new one is fully extracted.
 pub fn download(paths: &DataPaths, net: &dyn Net, runtime: Runtime, cancel: Cancel) -> Result<(), String> {
+    // Concurrent client setups or launches share the staging paths under `runtimes/`.
+    static LOCK: Mutex<()> = Mutex::new(());
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if cancel() {
+        return Err(CANCELLED.into());
+    }
     let list = net.get_json(RUNTIMES_URL).map_err(|e| tr!("could not fetch the runtime list: {error}", error = e))?;
     let entry = find_entry(&list, runtime)
         .filter(|e| !e.url.is_empty())

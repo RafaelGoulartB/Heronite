@@ -62,6 +62,12 @@ pub trait Spawner: Send + Sync {
     fn open_with_steam(&self, uri: &str, _asked_at: std::time::Instant) -> io::Result<()> {
         self.open_uri(uri)
     }
+    /// Starts the Steam client silently (`-silent`) with `uri`, using
+    /// `steam_root` (when known) to pick the right client install. Falls back
+    /// to [`Spawner::open_uri`] if the Steam client cannot be started directly.
+    fn open_steam_silent(&self, uri: &str, _steam_root: Option<&Path>) -> io::Result<()> {
+        self.open_uri(uri)
+    }
     /// Terminates the processes started at or after `since` (ticks since
     /// boot, [`crate::procs::boot_ticks_now`]) whose program is `pattern`
     /// ([`crate::procs::program_matches`]).
@@ -284,22 +290,25 @@ fn is_steam_uri(uri: &str) -> bool {
     uri.get(..8).is_some_and(|s| s.eq_ignore_ascii_case("steam://"))
 }
 
-/// Runs `command` (a program and its arguments) with `uri` last, on its own,
-/// with the desktop's environment (none of this app's runtime variables).
-/// Its output goes nowhere, and never to a pipe: what the desktop starts for
-/// the URI (Steam, then its games) inherits it and outlives this app, and a
-/// write to a pipe nobody reads any more ends the program that makes it
-/// (`steam.sh`, when Steam restarts itself).
-fn spawn_detached(command: &[String], uri: &str) -> io::Result<std::process::Child> {
+/// Runs `command` (a program and its arguments), then `extra_args`, with `uri`
+/// last, on its own, with the desktop's environment (none of this app's runtime
+/// variables). Its output goes nowhere, and never to a pipe: what the desktop
+/// starts for the URI (Steam, then its games) inherits it and outlives this
+/// app, and a write to a pipe nobody reads any more ends the program that makes
+/// it (`steam.sh`, when Steam restarts itself).
+fn spawn_detached(command: &[String], extra_args: &[&str], uri: &str) -> io::Result<std::process::Child> {
     let (program, args) = command.split_first().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no program"))?;
     let mut c = std::process::Command::new(program);
-    c.args(args)
-        .arg(uri)
-        .env_clear()
-        .envs(desktop_protocol_env(std::env::vars()))
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+    c.args(args).args(extra_args).arg(uri);
+    if heronite_platform::flatpak::active() && program != "xdg-open" {
+        // Inside Heronite's Flatpak sandbox, Steam lives on the host and
+        // starts with the host session's own environment — detached (no
+        // `--watch-bus`) so Steam and its games outlive Heronite.
+        c = heronite_platform::flatpak::host_detached(c);
+    } else {
+        c.env_clear().envs(desktop_protocol_env(std::env::vars()));
+    }
+    c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     os::new_group(&mut c);
     c.spawn()
 }
@@ -307,31 +316,57 @@ fn spawn_detached(command: &[String], uri: &str) -> io::Result<std::process::Chi
 /// When each `steam://` URI was last handed to the Steam client directly.
 static HANDED_TO_STEAM: std::sync::Mutex<Vec<(String, std::time::Instant)>> = std::sync::Mutex::new(Vec::new());
 
+fn record_handed_to_steam(uri: &str, at: std::time::Instant) {
+    let mut handed = HANDED_TO_STEAM.lock().unwrap();
+    if let Some((_, prev)) = handed.iter_mut().find(|(u, _)| u == uri) {
+        *prev = at;
+    } else {
+        handed.push((uri.to_string(), at));
+    }
+}
+
+/// Reverts a `HANDED_TO_STEAM` entry only if no newer launch replaced it.
+fn rollback_handed_to_steam(uri: &str, expected: std::time::Instant, previous: Option<std::time::Instant>) {
+    let mut handed = HANDED_TO_STEAM.lock().unwrap();
+    let Some((_, at)) = handed.iter_mut().find(|(u, _)| u == uri) else { return };
+    if *at != expected {
+        return;
+    }
+    match previous {
+        Some(prev) => *at = prev,
+        None => handed.retain(|(u, _)| u != uri),
+    }
+}
+
 /// Hands `uri` to the Steam client itself (`steam <uri>`), which passes it to
 /// the running client or starts Steam with it: what Steam's own desktop entry
 /// does, without the desktop's URI handling. Not when it was already handed
 /// to it since `asked_at` (when this request was made): the fallback after
 /// xdg-open and the launch's own check could otherwise both send it.
 fn open_with_steam_client(uri: &str, asked_at: std::time::Instant) -> io::Result<()> {
-    {
+    let reserved_at = std::time::Instant::now();
+    let previous = {
         let mut handed = HANDED_TO_STEAM.lock().unwrap();
-        if let Some(at) = handed.iter_mut().find(|(u, _)| u == uri).map(|(_, at)| at) {
+        if let Some((_, at)) = handed.iter_mut().find(|(u, _)| u == uri) {
             if *at >= asked_at {
                 log::info!("{uri} was already handed to the Steam client");
                 return Ok(());
             }
-            *at = std::time::Instant::now();
+            let prev = *at;
+            *at = reserved_at;
+            Some(prev)
         } else {
-            handed.push((uri.to_string(), std::time::Instant::now()));
+            handed.push((uri.to_string(), reserved_at));
+            None
         }
-    }
+    };
     // The running client's own launcher (a Flatpak or Snap Steam beside a
     // native `steam` on PATH) first, then the usual `steam`.
     let commands = crate::steam_launcher::client_commands(&crate::probe::SystemProbe, &crate::steam_launcher::steam_processes());
     let mut error = io::Error::new(io::ErrorKind::NotFound, "Steam client not found");
     for steam in commands {
         log::info!("handing {uri} to the Steam client ({})", steam.join(" "));
-        match spawn_detached(&steam, uri) {
+        match spawn_detached(&steam, &[], uri) {
             Ok(mut child) => {
                 std::thread::spawn(move || {
                     let _ = child.wait();
@@ -344,7 +379,107 @@ fn open_with_steam_client(uri: &str, asked_at: std::time::Instant) -> io::Result
             }
         }
     }
+    rollback_handed_to_steam(uri, reserved_at, previous);
     Err(error)
+}
+
+/// Tries `commands` in order with `extra_args` and `uri`. If a spawned command
+/// exits non-zero within `quick_failure`, the watcher thread continues with the
+/// remaining candidates and finally invokes `on_all_failed` (the desktop
+/// handler fallback).
+fn spawn_steam_candidates_with_fallback<F>(
+    commands: Vec<Vec<String>>,
+    extra_args: &'static [&'static str],
+    uri: &str,
+    quick_failure: std::time::Duration,
+    on_all_failed: F,
+) -> io::Result<()>
+where
+    F: FnOnce(&str) + Send + 'static,
+{
+    let mut error = io::Error::new(io::ErrorKind::NotFound, "Steam client not found");
+    let mut iter = commands.into_iter();
+    while let Some(steam) = iter.next() {
+        log::info!("handing {uri} to the Steam client ({} {})", steam.join(" "), extra_args.join(" "));
+        match spawn_detached(&steam, extra_args, uri) {
+            Ok(mut child) => {
+                let handed_at = std::time::Instant::now();
+                record_handed_to_steam(uri, handed_at);
+                let remaining: Vec<Vec<String>> = iter.collect();
+                let uri = uri.to_string();
+                let started = std::time::Instant::now();
+                std::thread::spawn(move || {
+                    let status = child.wait();
+                    let failed = !status.as_ref().is_ok_and(|s| s.success());
+                    if !failed || started.elapsed() >= quick_failure {
+                        return;
+                    }
+                    let how = status.map_or_else(|e| e.to_string(), |s| s.to_string());
+                    log::warn!("Steam client ({}) exited quickly ({how}); trying fallback for {uri}", steam.join(" "));
+                    for next in remaining {
+                        log::info!("handing {uri} to the Steam client ({} {})", next.join(" "), extra_args.join(" "));
+                        let next_started = std::time::Instant::now();
+                        match spawn_detached(&next, extra_args, &uri) {
+                            Ok(mut next_child) => {
+                                let status = next_child.wait();
+                                let failed = !status.as_ref().is_ok_and(|s| s.success());
+                                if !failed || next_started.elapsed() >= quick_failure {
+                                    return;
+                                }
+                                let how = status.map_or_else(|e| e.to_string(), |s| s.to_string());
+                                log::warn!("Steam client ({}) exited quickly ({how})", next.join(" "));
+                            }
+                            Err(e) => log::warn!("could not run {}: {e}", next.join(" ")),
+                        }
+                    }
+                    rollback_handed_to_steam(&uri, handed_at, None);
+                    on_all_failed(&uri);
+                });
+                return Ok(());
+            }
+            Err(e) => {
+                log::warn!("could not run {}: {e}", steam.join(" "));
+                error = e;
+            }
+        }
+    }
+    Err(error)
+}
+
+fn open_uri_system(uri: &str) -> io::Result<()> {
+    if cfg!(windows) {
+        return heronite_platform::shell::open(uri);
+    }
+    let steam = is_steam_uri(uri);
+    let mut child = match spawn_detached(&["xdg-open".to_string()], &[], uri) {
+        Ok(child) => child,
+        Err(e) if steam => {
+            log::warn!("could not run xdg-open for {uri} ({e}); asking the Steam client directly");
+            return open_with_steam_client(uri, std::time::Instant::now())
+                .map_err(|e2| io::Error::new(e2.kind(), format!("xdg-open: {e}; Steam client: {e2}")));
+        }
+        Err(e) => return Err(e),
+    };
+    // The desktop can fail to hand `steam://` to Steam even with Steam as
+    // its handler (`gio: … not supported`, a stale `steam.desktop`): the
+    // Steam client is asked directly then. Only a quick failure counts:
+    // xdg-open can run the handler in the foreground, and Steam started
+    // that way ends with the whole Steam session.
+    let uri = uri.to_string();
+    let started = std::time::Instant::now();
+    std::thread::spawn(move || {
+        let status = child.wait();
+        let failed = !status.as_ref().is_ok_and(|s| s.success());
+        if steam && failed && started.elapsed() < XDG_OPEN_QUICK_FAILURE {
+            // xdg-open exits with 3 without a tool to open with, 4 when opening failed.
+            let how = status.map_or_else(|e| e.to_string(), |s| s.to_string());
+            log::warn!("xdg-open could not open {uri} ({how}); asking the Steam client directly");
+            if let Err(e) = open_with_steam_client(&uri, started) {
+                log::warn!("could not ask the Steam client to open {uri}: {e}");
+            }
+        }
+    });
+    Ok(())
 }
 
 fn extension(path: &str) -> String {
@@ -365,39 +500,7 @@ impl Spawner for SystemSpawner {
     }
 
     fn open_uri(&self, uri: &str) -> io::Result<()> {
-        if cfg!(windows) {
-            return heronite_platform::shell::open(uri);
-        }
-        let steam = is_steam_uri(uri);
-        let mut child = match spawn_detached(&["xdg-open".to_string()], uri) {
-            Ok(child) => child,
-            Err(e) if steam => {
-                log::warn!("could not run xdg-open for {uri} ({e}); asking the Steam client directly");
-                return open_with_steam_client(uri, std::time::Instant::now())
-                    .map_err(|e2| io::Error::new(e2.kind(), format!("xdg-open: {e}; Steam client: {e2}")));
-            }
-            Err(e) => return Err(e),
-        };
-        // The desktop can fail to hand `steam://` to Steam even with Steam as
-        // its handler (`gio: … not supported`, a stale `steam.desktop`): the
-        // Steam client is asked directly then. Only a quick failure counts:
-        // xdg-open can run the handler in the foreground, and Steam started
-        // that way ends with the whole Steam session.
-        let uri = uri.to_string();
-        let started = std::time::Instant::now();
-        std::thread::spawn(move || {
-            let status = child.wait();
-            let failed = !status.as_ref().is_ok_and(|s| s.success());
-            if steam && failed && started.elapsed() < XDG_OPEN_QUICK_FAILURE {
-                // xdg-open exits with 3 without a tool to open with, 4 when opening failed.
-                let how = status.map_or_else(|e| e.to_string(), |s| s.to_string());
-                log::warn!("xdg-open could not open {uri} ({how}); asking the Steam client directly");
-                if let Err(e) = open_with_steam_client(&uri, started) {
-                    log::warn!("could not ask the Steam client to open {uri}: {e}");
-                }
-            }
-        });
-        Ok(())
+        open_uri_system(uri)
     }
 
     fn open_with_steam(&self, uri: &str, asked_at: std::time::Instant) -> io::Result<()> {
@@ -405,6 +508,23 @@ impl Spawner for SystemSpawner {
             return self.open_uri(uri);
         }
         open_with_steam_client(uri, asked_at)
+    }
+
+    fn open_steam_silent(&self, uri: &str, steam_root: Option<&Path>) -> io::Result<()> {
+        let commands =
+            crate::steam_launcher::client_commands_for(&crate::probe::SystemProbe, &crate::steam_launcher::steam_processes(), steam_root);
+        match spawn_steam_candidates_with_fallback(commands, &["-silent"], uri, XDG_OPEN_QUICK_FAILURE, |fallback_uri| {
+            log::warn!("all silent Steam candidates failed for {fallback_uri}; falling back to the desktop handler");
+            if let Err(e) = open_uri_system(fallback_uri) {
+                log::warn!("could not open {fallback_uri} via desktop handler: {e}");
+            }
+        }) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                log::warn!("could not start Steam silently for {uri} ({e}); falling back to the desktop handler");
+                self.open_uri(uri)
+            }
+        }
     }
 
     fn kill_pattern(&self, pattern: &str, since: u64) {
@@ -441,9 +561,66 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let seen = dir.path().join("seen");
         let script = r#"i=$(readlink /proc/$$/fd/0); o=$(readlink /proc/$$/fd/1); e=$(readlink /proc/$$/fd/2); echo "$i $o $e" > "$0""#;
-        let mut child = spawn_detached(&["sh".to_string(), "-c".to_string(), script.to_string()], &seen.to_string_lossy()).unwrap();
+        let mut child = spawn_detached(&["sh".to_string(), "-c".to_string(), script.to_string()], &[], &seen.to_string_lossy()).unwrap();
         assert!(child.wait().unwrap().success());
         assert_eq!(std::fs::read_to_string(&seen).unwrap().trim(), "/dev/null /dev/null /dev/null");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn detached_silent_launch_passes_flag_before_uri() {
+        let dir = tempfile::tempdir().unwrap();
+        let seen = dir.path().join("args");
+        let script = format!(r#"printf '%s\n' "$@" > "{}""#, seen.display());
+        let mut child =
+            spawn_detached(&["sh".to_string(), "-c".to_string(), script, "steam".to_string()], &["-silent"], "steam://rungameid/400")
+                .unwrap();
+        assert!(child.wait().unwrap().success());
+        assert_eq!(std::fs::read_to_string(&seen).unwrap(), "-silent\nsteam://rungameid/400\n");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn silent_launch_falls_through_quick_non_zero_exits_to_next_candidate_and_desktop() {
+        let dir = tempfile::tempdir().unwrap();
+        let seen = dir.path().join("second");
+        let write_args = format!(r#"printf '%s\n' "$@" > "{}""#, seen.display());
+        let fail_cmd = vec!["sh".to_string(), "-c".into(), "exit 1".into(), "steam".into()];
+        let ok_cmd = vec!["sh".to_string(), "-c".into(), write_args, "steam".into()];
+
+        // First candidate exits non-zero quickly -> second candidate runs with `-silent` + URI.
+        let (tx, rx) = std::sync::mpsc::channel();
+        spawn_steam_candidates_with_fallback(
+            vec![fail_cmd.clone(), ok_cmd],
+            &["-silent"],
+            "steam://rungameid/400",
+            XDG_OPEN_QUICK_FAILURE,
+            move |u| {
+                let _ = tx.send(u.to_string());
+            },
+        )
+        .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !seen.exists() {
+            assert!(std::time::Instant::now() < deadline, "second candidate never ran");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(std::fs::read_to_string(&seen).unwrap(), "-silent\nsteam://rungameid/400\n");
+        assert!(rx.recv_timeout(std::time::Duration::from_millis(100)).is_err(), "desktop fallback should not run");
+
+        // All candidates exit non-zero quickly -> desktop fallback runs.
+        let (tx, rx) = std::sync::mpsc::channel();
+        spawn_steam_candidates_with_fallback(
+            vec![fail_cmd.clone(), fail_cmd],
+            &["-silent"],
+            "steam://rungameid/401",
+            XDG_OPEN_QUICK_FAILURE,
+            move |u| {
+                let _ = tx.send(u.to_string());
+            },
+        )
+        .unwrap();
+        assert_eq!(rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap(), "steam://rungameid/401");
     }
 
     /// Runs the script `name` (its text `body`) like a game's script and gives

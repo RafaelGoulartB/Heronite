@@ -5,8 +5,6 @@
 //! place in the order, its box art in the cover family of its shape (ahead
 //! of SteamGridDB's made-up art) and in the Covers dialog, removal.
 
-mod common;
-
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
@@ -15,7 +13,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use common::{Req, Resp, Server};
+use crate::common::{Req, Resp, Server};
 use heronite_data::json_store;
 use heronite_data::paths::DataPaths;
 use heronite_metadata::*;
@@ -288,7 +286,9 @@ fn refreshes_ask_only_for_a_changed_archive() {
     s.svc.download_source("launchbox").unwrap();
     let first = s.svc.source_download_state("launchbox").unwrap();
     // Refresh now: unchanged, nothing downloaded again (304), the date moves.
-    std::thread::sleep(Duration::from_millis(1100));
+    // The date is kept in whole seconds: wait for the next one.
+    let next_second = first.refreshed_at.unwrap() + Duration::from_millis(1050);
+    std::thread::sleep(next_second.duration_since(SystemTime::now()).unwrap_or_default());
     s.svc.download_source("launchbox").unwrap();
     let reqs = s.server.log.lock().clone();
     assert_eq!(reqs.last().and_then(|r| r.header("If-None-Match")), Some("\"v1\""));

@@ -16,11 +16,12 @@ use heronite_data::proc::Cancel;
 use heronite_data::DataPaths;
 use heronite_epic::third_party::{self, Provider};
 use heronite_i18n::tr;
+use heronite_launch::net::{Net, SystemNet};
 use heronite_launch::procs::{Procs, SystemProcs};
 use heronite_launch::settings::{load_game_settings, GameSettings, GlobalSettings};
 use heronite_launch::wine::{valid_wine, CREATING_MARKER};
-use heronite_launch::wine_tools::{create_prefix_commands, run_exe_command, UMU_NSENTER};
-use heronite_launch::{PlanContext, SystemProbe};
+use heronite_launch::wine_tools::{create_prefix_commands, run_exe_command, wine_command, UMU_NSENTER};
+use heronite_launch::{PlanContext, Probe, SystemProbe, WineRuntime};
 use serde_json::{json, Value};
 
 use crate::spawn::{self, Installer, Waits};
@@ -32,6 +33,7 @@ use crate::{find_exe, user_dirs, Client, Place};
 pub enum Step {
     /// Downloading the installer; `0..=100`, `None` while the size is unknown.
     Downloading(Option<f64>),
+    DownloadingUmu,
     CreatingPrefix,
     /// The client's installer runs (it may download the client itself).
     Installing,
@@ -73,14 +75,14 @@ pub fn default_prefix(paths: &DataPaths, client: Client, home: &str) -> PathBuf 
 /// The default Wine (`wineVersion` of the global settings) when it can run
 /// programs: the setup needs one. The app gets Proton when there is none.
 pub fn has_wine(paths: &DataPaths, home: &str) -> bool {
-    default_wine(paths, home).is_some()
+    default_wine(paths, home, &SystemProbe).is_some()
 }
 
 /// The global `wineVersion` as saved, when that Wine is usable.
-fn default_wine(paths: &DataPaths, home: &str) -> Option<Value> {
+fn default_wine(paths: &DataPaths, home: &str, probe: &dyn Probe) -> Option<Value> {
     let global: Settings = game_config::load_global(paths, home);
     let wine = global.get("wineVersion")?.clone();
-    valid_wine(&GlobalSettings::from_defaults(global).wine_version(), &SystemProbe).then_some(wine)
+    valid_wine(&GlobalSettings::from_defaults(global).wine_version(), probe).then_some(wine)
 }
 
 /// Installs `client` into [`default_prefix`] with the default Wine
@@ -109,7 +111,20 @@ pub fn install(paths: &DataPaths, client: Client, home: &str, cancel: &Cancel, o
 }
 
 fn install_under_wine(paths: &DataPaths, client: Client, home: &str, cancel: &Cancel, on_step: &mut dyn FnMut(Step)) -> Result<()> {
-    let wine = default_wine(paths, home).ok_or_else(|| anyhow!(tr!("No Wine or Proton is installed. Get one in the Wine Manager.")))?;
+    install_under_wine_with(paths, client, home, cancel, on_step, &SystemProbe, &SystemNet)
+}
+
+fn install_under_wine_with(
+    paths: &DataPaths,
+    client: Client,
+    home: &str,
+    cancel: &Cancel,
+    on_step: &mut dyn FnMut(Step),
+    probe: &dyn Probe,
+    net: &dyn Net,
+) -> Result<()> {
+    let wine =
+        default_wine(paths, home, probe).ok_or_else(|| anyhow!(tr!("No Wine or Proton is installed. Get one in the Wine Manager.")))?;
     let prefix = match prefix_of(paths, client, home) {
         Some(prefix) => prefix,
         None => {
@@ -126,10 +141,19 @@ fn install_under_wine(paths: &DataPaths, client: Client, home: &str, cancel: &Ca
     check_cancel(cancel)?;
 
     let ctx = PlanContext::load(paths);
-    let settings = load_game_settings(paths, client.config_app(), &ctx.global, &SystemProbe);
+    let settings = load_game_settings(paths, client.config_app(), &ctx.global, probe);
+    let installed = find_exe(client, &Place::Prefix(prefix.clone())).is_some();
+    spawn::ensure_umu(&ctx, probe, net, &settings, cancel, installed, || {
+        let _ = writeln!(log, "Downloading the umu runtime...");
+        log::info!("{}: downloading the umu runtime", client.name());
+        on_step(Step::DownloadingUmu);
+    })
+    .map_err(|e| anyhow!(e))?;
+    check_cancel(cancel)?;
+
     if prefix_missing(&prefix) {
         on_step(Step::CreatingPrefix);
-        create_prefix(&ctx, &settings, &prefix, cancel, &mut log, &log_file)?;
+        create_prefix(&ctx, probe, &settings, &prefix, cancel, &mut log, &log_file)?;
         if prefix_missing(&prefix) {
             bail!(tr!("The Wine prefix could not be created. See {log}", log = log_file.display()));
         }
@@ -138,12 +162,12 @@ fn install_under_wine(paths: &DataPaths, client: Client, home: &str, cancel: &Ca
 
     write_client_settings(client, &prefix);
     on_step(Step::Installing);
-    let mut command = run_exe_command(&ctx, &SystemProbe, &settings, &installer.to_string_lossy(), &installer_args(client))
-        .map_err(|e| anyhow!(e))?
-        .command;
+    let mut command =
+        run_exe_command(&ctx, probe, &settings, &installer.to_string_lossy(), &installer_args(client)).map_err(|e| anyhow!(e))?.command;
     // A client the installer starts takes the requests of its games later.
     command.env.insert(UMU_NSENTER.into(), "1".into());
     let _ = writeln!(log, "$ {}", command.display());
+    spawn::log_launch(client, "running installer", &command, &log_file);
     let mut process = spawn::std_command(&command);
     heronite_platform::process::new_group(process.stdin(Stdio::null()).stdout(log.try_clone()?).stderr(log.try_clone()?));
     // Not tied to the app: the installer may become the client.
@@ -211,6 +235,7 @@ fn prefix_missing(prefix: &Path) -> bool {
 /// that lasts, so a creation that was cut short is made again.
 fn create_prefix(
     ctx: &PlanContext,
+    probe: &dyn Probe,
     settings: &GameSettings,
     prefix: &Path,
     cancel: &Cancel,
@@ -223,7 +248,15 @@ fn create_prefix(
     if let Err(e) = std::fs::OpenOptions::new().write(true).create_new(true).open(&marker) {
         log::debug!("{}: {e}", marker.display());
     }
-    for command in create_prefix_commands(ctx, &SystemProbe, settings).map_err(|e| anyhow!(e))? {
+    // umu's `createprefix` makes the prefix and then fails trying to run
+    // "createprefix" as a program (umu 1.4): `wineboot -u` does it cleanly.
+    let umu = heronite_launch::wine::prepare(ctx, probe, settings).map_err(|e| anyhow!(e))?.runtime == WineRuntime::Umu;
+    let commands = if umu {
+        vec![wine_command(ctx, probe, settings, vec!["wineboot".into(), "-u".into()]).map_err(|e| anyhow!(e))?]
+    } else {
+        create_prefix_commands(ctx, probe, settings).map_err(|e| anyhow!(e))?
+    };
+    for command in commands {
         if !spawn::run_to_completion(&command, cancel, PREFIX_TIMEOUT, log)? {
             bail!(tr!("The Wine prefix could not be created. See {log}", log = log_file.display()));
         }
@@ -493,6 +526,45 @@ esac
         let mut again = Vec::new();
         install_under_wine(&paths, Client::BattleNet, &home, &Cancel::new(), &mut |s| again.push(s)).unwrap();
         assert_eq!(again, [Step::Installing]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_proton_setup_downloads_umu_and_runs_through_it() {
+        let (dir, paths) = paths();
+        let home = dir.path().to_string_lossy().into_owned();
+        // A Proton that fails if invoked directly: setup must run through umu instead.
+        let proton = dir.path().join("proton");
+        std::fs::write(&proton, "#!/bin/sh\necho direct-proton >&2\nexit 1\n").unwrap();
+        heronite_platform::fs::make_executable(&proton).unwrap();
+        set_default_wine(&paths, &proton);
+        game_config::set_global_setting(&paths, &home, "defaultWinePrefixDir", json!(dir.path().join("prefixes"))).unwrap();
+        let installer = paths.tools_dir().join("redist/legendary/UbisoftConnectInstaller.exe");
+        std::fs::create_dir_all(installer.parent().unwrap()).unwrap();
+        std::fs::write(&installer, "MZ").unwrap();
+
+        let fake_umu = r#"#!/bin/sh
+echo "umu:$GAMEID:$@" >> "$WINEPREFIX/calls.txt"
+case "$1" in
+  wineboot)
+    mkdir -p "$WINEPREFIX/pfx/drive_c/users/steamuser" "$WINEPREFIX/pfx/dosdevices"
+    : > "$WINEPREFIX/pfx/system.reg"; : > "$WINEPREFIX/pfx/user.reg" ;;
+  *.exe)
+    mkdir -p "$WINEPREFIX/pfx/drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher"
+    : > "$WINEPREFIX/pfx/drive_c/Program Files (x86)/Ubisoft/Ubisoft Game Launcher/upc.exe" ;;
+esac
+"#;
+        let net = spawn::tests::umu_net(dir.path(), fake_umu);
+        let probe = spawn::tests::DiskProbeNoUmu(home.clone());
+        let mut steps = Vec::new();
+        install_under_wine_with(&paths, Client::Ubisoft, &home, &Cancel::new(), &mut |s| steps.push(s), &probe, &net).unwrap();
+        assert_eq!(steps, [Step::DownloadingUmu, Step::CreatingPrefix, Step::Installing]);
+
+        let prefix = dir.path().join("prefixes/Ubisoft Connect");
+        let calls = std::fs::read_to_string(prefix.join("calls.txt")).unwrap();
+        let calls: Vec<&str> = calls.lines().collect();
+        assert_eq!(calls[0], "umu:umu-0:wineboot -u");
+        assert_eq!(calls[1], format!("umu:umu-0:{} /S", installer.display()));
     }
 
     // The fake Proton is a shell script.

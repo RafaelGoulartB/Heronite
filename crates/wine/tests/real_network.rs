@@ -1,6 +1,7 @@
 //! Real GitHub fetch + one real download/extract/remove through the manager.
-//! Ignored by default (network, ~300 MB). Run against a fixture only:
-//!   HERONITE_WINE_REAL=/tmp/heronite-fixture-wine cargo test -p heronite-wine --test real_network -- --ignored --nocapture
+//! Built only with `--features manual-tests` and ignored even then (network,
+//! ~300 MB). Run against a fixture only:
+//!   HERONITE_WINE_REAL=/tmp/heronite-fixture-wine cargo test -p heronite-wine --features manual-tests --test real_network -- --ignored --nocapture
 
 use std::time::{Duration, Instant};
 

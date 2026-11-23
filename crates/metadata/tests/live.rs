@@ -1,7 +1,8 @@
 //! Read-only requests to the real services, to check the parsers against
-//! today's responses. Opt in with `HERONITE_LIVE=1`; IGDB additionally needs
-//! `HERONITE_FIXTURE` (credentials are read from its `settings.json` and never
-//! printed). Writes go to a tempdir.
+//! today's responses. Built only with `--features manual-tests`; opt in with
+//! `HERONITE_LIVE=1 cargo test -p heronite-metadata --features manual-tests
+//! --test live`. IGDB additionally needs `HERONITE_FIXTURE` (credentials are
+//! read from its `settings.json` and never printed). Writes go to a tempdir.
 
 use heronite_data::paths::DataPaths;
 use heronite_metadata::*;

@@ -134,60 +134,53 @@ mod tests {
     }
 
     #[test]
-    fn modifiers_make_a_shortcut() {
-        assert_eq!(press("ctrl-shift-g", false), HotkeyPress::Set("CommandOrControl+Shift+G".into()));
-        assert_eq!(press("alt-space", false), HotkeyPress::Set("Alt+Space".into()));
-        assert_eq!(press("shift-f2", false), HotkeyPress::Set("Shift+F2".into()));
-        assert_eq!(press("ctrl-escape", false), HotkeyPress::Set("CommandOrControl+Esc".into()));
-    }
-
-    #[test]
-    fn plain_keys_need_a_modifier() {
-        assert_eq!(press("a", false), HotkeyPress::NeedsModifier("A".into()));
-        assert_eq!(press("space", false), HotkeyPress::NeedsModifier("Space".into()));
-        assert_eq!(press("enter", false), HotkeyPress::NeedsModifier("Enter".into()));
-        assert_eq!(press("backspace", false), HotkeyPress::NeedsModifier("Backspace".into()));
-    }
-
-    #[test]
-    fn shift_alone_is_not_enough_for_keys_that_type() {
-        assert_eq!(press("shift-a", false), HotkeyPress::NeedsModifier("Shift+A".into()));
-        assert_eq!(press("shift-enter", false), HotkeyPress::NeedsModifier("Shift+Enter".into()));
-        assert_eq!(press("shift-space", false), HotkeyPress::NeedsModifier("Shift+Space".into()));
-        assert_eq!(press("shift-up", false), HotkeyPress::NeedsModifier("Shift+Up".into()));
-        assert_eq!(press("shift-backspace", true), HotkeyPress::NeedsModifier("Shift+Backspace".into()));
-        assert_eq!(press("shift-f2", false), HotkeyPress::Set("Shift+F2".into()));
-        assert_eq!(press("ctrl-shift-a", false), HotkeyPress::Set("CommandOrControl+Shift+A".into()));
+    fn keystrokes_become_shortcuts_or_field_actions() {
+        use HotkeyPress::*;
+        let set = |s: &str| Set(s.into());
+        let needs = |s: &str| NeedsModifier(s.into());
+        for (keys, clearable, want) in [
+            // Modifiers make a shortcut.
+            ("ctrl-shift-g", false, set("CommandOrControl+Shift+G")),
+            ("alt-space", false, set("Alt+Space")),
+            ("shift-f2", false, set("Shift+F2")),
+            ("ctrl-escape", false, set("CommandOrControl+Esc")),
+            ("ctrl-shift-a", false, set("CommandOrControl+Shift+A")),
+            // Plain keys, and Shift with keys that type, need a modifier.
+            ("a", false, needs("A")),
+            ("space", false, needs("Space")),
+            ("enter", false, needs("Enter")),
+            ("backspace", false, needs("Backspace")),
+            ("shift-a", false, needs("Shift+A")),
+            ("shift-enter", false, needs("Shift+Enter")),
+            ("shift-space", false, needs("Shift+Space")),
+            ("shift-up", false, needs("Shift+Up")),
+            ("shift-backspace", true, needs("Shift+Backspace")),
+            // F keys work alone.
+            ("f10", false, set("F10")),
+            ("f24", false, set("F24")),
+            // Esc and Tab leave the field.
+            ("escape", true, Leave),
+            ("tab", false, Leave),
+            ("shift-tab", false, Leave),
+            // Backspace clears only where the field can be empty.
+            ("backspace", true, Clear),
+            ("delete", true, Clear),
+            ("ctrl-backspace", true, set("CommandOrControl+Backspace")),
+            // Modifiers alone change nothing.
+            ("shift", false, Ignore),
+            ("control", false, Ignore),
+        ] {
+            assert_eq!(press(keys, clearable), want, "{keys} (clearable: {clearable})");
+        }
     }
 
     #[test]
     fn f_keys_and_print_screen_work_alone() {
-        assert_eq!(press("f10", false), HotkeyPress::Set("F10".into()));
-        assert_eq!(press("f24", false), HotkeyPress::Set("F24".into()));
-        assert!(works_alone("PrintScreen"));
-        assert!(works_alone("Pause"));
-        assert!(!works_alone("F"));
-        assert!(!works_alone("F25"));
-        assert!(!works_alone("Fx"));
-    }
-
-    #[test]
-    fn esc_and_tab_leave_the_field() {
-        assert_eq!(press("escape", true), HotkeyPress::Leave);
-        assert_eq!(press("tab", false), HotkeyPress::Leave);
-        assert_eq!(press("shift-tab", false), HotkeyPress::Leave);
-    }
-
-    #[test]
-    fn backspace_clears_only_where_the_field_can_be_empty() {
-        assert_eq!(press("backspace", true), HotkeyPress::Clear);
-        assert_eq!(press("delete", true), HotkeyPress::Clear);
-        assert_eq!(press("ctrl-backspace", true), HotkeyPress::Set("CommandOrControl+Backspace".into()));
-    }
-
-    #[test]
-    fn modifiers_alone_change_nothing() {
-        assert_eq!(press("shift", false), HotkeyPress::Ignore);
-        assert_eq!(press("control", false), HotkeyPress::Ignore);
+        for key in ["PrintScreen", "Pause", "F1", "F24"] {
+            assert!(works_alone(key), "{key}");
+        }
+        for key in ["F", "F25", "Fx"] {
+            assert!(!works_alone(key), "{key}");
+        }
     }
 }

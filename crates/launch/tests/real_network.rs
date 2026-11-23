@@ -1,6 +1,7 @@
 //! Opt-in checks against the real network (GitHub, Lutris), downloading into
-//! a temporary Heroic folder only. Run with
-//! `cargo test -p heronite-launch --test real_network -- --ignored --nocapture`.
+//! a temporary Heroic folder only. Built only with `--features manual-tests`.
+//! Run with
+//! `cargo test -p heronite-launch --features manual-tests --test real_network -- --ignored --nocapture`.
 
 use heronite_data::DataPaths;
 use heronite_launch::net::SystemNet;

@@ -590,18 +590,12 @@ mod tests {
     const RESCAN: Duration = Duration::from_secs(1);
 
     #[test]
-    fn disconnected_idle_waits_for_the_earliest_slot_scan() {
+    fn disconnected_idle_waits_for_the_earliest_slot_scan_and_due_ones_do_not_wait() {
         let now = Instant::now();
         let mut next_scan = [now + RESCAN; SLOTS];
         assert_eq!(poll_wait(false, None, &next_scan, now), RESCAN);
         next_scan[1] = now + Duration::from_millis(400);
         assert_eq!(poll_wait(false, None, &next_scan, now), Duration::from_millis(400));
-    }
-
-    #[test]
-    fn due_slot_scans_do_not_wait() {
-        let now = Instant::now();
-        let mut next_scan = [now + RESCAN; SLOTS];
         next_scan[2] = now;
         assert_eq!(poll_wait(false, None, &next_scan, now), Duration::ZERO);
         assert_eq!(poll_wait(false, None, &next_scan, now + Duration::from_millis(1)), Duration::ZERO);

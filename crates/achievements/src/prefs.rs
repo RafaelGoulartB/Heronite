@@ -94,35 +94,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn missing_keys_take_the_defaults() {
+    fn older_files_take_the_defaults_of_what_they_lack() {
         let p: Prefs = serde_json::from_str(r#"{"notify":true}"#).unwrap();
         assert_eq!(p, Prefs { notify: true, ..Prefs::default() });
-    }
-
-    #[test]
-    fn live_notices_default_to_the_overlay_and_game_files_only() {
-        let p = Prefs::default();
-        assert!(p.overlay_notices && !p.live_steam && !p.notify);
-        // Older files, from before Comet, get it on.
+        // From before Comet: it is on.
         let p: Prefs = serde_json::from_str(r#"{"gameFiles":true}"#).unwrap();
         assert!(p.gog_comet);
-    }
-
-    #[test]
-    fn live_options_survive_a_write_and_a_read() {
-        let dir = tempfile::tempdir().unwrap();
-        let app = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
-        let prefs = Prefs { overlay_notices: false, live_steam: true, notify: true, ..Prefs::default() };
-        write(&app, &prefs).unwrap();
-        assert_eq!(read(&app), prefs);
-    }
-
-    #[test]
-    fn every_notice_line_is_on_by_default() {
-        assert_eq!(Prefs::default().notice, NoticeFields::default());
+        // Without the notice lines, or with only some: the others are on.
         let n = NoticeFields::default();
         assert!(n.description && n.rarity && n.points && n.group && n.kind && n.hardcore);
-        // An older file without them, or with only some.
         let p: Prefs = serde_json::from_str(r#"{"overlayNotices":true}"#).unwrap();
         assert_eq!(p.notice, NoticeFields::default());
         let p: Prefs = serde_json::from_str(r#"{"notice":{"rarity":false}}"#).unwrap();
@@ -130,13 +110,13 @@ mod tests {
     }
 
     #[test]
-    fn notice_lines_survive_a_write_and_a_read() {
+    fn options_survive_a_write_and_a_read() {
         let dir = tempfile::tempdir().unwrap();
         let app = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
         let notice = NoticeFields { description: false, points: false, hardcore: false, ..NoticeFields::default() };
-        let prefs = Prefs { notice, ..Prefs::default() };
+        let prefs = Prefs { overlay_notices: false, live_steam: true, notify: true, notice, ..Prefs::default() };
         write(&app, &prefs).unwrap();
-        assert_eq!(read(&app).notice, notice);
+        assert_eq!(read(&app), prefs);
         let raw = std::fs::read_to_string(app.achievement_prefs()).unwrap();
         assert!(raw.contains("\"description\": false") || raw.contains("\"description\":false"), "{raw}");
     }

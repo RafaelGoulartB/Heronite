@@ -14,9 +14,10 @@
 //!   URL is made by the app for this sign-in). What it prints is the whole
 //!   address the sign-in ends on (`login.live.com/oauth20_desktop.srf?code=…&state=…`,
 //!   or `?error=…` when the user said no): the app checks it is its sign-in.
-//! * `--store ea`: the EA account. The page asks EA for a token of its web
-//!   client ([`EA_LOGIN_URL`]): EA signs the user in first, then answers on
-//!   that address with the token as JSON. Once it did, what is printed is
+//! * `--store ea`: the EA account. The user signs in on EA's site
+//!   ([`EA_LOGIN_URL`]), which then shows another of its pages: the window
+//!   asks EA there for a token of its web client ([`EA_TOKEN_URL`]), which
+//!   EA answers as JSON. Once it did, what is printed is
 //!   the window's cookies for `accounts.ea.com` (`{"cookies":[{"name":…,
 //!   "value":…}]}`), the web session the app asks for tokens with; the
 //!   token itself is left behind.
@@ -58,16 +59,23 @@ const CLOSED: i32 = 4;
 /// takes the window for the launcher and waits for its JS bridge.
 const EPIC_LOGIN_URL: &str = "https://www.epicgames.com/id/login?responseType=code";
 const EPIC_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) EpicGamesLauncher";
+/// The sign-in of EA's own site. Not [`EA_TOKEN_URL`]'s client: EA no longer
+/// signs anyone in for it ("Your request cannot be completed. Service
+/// limitations apply." after the password), though it still gives its token
+/// to a session signed in here.
+const EA_LOGIN_URL: &str = "https://www.ea.com/login";
 /// EA's token for the client of its web pages, answered as JSON
-/// (`nucleus:rest`); with no session EA shows its sign-in page first. The
-/// clients of Lutris and Playnite ask the same, with `prompt=none`.
-const EA_LOGIN_URL: &str = "https://accounts.ea.com/connect/auth?client_id=ORIGIN_JS_SDK&response_type=token&redirect_uri=nucleus:rest";
+/// (`nucleus:rest`), without a page (`prompt=none`): `login_required` with
+/// no session. The clients of Lutris and Playnite ask the same.
+const EA_TOKEN_URL: &str =
+    "https://accounts.ea.com/connect/auth?client_id=ORIGIN_JS_SDK&response_type=token&redirect_uri=nucleus:rest&prompt=none";
 /// The address whose cookies are the session (the app sends them there).
 const EA_COOKIES_URL: &str = "https://accounts.ea.com/connect/auth";
 /// What the EA sign-in hands over in place of a code: the cookies follow.
 const EA_DONE: &str = "ea-signed-in";
-/// How many times a page of EA's site other than its sign-in sends the
-/// window back to [`EA_LOGIN_URL`] (a link the user followed).
+/// How many times the window goes to [`EA_TOKEN_URL`] from another page of
+/// EA's site (each return to [`EA_LOGIN_URL`] from a `login_required`
+/// follows one).
 const EA_MAX_RETURNS: u32 = 5;
 const GOG_LOGIN_URL: &str = "https://auth.gog.com/auth?client_id=46899977096215655&redirect_uri=https%3A%2F%2Fembed.gog.com%2Fon_login_success%3Forigin%3Dclient&response_type=code&layout=galaxy";
 /// A desktop browser: the GOG and Amazon pages refuse unknown web views.
@@ -126,7 +134,9 @@ impl Store {
             return done.then(|| address.to_string());
         }
         // The token is sent to `nucleus:rest` when EA redirects instead of
-        // answering on its own address.
+        // answering on its own address. An error sent there ends the window
+        // too (the page could not open the address): the app finds out
+        // from the session it is handed.
         if self == Self::Ea {
             return (url.scheme() == "nucleus").then(|| EA_DONE.to_string());
         }
@@ -195,10 +205,11 @@ fn code_from_page_text(text: &str) -> Option<String> {
 enum EaPage {
     /// `connect/auth` itself: its text may be the token.
     Token,
-    /// Another page of EA's site (not its sign-in): the window goes back to
-    /// [`EA_LOGIN_URL`], which answers at once for a signed-in session.
+    /// Another page of EA's site (not its sign-in): the window goes to
+    /// [`EA_TOKEN_URL`], which answers at once for a signed-in session.
     Elsewhere,
-    /// The sign-in, or a page of another site.
+    /// The sign-in (EA's, and the pages of `www.ea.com` it passes through),
+    /// or a page of another site.
     Other,
 }
 
@@ -209,11 +220,31 @@ fn ea_page(url: &str) -> EaPage {
         return EaPage::Other;
     }
     match host {
-        "accounts.ea.com" if url.path() == "/connect/auth" => EaPage::Token,
+        // Not the client EA's site signs in with on the way.
+        "accounts.ea.com" if url.path() == "/connect/auth" => match url.query_pairs().find(|(k, _)| k == "client_id") {
+            Some((_, id)) if id != "ORIGIN_JS_SDK" => EaPage::Other,
+            _ => EaPage::Token,
+        },
         "accounts.ea.com" | "signin.ea.com" => EaPage::Other,
+        // `/login`, then `/login_check` once EA signed the user in.
+        "www.ea.com" | "ea.com" if url.path_segments().is_some_and(|mut s| s.any(|s| s == "login" || s == "login_check")) => EaPage::Other,
         _ => EaPage::Elsewhere,
     }
 }
+
+/// Reads the text of `connect/auth` (in a `<pre>` of its own when a JSON
+/// viewer formats it), for [`ea_token_in`]. A window not signed in
+/// (`login_required`) goes on to [`EA_LOGIN_URL`] from the page itself, once
+/// (the page is read again while the next one loads): the callback that
+/// gets the text cannot reach the view.
+const EA_READ_SCRIPT: &str = concat!(
+    "(function(){var p=document.querySelector('pre');",
+    "var t=p?p.innerText:(document.body?document.body.innerText:'');",
+    "try{var d=JSON.parse(t.slice(t.indexOf('{'),t.lastIndexOf('}')+1));",
+    "if((d.error==='login_required'||d.error_code==='login_required')&&!d.access_token&&!window.__heroniteBack)",
+    "{window.__heroniteBack=1;location.replace('https://www.ea.com/login');}}catch(e){}",
+    "return t;})()"
+);
 
 /// The text of `connect/auth` holds a token (JSON with `access_token`;
 /// `eval` hands it back JSON-encoded, and a JSON viewer may add text).
@@ -340,10 +371,15 @@ fn main() {
         }
         if store == Store::Ea {
             let Ok(url) = page_check.url() else { return glib::ControlFlow::Continue };
+            // Left once while it shows: the window may come back to it
+            // later (signed in by then).
+            if *ea_left_from.borrow() != url {
+                ea_left_from.borrow_mut().clear();
+            }
             match ea_page(&url) {
                 EaPage::Token => {
                     let tx = tx_page.clone();
-                    let _ = page_check.evaluate_script_with_callback("document.body ? document.body.innerText : ''", move |text| {
+                    let _ = page_check.evaluate_script_with_callback(EA_READ_SCRIPT, move |text| {
                         if ea_token_in(&text) {
                             let _ = tx.send(EA_DONE.to_string());
                         }
@@ -352,7 +388,7 @@ fn main() {
                 EaPage::Elsewhere if *ea_left_from.borrow() != url && ea_returns.get() < EA_MAX_RETURNS => {
                     ea_returns.set(ea_returns.get() + 1);
                     *ea_left_from.borrow_mut() = url;
-                    let _ = page_check.load_url(EA_LOGIN_URL);
+                    let _ = page_check.load_url(EA_TOKEN_URL);
                 }
                 _ => {}
             }
@@ -536,9 +572,18 @@ mod tests {
 
     #[test]
     fn the_ea_sign_in_ends_on_the_token_of_its_own_address() {
-        assert_eq!(ea_page(EA_LOGIN_URL), EaPage::Token);
+        assert_eq!(ea_page(EA_TOKEN_URL), EaPage::Token);
         assert_eq!(ea_page("https://accounts.ea.com/connect/auth?fid=abc"), EaPage::Token);
         assert_eq!(ea_page("https://signin.ea.com/p/juno/login?fid=abc"), EaPage::Other);
+        // EA's site signs the user in (#417): its sign-in pages are left alone.
+        assert_eq!(ea_page(EA_LOGIN_URL), EaPage::Other);
+        assert_eq!(ea_page("https://www.ea.com/login_check?code=abc&state=x"), EaPage::Other);
+        assert_eq!(ea_page("https://www.ea.com/pt-br/login"), EaPage::Other);
+        assert_eq!(ea_page("https://ea.com/login_check?code=abc"), EaPage::Other);
+        let site_client = "https://accounts.ea.com/connect/auth?client_id=EADOTCOM-WEB-SERVER&response_type=code";
+        assert_eq!(ea_page(site_client), EaPage::Other, "the site's own client");
+        assert_eq!(ea_page("https://www.ea.com/news/login-rewards"), EaPage::Elsewhere);
+        assert_eq!(ea_page("https://www.ea.com/"), EaPage::Elsewhere, "where EA's sign-in ends");
         assert_eq!(ea_page("https://accounts.ea.com/connect/logout"), EaPage::Other);
         assert_eq!(ea_page("https://www.ea.com/pt-br"), EaPage::Elsewhere);
         assert_eq!(ea_page("https://myaccount.ea.com/cp-ui/aboutme/index"), EaPage::Elsewhere);
@@ -553,8 +598,12 @@ mod tests {
         assert!(!ea_token_in(r#"{"error_code":"login_required","error":"login_required"}"#));
         assert!(!ea_token_in(r#"{"access_token":""}"#));
         assert!(!ea_token_in("<html>Sign in</html>"));
+        assert!(EA_TOKEN_URL.contains("client_id=ORIGIN_JS_SDK") && EA_TOKEN_URL.ends_with("&prompt=none"), "no sign-in page of its own");
+        assert!(EA_READ_SCRIPT.contains(&format!("location.replace('{EA_LOGIN_URL}')")), "signed out: back to EA's sign-in");
 
         assert_eq!(Store::Ea.code_from_url("nucleus:rest#access_token=QVQx&expires_in=3599").as_deref(), Some(EA_DONE));
+        let error = Store::Ea.code_from_url("nucleus:rest#error=login_required");
+        assert_eq!(error.as_deref(), Some(EA_DONE), "ends the window: the app tells a signed-out session");
         assert_eq!(Store::Ea.code_from_url("https://www.ea.com/?code=x"), None);
         assert_eq!(
             ea_cookies_json([("sid", "S1"), ("remid", "R\"1")]),

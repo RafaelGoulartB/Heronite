@@ -21,7 +21,7 @@ use crate::prepare::Notice;
 use crate::procs::processes_matching;
 use crate::record;
 use crate::settings::GlobalSettings;
-use crate::steam::KEY_CLOSE_AFTER_GAME;
+use crate::steam::{KEY_CLOSE_AFTER_GAME, KEY_START_SILENT};
 
 pub(super) fn run_steam(
     shared: &Shared,
@@ -64,12 +64,20 @@ pub(super) fn run_steam(
         message: tr!("Waiting for Steam to start the game...").into(),
         cancellable: true,
     });
-    // Steam closes after the game only when this launch is what opened it.
+    // Steam closes after the game, and starts silently, only when this launch
+    // is what opened it.
     let opened_steam = !shared.steam.client_running(&*shared.procs);
+    let silent_steam = opened_steam && GlobalSettings::load(&shared.paths).flag_or(KEY_START_SILENT, true);
     // What Steam logs from here on tells whether it got the URI.
     let marks = LogMarks::capture(&shared.steam.log_files());
     let sent_at = Instant::now();
-    if let Err(e) = shared.spawner.open_uri(uri) {
+    let open_result = if silent_steam {
+        let root = shared.steam.install_for_app(app_id);
+        shared.spawner.open_steam_silent(uri, Some(&root))
+    } else {
+        shared.spawner.open_uri(uri)
+    };
+    if let Err(e) = open_result {
         return fail(
             shared,
             log,
@@ -116,7 +124,10 @@ pub(super) fn run_steam(
         },
         &mut || {
             // Windows has no other way to ask Steam than the one that was used.
-            if cfg!(unix) && !checked_delivery && sent_at.elapsed() >= shared.cfg.steam.delivery_check {
+            // A silent launch invokes the Steam client directly and handles
+            // quick exits and desktop fallback itself (`open_steam_silent`),
+            // so the delivery check does not re-open Steam without `-silent`.
+            if cfg!(unix) && !silent_steam && !checked_delivery && sent_at.elapsed() >= shared.cfg.steam.delivery_check {
                 checked_delivery = true;
                 if !steam_got_uri(shared, &marks, uri, opened_steam) {
                     log.warning(&format!("Steam did not get {uri}; asking the Steam client directly"));

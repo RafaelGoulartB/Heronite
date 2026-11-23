@@ -48,8 +48,9 @@ const POLL: Duration = Duration::from_secs(3);
 /// How often a client only expected to run (no page on screen) is asked:
 /// it may stay open for hours beside its games.
 const POLL_WATCHED: Duration = Duration::from_secs(15);
-/// How long a client that was asked to start may take to show up.
-const OPENING: Duration = Duration::from_secs(30);
+/// How long a client that was asked to start may take to show up (includes a
+/// first-time Steam Linux Runtime fetch by umu).
+const OPENING: Duration = Duration::from_secs(90);
 
 pub enum ClientsEvent {
     /// A client's games were brought into the Collection.

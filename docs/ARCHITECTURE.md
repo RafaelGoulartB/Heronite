@@ -406,8 +406,10 @@ text size) and applies it.
   `Procs::prefix_programs` lists every program of the PC, the game being the
   ones running from its folder.
   The EA account is optional (`ea_account`, as Lutris's and Playnite's EA
-  libraries do it): `heronite-epic-login --store ea` opens EA's own page for
-  a token of its web client (`connect/auth`, `ORIGIN_JS_SDK`) and prints the
+  libraries do it): `heronite-epic-login --store ea` opens the sign-in of
+  EA's site (`www.ea.com/login`; EA no longer signs anyone in for the web
+  client itself), then asks for a token of its web client (`connect/auth`,
+  `ORIGIN_JS_SDK`, `prompt=none`) and prints the
   window's `accounts.ea.com` cookies, never a password; `services::clients`
   keeps them sealed with DPAPI on Windows (`local_library/ea-account.bin`)
   and in the desktop's keyring elsewhere, and `clients.json` only says that

@@ -1,9 +1,10 @@
 //! How long a launch takes until the game's process exists, through the app
 //! and through a bare `umu-run` (what lighter launchers do), in the same
-//! prefix with the same Proton. Wine's Notepad plays the game. Ignored by
-//! default (opens windows, needs a Proton build, umu and the network):
+//! prefix with the same Proton. Wine's Notepad plays the game. Built only
+//! with `--features manual-tests` and ignored by default (opens windows, needs
+//! a Proton build, umu and the network):
 //!   HERONITE_REAL_PROTON=~/.local/share/heronite/tools/proton/GE-Proton-latest \
-//!   cargo test -p heronite-launch --test real_launch_speed -- --ignored --nocapture
+//!   cargo test -p heronite-launch --features manual-tests --test real_launch_speed -- --ignored --nocapture
 
 // Real Proton: Linux only.
 #![cfg(unix)]

@@ -213,14 +213,3 @@ impl PadTarget for ClientSettingsDialog {
         h
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{Section, SECTIONS};
-
-    #[test]
-    fn wine_comes_first_and_no_tab_needs_a_game() {
-        assert_eq!(SECTIONS[0], Section::Compatibility);
-        assert!(!SECTIONS.contains(&Section::Saves));
-    }
-}

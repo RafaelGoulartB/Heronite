@@ -57,8 +57,8 @@ use wry::{
 };
 
 use super::{
-    code_from_page_text, ea_cookies_json, ea_page, ea_token_in, parse_args, EaPage, Store, CLOSED, EA_COOKIES_URL, EA_DONE, EA_LOGIN_URL,
-    EA_MAX_RETURNS, EPIC_USER_AGENT,
+    code_from_page_text, ea_cookies_json, ea_page, ea_token_in, parse_args, EaPage, Store, CLOSED, EA_COOKIES_URL, EA_DONE, EA_MAX_RETURNS,
+    EA_READ_SCRIPT, EA_TOKEN_URL, EPIC_USER_AGENT,
 };
 
 /// Exit status when the WebView2 runtime is not installed (the app tells the
@@ -178,26 +178,23 @@ pub(crate) fn main() -> ! {
                 return;
             }
             // EA answers its token as JSON on connect/auth; another page of
-            // its site goes back there, which answers at once once signed in.
+            // its site (after the sign-in) asks it there.
             if store == Store::Ea {
                 match ea_page(&url) {
                     EaPage::Token => {
                         if let Some(view) = page_view.borrow().as_ref() {
                             let done = done.clone();
-                            let _ = view.evaluate_script_with_callback(
-                                "(function(){var p=document.querySelector('pre');return p?p.innerText:(document.body?document.body.innerText:'');})()",
-                                move |text| {
-                                    if ea_token_in(&text) {
-                                        done(EA_DONE.to_string());
-                                    }
-                                },
-                            );
+                            let _ = view.evaluate_script_with_callback(EA_READ_SCRIPT, move |text| {
+                                if ea_token_in(&text) {
+                                    done(EA_DONE.to_string());
+                                }
+                            });
                         }
                     }
                     EaPage::Elsewhere if ea_returns.get() < EA_MAX_RETURNS => {
                         ea_returns.set(ea_returns.get() + 1);
                         if let Some(view) = page_view.borrow().as_ref() {
-                            let _ = view.load_url(EA_LOGIN_URL);
+                            let _ = view.load_url(EA_TOKEN_URL);
                         }
                     }
                     _ => {}

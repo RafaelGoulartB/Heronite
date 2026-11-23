@@ -114,31 +114,27 @@ mod tests {
     }
 
     #[test]
-    fn quick_launch_refuses_the_others() {
-        assert_eq!(clash(Shortcut::QuickLaunch, "CommandOrControl+Shift+G", &on()), Some(Shortcut::Overlay));
-        assert_eq!(clash(Shortcut::QuickLaunch, "F10", &on()), Some(Shortcut::Screenshot));
-        assert_eq!(clash(Shortcut::QuickLaunch, "CommandOrControl+Alt+R", &on()), Some(Shortcut::Replay));
-    }
-
-    #[test]
-    fn the_others_refuse_quick_launch() {
-        // The quick launcher's comes as shown ("Ctrl"), the field's as saved.
-        for own in [Shortcut::Overlay, Shortcut::Screenshot, Shortcut::Replay] {
-            assert_eq!(clash(own, "CommandOrControl+Alt+Space", &on()), Some(Shortcut::QuickLaunch), "{own:?}");
+    fn a_shortcut_that_is_on_cannot_be_taken_twice() {
+        use Shortcut::*;
+        let only_overlay = vec![(Overlay, "CommandOrControl+Shift+G".to_string())];
+        for (own, pressed, taken, want) in [
+            // The quick launcher refuses the others.
+            (QuickLaunch, "CommandOrControl+Shift+G", on(), Some(Overlay)),
+            (QuickLaunch, "F10", on(), Some(Screenshot)),
+            (QuickLaunch, "CommandOrControl+Alt+R", on(), Some(Replay)),
+            // The others refuse it: its own comes as shown ("Ctrl"), the field's as saved.
+            (Overlay, "CommandOrControl+Alt+Space", on(), Some(QuickLaunch)),
+            (Screenshot, "CommandOrControl+Alt+Space", on(), Some(QuickLaunch)),
+            (Replay, "CommandOrControl+Alt+Space", on(), Some(QuickLaunch)),
+            // Its own shortcut is no clash.
+            (QuickLaunch, "CommandOrControl+Alt+Space", on(), None),
+            (Overlay, "CommandOrControl+Shift+G", on(), None),
+            // Shortcuts that are off take nothing.
+            (Overlay, "F10", only_overlay.clone(), None),
+            (QuickLaunch, "F10", only_overlay.clone(), None),
+        ] {
+            assert_eq!(clash(own, pressed, &taken), want, "{own:?} {pressed}");
         }
-    }
-
-    #[test]
-    fn its_own_shortcut_is_no_clash() {
-        assert_eq!(clash(Shortcut::QuickLaunch, "CommandOrControl+Alt+Space", &on()), None);
-        assert_eq!(clash(Shortcut::Overlay, "CommandOrControl+Shift+G", &on()), None);
-    }
-
-    #[test]
-    fn shortcuts_that_are_off_take_nothing() {
-        let only_overlay = vec![(Shortcut::Overlay, "CommandOrControl+Shift+G".to_string())];
-        assert_eq!(clash(Shortcut::Overlay, "F10", &only_overlay), None);
-        assert_eq!(clash(Shortcut::QuickLaunch, "F10", &only_overlay), None);
     }
 
     #[test]

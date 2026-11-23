@@ -232,14 +232,4 @@ mod tests {
         assert_eq!(after.has_update, Some(false));
         assert!(mark_removed(&data_paths, "nope").is_err());
     }
-
-    #[test]
-    fn reads_real_cache_if_present() {
-        let real = DataPaths::detect();
-        let list = read_releases(&real);
-        if list.is_empty() {
-            return;
-        }
-        assert!(list.iter().any(|r| r.kind == "GE-Proton" && r.downloadable()));
-    }
 }

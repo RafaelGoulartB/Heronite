@@ -3,10 +3,11 @@
 //! runs in its own namespaces, without the network and without the real home,
 //! that the program alongside joins its sandbox, and that stopping the game
 //! ends everything, holding nothing big in memory; with umu wanted or not,
-//! Proton runs directly there. Ignored by default (opens windows, needs
-//! bubblewrap and a Proton build). Run with a Proton folder:
+//! Proton runs directly there. Built only with `--features manual-tests` and
+//! ignored by default (opens windows, needs bubblewrap and a Proton build).
+//! Run with a Proton folder:
 //!   HERONITE_REAL_PROTON=~/.local/share/Steam/compatibilitytools.d/UMU-Proton-10.0-4 \
-//!   cargo test -p heronite-launch --test real_sandbox -- --ignored --nocapture --test-threads=1
+//!   cargo test -p heronite-launch --features manual-tests --test real_sandbox -- --ignored --nocapture --test-threads=1
 
 // bubblewrap and real Proton: Linux only.
 #![cfg(unix)]

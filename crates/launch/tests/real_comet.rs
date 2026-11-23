@@ -1,8 +1,8 @@
 //! The real Comet beside a stand-in GOG game (`sleep`): started before it,
 //! listening on GOG Galaxy's port, stopped with Ctrl+C after it, its log
-//! written without the tokens. Ignored by default (downloads Comet, about
-//! 15 MB, and needs the port free):
-//!   cargo test -p heronite-launch --test real_comet -- --ignored --nocapture
+//! written without the tokens. Built only with `--features manual-tests` and
+//! ignored by default (downloads Comet, about 15 MB, and needs the port free):
+//!   cargo test -p heronite-launch --features manual-tests --test real_comet -- --ignored --nocapture
 
 // `sleep` plays the game.
 #![cfg(unix)]

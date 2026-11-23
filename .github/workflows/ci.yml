@@ -3,9 +3,13 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore: ["**.md", "assets/screenshots/**", "docs/**", "licenses/**"]
+    paths-ignore: ["**.md", "LICENSE", "assets/screenshots/**", "docs/**", "licenses/**"]
   pull_request:
-    paths-ignore: ["**.md", "assets/screenshots/**", "docs/**", "licenses/**"]
+    paths-ignore: ["**.md", "LICENSE", "assets/screenshots/**", "docs/**", "licenses/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -17,10 +21,37 @@ env:
   # name the functions.
   CARGO_PROFILE_DEV_DEBUG: "0"
   CARGO_PROFILE_TEST_DEBUG: "0"
+  # Required for sccache and avoids incremental overhead on ephemeral runners.
+  CARGO_INCREMENTAL: "0"
 
 jobs:
-  check:
-    name: Format, clippy and tests
+  # Determines which crates need checking on pull requests (changed crates plus
+  # their transitive reverse dependents). Pushes to main, workflow_dispatch, and
+  # workspace-wide edits always check `--workspace`.
+  plan:
+    name: Plan CI scope
+    runs-on: ubuntu-24.04
+    outputs:
+      run_rust: ${{ steps.affected.outputs.run_rust }}
+      clippy_args: ${{ steps.affected.outputs.clippy_args }}
+      test_args: ${{ steps.affected.outputs.test_args }}
+      scope: ${{ steps.affected.outputs.scope }}
+      reason: ${{ steps.affected.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # On pull_request, HEAD is the merge commit (HEAD^1 = base, HEAD^2 = PR).
+          fetch-depth: 2
+      - id: affected
+        name: Compute affected crates
+        run: python3 scripts/ci-affected.py --event "${{ github.event_name }}"
+
+  # Linux formatting and clippy run in parallel with the Linux test build, just
+  # like on Windows. Clippy shares nothing with test codegen/linking.
+  linux-lint:
+    name: Format and clippy
+    needs: plan
+    if: needs.plan.outputs.run_rust == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -36,10 +67,32 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Formatting
         run: cargo fmt --all -- --check
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Tests
-        run: cargo test --workspace
+      - name: Clippy (${{ needs.plan.outputs.reason }})
+        run: cargo clippy ${{ needs.plan.outputs.clippy_args }} --all-targets -- -D warnings
+
+  linux-tests:
+    name: Tests (Linux)
+    needs: plan
+    if: needs.plan.outputs.run_rust == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages
+        run: scripts/ci-deps.sh
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          env-vars: RUSTC_WRAPPER
+      - name: Tests (${{ needs.plan.outputs.reason }})
+        # --lib --bins --tests skips 30+ empty rustdoc --test invocations
+        # (the workspace has no doctests).
+        run: cargo test ${{ needs.plan.outputs.test_args }} --lib --bins --tests --no-fail-fast
 
   # Keep the Windows port building: the same clippy and tests on Windows
   # (formatting is the same on both, the Linux job checks it). Clippy and the
@@ -47,6 +100,8 @@ jobs:
   # one, and clippy's checking shares nothing with it.
   windows-clippy:
     name: Clippy (Windows)
+    needs: plan
+    if: needs.plan.outputs.run_rust == 'true'
     runs-on: windows-latest
     env:
       # lld links several times faster than link.exe (build scripts and
@@ -54,27 +109,47 @@ jobs:
       CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld.exe
     steps:
       - uses: actions/checkout@v4
+      - name: Exclude build paths from Windows Defender
+        shell: pwsh
+        run: |
+          try {
+            Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, "$env:USERPROFILE\.cargo", $env:RUNNER_TEMP
+          } catch {
+            Write-Warning "Defender exclusion skipped: $_"
+          }
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Clippy (${{ needs.plan.outputs.reason }})
+        run: cargo clippy ${{ needs.plan.outputs.clippy_args }} --all-targets -- -D warnings
 
   windows-tests:
     name: Tests (Windows)
+    needs: plan
+    if: needs.plan.outputs.run_rust == 'true'
     runs-on: windows-latest
     env:
-      # With link.exe, linking the ~55 test programs took about half of the
-      # test build. Releases still link with link.exe (scripts/windows/package.ps1).
+      # With link.exe, linking test programs took about half of the test build.
+      # Releases still link with link.exe (scripts/windows/package.ps1).
+      # sccache is Linux-only: on Windows, flattening Cargo's @responsefile
+      # exceeds CreateProcessW's 32 KB command-line limit (exit 0xfffffffe).
       CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld.exe
     steps:
       - uses: actions/checkout@v4
+      - name: Exclude build paths from Windows Defender
+        shell: pwsh
+        run: |
+          try {
+            Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, "$env:USERPROFILE\.cargo", $env:RUNNER_TEMP
+          } catch {
+            Write-Warning "Defender exclusion skipped: $_"
+          }
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Tests
-        run: cargo test --workspace --no-fail-fast
+      - name: Tests (${{ needs.plan.outputs.reason }})
+        run: cargo test ${{ needs.plan.outputs.test_args }} --lib --bins --tests --no-fail-fast

@@ -1,11 +1,9 @@
 //! Steam store tags against a local mock of the Steam Web API (recorded
 //! answers trimmed to the tags of Portal 2 and Hades).
 
-mod common;
-
 use std::time::Duration;
 
-use common::{fixture, Req, Resp, Server};
+use crate::common::{fixture, Req, Resp, Server};
 use heronite_data::paths::DataPaths;
 use heronite_data::steam_tags::{SteamTags, SteamTagsFile};
 use heronite_metadata::steam_tags::{refresh, BATCH};

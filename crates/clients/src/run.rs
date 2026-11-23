@@ -8,9 +8,10 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use heronite_data::clients::prefix_of;
-use heronite_data::proc::Run;
+use heronite_data::proc::{Cancel, Run};
 use heronite_data::DataPaths;
 use heronite_i18n::tr;
+use heronite_launch::net::{Net, SystemNet};
 use heronite_launch::procs::{Procs, SystemProcs};
 use heronite_launch::settings::{load_game_settings, GameSettings};
 use heronite_launch::wine_tools::{alongside_command, kill_prefix_command, run_exe_command, UMU_NSENTER};
@@ -23,11 +24,7 @@ const CLOSE_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// What the client is started with.
 fn open_args(client: Client) -> Vec<String> {
-    match client {
-        // Without it the window stays white under Proton.
-        Client::BattleNet => vec!["--in-process-gpu".into()],
-        Client::Ea | Client::Ubisoft | Client::Rockstar => Vec::new(),
-    }
+    client.wine_open_args().iter().map(|a| (*a).to_string()).collect()
 }
 
 /// The client's prefix and the settings it runs with.
@@ -44,12 +41,24 @@ fn not_set_up(client: Client) -> String {
 
 /// The command that opens the client's window: the client started with its
 /// Wine (umu's container then takes the later requests of its games), or,
-/// while it runs, a request to the open client.
+/// while it runs, a request to the open client. Builds the command without
+/// downloading umu (unlike [`open`]).
 pub fn open_command(paths: &DataPaths, client: Client, home: &str) -> Result<Command, String> {
     command_with(paths, client, home, &SystemProbe, &SystemProcs)
 }
 
 fn command_with(paths: &DataPaths, client: Client, home: &str, probe: &dyn Probe, procs: &dyn Procs) -> Result<Command, String> {
+    prepare_open(paths, client, home, probe, procs, None)
+}
+
+fn prepare_open(
+    paths: &DataPaths,
+    client: Client,
+    home: &str,
+    probe: &dyn Probe,
+    procs: &dyn Procs,
+    net: Option<&dyn Net>,
+) -> Result<Command, String> {
     let (prefix, ctx, settings) = setup_of(paths, client, home, probe)?;
     let exe = find_exe(client, &Place::Prefix(prefix.clone()))
         .ok_or_else(|| tr!("{client} is not installed in its prefix yet. Set it up in Stores → {client}.", client = client.name()))?;
@@ -60,6 +69,12 @@ fn command_with(paths: &DataPaths, client: Client, home: &str, probe: &dyn Probe
     if running_in(procs, client, &prefix).0 {
         return alongside_command(&ctx, probe, client.config_app(), "sideload", &settings, &exe, true);
     }
+    if let Some(net) = net {
+        // Opening has no cancel action.
+        spawn::ensure_umu(&ctx, probe, net, &settings, &Cancel::new(), true, || {
+            log::info!("{}: downloading the umu runtime", client.name());
+        })?;
+    }
     let mut command = run_exe_command(&ctx, probe, &settings, &exe, &open_args(client))?.command;
     // Its games, started later, join this container.
     command.env.insert(UMU_NSENTER.into(), "1".into());
@@ -67,18 +82,20 @@ fn command_with(paths: &DataPaths, client: Client, home: &str, probe: &dyn Probe
     Ok(command)
 }
 
-/// Starts [`open_command`] in a process group of its own; the child is the
-/// caller's to wait for (it lives as long as the client when it started it).
-/// On Windows the client's program starts on its own.
+/// Starts [`open_command`] in a process group of its own (downloading umu
+/// first when Proton needs it); the child is the caller's to wait for (it
+/// lives as long as the client when it started it). On Windows the client's
+/// program starts on its own.
 pub fn open(paths: &DataPaths, client: Client, home: &str) -> Result<std::process::Child, String> {
     if crate::native() {
         return crate::native::open(client, &Place::machine());
     }
-    let command = open_command(paths, client, home)?;
+    let command = prepare_open(paths, client, home, &SystemProbe, &SystemProcs, Some(&SystemNet))?;
     let mut cmd = spawn::std_command(&command);
     // Not `proc::guard`: the client outlives the app.
     heronite_platform::process::new_group(cmd.stdin(Stdio::null()));
-    let log = spawn::create_log(&spawn::log_path(paths, &format!("{}.log", client.id()))).ok();
+    let log_file = spawn::log_path(paths, &format!("{}.log", client.id()));
+    let log = spawn::create_log(&log_file).ok();
     let (out, err) = match log {
         Some(mut file) => {
             let _ = writeln!(file, "$ {}", command.display());
@@ -90,7 +107,10 @@ pub fn open(paths: &DataPaths, client: Client, home: &str) -> Result<std::proces
         None => (Stdio::null(), Stdio::null()),
     };
     cmd.stdout(out).stderr(err);
-    heronite_data::proc::spawn(&mut cmd).map_err(|e| tr!("Could not start {client}: {error}", client = client.name(), error = e))
+    let child =
+        heronite_data::proc::spawn(&mut cmd).map_err(|e| tr!("Could not start {client}: {error}", client = client.name(), error = e))?;
+    spawn::log_launch(client, "opened", &command, &log_file);
+    Ok(child)
 }
 
 /// `(the client's main program runs, one of its games runs)` for the client
@@ -184,7 +204,7 @@ mod tests {
 
         /// The client's program in the prefix.
         fn install(&self, client: Client) -> PathBuf {
-            let exe = self.prefix().join("drive_c").join(client.exe_candidates()[0]);
+            let exe = client.exe_candidates()[0].split('/').fold(self.prefix().join("drive_c"), |p, part| p.join(part));
             std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
             std::fs::write(&exe, "MZ").unwrap();
             exe
@@ -257,6 +277,46 @@ mod tests {
         let exe = rig.install(Client::Ea);
         let err = command_with(&rig.paths, Client::Ea, "/home/u", &rig.probe(&exe), &FakeProcs::new()).unwrap_err();
         assert_eq!(err, "The sandbox does not run EA app. Turn it off in Stores → EA app.");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opening_downloads_missing_umu_for_proton_and_skips_when_already_running() {
+        let rig = Rig::new();
+        let home = rig.dir.path().to_string_lossy().into_owned();
+        let proton = rig.dir.path().join("proton");
+        std::fs::write(&proton, "#!/bin/sh\n").unwrap();
+        heronite_platform::fs::make_executable(&proton).unwrap();
+        let app = Client::Ubisoft.config_app();
+        let section = json!({"winePrefix": rig.prefix(), "wineVersion": {"bin": proton, "name": "GE-Proton", "type": "proton"}});
+        std::fs::create_dir_all(rig.paths.games_config_dir()).unwrap();
+        std::fs::write(rig.paths.game_config(app), json!({ app: section, "version": "v0" }).to_string()).unwrap();
+        let exe = rig.install(Client::Ubisoft);
+        let probe = spawn::tests::DiskProbeNoUmu(home.clone());
+
+        // Already running in the prefix: join without downloading umu.
+        let procs = FakeProcs::new();
+        procs.start(20, "wine", None);
+        procs.set_prefix_programs(&[(20, "upc.exe")]);
+        let quiet = heronite_launch::net::FakeNet::online();
+        let join = prepare_open(&rig.paths, Client::Ubisoft, &home, &probe, &procs, Some(&quiet)).unwrap();
+        assert_eq!(join.program, proton.to_string_lossy());
+        assert!(quiet.requests().is_empty());
+
+        // Offline and missing umu: clear error instead of silently bypassing umu.
+        let err =
+            prepare_open(&rig.paths, Client::Ubisoft, &home, &probe, &FakeProcs::new(), Some(&heronite_launch::net::FakeNet::offline()))
+                .unwrap_err();
+        assert!(err.contains("umu") && err.contains("Disable umu"), "{err}");
+
+        // Online and missing umu: downloads umu and runs the client through it.
+        let net = spawn::tests::umu_net(rig.dir.path(), "#!/bin/sh\n");
+        let cmd = prepare_open(&rig.paths, Client::Ubisoft, &home, &probe, &FakeProcs::new(), Some(&net)).unwrap();
+        assert_eq!(cmd.program, rig.umu());
+        assert_eq!(cmd.args, [exe.to_string_lossy().as_ref()]);
+        assert_eq!(cmd.env["GAMEID"], "umu-0");
+        assert_eq!(cmd.env["PROTON_VERB"], "run");
+        assert_eq!(cmd.env[UMU_NSENTER], "1");
     }
 
     /// A Proton that records how it was called and what it was asked, so

@@ -2,17 +2,15 @@
 //! extras source of PC games written for the tests, through the real install
 //! and gather.
 
-mod support;
-
 use std::fs;
 use std::path::Path;
 
+use crate::support::{endpoints, example, fixture, pc_extras, Req, Resp, Server, PC_EXTRAS_HOST};
 use heronite_data::json_store;
 use heronite_data::paths::DataPaths;
 use heronite_metadata::*;
 use heronite_metadata_ext::ExtensionsExt;
 use serde_json::{json, Value};
-use support::{endpoints, example, fixture, pc_extras, Req, Resp, Server, PC_EXTRAS_HOST};
 
 const HOSTS: [&str; 3] = ["en.wikipedia.org", "pt.wikipedia.org", PC_EXTRAS_HOST];
 

@@ -11,7 +11,6 @@ mod types;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use crate::args::split_args;
 pub use build::{build_plan, build_plan_with_settings};
 pub(crate) use build::{native_plan, windows_plan};
 pub use context::{LaunchOptions, PlanContext};

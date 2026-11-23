@@ -36,14 +36,6 @@ fn rows_of(prefs: &ConsolePrefs, card: Card) -> Vec<Row> {
 }
 
 #[test]
-fn a_new_machine_starts_on_minimal_listed_first() {
-    let p = ConsolePrefs::default();
-    assert_eq!((p.theme.id.as_str(), p.based_on.as_str()), ("minimal", "minimal"));
-    assert_eq!(theme_list(&[])[0].0, "minimal");
-    assert!(!is_edited(&p, &[]));
-}
-
-#[test]
 fn toggles_choices_and_numbers_write_the_theme() {
     let mut p = ConsolePrefs::default();
     assert!(change(&mut p, "nav.wrap", Value::Toggle(true)));
@@ -216,7 +208,10 @@ fn layout_options_wait_for_a_tab_that_uses_them() {
 
 #[test]
 fn a_theme_is_edited_when_it_differs_from_its_base() {
+    // A new machine starts on Minimal, listed first, unedited.
     let mut p = ConsolePrefs::default();
+    assert_eq!((p.theme.id.as_str(), p.based_on.as_str()), ("minimal", "minimal"));
+    assert_eq!(theme_list(&[])[0].0, "minimal");
     assert!(!is_edited(&p, &[]));
     change(&mut p, "nav.wrap", Value::Toggle(true));
     assert!(is_edited(&p, &[]));

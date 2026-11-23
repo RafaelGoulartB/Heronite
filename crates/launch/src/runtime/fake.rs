@@ -1,7 +1,7 @@
 //! A spawner that records instead of running, for tests (also usable from the app's tests).
 
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use super::{ExitInfo, ProcessHandle, Spawner};
@@ -18,6 +18,8 @@ struct FakeState {
     spawned: Vec<Command>,
     uris: Vec<String>,
     steam_uris: Vec<String>,
+    silent_steam_uris: Vec<String>,
+    silent_steam_roots: Vec<Option<PathBuf>>,
     patterns: Vec<String>,
     handles: Vec<Arc<Mutex<FakeHandleState>>>,
     fail_spawn: Option<String>,
@@ -83,6 +85,14 @@ impl FakeSpawner {
     pub fn steam_uris(&self) -> Vec<String> {
         self.state.lock().unwrap().steam_uris.clone()
     }
+    /// The URIs started with Steam in silent mode ([`Spawner::open_steam_silent`]).
+    pub fn silent_steam_uris(&self) -> Vec<String> {
+        self.state.lock().unwrap().silent_steam_uris.clone()
+    }
+    /// The Steam roots passed to [`Spawner::open_steam_silent`].
+    pub fn silent_steam_roots(&self) -> Vec<Option<PathBuf>> {
+        self.state.lock().unwrap().silent_steam_roots.clone()
+    }
     pub fn patterns(&self) -> Vec<String> {
         self.state.lock().unwrap().patterns.clone()
     }
@@ -132,6 +142,16 @@ impl Spawner for FakeSpawner {
     }
     fn open_with_steam(&self, uri: &str, _asked_at: std::time::Instant) -> io::Result<()> {
         self.state.lock().unwrap().steam_uris.push(uri.to_string());
+        Ok(())
+    }
+    fn open_steam_silent(&self, uri: &str, steam_root: Option<&Path>) -> io::Result<()> {
+        let mut s = self.state.lock().unwrap();
+        if let Some(msg) = s.fail_uri.take() {
+            return Err(io::Error::new(io::ErrorKind::NotFound, msg));
+        }
+        s.uris.push(uri.to_string());
+        s.silent_steam_uris.push(uri.to_string());
+        s.silent_steam_roots.push(steam_root.map(Path::to_path_buf));
         Ok(())
     }
     fn kill_pattern(&self, pattern: &str, _since: u64) {

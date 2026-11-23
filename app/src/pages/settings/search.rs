@@ -42,6 +42,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "When a game starts and ends",
             "Minimize when a game starts",
             "Stay hidden when a shortcut starts a game",
+            "Start Steam in the background",
             "Close Steam when the game ends",
             "Game shortcuts",
             "Add desktop shortcuts automatically",

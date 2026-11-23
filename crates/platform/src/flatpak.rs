@@ -62,17 +62,30 @@ pub fn active() -> bool {
 /// environment, not this process's. Call it before anything that cannot be
 /// carried over (`pre_exec`, stdio).
 pub fn host(cmd: Command) -> Command {
+    host_with(cmd, true)
+}
+
+/// Like [`host`], without `--watch-bus`: the host command outlives this app
+/// (for long-lived host apps like Steam and the games it starts).
+pub fn host_detached(cmd: Command) -> Command {
+    host_with(cmd, false)
+}
+
+fn host_with(cmd: Command, watch_bus: bool) -> Command {
     if !active() {
         return cmd;
     }
     let mut out = Command::new("flatpak-spawn");
-    out.args(host_args(&cmd));
+    out.args(host_args(&cmd, watch_bus));
     out
 }
 
 /// The arguments of `flatpak-spawn` that run `cmd` on the host.
-fn host_args(cmd: &Command) -> Vec<OsString> {
-    let mut args: Vec<OsString> = vec!["--host".into(), "--watch-bus".into()];
+fn host_args(cmd: &Command, watch_bus: bool) -> Vec<OsString> {
+    let mut args: Vec<OsString> = vec!["--host".into()];
+    if watch_bus {
+        args.push("--watch-bus".into());
+    }
     if let Some(dir) = cmd.get_current_dir() {
         let mut arg = OsString::from("--directory=");
         arg.push(dir);
@@ -179,10 +192,15 @@ mod tests {
     fn host_commands_carry_their_folder_and_variables() {
         let mut cmd = Command::new("flatpak");
         cmd.args(["run", "org.DolphinEmu.dolphin-emu"]).current_dir("/games").env("A", "1").env_remove("B");
-        let args: Vec<String> = host_args(&cmd).into_iter().map(|a| a.into_string().unwrap()).collect();
+        let args: Vec<String> = host_args(&cmd, true).into_iter().map(|a| a.into_string().unwrap()).collect();
         assert_eq!(
             args,
             ["--host", "--watch-bus", "--directory=/games", "--env=A=1", "--unset-env=B", "flatpak", "run", "org.DolphinEmu.dolphin-emu"]
+        );
+        let detached: Vec<String> = host_args(&cmd, false).into_iter().map(|a| a.into_string().unwrap()).collect();
+        assert_eq!(
+            detached,
+            ["--host", "--directory=/games", "--env=A=1", "--unset-env=B", "flatpak", "run", "org.DolphinEmu.dolphin-emu"]
         );
     }
 }

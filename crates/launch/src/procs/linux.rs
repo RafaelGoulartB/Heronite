@@ -102,8 +102,10 @@ fn parse_stat(stat: &str) -> Option<(char, u32)> {
 
 impl Procs for SystemProcs {
     fn steam_client_running(&self) -> bool {
-        // In Steam Deck game mode Steam is the session.
+        // In Steam Deck game mode Steam is the session; elsewhere look for a
+        // live native, Flatpak, or Snap Steam client in `/proc`.
         std::env::var("XDG_CURRENT_DESKTOP").as_deref() == Ok("gamescope")
+            || crate::steam_launcher::has_running_steam(&crate::steam_launcher::steam_processes())
     }
 
     fn is_alive(&self, pid: u32) -> bool {

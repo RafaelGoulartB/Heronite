@@ -221,7 +221,7 @@ mod tests {
         );
         // The launch argument stays one piece for the launch side.
         assert_eq!(
-            shlex::split(&games[0].launch).unwrap(),
+            heronite_launch::split_windows_args(&games[0].launch),
             ["-launchTitleInFolder", r"C:\Program Files\Rockstar Games\Red Dead Redemption 2"]
         );
         assert_eq!(games[1].folder.as_deref(), Some(dir.path().join("drive_c/Games/Casino Night").as_path()));

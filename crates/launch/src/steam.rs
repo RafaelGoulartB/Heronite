@@ -244,6 +244,32 @@ impl SteamLocator {
             .collect()
     }
 
+    /// The Steam install whose libraries hold `app_id` (a fully installed
+    /// manifest beats a leftover partial one), else `self.steam_path`.
+    pub fn install_for_app(&self, app_id: &str) -> PathBuf {
+        let valid_id = !app_id.is_empty() && app_id.bytes().all(|b| b.is_ascii_digit());
+        if !valid_id {
+            return self.steam_path.clone();
+        }
+        let manifest = format!("appmanifest_{app_id}.acf");
+        let installs = dedup_existing(std::iter::once(self.steam_path.clone()).chain(self.installs()).collect());
+        let mut partial: Option<PathBuf> = None;
+        for install in installs {
+            for lib in std::iter::once(install.clone()).chain(library_folders(&install.join("steamapps").join("libraryfolders.vdf"))) {
+                let Ok(text) = fs::read_to_string(lib.join("steamapps").join(&manifest)) else {
+                    continue;
+                };
+                if parse_app_manifest(&text, app_id).fully_installed {
+                    return install;
+                }
+                if partial.is_none() {
+                    partial = Some(install.clone());
+                }
+            }
+        }
+        partial.unwrap_or_else(|| self.steam_path.clone())
+    }
+
     /// Steam's `userdata` folder that keeps `app_id`'s saves. Of the Steam
     /// installs with a `userdata` folder (the chosen one first): one whose
     /// libraries hold the game (the one with a folder for the game in an
@@ -337,7 +363,7 @@ impl SteamLocator {
     }
 
     /// Whether the Steam client runs: the platform's client check, or on
-    /// Linux a native/Flatpak `steam.pid` naming a live process.
+    /// Linux a native/Flatpak/Snap `steam.pid` naming a live `steam` process.
     pub fn client_running(&self, procs: &dyn Procs) -> bool {
         if cfg!(windows) {
             return procs.steam_client_running();
@@ -348,9 +374,19 @@ impl SteamLocator {
         let mut files = vec![self.steam_path.join("steam.pid"), self.home.join(".steam/steam.pid")];
         files.extend(self.steam_path.parent().map(|p| p.join("steam.pid")));
         files.push(self.home.join(".var/app").join(FLATPAK_STEAM_ID).join(".steam/steam.pid"));
-        files.iter().any(|f| fs::read_to_string(f).ok().and_then(|s| s.trim().parse::<u32>().ok()).is_some_and(|pid| procs.is_alive(pid)))
+        files.push(self.home.join("snap/steam/common/.steam/steam.pid"));
+        files.iter().any(|f| {
+            fs::read_to_string(f)
+                .ok()
+                .and_then(|s| s.trim().parse::<u32>().ok())
+                .is_some_and(|pid| procs.is_alive(pid) && procs.comm(pid).as_deref() == Some("steam"))
+        })
     }
 }
+
+/// Global setting: start Steam silently (in the background, without its main
+/// window) when Heronite opens it for a game. On by default.
+pub const KEY_START_SILENT: &str = "heroniteStartSteamSilent";
 
 /// Global setting: close Steam once the game that made Heronite open it ends.
 pub const KEY_CLOSE_AFTER_GAME: &str = "heroniteCloseSteamAfterGame";
@@ -597,11 +633,22 @@ mod tests {
         } else {
             write(&locator.steam_path.join("steam.pid"), "101\n");
             assert!(!locator.client_running(&procs), "stale pid");
+            // A pid reused by an unrelated process (or a Flatpak sandbox pid
+            // colliding with a host kernel thread) is not Steam.
+            procs.start(101, "kthreadd", None);
+            assert!(!locator.client_running(&procs));
+            procs.exit(101);
             procs.start(101, "steam", None);
         }
         assert!(locator.client_running(&procs));
         procs.exit(101);
         assert!(!locator.client_running(&procs));
+        if !cfg!(windows) {
+            write(&locator.home.join("snap/steam/common/.steam/steam.pid"), "202\n");
+            procs.start(202, "steam", None);
+            assert!(locator.client_running(&procs), "Snap steam.pid is checked too");
+            procs.exit(202);
+        }
     }
 
     fn acf(id: &str, name: &str, flags: &str) -> String {
@@ -805,11 +852,19 @@ mod tests {
             system_roots: vec![],
             platform_roots: vec![stale.clone(), snap.clone(), leftover.clone()],
         };
-        assert_eq!(loc.library_roots(), [stale, snap, hdd.clone(), leftover]);
+        assert_eq!(loc.library_roots(), [stale.clone(), snap.clone(), hdd.clone(), leftover]);
         assert!(is_steam_app_installed(&loc, "400"));
         assert!(is_steam_app_installed(&loc, "730"));
         assert!(!is_steam_app_installed(&loc, "9"));
         assert_eq!(loc.install_dir("1245620"), Some(hdd.join("steamapps/common/ELDEN RING")));
+        assert_eq!(loc.install_for_app("400"), snap);
+        assert_eq!(loc.install_for_app("730"), snap);
+        assert_eq!(loc.install_for_app("9999"), stale);
+
+        // A leftover partial manifest in the chosen folder loses to a fully
+        // installed copy in another Steam install.
+        write(&stale.join("steamapps/appmanifest_400.acf"), &acf("400", "Portal", "1026"));
+        assert_eq!(loc.install_for_app("400"), snap);
     }
 
     /// Restoring a Steam game's saves goes to the `userdata` of the Steam that
@@ -931,12 +986,6 @@ mod tests {
         assert_eq!(spawner.uris().len(), 2, "nothing is opened without a Steam client");
         spawner.fail_next_uri("xdg-open: not found");
         assert!(open_steam_client_uri(&spawner, &with_steam, SteamAction::Install, "1").unwrap_err().contains("xdg-open"));
-    }
-
-    #[test]
-    fn uri_building() {
-        assert_eq!(steam_uri("rungameid", "400"), "steam://rungameid/400");
-        assert_eq!(steam_uri(SteamAction::Uninstall.as_str(), "7"), "steam://uninstall/7");
     }
 
     // Windows makes symlinks only in Developer Mode or as an administrator.

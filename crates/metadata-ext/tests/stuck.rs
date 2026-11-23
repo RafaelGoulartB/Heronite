@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use heronite_data::paths::DataPaths;
 use heronite_metadata::sources::SourceHealth;
 use heronite_metadata::{Lookup, MetadataSource, SourceContext, SourceGame};
-use heronite_metadata_ext::engine::{self, session, CallError, HostEnv, Limit, Script, GRACE, MAX_STUCK};
+use heronite_metadata_ext::engine::{self, session, CallError, HostEnv, Script, GRACE, MAX_STUCK};
 use heronite_metadata_ext::manifest::Manifest;
 use heronite_metadata_ext::net::RateLimiter;
 use heronite_metadata_ext::source::ScriptSource;
@@ -174,5 +174,4 @@ fn a_script_never_blocks_its_caller_past_the_time_limit() {
     let e = Script::compile(&script(Place::Find, ""), &env("new")).err().expect("not started");
     assert!(e.to_string().contains("not started"), "{e}");
     assert!(!CallError::Busy(String::new()).is_failure());
-    let _ = Limit::Stuck;
 }

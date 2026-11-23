@@ -4,14 +4,12 @@
 //! and how many requests a game costs, the cover family by the picture's
 //! size, when it is not asked, how it sits in the order, and offline.
 
-mod common;
-
 use std::collections::HashMap;
 use std::fs;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 
-use common::{png_of, Req, Resp, Server};
+use crate::common::{png_of, Req, Resp, Server};
 use heronite_data::cover_family::CoverFamily;
 use heronite_data::json_store;
 use heronite_data::paths::DataPaths;

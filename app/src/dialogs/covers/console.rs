@@ -482,22 +482,24 @@ mod tests {
 
     #[test]
     fn the_focus_moves_along_the_grid_and_stays_in_it() {
-        assert_eq!(step(0, 7, 3, Pad::Right, false), (1, false));
-        assert_eq!(step(6, 7, 3, Pad::Right, false), (6, false));
-        assert_eq!(step(0, 7, 3, Pad::Left, false), (0, false));
-        assert_eq!(step(4, 7, 3, Pad::Up, false), (1, false));
-        assert_eq!(step(1, 7, 3, Pad::Up, false), (1, false));
-        assert_eq!(step(1, 7, 3, Pad::Down, false), (4, false));
-        // The last row has no thumbnail under the second one: it goes to its last.
-        assert_eq!(step(4, 7, 3, Pad::Down, false), (6, false));
-        assert_eq!(step(6, 7, 3, Pad::Down, false), (6, false));
-    }
-
-    #[test]
-    fn down_on_the_last_row_asks_for_more_when_there_is() {
-        assert_eq!(step(6, 7, 3, Pad::Down, true), (6, true));
-        assert_eq!(step(4, 7, 3, Pad::Down, true), (6, false));
-        assert_eq!(step(2, 7, 3, Pad::Down, true), (5, false));
+        // Seven thumbnails in rows of three.
+        for (from, pad, more, want) in [
+            (0, Pad::Right, false, (1, false)),
+            (6, Pad::Right, false, (6, false)),
+            (0, Pad::Left, false, (0, false)),
+            (4, Pad::Up, false, (1, false)),
+            (1, Pad::Up, false, (1, false)),
+            (1, Pad::Down, false, (4, false)),
+            // The last row has no thumbnail under the second one: it goes to its last.
+            (4, Pad::Down, false, (6, false)),
+            (6, Pad::Down, false, (6, false)),
+            // Down on the last row asks for more when there is.
+            (6, Pad::Down, true, (6, true)),
+            (4, Pad::Down, true, (6, false)),
+            (2, Pad::Down, true, (5, false)),
+        ] {
+            assert_eq!(step(from, 7, 3, pad, more), want, "{from} {pad:?} more: {more}");
+        }
     }
 
     #[test]

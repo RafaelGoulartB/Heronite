@@ -1,14 +1,12 @@
 //! End-to-end flows against a local mock of every remote service, writing to
 //! a temporary Heroic config. Responses are the recorded fixtures.
 
-mod common;
-
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use common::{fixture, png, Req, Resp, Server};
+use crate::common::{fixture, png, Req, Resp, Server};
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameMetadata, MetadataFile};
 use heronite_data::paths::DataPaths;
@@ -44,7 +42,7 @@ fn make_root(dir: &Path) -> DataPaths {
     w(
         paths.collection_settings(),
         json!({"metadata": {"igdbClientId": "id", "igdbClientSecret": "secret", "coverAspect": "steam",
-                            "downloadImages": false, "autoFillMissing": true, "fieldPriority": {}}, "futureSetting": 1}),
+                            "downloadImages": false, "autoFillMissing": true, "steamTags": false, "fieldPriority": {}}, "futureSetting": 1}),
     );
     w(
         paths.metadata(),
