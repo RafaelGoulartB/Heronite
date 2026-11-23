@@ -204,7 +204,7 @@ mod tests {
 
         /// The client's program in the prefix.
         fn install(&self, client: Client) -> PathBuf {
-            let exe = self.prefix().join("drive_c").join(client.exe_candidates()[0]);
+            let exe = client.exe_candidates()[0].split('/').fold(self.prefix().join("drive_c"), |p, part| p.join(part));
             std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
             std::fs::write(&exe, "MZ").unwrap();
             exe
