@@ -147,6 +147,12 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         Flow::Fail(message) => return fail(shared, log, req, message),
     }
     steps.done("Wine tools and anti-cheat runtimes");
+    let fake_epic_wrapper = match prep.fake_epic_exe(&plan.prep) {
+        crate::fake_epic::FakeEpicOutcome::Use(w) => Some(w),
+        crate::fake_epic::FakeEpicOutcome::Skip => None,
+        crate::fake_epic::FakeEpicOutcome::Cancelled => return finish_aborted(shared, log, req),
+    };
+    steps.done("Epic launcher wrapper");
     if cancelled() {
         // Stopped while preparing: the game must not start afterwards.
         return finish_aborted(shared, log, req);
@@ -182,13 +188,20 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     }
     // MangoHud's limit moves into a file of ours so the overlay can change it.
     let mut command = plan.command.clone();
+    if let Some(wrapper) = fake_epic_wrapper {
+        command.env.insert(crate::fake_epic::WRAPPER_ENV_KEY.into(), wrapper);
+    }
     if let Some(m) = &mods {
         add_env(&mut command.env, &m.env);
     }
     // An Epic game on Windows: legendary names the program to start.
+    let mut gpu_target: Option<String> = None;
     if plan.ask_legendary {
         match super::epic::ask_legendary(shared, log, req, control, &command, &status) {
-            Some(game) => command = game,
+            Some((game, target_exe)) => {
+                command = game;
+                gpu_target = Some(target_exe);
+            }
             None => return,
         }
     }
@@ -202,8 +215,11 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     }
     let live = crate::live_fps::prepare(&mut command, &req.app_name, &*services.probe);
     *control.live_fps.lock().unwrap() = live;
-    // For the program that really starts (legendary named it above).
-    let gpu_exe = plan.gpu_preference.and_then(|p| set_gpu_preference(shared, &*services.gpu_registry, log, &command.program, p));
+    // For the program that really starts (legendary named it above; keep the
+    // real game exe even when wrapped under `EpicGamesLauncher.exe`).
+    let gpu_exe = plan
+        .gpu_preference
+        .and_then(|p| set_gpu_preference(shared, &*services.gpu_registry, log, gpu_target.as_deref().unwrap_or(&command.program), p));
     log.info(&format!("Launching {}: {}\n", req.title, log_writer::command_line_for_log(&command)));
     log.info("Game Output:");
     let mut handle = match shared.spawner.spawn_logged(&command, Some(log.clone())) {
@@ -590,5 +606,102 @@ fn describe_exit(info: ExitInfo) -> String {
         (Some(c), _) => format!("Game process exited with code {c}"),
         (None, Some(s)) => format!("Game process was terminated by signal {s}"),
         _ => "Game process ended".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::sync::mpsc::channel;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use heronite_data::DataPaths;
+    use sha2::{Digest, Sha256};
+
+    use crate::fake_epic::{self, PREFIX_WIN_PATH, WRAPPER_ENV_KEY};
+    use crate::net::FakeNet;
+    use crate::plan::{Command, LaunchPlan, PrepSpec, ProcessPlan};
+    use crate::playtime_watch::SteamWaitConfig;
+    use crate::probe::FakeProbe;
+    use crate::procs::FakeProcs;
+    use crate::runtime::{FakeSpawner, LaunchEvent, LaunchRequest, Launcher, LauncherConfig, PrepServices};
+    use crate::settings::{GameSettings, WineVersion};
+    use crate::steam::SteamLocator;
+
+    #[test]
+    fn fake_epic_exe_stages_wrapper_and_sets_env_on_spawned_command() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("heronite"));
+        fs::create_dir_all(paths.games_config_dir()).unwrap();
+        let pfx = dir.path().join("pfx");
+        fs::create_dir_all(pfx.join("pfx/drive_c/windows")).unwrap();
+
+        let body = b"MZ-runtime-wrapper-bytes";
+        let pin: String = Sha256::digest(body).iter().map(|b| format!("{b:02x}")).collect();
+        let _pin_guard = fake_epic::override_pin_for_test(&pin);
+
+        let spawner = Arc::new(FakeSpawner::default());
+        let procs = Arc::new(FakeProcs::default());
+        let (tx, rx) = channel();
+        let steam = SteamLocator {
+            home: dir.path().join("home"),
+            steam_path: dir.path().join("home/.steam/steam"),
+            system_roots: vec![],
+            platform_roots: vec![],
+        };
+        let cfg = LauncherConfig {
+            poll_interval: Duration::from_millis(10),
+            kill_grace: Duration::from_millis(200),
+            min_session_seconds: 0,
+            steam: SteamWaitConfig::default(),
+            record: false,
+            handoff: Default::default(),
+        };
+        let launcher = Launcher::new(paths.clone(), steam, spawner.clone(), procs, cfg, tx);
+        let net = Arc::new(FakeNet::online().with_file(&fake_epic::download_url(), body.to_vec()));
+        launcher.set_prep_services(PrepServices {
+            probe: Arc::new(FakeProbe::new("/h")),
+            net,
+            cloud: None,
+            gpu_registry: Arc::new(crate::gpu::preference::FakeRegistry::default()),
+        });
+
+        let wine = GameSettings {
+            wine_prefix: pfx.to_string_lossy().into_owned(),
+            wine_version: WineVersion { kind: "proton".into(), ..Default::default() },
+            ..Default::default()
+        };
+        let process = ProcessPlan {
+            command: Command { program: "/lg/legendary".into(), args: vec!["launch".into(), "GTAV".into()], ..Default::default() },
+            prep: PrepSpec { fake_epic_exe: true, wine: Some(wine), ..Default::default() },
+            ..Default::default()
+        };
+        launcher
+            .launch(LaunchRequest {
+                app_name: "GTAV".into(),
+                runner: "legendary".into(),
+                title: "GTA V Enhanced".into(),
+                plan: LaunchPlan::Legendary { process, app_name: "GTAV".into() },
+            })
+            .unwrap();
+
+        loop {
+            match rx.recv_timeout(Duration::from_secs(5)).expect("event") {
+                LaunchEvent::Running { .. } => break,
+                LaunchEvent::Error { message, .. } => panic!("unexpected error: {message}"),
+                _ => {}
+            }
+        }
+        let spawned = spawner.spawned();
+        assert_eq!(spawned.len(), 1);
+        assert_eq!(spawned[0].env.get(WRAPPER_ENV_KEY).map(String::as_str), Some(PREFIX_WIN_PATH));
+        assert_eq!(fs::read(pfx.join("pfx/drive_c/windows/command/EpicGamesLauncher.exe")).unwrap(), body);
+        spawner.finish(0, 0);
+        loop {
+            if matches!(rx.recv_timeout(Duration::from_secs(5)).expect("event"), LaunchEvent::Exited { .. }) {
+                break;
+            }
+        }
     }
 }

@@ -135,3 +135,53 @@ fn a_store_app_that_is_not_installed_is_named() {
     let why = run(&r, plan(&r.paths, &lg)).unwrap_err();
     assert!(why.contains("EA app") && why.contains("not installed"), "{why}");
 }
+
+#[test]
+fn legendary_wrapper_exe_runs_as_the_game_process_and_keeps_gpu_pref_on_the_game() {
+    let r = rig();
+    let reg = Arc::new(heronite_launch::gpu::preference::FakeRegistry::default());
+    r.launcher.set_prep_services(heronite_launch::runtime::PrepServices { gpu_registry: reg.clone(), ..Default::default() });
+    let wrapper = FakeTool::new(&r.dir.path().join("wrap"), "EpicGamesLauncher")
+        .record_env(heronite_launch::fake_epic::WRAPPER_ENV_KEY)
+        .otherwise(Reply::new().out("wrapper ran").sleep(Duration::from_millis(1500)));
+    let answer = json!({
+        "game_executable": "PlayGTAV.exe",
+        "game_directory": r"C:\Games\GTAV",
+        "game_parameters": ["-nolauncher"],
+        "egl_parameters": ["-AUTH_LOGIN=unused", "-AUTH_PASSWORD=s3cretcode", "-AUTH_TYPE=exchangecode"],
+        "launch_command": [], "working_directory": r.dir.path().to_string_lossy(), "user_parameters": [], "environment": {}
+    });
+    let lg = legendary(r.dir.path(), Reply::new().out(&answer.to_string()));
+    let mut p = plan(&r.paths, &lg);
+    if let LaunchPlan::Legendary { process, .. } = &mut p {
+        process.command.env.insert(heronite_launch::fake_epic::WRAPPER_ENV_KEY.into(), wrapper.bin().to_string_lossy().into_owned());
+        process.gpu_preference = Some(heronite_launch::gpu::preference::Preference::HighPerformance);
+    }
+    let req = LaunchRequest { app_name: "Calluna".into(), runner: "legendary".into(), title: "Control".into(), plan: p };
+    r.launcher.launch(req).unwrap();
+    loop {
+        match r.rx.recv_timeout(Duration::from_secs(60)).expect("event") {
+            LaunchEvent::Running { .. } => break,
+            LaunchEvent::Error { message, .. } => panic!("unexpected error: {message}"),
+            _ => {}
+        }
+    }
+    // While running, GPU preference is set on the real game exe (not the wrapper).
+    assert_eq!(reg.get(r"C:\Games\GTAV\PlayGTAV.exe").as_deref(), Some("GpuPreference=2;"));
+    assert_eq!(reg.get(&wrapper.bin().to_string_lossy()), None);
+    loop {
+        match r.rx.recv_timeout(Duration::from_secs(60)).expect("event") {
+            LaunchEvent::Exited { .. } => break,
+            LaunchEvent::Error { message, .. } => panic!("unexpected error: {message}"),
+            _ => {}
+        }
+    }
+    // Restored after exit.
+    assert_eq!(reg.get(r"C:\Games\GTAV\PlayGTAV.exe"), None);
+    let calls = wrapper.calls();
+    assert_eq!(calls.len(), 1);
+    assert!(calls[0].contains("PlayGTAV.exe") && calls[0].contains("-AUTH_PASSWORD=s3cretcode"), "{calls:?}");
+    assert_eq!(wrapper.env_seen(heronite_launch::fake_epic::WRAPPER_ENV_KEY), [""]);
+    let log = game_log(&r.paths);
+    assert!(log.contains("-AUTH_PASSWORD=<hidden>") && !log.contains("s3cretcode"), "{log}");
+}

@@ -178,6 +178,10 @@ pub struct PrepSpec {
     /// A GOG game's Windows build: Comet stands in for GOG Galaxy's service
     /// while it runs (see [`crate::galaxy`]).
     pub galaxy: bool,
+    /// Epic game with `USE_FAKE_EPIC_EXE` enabled: download and stage
+    /// `EpicGamesLauncher.exe` so `LEGENDARY_WRAPPER_EXE` can run the game
+    /// under it (see [`crate::fake_epic`]).
+    pub fake_epic_exe: bool,
 }
 
 /// What a game needs the first time it runs in a Wine prefix (the prefix
