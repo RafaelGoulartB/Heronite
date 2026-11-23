@@ -39,6 +39,19 @@ pub enum Client {
 /// client is asked to do: `--exec="launch WoW"`, `uplay://launch/635/0`).
 pub const LAUNCH_KIND: &str = "client";
 
+/// Where the EA app installs on the C: drive (versioned subfolders sit below
+/// this folder: `EA Desktop/<version>/EA Desktop/EALauncher.exe`).
+pub const EA_DESKTOP: &str = "Program Files/Electronic Arts/EA Desktop";
+
+/// The EA app's programs, in the order it is started by.
+pub const EA_PROGRAMS: [&str; 2] = ["EALauncher.exe", "EADesktop.exe"];
+
+/// The numbers of an EA Desktop version folder (`12.10.2.5` is `[12, 10, 2, 5]`),
+/// to order versions numerically.
+pub fn ea_version_key(name: &str) -> Vec<u64> {
+    name.split(|c: char| !c.is_ascii_digit()).filter(|n| !n.is_empty()).filter_map(|n| n.parse().ok()).collect()
+}
+
 impl Client {
     pub const ALL: [Client; 4] = [Client::BattleNet, Client::Ea, Client::Ubisoft, Client::Rockstar];
 
@@ -123,12 +136,6 @@ impl Client {
         }
     }
 
-    /// The client's program in `prefix`, when it is installed there.
-    pub fn exe_in(self, prefix: &Path) -> Option<PathBuf> {
-        let c = drive_c(prefix);
-        self.exe_candidates().iter().map(|rel| c.join(rel)).find(|p| p.is_file())
-    }
-
     /// Where the client's installer writes, in the machine's registry
     /// (`HKLM`), the folder it put the client in or its program: `(key,
     /// value)`, in the order to try. What finds a client installed
@@ -210,6 +217,15 @@ impl Client {
                 "socialclubhelper.exe",
                 "rockstar-games-launcher.exe",
             ],
+        }
+    }
+
+    /// Arguments passed when starting the client cold under Wine/Proton.
+    pub fn wine_open_args(self) -> &'static [&'static str] {
+        match self {
+            // Without it the window stays white under Proton.
+            Client::BattleNet => &["--in-process-gpu"],
+            Client::Ea | Client::Ubisoft | Client::Rockstar => &[],
         }
     }
 
@@ -377,22 +393,22 @@ mod tests {
     }
 
     #[test]
-    fn finds_the_client_in_either_prefix_layout() {
+    fn finds_the_prefix_drive_in_either_layout_and_orders_ea_versions() {
         let dir = tempfile::tempdir().unwrap();
         let wine = dir.path().join("wine");
-        let exe = wine.join("drive_c/Program Files (x86)/Battle.net/Battle.net.exe");
-        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
-        std::fs::write(&exe, "MZ").unwrap();
-        assert_eq!(Client::BattleNet.exe_in(&wine), Some(exe));
+        std::fs::create_dir_all(wine.join("drive_c")).unwrap();
+        assert_eq!(drive_c(&wine), wine.join("drive_c"));
         assert_eq!(wine_prefix(&wine), wine);
 
         let proton = dir.path().join("proton");
-        let exe = proton.join("pfx/drive_c/Program Files/Rockstar Games/Launcher/Launcher.exe");
-        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
-        std::fs::write(&exe, "MZ").unwrap();
-        assert_eq!(Client::Rockstar.exe_in(&proton), Some(exe));
+        std::fs::create_dir_all(proton.join("pfx/drive_c")).unwrap();
+        assert_eq!(drive_c(&proton), proton.join("pfx/drive_c"));
         assert_eq!(wine_prefix(&proton), proton.join("pfx"));
-        assert_eq!(Client::Ea.exe_in(&proton), None);
+
+        assert!(ea_version_key("12.10.2.5") > ea_version_key("12.9.0.1"));
+        assert_eq!(ea_version_key("empty"), Vec::<u64>::new());
+        assert_eq!(Client::BattleNet.wine_open_args(), ["--in-process-gpu"]);
+        assert!(Client::Ea.wine_open_args().is_empty());
     }
 
     #[test]

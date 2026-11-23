@@ -14,13 +14,14 @@
 
 use std::path::{Path, PathBuf};
 
-use heronite_data::clients::{machine_drive, prefix_of, Client};
+use heronite_data::clients::{ea_version_key, machine_drive, prefix_of, Client, EA_DESKTOP, EA_PROGRAMS};
 use heronite_data::models::{GameInfo, LocalGameMeta};
 use heronite_i18n::tr;
 
+use crate::args::split_windows_args;
 use crate::env::join;
 use crate::host::{run_mode, Os, RunMode};
-use crate::plan::{split_args, ClientHandoff, Command, Handoff, LaunchPlan, PlanContext, ProcessPlan, StopSpec, WineRuntime};
+use crate::plan::{ClientHandoff, Command, Handoff, LaunchPlan, PlanContext, ProcessPlan, StopSpec, WineRuntime};
 use crate::probe::Probe;
 use crate::settings::{load_game_settings, GameSettings};
 use crate::wine_tools::{alongside_command, UMU_NSENTER};
@@ -35,7 +36,7 @@ pub(crate) fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, meta:
 fn build_as(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, meta: &LocalGameMeta, mode: RunMode) -> LaunchPlan {
     let no_method = || LaunchPlan::Unavailable(tr!("This game has no launch method").into());
     let Some(client) = Client::from_id(&meta.source) else { return no_method() };
-    let args = split_args(meta.launcher_args.as_deref().unwrap_or_default());
+    let args = split_windows_args(meta.launcher_args.as_deref().unwrap_or_default());
     if args.is_empty() {
         return no_method();
     }
@@ -90,14 +91,29 @@ fn native_plan(probe: &dyn Probe, game: &GameInfo, client: Client, args: Vec<Str
 }
 
 /// The client's program on this PC: where its installer puts it
-/// (`Client::exe_candidates` in this PC's `Program Files`), else in the
-/// folder its installer wrote in the registry. Looked up through the probe.
+/// (`Client::exe_candidates` in this PC's `Program Files`), else a versioned
+/// EA Desktop folder, else in the folder its installer wrote in the registry.
+/// Looked up through the probe.
 fn native_exe(probe: &dyn Probe, client: Client) -> Option<String> {
     let drive = machine_drive(|k| probe.env_var(k));
     let exists = |p: &Path| probe.exists(&p.to_string_lossy());
     let usual = client.exe_candidates().iter().map(|rel| drive.path(rel)).find(|p| exists(p));
+    let versioned = || (client == Client::Ea).then(|| ea_versioned_native(probe, &drive.path(EA_DESKTOP))).flatten();
     let registered = || registered_folders(client).into_iter().find_map(|named| client.exe_in_folder(&named, exists));
-    usual.or_else(registered).map(|p| p.to_string_lossy().into_owned())
+    usual.or_else(versioned).or_else(registered).map(|p| p.to_string_lossy().into_owned())
+}
+
+fn ea_versioned_native(probe: &dyn Probe, ea_root: &Path) -> Option<PathBuf> {
+    probe
+        .list_dir(&ea_root.to_string_lossy())
+        .into_iter()
+        .filter_map(|sub| {
+            let inner = ea_root.join(&sub).join("EA Desktop");
+            let exe = EA_PROGRAMS.iter().map(|p| inner.join(p)).find(|p| probe.exists(&p.to_string_lossy()))?;
+            Some((ea_version_key(&sub), exe))
+        })
+        .max()
+        .map(|(_, exe)| exe)
 }
 
 /// The folders (or programs) the client's installer wrote in this PC's
@@ -133,7 +149,8 @@ fn wine_plan(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, client: Clie
             client = client.name()
         ));
     }
-    let (mut process, runtime, prefix) = match crate::wine::build_wine_plan(ctx, probe, game, &settings, &exe, &args) {
+    let cold_args: Vec<String> = client.wine_open_args().iter().map(|a| (*a).to_string()).chain(args.iter().cloned()).collect();
+    let (mut process, runtime, prefix) = match crate::wine::build_wine_plan(ctx, probe, game, &settings, &exe, &cold_args) {
         LaunchPlan::Wine { process, runtime, prefix } => (process, runtime, prefix),
         other => return other,
     };
@@ -184,12 +201,56 @@ pub(crate) fn attach_companions(plan: &mut LaunchPlan, ctx: &PlanContext, probe:
 }
 
 /// The client's program in `prefix` (Proton keeps the drive in `pfx/`),
-/// looked up through the probe.
+/// looked up through the probe (including EA app's versioned folders).
+/// Custom install paths recorded only in the prefix's `system.reg` are not
+/// consulted here so plan building stays pure behind [`Probe`].
 fn client_exe(probe: &dyn Probe, client: Client, prefix: &str) -> Option<String> {
-    ["pfx/drive_c", "drive_c"]
-        .iter()
-        .flat_map(|drive| client.exe_candidates().iter().map(move |rel| join(&join(prefix, drive), rel)))
-        .find(|exe| probe.exists(exe))
+    for drive in ["pfx/drive_c", "drive_c"] {
+        let root = join(prefix, drive);
+        if let Some(exe) = client.exe_candidates().iter().find_map(|rel| find_in_drive(probe, &root, rel)) {
+            return Some(exe);
+        }
+        if client == Client::Ea {
+            if let Some(exe) = ea_versioned_in_prefix(probe, &root) {
+                return Some(exe);
+            }
+        }
+    }
+    None
+}
+
+fn find_in_drive(probe: &dyn Probe, root: &str, rel: &str) -> Option<String> {
+    let exact = join(root, rel);
+    if probe.exists(&exact) {
+        return Some(exact);
+    }
+    resolve_ci(probe, root, rel).filter(|p| probe.exists(p))
+}
+
+fn resolve_ci(probe: &dyn Probe, root: &str, rel: &str) -> Option<String> {
+    let mut cur = root.to_string();
+    for part in rel.split('/').filter(|p| !p.is_empty()) {
+        let entries = probe.list_dir(&cur);
+        let matched = entries.iter().find(|e| e.as_str() == part).or_else(|| entries.iter().find(|e| e.eq_ignore_ascii_case(part)))?;
+        cur = join(&cur, matched);
+    }
+    Some(cur)
+}
+
+/// The EA app's program when a fresh install left it in a versioned folder
+/// (`EA Desktop/<version>/EA Desktop/EALauncher.exe`), highest version first.
+fn ea_versioned_in_prefix(probe: &dyn Probe, drive_root: &str) -> Option<String> {
+    let ea_root = resolve_ci(probe, drive_root, EA_DESKTOP)?;
+    probe
+        .list_dir(&ea_root)
+        .into_iter()
+        .filter_map(|sub| {
+            let inner = resolve_ci(probe, &join(&ea_root, &sub), "EA Desktop")?;
+            let exe = EA_PROGRAMS.iter().find_map(|p| find_in_drive(probe, &inner, p))?;
+            Some((ea_version_key(&sub), exe))
+        })
+        .max()
+        .map(|(_, exe)| exe)
 }
 
 #[cfg(test)]
@@ -382,7 +443,7 @@ mod tests {
         assert_eq!((runtime, prefix.as_str()), (WineRuntime::Umu, "/pfx/bnet"));
         let c = &process.command;
         assert_eq!(c.program, r.umu());
-        assert_eq!(c.args, [BNET_EXE, "--exec=launch WoW"]);
+        assert_eq!(c.args, [BNET_EXE, "--in-process-gpu", "--exec=launch WoW"]);
         assert_eq!(c.env["PROTON_VERB"], "run");
         assert_eq!(c.env[UMU_NSENTER], "1");
         assert_eq!(c.env["WINEPREFIX"], "/pfx/bnet");
@@ -409,7 +470,7 @@ mod tests {
         let LaunchPlan::Wine { process, runtime, .. } = plan_of(&r, &r.probe(), &game_settings(json!({}))) else { panic!() };
         assert_eq!(runtime, WineRuntime::Proton);
         assert_eq!(process.command.program, PROTON);
-        assert_eq!(process.command.args, ["run", BNET_EXE, "--exec=launch WoW"]);
+        assert_eq!(process.command.args, ["run", BNET_EXE, "--in-process-gpu", "--exec=launch WoW"]);
         assert_eq!(process.command.env["PROTON_VERB"], "run");
         assert!(!process.command.env.contains_key(UMU_NSENTER));
         let join = process.handoff.unwrap().client.unwrap().join;
@@ -502,5 +563,107 @@ mod tests {
         assert_eq!(client_exe(&p, Client::Ea, "/w"), None);
         let p = FakeProbe::new("/h").with_path(BNET_EXE);
         assert_eq!(client_exe(&p, Client::BattleNet, "/pfx/bnet").as_deref(), Some(BNET_EXE));
+    }
+
+    #[test]
+    fn the_ea_app_in_a_versioned_folder_launches_under_wine() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        std::fs::create_dir_all(paths.games_config_dir()).unwrap();
+        let app = Client::Ea.config_app();
+        let ea_cfg = json!({"winePrefix": "/pfx/ea", "wineVersion": {"bin": PROTON, "name": "GE-Proton9", "type": "proton"}});
+        std::fs::write(paths.game_config(app), json!({ app: ea_cfg, "version": "v0" }).to_string()).unwrap();
+        let mut ctx = PlanContext::load(&paths);
+        ctx.global = GlobalSettings::from_defaults(Default::default());
+        let umu = ctx.runtime_dir() + "/umu/umu_run.py";
+
+        let old = "/pfx/ea/pfx/drive_c/Program Files/Electronic Arts/EA Desktop/12.9.0.1/EA Desktop/EALauncher.exe";
+        let new = "/pfx/ea/pfx/drive_c/Program Files/Electronic Arts/EA Desktop/12.10.2.5/EA Desktop/EALauncher.exe";
+        let probe = FakeProbe::new("/home/u")
+            .with_path(PROTON)
+            .with_path(&umu)
+            .with_path("/pfx/ea")
+            .with_path(old)
+            .with_path(new)
+            .with_path("/games/me");
+        let (mut game, meta) = wow();
+        game.app_name = "ea_71067".into();
+        game.install.install_path = Some("/games/me".into());
+        let meta = LocalGameMeta {
+            source: "ea".into(),
+            launcher_args: Some("\"origin2://game/launch?offerIds=71067&autoDownload=1\"".into()),
+            ..meta
+        };
+        let LaunchPlan::Wine { process, .. } = plan_as(RunMode::Wine, &ctx, &probe, &game, &meta, &game_settings(json!({}))) else {
+            panic!("expected a wine plan for a versioned EA app install");
+        };
+        // Highest version wins, and non-Battle.net clients get no extra open args.
+        assert_eq!(process.command.args, [new, "origin2://game/launch?offerIds=71067&autoDownload=1"]);
+
+        // Plain Wine `drive_c` layout works too, and an unversioned install takes priority.
+        let wine_ver = "/w/drive_c/Program Files/Electronic Arts/EA Desktop/13.1.0.1/EA Desktop/EALauncher.exe";
+        let p = FakeProbe::new("/h").with_path(wine_ver);
+        assert_eq!(client_exe(&p, Client::Ea, "/w").as_deref(), Some(wine_ver));
+        let unversioned = "/w/drive_c/Program Files/Electronic Arts/EA Desktop/EA Desktop/EALauncher.exe";
+        let p = p.with_path(unversioned);
+        assert_eq!(client_exe(&p, Client::Ea, "/w").as_deref(), Some(unversioned));
+    }
+
+    #[test]
+    fn the_ea_app_in_a_versioned_folder_launches_on_windows() {
+        let (mut game, meta) = wow();
+        game.app_name = "ea_71067".into();
+        game.install.install_path = Some("/games/me".into());
+        let meta = LocalGameMeta {
+            source: "ea".into(),
+            launcher_args: Some("\"origin2://game/launch?offerIds=71067&autoDownload=1\"".into()),
+            ..meta
+        };
+        let win_old = ["Electronic Arts", "EA Desktop", "12.9.0.1", "EA Desktop", "EALauncher.exe"]
+            .iter()
+            .fold(PathBuf::from(r"C:\Program Files"), |p, part| p.join(part));
+        let win_new = ["Electronic Arts", "EA Desktop", "12.10.2.5", "EA Desktop", "EALauncher.exe"]
+            .iter()
+            .fold(PathBuf::from(r"C:\Program Files"), |p, part| p.join(part));
+        let win_probe = FakeProbe::new("/home/u")
+            .with_env("ProgramW6432", r"C:\Program Files")
+            .with_path(&win_old.to_string_lossy())
+            .with_path(&win_new.to_string_lossy())
+            .with_path("/games/me");
+        let LaunchPlan::Native(native) = native_plan_of(&win_probe, &game, &meta, &game_settings(json!({}))) else {
+            panic!("expected a native plan for a versioned EA app install");
+        };
+        assert_eq!(native.command.program, win_new.to_string_lossy());
+    }
+
+    #[test]
+    fn client_exe_matches_case_insensitively_in_a_prefix() {
+        let lower = "/w/drive_c/program files (x86)/ubisoft/ubisoft game launcher/upc.exe";
+        let p = FakeProbe::new("/h").with_path(lower);
+        assert_eq!(client_exe(&p, Client::Ubisoft, "/w").as_deref(), Some(lower));
+
+        let ea_lower = "/w/pfx/drive_c/program files/electronic arts/ea desktop/13.1.0.1/ea desktop/ealauncher.exe";
+        let p = FakeProbe::new("/h").with_path(ea_lower);
+        assert_eq!(client_exe(&p, Client::Ea, "/w").as_deref(), Some(ea_lower));
+    }
+
+    #[test]
+    fn windows_launcher_args_keep_backslashes_verbatim() {
+        let (mut game, meta) = wow();
+        game.app_name = "rockstar_gta5".into();
+        let meta = LocalGameMeta {
+            source: "rockstar".into(),
+            launcher_args: Some(r#"-launchTitleInFolder "\\server\$Games\Grand Theft Auto V""#.into()),
+            ..meta
+        };
+        let exe = PathBuf::from(r"C:\Program Files").join("Rockstar Games").join("Launcher").join("Launcher.exe");
+        let probe = FakeProbe::new("/home/u")
+            .with_env("ProgramW6432", r"C:\Program Files")
+            .with_path(&exe.to_string_lossy())
+            .with_path("/games/wow");
+        let LaunchPlan::Native(process) = native_plan_of(&probe, &game, &meta, &game_settings(json!({}))) else {
+            panic!();
+        };
+        assert_eq!(process.command.args, ["-launchTitleInFolder", r"\\server\$Games\Grand Theft Auto V"]);
     }
 }

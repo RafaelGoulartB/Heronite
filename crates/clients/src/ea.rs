@@ -4,15 +4,14 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use heronite_data::clients::{ea_version_key, EA_DESKTOP, EA_PROGRAMS};
+
 use crate::files::{read_text, subfolders, UNINSTALL};
 use crate::place::User;
 use crate::winpath::join_ci;
 use crate::xml::{elements, Element};
 use crate::{Account, ClientGame, Place};
 
-const EA_DESKTOP: &str = "Program Files/Electronic Arts/EA Desktop";
-/// The programs of the app, in the order it is started by.
-const PROGRAMS: [&str; 2] = ["EALauncher.exe", "EADesktop.exe"];
 const REGISTRY: [&str; 2] = ["Software\\Electronic Arts\\EA Desktop", "Software\\Wow6432Node\\Electronic Arts\\EA Desktop"];
 /// Where the app keeps its settings, below the user's folder.
 const USER_SETTINGS: &str = "AppData/Local/Electronic Arts/EA Desktop";
@@ -21,22 +20,16 @@ const USER_SETTINGS: &str = "AppData/Local/Electronic Arts/EA Desktop";
 /// (`EA Desktop/<version>/EA Desktop/EALauncher.exe`).
 pub fn versioned_exe(place: &Place) -> Option<PathBuf> {
     let root = place.drive(EA_DESKTOP);
-    let program_in = |dir: &Path| PROGRAMS.iter().map(|p| join_ci(dir, p)).find(|p| p.is_file());
+    let program_in = |dir: &Path| EA_PROGRAMS.iter().map(|p| join_ci(dir, p)).find(|p| p.is_file());
     subfolders(&root)
         .into_iter()
         .filter_map(|dir| {
-            let key = version_key(&dir.file_name()?.to_string_lossy());
+            let key = ea_version_key(&dir.file_name()?.to_string_lossy());
             Some((key, program_in(&join_ci(&dir, "EA Desktop"))?))
         })
         .max()
         .map(|(_, exe)| exe)
         .or_else(|| registered_exe(place).and_then(|dir| program_in(&dir)))
-}
-
-/// The numbers of a folder name (`12.0.4.5` is `[12, 0, 4, 5]`), to order
-/// versions.
-fn version_key(name: &str) -> Vec<u64> {
-    name.split(|c: char| !c.is_ascii_digit()).filter(|n| !n.is_empty()).filter_map(|n| n.parse().ok()).collect()
 }
 
 /// The folder the registry says the app is in (`LauncherAppPath` and
@@ -310,7 +303,7 @@ mod tests {
         );
         let folders: Vec<_> = games.iter().map(|g| g.folder.clone().unwrap()).collect();
         assert_eq!(folders, [custom, elsewhere, mass]);
-        assert_eq!(shlex::split(&games[2].launch).unwrap(), ["origin2://game/launch?offerIds=71067,71068&autoDownload=1"]);
+        assert_eq!(heronite_launch::split_windows_args(&games[2].launch), ["origin2://game/launch?offerIds=71067,71068&autoDownload=1"]);
     }
 
     #[test]

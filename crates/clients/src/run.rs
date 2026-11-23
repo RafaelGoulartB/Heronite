@@ -24,11 +24,7 @@ const CLOSE_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// What the client is started with.
 fn open_args(client: Client) -> Vec<String> {
-    match client {
-        // Without it the window stays white under Proton.
-        Client::BattleNet => vec!["--in-process-gpu".into()],
-        Client::Ea | Client::Ubisoft | Client::Rockstar => Vec::new(),
-    }
+    client.wine_open_args().iter().map(|a| (*a).to_string()).collect()
 }
 
 /// The client's prefix and the settings it runs with.
