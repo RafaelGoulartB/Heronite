@@ -28,12 +28,12 @@ pub(super) fn ask_legendary(
     control: &Control,
     command: &Command,
     status: &dyn Fn(Notice),
-) -> Option<Command> {
+) -> Option<(Command, String)> {
     status(Notice::info("Logging in to Epic Games...", tr!("Logging in to Epic Games...")));
     log.info(&format!("Asking legendary how {} starts: {}", req.title, command.display()));
     let cancelled = || control.abort.load(Ordering::SeqCst) || control.kill.load(Ordering::SeqCst);
     match lw::resolve(command, &cancelled) {
-        Ok(Resolved::Game(game)) => Some(game),
+        Ok(Resolved::Game { command, target_exe }) => Some((command, target_exe)),
         Ok(Resolved::Link(uri)) => {
             let client = lw::link_client(&uri);
             if !lw::link_handler_installed(&uri) {

@@ -122,13 +122,14 @@ fn option_flags(ctx: &PlanContext, game: &GameInfo, s: &GameSettings, opts: &Lau
     args
 }
 
-/// A Windows build on Windows: no Wine, prefix, wrappers, winetricks or
-/// known fixes. legendary only signs in and names the game's program
-/// (`--json`), which the launch starts itself ([`crate::legendary_windows`]);
-/// the first launch runs the game's prerequisites
-/// ([`crate::epic_native_setup`]).
+/// A Windows build on Windows: no Wine, prefix, wrappers or winetricks, and
+/// `known_fixes.json` only contributes `USE_FAKE_EPIC_EXE` (`fake_epic`).
+/// legendary only signs in and names the game's program (`--json`), which the
+/// launch starts itself ([`crate::legendary_windows`]); the first launch runs
+/// the game's prerequisites ([`crate::epic_native_setup`]).
 fn build_native(
     ctx: &PlanContext,
+    probe: &dyn Probe,
     game: &GameInfo,
     s: &GameSettings,
     opts: &LaunchOptions,
@@ -139,6 +140,13 @@ fn build_native(
     let app = game.app_name.as_str();
     let mut env = setup_wrapper_env_vars(app, "legendary");
     env.extend(s.env_options.iter().cloned());
+    // Forward an inherited host LEGENDARY_WRAPPER_EXE into the plan env so
+    // `legendary_windows::parse` honors it the same way legendary does on Linux.
+    if !env.contains_key(crate::fake_epic::WRAPPER_ENV_KEY) {
+        if let Some(wrapper) = probe.env_var(crate::fake_epic::WRAPPER_ENV_KEY).filter(|v| !v.trim().is_empty()) {
+            env.insert(crate::fake_epic::WRAPPER_ENV_KEY.into(), wrapper);
+        }
+    }
     env.insert("LEGENDARY_CONFIG_PATH".into(), ctx.paths.legendary_config_dir().to_string_lossy().into_owned());
     let (_, mut args) = launch_args(app, s, opts);
     args.extend(option_flags(ctx, game, s, opts));
@@ -147,6 +155,8 @@ fn build_native(
     if s.auto_sync_saves && !s.saves_path.trim().is_empty() {
         prep.cloud_saves = Some(CloudSaves::new("legendary", &s.saves_path));
     }
+    let store_managed = third_party || flag(&game.rest, "isEAManaged") || flag(&game.rest, "isUbisoftManaged");
+    prep.fake_epic_exe = crate::fake_epic::is_requested(ctx, probe, app, s, &env, store_managed);
     prep.first_launch = Some(FirstLaunch {
         runner: "legendary".into(),
         app_name: app.to_string(),
@@ -197,7 +207,7 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
     // through Wine/Proton.
     let os = Os::from_name(game.install.platform.as_deref().unwrap_or("")).unwrap_or(Os::Windows);
     match run_mode(os) {
-        RunMode::Native => return build_native(ctx, game, settings, opts, legendary, install_path, third_party),
+        RunMode::Native => return build_native(ctx, probe, game, settings, opts, legendary, install_path, third_party),
         RunMode::Unavailable if Os::HOST == Os::Windows => return LaunchPlan::Unavailable(unavailable_reason(os)),
         _ => {}
     }
@@ -215,6 +225,11 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
     let mut env = setup_wrapper_env_vars(app, "legendary");
     env.extend(setup_env_vars(s, Some(install_path), probe));
     env.extend(known_fixes_env(ctx, "epic", app));
+    // Keep the user's explicit USE_FAKE_EPIC_EXE in the env so the logged env
+    // agrees with `fake_epic::is_requested` when turning a known fix off.
+    if let Some((_, v)) = s.env_options.iter().rev().find(|(k, _)| k == crate::fake_epic::ENV_KEY) {
+        env.insert(crate::fake_epic::ENV_KEY.into(), v.clone());
+    }
     env.extend(setup_wine_env_vars(s, game.folder_name.as_deref().unwrap_or("0"), &ctx.runtime_dir(), probe));
     if wine.umu.is_some() {
         if let Some(id) = cached_umu_id(ctx, "legendary", app) {
@@ -273,6 +288,8 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
     if s.auto_sync_saves && !s.saves_path.trim().is_empty() {
         prep.cloud_saves = Some(CloudSaves::new("legendary", &s.saves_path));
     }
+    let store_managed = third_party || flag(&game.rest, "isEAManaged") || flag(&game.rest, "isUbisoftManaged");
+    prep.fake_epic_exe = crate::fake_epic::is_requested(ctx, probe, app, s, &env, store_managed);
     // Redistributables, EOS overlay and known fixes: once per game and prefix.
     let (winetricks, run_in_prefix) = known_fixes_steps(ctx, "epic", app);
     prep.first_launch = Some(FirstLaunch {
@@ -406,6 +423,47 @@ mod tests {
         let LaunchPlan::Legendary { process, .. } = plain else { panic!() };
         let fl = process.prep.first_launch.unwrap();
         assert!(fl.winetricks.is_empty() && fl.run_in_prefix.is_empty());
+    }
+
+    #[test]
+    fn fake_epic_exe_follows_known_fixes_and_user_overrides() {
+        let mut c = ctx();
+        c.known_fixes = Some(json!({"epic": {"Calluna": {"envVariables": {"USE_FAKE_EPIC_EXE": true}}}}));
+        let LaunchPlan::Legendary { process, .. } =
+            build_plan_with_settings(&c, &probe(), &game(), None, &settings(json!({})), &LaunchOptions::default())
+        else {
+            panic!()
+        };
+        assert!(process.prep.fake_epic_exe);
+        assert!(!process.command.env.contains_key(crate::fake_epic::WRAPPER_ENV_KEY));
+
+        // User can turn it off even when known_fixes enables it, and the env matches.
+        let off = settings(json!({"enviromentOptions": [{"key": "USE_FAKE_EPIC_EXE", "value": "0"}]}));
+        let LaunchPlan::Legendary { process, .. } = build_plan_with_settings(&c, &probe(), &game(), None, &off, &LaunchOptions::default())
+        else {
+            panic!()
+        };
+        assert!(!process.prep.fake_epic_exe);
+        assert_eq!(process.command.env.get(crate::fake_epic::ENV_KEY).map(String::as_str), Some("0"));
+
+        // EA / Ubisoft games never use the fake Epic wrapper even without thirdPartyManagedApp.
+        let mut ea = game();
+        ea.rest.insert("isEAManaged".into(), json!(true));
+        let LaunchPlan::Legendary { process, .. } =
+            build_plan_with_settings(&c, &probe(), &ea, None, &settings(json!({})), &LaunchOptions::default())
+        else {
+            panic!()
+        };
+        assert!(!process.prep.fake_epic_exe);
+
+        // User's own LEGENDARY_WRAPPER_EXE disables the automatic wrapper.
+        let custom = settings(json!({"enviromentOptions": [{"key": "LEGENDARY_WRAPPER_EXE", "value": r"C:\custom.exe"}]}));
+        let LaunchPlan::Legendary { process, .. } =
+            build_plan_with_settings(&c, &probe(), &game(), None, &custom, &LaunchOptions::default())
+        else {
+            panic!()
+        };
+        assert!(!process.prep.fake_epic_exe);
     }
 
     // Linux paths; Epic is off on Windows (`Feature::EpicStore`).

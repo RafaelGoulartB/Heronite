@@ -388,5 +388,7 @@
   "The newest release.": "A versão mais nova.",
   "{title} needs your Epic Games account, and you are signed out of it. Log in on the Epic Games page, or turn on \"Play offline\" in the game's settings.": "{title} precisa da sua conta da Epic Games, e você está desconectado dela. Faça login na página da Epic Games ou ative \"Jogar offline\" nas configurações do jogo.",
   "Signed out of Epic Games": "Desconectado da Epic Games",
-  "{title} needs your Epic Games account to start, and Heronite is no longer signed in to it: Epic ended the saved session, or you logged out.\nLog in again to play. Play offline starts the game without the account, but some games need it and will not open.": "{title} precisa da sua conta da Epic Games para abrir, e o Heronite não está mais conectado a ela: a Epic encerrou a sessão salva ou você saiu da conta.\nFaça login de novo para jogar. Jogar offline abre o jogo sem a conta, mas alguns jogos precisam dela e não vão abrir."
+  "{title} needs your Epic Games account to start, and Heronite is no longer signed in to it: Epic ended the saved session, or you logged out.\nLog in again to play. Play offline starts the game without the account, but some games need it and will not open.": "{title} precisa da sua conta da Epic Games para abrir, e o Heronite não está mais conectado a ela: a Epic encerrou a sessão salva ou você saiu da conta.\nFaça login de novo para jogar. Jogar offline abre o jogo sem a conta, mas alguns jogos precisam dela e não vão abrir.",
+  "Downloading the Epic launcher wrapper...": "Baixando o wrapper do launcher da Epic...",
+  "Could not set up the Epic launcher wrapper: {error}": "Não foi possível configurar o wrapper do launcher da Epic: {error}"
 }

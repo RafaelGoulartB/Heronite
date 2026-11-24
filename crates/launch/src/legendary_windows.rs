@@ -30,8 +30,11 @@ const TIMEOUT: Duration = Duration::from_secs(180);
 /// What legendary says starts the game.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Resolved {
-    /// The game's program, to start as the launch's process.
-    Game(Command),
+    /// The game's program, to start as the launch's process. `target_exe` is
+    /// always the real game executable (even when `command.program` is a
+    /// wrapper such as `EpicGamesLauncher.exe`), for per-exe Windows settings
+    /// like GPU preferences.
+    Game { command: Command, target_exe: String },
     /// A link the EA app or Ubisoft Connect opens.
     Link(String),
 }
@@ -120,12 +123,6 @@ pub fn parse(stdout: &str, env: &Env) -> Result<Resolved, String> {
     }
     let dir = text(&doc, "game_directory");
     let game = native_path(&Path::new(dir).join(exe).to_string_lossy());
-    let mut parts = strings(&doc, "launch_command");
-    parts.push(game);
-    parts.extend(strings(&doc, "game_parameters"));
-    parts.extend(strings(&doc, "user_parameters"));
-    parts.extend(strings(&doc, "egl_parameters"));
-    let program = parts.remove(0);
     let mut game_env = env.clone();
     game_env.remove("LEGENDARY_CONFIG_PATH");
     for (k, v) in doc.get("environment").and_then(Value::as_object).into_iter().flatten() {
@@ -133,8 +130,20 @@ pub fn parse(stdout: &str, env: &Env) -> Result<Resolved, String> {
             game_env.insert(k.clone(), v.to_string());
         }
     }
+    let mut parts = strings(&doc, "launch_command");
+    if let Some(wrapper) = game_env.remove(crate::fake_epic::WRAPPER_ENV_KEY).filter(|s| !s.trim().is_empty()) {
+        parts.push(native_path(wrapper.trim()));
+    }
+    parts.push(game.clone());
+    parts.extend(strings(&doc, "game_parameters"));
+    parts.extend(strings(&doc, "user_parameters"));
+    parts.extend(strings(&doc, "egl_parameters"));
+    let program = parts.remove(0);
     let cwd = Some(text(&doc, "working_directory")).filter(|d| !d.is_empty()).unwrap_or(dir);
-    Ok(Resolved::Game(Command { program, args: parts, env: game_env, cwd: Some(native_path(cwd)).filter(|d| !d.is_empty()) }))
+    Ok(Resolved::Game {
+        command: Command { program, args: parts, env: game_env, cwd: Some(native_path(cwd)).filter(|d| !d.is_empty()) },
+        target_exe: game,
+    })
 }
 
 /// The store app a link of [`Resolved::Link`] opens, for messages.
@@ -185,10 +194,11 @@ mod tests {
 
     #[test]
     fn the_game_starts_with_its_arguments_and_the_sign_in() {
-        let Resolved::Game(c) = parse(GAME, &env()).unwrap() else { panic!() };
+        let Resolved::Game { command: c, target_exe } = parse(GAME, &env()).unwrap() else { panic!() };
         let exe =
             if cfg!(windows) { r"C:\Games\Control\Binaries\Win64\Control.exe" } else { "C:\\Games\\Control/Binaries/Win64/Control.exe" };
         assert_eq!(c.program, exe);
+        assert_eq!(target_exe, exe);
         assert_eq!(
             c.args,
             ["-nolauncher", "-dx11", "-AUTH_LOGIN=unused", "-AUTH_PASSWORD=abc", "-AUTH_TYPE=exchangecode", "-epicapp=Calluna"]
@@ -205,11 +215,50 @@ mod tests {
     #[test]
     fn a_wrapper_of_legendarys_config_comes_first() {
         let out = r#"{"game_executable": "g.exe", "game_directory": "D:\\G", "launch_command": ["wrap.exe", "-x"], "working_directory": "D:\\G\\bin"}"#;
-        let Resolved::Game(c) = parse(out, &Env::new()).unwrap() else { panic!() };
+        let Resolved::Game { command: c, target_exe } = parse(out, &Env::new()).unwrap() else { panic!() };
         assert_eq!(c.program, "wrap.exe");
         assert_eq!(c.args[0], "-x");
         assert!(c.args[1].ends_with("g.exe"));
+        assert!(target_exe.ends_with("g.exe"));
         assert_eq!(c.cwd.as_deref(), Some(r"D:\G\bin"));
+    }
+
+    #[test]
+    fn legendary_wrapper_exe_wraps_the_game_after_launch_command() {
+        let mut e = env();
+        e.insert(crate::fake_epic::WRAPPER_ENV_KEY.into(), r"C:\tools\epic\EpicGamesLauncher.exe".into());
+        let Resolved::Game { command: c, target_exe } = parse(GAME, &e).unwrap() else { panic!() };
+        assert_eq!(c.program, r"C:\tools\epic\EpicGamesLauncher.exe");
+        assert!(c.args[0].ends_with("Control.exe"), "{:?}", c.args);
+        assert!(target_exe.ends_with("Control.exe"), "{target_exe}");
+        assert_eq!(c.args[1], "-nolauncher");
+        assert!(!c.env.contains_key(crate::fake_epic::WRAPPER_ENV_KEY));
+        let shown = crate::log_writer::command_line_for_log(&c);
+        assert!(shown.contains("-AUTH_PASSWORD=<hidden>") && !shown.contains("abc"), "{shown}");
+
+        // With launch_command, LEGENDARY_WRAPPER_EXE sits between launch_command and the game.
+        let out = r#"{"game_executable": "g.exe", "game_directory": "D:\\G", "launch_command": ["pre.exe"], "working_directory": ""}"#;
+        let Resolved::Game { command: c, target_exe } = parse(out, &e).unwrap() else { panic!() };
+        assert_eq!(c.program, "pre.exe");
+        assert_eq!(c.args[0], r"C:\tools\epic\EpicGamesLauncher.exe");
+        assert!(c.args[1].ends_with("g.exe"));
+        assert!(target_exe.ends_with("g.exe"));
+
+        // LEGENDARY_WRAPPER_EXE coming from legendary's own config environment is honored too.
+        let from_cfg =
+            r#"{"game_executable": "g.exe", "game_directory": "D:\\G", "environment": {"LEGENDARY_WRAPPER_EXE": "  C:\\cfg\\wrap.exe  "}}"#;
+        let Resolved::Game { command: c, target_exe } = parse(from_cfg, &Env::new()).unwrap() else { panic!() };
+        assert_eq!(c.program, r"C:\cfg\wrap.exe");
+        assert!(c.args[0].ends_with("g.exe"));
+        assert!(target_exe.ends_with("g.exe"));
+        assert!(!c.env.contains_key(crate::fake_epic::WRAPPER_ENV_KEY));
+
+        // Blank/whitespace LEGENDARY_WRAPPER_EXE is ignored and stripped.
+        let mut blank = env();
+        blank.insert(crate::fake_epic::WRAPPER_ENV_KEY.into(), "   ".into());
+        let Resolved::Game { command: c, .. } = parse(GAME, &blank).unwrap() else { panic!() };
+        assert!(c.program.ends_with("Control.exe"));
+        assert!(!c.env.contains_key(crate::fake_epic::WRAPPER_ENV_KEY));
     }
 
     #[test]
@@ -241,7 +290,7 @@ mod tests {
     fn legendary_runs_as_a_helper_and_its_answer_is_read() {
         let dir = tempfile::tempdir().unwrap();
         let tool = FakeTool::new(dir.path(), "legendary").record_env("LEGENDARY_CONFIG_PATH").otherwise(Reply::new().out(GAME));
-        let Resolved::Game(c) = resolve(&command(&tool), &|| false).unwrap() else { panic!() };
+        let Resolved::Game { command: c, .. } = resolve(&command(&tool), &|| false).unwrap() else { panic!() };
         assert!(c.program.ends_with("Control.exe"));
         assert_eq!(tool.calls(), ["launch Calluna --json"]);
         assert_eq!(tool.env_seen("LEGENDARY_CONFIG_PATH"), [r"C:\hr\legendaryConfig\legendary"]);

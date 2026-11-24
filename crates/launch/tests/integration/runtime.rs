@@ -1049,6 +1049,22 @@ fn a_missing_umu_runtime_that_cannot_be_downloaded_fails_the_launch() {
 }
 
 #[test]
+fn fake_epic_exe_warns_offline_and_launches_without_wrapper_env() {
+    let r = rig();
+    r.launcher.set_prep_services(services(false, None));
+    let mut process = process_plan("/games/legendary", &["launch", "GTAV"]);
+    process.prep = PrepSpec { fake_epic_exe: true, ..Default::default() };
+    r.launcher.launch(request("GTAV", LaunchPlan::Legendary { process, app_name: "GTAV".into() })).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    let (msg, warn) = status_of(next_any(&r.rx));
+    assert!(warn && msg.contains("Epic launcher wrapper"), "{msg}");
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    assert!(!r.spawner.spawned()[0].env.contains_key(heronite_launch::fake_epic::WRAPPER_ENV_KEY));
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+}
+
+#[test]
 fn prefix_creation_is_announced_and_runs_before_the_game() {
     let r = rig();
     let mut process = process_plan("/games/run.sh", &[]);
