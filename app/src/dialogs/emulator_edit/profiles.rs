@@ -23,6 +23,12 @@ fn split_extensions(text: &str) -> Vec<String> {
     out
 }
 
+/// The platform id a profile's typed platform names (`Sega Saturn` →
+/// `sega_saturn`), else `other`.
+fn platform_id(text: &str) -> String {
+    heronite_metadata::platforms::by_name(text).map_or("other", |p| p.id).to_owned()
+}
+
 impl EmulatorEditDialog {
     pub(super) fn core_relevant(&self, p: &UserEmulatorProfile) -> bool {
         p.core_path.is_some()
@@ -59,6 +65,9 @@ impl EmulatorEditDialog {
         let Some(p) = self.profiles.get_mut(i) else { return };
         p.name = text_of(&f.name, cx);
         let platform = text_of(&f.platform, cx);
+        if p.platform_name.as_deref().unwrap_or("") != platform {
+            p.platform_id = Some(platform_id(&platform));
+        }
         p.platform_name = (!platform.is_empty()).then_some(platform);
         p.arguments = text_of(&f.arguments, cx);
         p.extensions = split_extensions(&text_of(&f.extensions, cx));
@@ -140,11 +149,19 @@ impl EmulatorEditDialog {
 
 #[cfg(test)]
 mod tests {
-    use super::split_extensions;
+    use super::{platform_id, split_extensions};
 
     #[test]
     fn extensions_are_normalised() {
         assert_eq!(split_extensions(".ISO, cue  chd,,iso"), ["iso", "cue", "chd"]);
         assert!(split_extensions("  ").is_empty());
+    }
+
+    #[test]
+    fn typed_platform_sets_its_id() {
+        assert_eq!(platform_id("Sega Saturn"), "sega_saturn");
+        assert_eq!(platform_id("sega saturn"), "sega_saturn");
+        assert_eq!(platform_id("My Console"), "other");
+        assert_eq!(platform_id(""), "other");
     }
 }

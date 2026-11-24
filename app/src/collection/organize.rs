@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use heronite_data::install_size::{parse_store_size, rom_bytes, SizeCache};
+use heronite_data::models::LocalGameMeta;
 use heronite_data::organize::GameExtras;
 use heronite_data::{CollectionGame, DataPaths, Library};
 use heronite_launch::settings::GlobalSettings;
@@ -43,12 +44,26 @@ pub(crate) fn system_extras(lib: &Library) -> GameExtras {
     GameExtras { systems, ..Default::default() }
 }
 
-/// The system an emulated game runs on.
+/// The system an emulated game runs on. A game imported through a profile
+/// set up by hand has the `other` platform id; its ROM, folders or record
+/// (the profile's platform name, seeded at import) can still name it.
 fn emulated_system(g: &CollectionGame, systems: &HashMap<String, String>) -> Option<String> {
     if g.launch_kind.as_deref() != Some("emulator") {
         return None;
     }
-    g.meta.as_deref().and_then(|m| m.platform_id.as_deref()).and_then(|id| systems.get(id)).cloned()
+    let record = g.metadata.as_deref().map_or(&[][..], |m| m.platforms.as_slice());
+    system_of(g.meta.as_deref()?, record, systems)
+}
+
+fn system_of(meta: &LocalGameMeta, record: &[String], systems: &HashMap<String, String>) -> Option<String> {
+    let id = meta.platform_id.as_deref()?;
+    if id != "other" {
+        return systems.get(id).cloned();
+    }
+    match heronite_metadata::platforms::resolve(meta, record) {
+        Some(p) => Some(systems.get(p.id).cloned().unwrap_or_else(|| p.name.to_owned())),
+        None => systems.get(id).cloned(),
+    }
 }
 
 /// Platform id → name, from the emulator catalog.
@@ -84,4 +99,33 @@ fn size_of<'a>(g: &CollectionGame, steam: impl FnOnce() -> Option<&'a SteamLocat
         .map(|p| Path::new(p.trim()))
         .find(|p| p.is_absolute())?;
     walked.get(dir)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{system_names, system_of};
+    use heronite_data::models::{LocalGameMeta, LocalGameRom};
+
+    fn rom(platform_id: &str, path: &str) -> LocalGameMeta {
+        LocalGameMeta {
+            platform_id: Some(platform_id.into()),
+            emulator_name: Some("Ymir".into()),
+            roms: Some(vec![LocalGameRom { name: None, path: path.into(), extra: Default::default() }]),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn hand_made_profile_takes_the_platform_its_record_names() {
+        let systems = system_names();
+        let meta = rom("other", "/games/roms/Panzer Dragoon.chd");
+        assert_eq!(system_of(&meta, &["Sega Saturn".into()], &systems).as_deref(), Some("Sega Saturn"));
+    }
+
+    #[test]
+    fn unnamed_platform_stays_other_and_known_ids_are_kept() {
+        let systems = system_names();
+        assert_eq!(system_of(&rom("other", "/games/roms/x.chd"), &[], &systems).as_deref(), Some("Other"));
+        assert_eq!(system_of(&rom("sega_saturn", "/games/roms/x.chd"), &[], &systems).as_deref(), Some("Sega Saturn"));
+    }
 }
