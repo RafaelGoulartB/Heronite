@@ -254,6 +254,14 @@ impl CollectionView {
                         _ if step == "undo" => {
                             this.undo_batch(cx);
                         }
+                        // The dock's Merge, then its toast's Undo.
+                        _ if step == "merge" => this.link_selected_copies(cx),
+                        _ if step == "undo-copies" => {
+                            if let Some(super::ToastAction::UndoCopies(before)) = this.toast_action.clone() {
+                                this.toast = None;
+                                this.undo_copies(&before, cx);
+                            }
+                        }
                         _ => {}
                     }
                     cx.notify();
@@ -317,6 +325,10 @@ impl CollectionView {
             // play-choice:<key>: "Choose how to start the game" of that game, with
             // its actions that count as playing (two made up when it has none).
             w if w.starts_with("play-choice:") => self.debug_play_choice(&w["play-choice:".len()..], cx),
+            // version:<key>: "Choose version" of that grouped ROM, as Play asks it.
+            w if w.starts_with("version:") => {
+                self.ask_which_version(&w["version:".len()..], cx);
+            }
             // What Play shows for a store game whose folder is gone.
             w if w.starts_with("folder-missing:") => {
                 self.epic.pending = Some(super::epic::Request::FolderMissing(w["folder-missing:".len()..].to_string()));

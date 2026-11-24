@@ -11,7 +11,10 @@
 //! a shared IGDB id or Steam app id, **and** the same title (case,
 //! punctuation and ™/® aside). A shared id alone is not enough because IGDB
 //! ids can come from a fuzzy title search, and the title alone never is;
-//! editions with other titles ("… GOTY Edition") link only by hand. The file
+//! editions with other titles ("… GOTY Edition") link only by hand. ROMs
+//! never link by themselves; versions of one ROM (regions, revisions,
+//! romhacks: one title once its `(…)` and `[…]` tags are gone, on one
+//! system) are offered as possible copies. The file
 //! keeps only the user's decisions: links made by hand, pairs never to link
 //! again, and the preferred copies. Keys of games that are not in the
 //! library are kept, so a game that comes back joins its group again.
@@ -99,6 +102,34 @@ pub fn unlink(paths: &DataPaths, members: &[String]) -> Result<()> {
     })
 }
 
+/// Takes `key` out of its group (`members`): it becomes a game of its own
+/// and never links by itself to the others again. The others stay grouped
+/// when linked by hand (every ROM group); an automatic group stays only
+/// where they still share an id.
+pub fn detach(paths: &DataPaths, key: &str, members: &[String]) -> Result<()> {
+    json_store::update::<CopiesFile, _>(&paths.copies(), |file| {
+        for group in &mut file.links {
+            group.retain(|k| k != key);
+        }
+        file.links.retain(|g| g.len() > 1);
+        file.preferred.retain(|k| k != key);
+        for other in members.iter().filter(|m| *m != key) {
+            if !file.is_apart(key, other) {
+                file.apart.push([key.to_owned(), other.clone()]);
+            }
+        }
+        Ok(())
+    })
+}
+
+/// Puts back the decisions read before a change (the Undo of a link).
+pub fn restore(paths: &DataPaths, before: &CopiesFile) -> Result<()> {
+    json_store::update::<CopiesFile, _>(&paths.copies(), |file| {
+        *file = before.clone();
+        Ok(())
+    })
+}
+
 /// Makes `key` the default copy of its group (`members`).
 pub fn set_preferred(paths: &DataPaths, key: &str, members: &[String]) -> Result<()> {
     json_store::update::<CopiesFile, _>(&paths.copies(), |file| {
@@ -176,7 +207,9 @@ pub struct CopyGroups {
     pub groups: Vec<CopyGroup>,
     by_key: HashMap<String, usize>,
     /// Entries of other stores that share an id with a game but not its
-    /// title (an edition, or a wrong match): offered, never linked by themselves.
+    /// title (an edition, or a wrong match), and other versions of a ROM
+    /// (one system, one title without its tags): offered, never linked by
+    /// themselves.
     suggestions: HashMap<String, Vec<String>>,
 }
 
@@ -333,6 +366,7 @@ pub fn groups(games: &[Arc<CollectionGame>], file: &CopiesFile) -> CopyGroups {
 
 /// Pairs of other stores that share an id but are not in one group. An id
 /// shared by many entries says little (a wrong match), so it offers nothing.
+/// Also the versions of a ROM: one system, one title once its tags are gone.
 fn suggestions(games: &[Arc<CollectionGame>], sets: &mut Sets<'_>, file: &CopiesFile) -> HashMap<String, Vec<String>> {
     let mut by_id: HashMap<String, Vec<usize>> = HashMap::new();
     for (i, g) in games.iter().enumerate().filter(|(_, g)| joinable(g)) {
@@ -341,6 +375,14 @@ fn suggestions(games: &[Arc<CollectionGame>], sets: &mut Sets<'_>, file: &Copies
         }
     }
     let mut out: HashMap<String, Vec<String>> = HashMap::new();
+    let mut offer = |a: &String, b: &String| {
+        for (from, to) in [(a, b), (b, a)] {
+            let list = out.entry(from.clone()).or_default();
+            if !list.contains(to) {
+                list.push(to.clone());
+            }
+        }
+    };
     for ids in by_id.values().filter(|v| (2..=4).contains(&v.len())) {
         for (n, &a) in ids.iter().enumerate() {
             for &b in &ids[n + 1..] {
@@ -348,16 +390,71 @@ fn suggestions(games: &[Arc<CollectionGame>], sets: &mut Sets<'_>, file: &Copies
                 if store_of(&games[a]) == store_of(&games[b]) || sets.find(a) == sets.find(b) || file.is_apart(ka, kb) {
                     continue;
                 }
-                for (from, to) in [(ka, kb), (kb, ka)] {
-                    let list = out.entry(from.clone()).or_default();
-                    if !list.contains(to) {
-                        list.push(to.clone());
-                    }
+                offer(ka, kb);
+            }
+        }
+    }
+    // Versions of one ROM. A dozen is plenty for one game's hacks and
+    // regions; more share a title too vague to tell ("Tetris").
+    // Hidden ones stay out (a region hidden to tidy up), and so do the
+    // discs of a game kept apart ("(Disc 2)" is no version of "(Disc 1)").
+    let mut versions: HashMap<(String, String), Vec<usize>> = HashMap::new();
+    for (i, g) in games.iter().enumerate().filter(|(_, g)| !g.hidden && !has_disc_tag(&g.title)) {
+        if let Some(system) = rom_system(g) {
+            let title = title_key(&rom_base_title(&g.title));
+            if !title.is_empty() {
+                versions.entry((system.to_owned(), title)).or_default().push(i);
+            }
+        }
+    }
+    for roms in versions.into_values() {
+        // Counted in groups: versions linked already are one.
+        let sets_in = roms.iter().map(|&i| sets.find(i)).collect::<HashSet<_>>().len();
+        if !(2..=12).contains(&sets_in) {
+            continue;
+        }
+        for (n, &a) in roms.iter().enumerate() {
+            for &b in &roms[n + 1..] {
+                let (ka, kb) = (&games[a].key, &games[b].key);
+                if sets.find(a) != sets.find(b) && !file.is_apart(ka, kb) {
+                    offer(ka, kb);
                 }
             }
         }
     }
     out
+}
+
+/// The system a ROM runs on (its platform, else its emulator); `None` for
+/// any other game. Custom emulators all have the platform `other`, which
+/// names no system.
+fn rom_system(game: &CollectionGame) -> Option<&str> {
+    let meta = game.meta.as_deref().filter(|m| m.launch_kind == "emulator")?;
+    let platform = meta.platform_id.as_deref().filter(|p| !p.is_empty() && *p != "other");
+    platform.or(meta.emulator_id.as_deref()).filter(|s| !s.is_empty())
+}
+
+/// A ROM's title without its `(…)` / `[…]` tags (No-Intro and GoodTools
+/// names: region, languages, revision, hack, translation), compared through
+/// `title_key`: `Super Metroid (USA) (Hack Redux)` → `Super Metroid`.
+fn rom_base_title(title: &str) -> String {
+    let mut out = String::with_capacity(title.len());
+    let mut depth = 0usize;
+    for c in title.chars() {
+        match c {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth = depth.saturating_sub(1),
+            c if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// A `(Disc 2)` / `(Disk B)` / `(Side A)` tag: one disc of a game.
+fn has_disc_tag(title: &str) -> bool {
+    let lower = title.to_lowercase();
+    ["(disc ", "(disk ", "(side ", "[disc ", "[disk "].iter().any(|t| lower.contains(t))
 }
 
 /// Which of two copies comes first in a group. A copy the Steam Family
@@ -390,7 +487,7 @@ pub fn store_label(game: &CollectionGame) -> &str {
 }
 
 /// The title a copy goes by in its store (the Collection's when the store has none).
-fn own_title(game: &CollectionGame) -> &str {
+pub fn own_title(game: &CollectionGame) -> &str {
     Some(game.game.title.trim()).filter(|t| !t.is_empty()).unwrap_or(&game.title)
 }
 

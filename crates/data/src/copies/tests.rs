@@ -89,6 +89,65 @@ fn editions_with_a_shared_id_are_offered_not_linked() {
 }
 
 #[test]
+fn versions_of_one_rom_are_offered_not_linked() {
+    let on = |app: &str, title: &str, platform: &str| {
+        game_with(app, "sideload", |info, _, _, meta, _| {
+            info.title = title.into();
+            meta.launch_kind = "emulator".into();
+            meta.emulator_id = Some("snes9x".into());
+            meta.platform_id = Some(platform.into());
+        })
+    };
+    let games = [
+        on("usa", "Super Metroid (USA)", "snes"),
+        on("redux", "Super Metroid (USA) (Hack Redux)", "snes"),
+        on("cf", "Super Metroid (Japan, USA) (En,Ja) [Hack ControlFreak]", "snes"),
+        on("other", "Super Mario World (USA)", "snes"),
+        on("gba", "Super Metroid (USA)", "gba"),
+    ];
+    let mut file = CopiesFile::default();
+    let g = groups(&games, &file);
+    assert!(g.groups.is_empty());
+    let mut offered = g.suggested("sideload_usa").to_vec();
+    offered.sort();
+    assert_eq!(offered, ["sideload_cf", "sideload_redux"]);
+    assert!(g.suggested("sideload_other").is_empty() && g.suggested("sideload_gba").is_empty());
+
+    // Linked: offered to the group, not to each other.
+    file.links.push(vec!["sideload_usa".into(), "sideload_redux".into()]);
+    let g = groups(&games, &file);
+    assert_eq!(g.groups.len(), 1);
+    assert_eq!(g.suggested("sideload_usa"), ["sideload_cf"]);
+    // Taken apart from the group: never offered again.
+    file.apart.extend([["sideload_cf".into(), "sideload_usa".into()], ["sideload_cf".into(), "sideload_redux".into()]]);
+    assert!(groups(&games, &file).suggested("sideload_usa").is_empty());
+}
+
+#[test]
+fn rom_versions_count_groups_and_skip_discs_and_the_other_platform() {
+    let rom = |app: &str, title: &str, emulator: &str, platform: &str| {
+        game_with(app, "sideload", |info, _, _, meta, _| {
+            info.title = title.into();
+            meta.launch_kind = "emulator".into();
+            meta.emulator_id = Some(emulator.into());
+            meta.platform_id = Some(platform.into());
+        })
+    };
+    // 12 versions linked already and 2 new ones: three groups, still offered.
+    let mut games: Vec<_> = (0..14).map(|i| rom(&format!("v{i}"), &format!("Metroid (Hack {i})"), "e", "snes")).collect();
+    let file = CopiesFile { links: vec![(0..12).map(|i| format!("sideload_v{i}")).collect()], ..Default::default() };
+    assert_eq!(groups(&games, &file).suggested("sideload_v12").len(), 13);
+
+    // Custom emulators share the platform "other": their emulator tells them apart.
+    games = vec![rom("nes", "Tetris (USA)", "custom-nes", "other"), rom("gb", "Tetris (World)", "custom-gb", "other")];
+    assert!(groups(&games, &CopiesFile::default()).suggested("sideload_nes").is_empty());
+
+    // Discs of one game kept apart are no versions.
+    games = vec![rom("d1", "FF7 (USA) (Disc 1)", "e", "psx"), rom("d2", "FF7 (USA) (Disc 2)", "e", "psx")];
+    assert!(groups(&games, &CopiesFile::default()).suggested("sideload_d1").is_empty());
+}
+
+#[test]
 fn emulated_and_browser_games_never_link_by_themselves() {
     let emu = game_with("rom", "sideload", |info, _, md, meta, _| {
         info.title = "Celeste".into();
@@ -245,6 +304,29 @@ fn decisions_round_trip_and_keep_unknown_fields() {
     link(&paths, &["a".into(), "b".into()]).unwrap();
     let file = CopiesFile::read(&paths);
     assert_eq!(file.apart, [["a".to_string(), "c".to_string()], ["b".to_string(), "c".to_string()]]);
+}
+
+#[test]
+fn a_detached_copy_leaves_its_group_and_the_others_stay_linked() {
+    let (_dir, paths) = paths();
+    let members: Vec<String> = ["a", "b", "c"].map(String::from).to_vec();
+    link(&paths, &members).unwrap();
+    set_preferred(&paths, "b", &members).unwrap();
+    detach(&paths, "b", &members).unwrap();
+    let file = CopiesFile::read(&paths);
+    assert_eq!(file.links, [vec!["a", "c"]]);
+    assert!(file.preferred.is_empty());
+    assert_eq!(file.apart, [["b".to_string(), "a".to_string()], ["b".to_string(), "c".to_string()]]);
+
+    // Undo of a link: the decisions as they were.
+    let before = CopiesFile::read(&paths);
+    link(&paths, &["a".into(), "b".into()]).unwrap();
+    restore(&paths, &before).unwrap();
+    assert_eq!(CopiesFile::read(&paths), before);
+
+    // The last pair of a group is no group: the link goes too.
+    detach(&paths, "c", &["a".into(), "c".into()]).unwrap();
+    assert!(CopiesFile::read(&paths).links.is_empty());
 }
 
 #[test]

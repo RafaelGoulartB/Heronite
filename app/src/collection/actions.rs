@@ -259,7 +259,17 @@ impl CollectionView {
 
     /// Card play button / focus primary button. A game with actions that
     /// count as playing asks how to play first ([`Self::ask_how_to_play`]).
+    /// A group of ROM versions asks which one first ([`Self::ask_which_version`]).
     pub(super) fn primary_action(&mut self, key: &str, cx: &mut Context<Self>) {
+        if self.ask_which_version(key, cx) {
+            return;
+        }
+        self.play_copy_now(key, cx);
+    }
+
+    /// [`Self::primary_action`] for the copy `key` itself, without asking
+    /// which version (a version just chosen, a launch tried again).
+    pub(super) fn play_copy_now(&mut self, key: &str, cx: &mut Context<Self>) {
         if self.ask_how_to_play(key, cx) {
             return;
         }

@@ -1,4 +1,4 @@
-//! "Choose disc" in console mode: one row per ROM, A launches that one.
+//! "Choose disc" / "Choose version" in console mode: one row per ROM or copy, A launches that one.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -16,10 +16,11 @@ impl PickRomDialog {
         let mut rows: Vec<Row> = self
             .roms
             .iter()
+            .zip(&self.descs)
             .enumerate()
-            .map(|(i, (name, path))| {
+            .map(|(i, ((name, _), desc))| {
                 let label = if name.is_empty() { self.title.clone() } else { name.clone() };
-                Row::action(format!("r:{i}"), label).desc(path.clone()).icon(Icon::PlayArrow)
+                Row::action(format!("r:{i}"), label).desc(desc.clone()).icon(Icon::PlayArrow)
             })
             .collect();
         rows.push(Row::action("cancel", tr!("Cancel")));
@@ -41,9 +42,9 @@ impl PickRomDialog {
             .flex_1()
             .min_h_0()
             .gap(u(12.))
-            .child(kit::body_text(tr!("This title has more than one ROM. Pick which disc to launch.")))
+            .child(kit::body_text(self.intro()))
             .child(self.console_list.render("console-pick-rom", &rows, true).flex_1().min_h_0());
-        kit::modal(tr!("Choose disc"), 760., body).into_any_element()
+        kit::modal(self.heading(), 760., body).into_any_element()
     }
 }
 

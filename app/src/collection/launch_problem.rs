@@ -120,7 +120,8 @@ impl CollectionView {
                         return;
                     }
                     this.show_toast(toast, false, cx);
-                    this.primary_action(&key, cx);
+                    // The copy that failed, not whichever version a group would offer.
+                    this.play_copy_now(&key, cx);
                     this.reload(cx);
                     cx.notify();
                 })
@@ -156,7 +157,7 @@ impl CollectionView {
     }
 
     /// The game of `key` plays or is starting.
-    fn is_running(&self, key: &str) -> bool {
+    pub(super) fn is_running(&self, key: &str) -> bool {
         let app = self.lib.as_ref().and_then(|l| l.get(key)).map(|g| g.app_name.as_str());
         app.is_some_and(|a| self.playing.contains_key(a) || self.preparing.contains_key(a))
     }

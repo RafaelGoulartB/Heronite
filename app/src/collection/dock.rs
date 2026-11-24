@@ -267,8 +267,15 @@ impl CollectionView {
             return None;
         }
         let n = games.len();
-        // Narrow windows: the plain actions keep only their icons.
-        let compact = f32::from(crate::ui::content_size(window).width) < 1180.;
+        // Narrow windows: the plain actions keep only their icons, below
+        // the labelled dock's width with a margin (measured at 100%: about
+        // 1115px in English, 1200 in Portuguese and French, 1270 in German).
+        let full_width = match heronite_i18n::current() {
+            heronite_i18n::Lang::En => 1180.,
+            heronite_i18n::Lang::De => 1320.,
+            _ => 1260.,
+        };
+        let compact = f32::from(crate::ui::content_size(window).width) < full_width;
         let label = |s: &str| (!compact).then(|| SharedString::from(s.to_string()));
         let shown = self.shown_keys();
         let all_shown = shown.iter().all(|k| self.sel.contains(k));
@@ -356,6 +363,14 @@ impl CollectionView {
                     .child(kbd("F3"))
                     .on_click(cx.listener(|this, _, window, cx| this.open_batch_edit(window, cx))),
             )
+            // Versions of one game (romhacks, regions, editions) become one card.
+            .when(n > 1, |d| {
+                d.child(
+                    dock_button("dock-copies", Icon::CallMerge, label(tr!("Merge")), false)
+                        .tooltip(crate::ui::tooltip(tr!("Link as copies of one game")))
+                        .on_click(cx.listener(|this, _, _, cx| this.link_selected_copies(cx))),
+                )
+            })
             // Only games added to Heronite can leave the Collection; the dialog asks first.
             .when(removable, |d| {
                 d.child(div().w(px(1.)).h(px(24.)).mx(px(4.)).flex_none().bg(theme::glass_border())).child(

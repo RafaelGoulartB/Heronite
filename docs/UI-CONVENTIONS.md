@@ -539,14 +539,16 @@ the cards from the last one clicked, Ctrl A selects every card on screen, and th
 games are selected do the cards get a round tick on the top-right (filled = selected, the others dimmed, no play bar),
 a plain click ticks or unticks, group headers get "Select group", the grid's drawer steps aside, and the dock floats at
 the bottom: × (or Esc) ends it, the count and "Select all N", Status ▾ and Categories ▾ (popovers above the dock),
-Favourite, Hide, Metadata ▾ (a popover above the dock, see below) and Edit (F3). Right-clicking a selected card opens
+Favourite, Hide, Metadata ▾ (a popover above the dock, see below), Edit (F3) and, with two or more, Merge ("Link as
+copies of one game": romhacks, regions or editions become one card; its toast's Undo, also Ctrl Z while it shows, puts
+the copies back as they were). Right-clicking a selected card opens
 the same actions as a menu, its Metadata row a flyout with the popover's rows. Categories have three states (round tick: all, dash: some, ring: none); each click moves
 some → all → none → as it was (Playnite's assign / remove / leave alone), the next step shows under the pointer. Every
 batch change writes off the UI thread and its toast offers Undo (also Ctrl Z, 20 steps). F3 opens
 `dialogs/batch_edit.rs`: a drawer with the series and the tag fields of all the selected games; a tag only some have is
 dashed with "3/7" (click: give it to all), × takes one out of all, typing + Enter adds one to all; nothing is written
 until "Apply". Debug: `HERONITE_DEBUG_MULTI=<n>`, `HERONITE_DEBUG_DOCK=status|categories|metadata`,
-`HERONITE_DEBUG_DIALOG=batchedit`, `HERONITE_DEBUG_BATCH=status:<id>,cat:<name>,fav,hide,undo` (data copy only),
+`HERONITE_DEBUG_DIALOG=batchedit`, `HERONITE_DEBUG_BATCH=status:<id>,cat:<name>,fav,hide,undo,merge,undo-copies` (data copy only),
 `HERONITE_DEBUG_MENU_METADATA=1` (with `HERONITE_DEBUG_MENU` on a selected game: the batch menu's Metadata flyout).
 
 The **Metadata popover** (`collection/metadata_menu.rs`, 300px, above the dock's Metadata button; the dock's button
