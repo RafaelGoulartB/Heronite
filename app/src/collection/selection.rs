@@ -717,6 +717,13 @@ impl CollectionView {
             }
             "escape" if self.sel.active() => self.clear_selection(),
             "a" if ctrl && self.lib.is_some() => self.select_all_shown(),
+            // While a Merge's toast shows, Ctrl Z is its Undo.
+            "z" if ctrl && self.toast.is_some() && matches!(self.toast_action, Some(super::ToastAction::UndoCopies(_))) => {
+                if let Some(super::ToastAction::UndoCopies(before)) = self.toast_action.take() {
+                    self.toast = None;
+                    self.undo_copies(&before, cx);
+                }
+            }
             "z" if ctrl => return self.undo_batch(cx),
             "f3" if !m.modified() => {
                 if self.sel.active() {

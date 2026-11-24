@@ -191,7 +191,7 @@ impl CollectionView {
                 }
             }
         }
-        let before = std::sync::Arc::new(copies::CopiesFile::read(&self.data_paths));
+        let before = Arc::new(copies::CopiesFile::read(&self.data_paths));
         let res = copies::link(&self.data_paths, &all);
         let linked = res.is_ok();
         let n = all.len();
