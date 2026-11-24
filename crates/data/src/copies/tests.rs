@@ -89,6 +89,41 @@ fn editions_with_a_shared_id_are_offered_not_linked() {
 }
 
 #[test]
+fn versions_of_one_rom_are_offered_not_linked() {
+    let on = |app: &str, title: &str, platform: &str| {
+        game_with(app, "sideload", |info, _, _, meta, _| {
+            info.title = title.into();
+            meta.launch_kind = "emulator".into();
+            meta.emulator_id = Some("snes9x".into());
+            meta.platform_id = Some(platform.into());
+        })
+    };
+    let games = [
+        on("usa", "Super Metroid (USA)", "snes"),
+        on("redux", "Super Metroid (USA) (Hack Redux)", "snes"),
+        on("cf", "Super Metroid (Japan, USA) (En,Ja) [Hack ControlFreak]", "snes"),
+        on("other", "Super Mario World (USA)", "snes"),
+        on("gba", "Super Metroid (USA)", "gba"),
+    ];
+    let mut file = CopiesFile::default();
+    let g = groups(&games, &file);
+    assert!(g.groups.is_empty());
+    let mut offered = g.suggested("sideload_usa").to_vec();
+    offered.sort();
+    assert_eq!(offered, ["sideload_cf", "sideload_redux"]);
+    assert!(g.suggested("sideload_other").is_empty() && g.suggested("sideload_gba").is_empty());
+
+    // Linked: offered to the group, not to each other.
+    file.links.push(vec!["sideload_usa".into(), "sideload_redux".into()]);
+    let g = groups(&games, &file);
+    assert_eq!(g.groups.len(), 1);
+    assert_eq!(g.suggested("sideload_usa"), ["sideload_cf"]);
+    // Taken apart from the group: never offered again.
+    file.apart.extend([["sideload_cf".into(), "sideload_usa".into()], ["sideload_cf".into(), "sideload_redux".into()]]);
+    assert!(groups(&games, &file).suggested("sideload_usa").is_empty());
+}
+
+#[test]
 fn emulated_and_browser_games_never_link_by_themselves() {
     let emu = game_with("rom", "sideload", |info, _, md, meta, _| {
         info.title = "Celeste".into();

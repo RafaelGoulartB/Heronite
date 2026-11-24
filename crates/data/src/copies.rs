@@ -11,7 +11,10 @@
 //! a shared IGDB id or Steam app id, **and** the same title (case,
 //! punctuation and ™/® aside). A shared id alone is not enough because IGDB
 //! ids can come from a fuzzy title search, and the title alone never is;
-//! editions with other titles ("… GOTY Edition") link only by hand. The file
+//! editions with other titles ("… GOTY Edition") link only by hand. ROMs
+//! never link by themselves; versions of one ROM (regions, revisions,
+//! romhacks: one title once its `(…)` and `[…]` tags are gone, on one
+//! system) are offered as possible copies. The file
 //! keeps only the user's decisions: links made by hand, pairs never to link
 //! again, and the preferred copies. Keys of games that are not in the
 //! library are kept, so a game that comes back joins its group again.
@@ -369,6 +372,14 @@ fn suggestions(games: &[Arc<CollectionGame>], sets: &mut Sets<'_>, file: &Copies
         }
     }
     let mut out: HashMap<String, Vec<String>> = HashMap::new();
+    let mut offer = |a: &String, b: &String| {
+        for (from, to) in [(a, b), (b, a)] {
+            let list = out.entry(from.clone()).or_default();
+            if !list.contains(to) {
+                list.push(to.clone());
+            }
+        }
+    };
     for ids in by_id.values().filter(|v| (2..=4).contains(&v.len())) {
         for (n, &a) in ids.iter().enumerate() {
             for &b in &ids[n + 1..] {
@@ -376,13 +387,54 @@ fn suggestions(games: &[Arc<CollectionGame>], sets: &mut Sets<'_>, file: &Copies
                 if store_of(&games[a]) == store_of(&games[b]) || sets.find(a) == sets.find(b) || file.is_apart(ka, kb) {
                     continue;
                 }
-                for (from, to) in [(ka, kb), (kb, ka)] {
-                    let list = out.entry(from.clone()).or_default();
-                    if !list.contains(to) {
-                        list.push(to.clone());
-                    }
+                offer(ka, kb);
+            }
+        }
+    }
+    // Versions of one ROM. A dozen is plenty for one game's hacks and
+    // regions; more share a title too vague to tell ("Tetris").
+    let mut versions: HashMap<(String, String), Vec<usize>> = HashMap::new();
+    for (i, g) in games.iter().enumerate() {
+        if let Some(system) = rom_system(g) {
+            let title = title_key(&rom_base_title(&g.title));
+            if !title.is_empty() {
+                versions.entry((system.to_owned(), title)).or_default().push(i);
+            }
+        }
+    }
+    for roms in versions.values().filter(|v| (2..=12).contains(&v.len())) {
+        for (n, &a) in roms.iter().enumerate() {
+            for &b in &roms[n + 1..] {
+                let (ka, kb) = (&games[a].key, &games[b].key);
+                if sets.find(a) != sets.find(b) && !file.is_apart(ka, kb) {
+                    offer(ka, kb);
                 }
             }
+        }
+    }
+    out
+}
+
+/// The system a ROM runs on (its platform, else its emulator); `None` for
+/// any other game.
+fn rom_system(game: &CollectionGame) -> Option<&str> {
+    let meta = game.meta.as_deref().filter(|m| m.launch_kind == "emulator")?;
+    let platform = meta.platform_id.as_deref().filter(|p| !p.is_empty());
+    platform.or(meta.emulator_id.as_deref()).filter(|s| !s.is_empty())
+}
+
+/// A ROM's title without its `(…)` / `[…]` tags (No-Intro and GoodTools
+/// names: region, languages, revision, hack, translation):
+/// `Super Metroid (USA) (Hack Redux)` → `Super Metroid `.
+fn rom_base_title(title: &str) -> String {
+    let mut out = String::with_capacity(title.len());
+    let mut depth = 0usize;
+    for c in title.chars() {
+        match c {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth = depth.saturating_sub(1),
+            c if depth == 0 => out.push(c),
+            _ => {}
         }
     }
     out
