@@ -634,6 +634,128 @@ fn steam_that_never_starts_the_game_is_an_error_without_recording() {
     assert!(message.contains("xdg-open missing"));
 }
 
+#[test]
+fn steam_waits_past_start_timeout_while_preparing_or_updating() {
+    let r = rig();
+    let console = write_steam_log(&r, "");
+    let content = r._dir.path().join("home/.steam/steam/logs/content_log.txt");
+    fs::write(&content, "").unwrap();
+    let plan = LaunchPlan::SteamUri { app_id: "400".into(), uri: "steam://rungameid/400".into(), extras: Default::default() };
+    r.launcher.launch(request("steam_400", plan)).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    wait_until("uri opened", || r.spawner.uris() == ["steam://rungameid/400"]);
+
+    // Steam starts a shader/runtime depot update that takes longer than `start_timeout` (600ms).
+    fs::OpenOptions::new()
+        .append(true)
+        .open(&console)
+        .unwrap()
+        .write_all(b"[t] GameAction [AppID 400, ActionID 1] : LaunchApp changed task to DownloadingDepots with \"\"\n")
+        .unwrap();
+    fs::OpenOptions::new()
+        .append(true)
+        .open(&content)
+        .unwrap()
+        .write_all(b"[t] AppID 400 state changed : Update Required,Fully Installed,Update Queued,Update Running,\n")
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(850));
+
+    // Update finishes and Steam launches the game.
+    fs::OpenOptions::new()
+        .append(true)
+        .open(&content)
+        .unwrap()
+        .write_all(
+            b"[t] AppID 400 state changed : Fully Installed,\n\
+              [t] AppID 400 scheduler finished : removed from schedule (result No Error, state 0xc)\n",
+        )
+        .unwrap();
+    r.procs.start(7777, "reaper", None);
+    fs::OpenOptions::new().append(true).open(&console).unwrap().write_all(b"Game process added : AppID 400 \"x\" ProcID 7777\n").unwrap();
+    let LaunchEvent::Running { pid, .. } = next(&r.rx) else { panic!("expected Running after update finished") };
+    assert_eq!(pid, 7777);
+    r.procs.exit(7777);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+}
+
+#[test]
+fn steam_times_out_if_launch_stalls_after_update_finishes() {
+    let r = rig();
+    let console = write_steam_log(&r, "");
+    let content = r._dir.path().join("home/.steam/steam/logs/content_log.txt");
+    fs::write(&content, "").unwrap();
+    let plan = LaunchPlan::SteamUri { app_id: "400".into(), uri: "steam://rungameid/400".into(), extras: Default::default() };
+    r.launcher.launch(request("steam_400", plan)).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    wait_until("uri opened", || r.spawner.uris() == ["steam://rungameid/400"]);
+
+    fs::OpenOptions::new()
+        .append(true)
+        .open(&console)
+        .unwrap()
+        .write_all(b"[t] GameAction [AppID 400, ActionID 1] : LaunchApp changed task to DownloadingDepots with \"\"\n")
+        .unwrap();
+    fs::OpenOptions::new()
+        .append(true)
+        .open(&content)
+        .unwrap()
+        .write_all(b"[t] AppID 400 state changed : Update Required,Fully Installed,Update Queued,Update Running,\n")
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(200));
+
+    // Update finishes, but Steam drops the launch and never starts the game.
+    fs::OpenOptions::new()
+        .append(true)
+        .open(&content)
+        .unwrap()
+        .write_all(
+            b"[t] AppID 400 state changed : Fully Installed,\n\
+              [t] AppID 400 scheduler finished : removed from schedule (result No Error, state 0xc)\n",
+        )
+        .unwrap();
+    let LaunchEvent::Error { message, .. } = next(&r.rx) else { panic!("expected timeout Error after stalled update") };
+    assert!(message.contains("did not start"), "{message}");
+    assert!(!r.launcher.is_running("steam_400"));
+}
+
+#[test]
+fn steam_waits_while_appmanifest_reports_active_update() {
+    let r = rig();
+    let console = write_steam_log(&r, "");
+    fs::write(r._dir.path().join("home/.steam/steam.pid"), "5000\n").unwrap();
+    r.procs.start(5000, if cfg!(windows) { "steam.exe" } else { "steam" }, None);
+    let manifest = r._dir.path().join("home/.steam/steam/steamapps/appmanifest_400.acf");
+    fs::create_dir_all(manifest.parent().unwrap()).unwrap();
+    fs::write(&manifest, "\"AppState\" { \"appid\" \"400\" \"name\" \"Portal\" \"StateFlags\" \"1048836\" }\n").unwrap();
+    let plan = LaunchPlan::SteamUri { app_id: "400".into(), uri: "steam://rungameid/400".into(), extras: Default::default() };
+    r.launcher.launch(request("steam_400", plan)).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    wait_until("uri opened", || r.spawner.uris() == ["steam://rungameid/400"]);
+
+    std::thread::sleep(Duration::from_millis(850));
+    fs::write(&manifest, "\"AppState\" { \"appid\" \"400\" \"name\" \"Portal\" \"StateFlags\" \"4\" }\n").unwrap();
+    r.procs.start(7777, "reaper", None);
+    fs::OpenOptions::new().append(true).open(&console).unwrap().write_all(b"Game process added : AppID 400 \"x\" ProcID 7777\n").unwrap();
+    let LaunchEvent::Running { pid, .. } = next(&r.rx) else { panic!("expected Running after manifest update finished") };
+    assert_eq!(pid, 7777);
+    r.procs.exit(7777);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+}
+
+#[test]
+fn stale_updating_appmanifest_still_times_out_when_steam_never_starts() {
+    let r = rig();
+    write_steam_log(&r, "");
+    let manifest = r._dir.path().join("home/.steam/steam/steamapps/appmanifest_400.acf");
+    fs::create_dir_all(manifest.parent().unwrap()).unwrap();
+    fs::write(&manifest, "\"AppState\" { \"appid\" \"400\" \"name\" \"Portal\" \"StateFlags\" \"1048836\" }\n").unwrap();
+    let plan = LaunchPlan::SteamUri { app_id: "400".into(), uri: "steam://rungameid/400".into(), extras: Default::default() };
+    r.launcher.launch(request("steam_400", plan)).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    let LaunchEvent::Error { message, .. } = next(&r.rx) else { panic!("expected timeout Error on stale manifest without Steam") };
+    assert!(message.contains("did not start"), "{message}");
+}
+
 // ---------------------------------------------------------------------------
 // Real (harmless) processes
 // ---------------------------------------------------------------------------
