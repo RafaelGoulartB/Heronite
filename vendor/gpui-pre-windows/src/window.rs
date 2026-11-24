@@ -88,6 +88,10 @@ pub struct WindowsWindowState {
     pub(crate) draw_coordinator: Rc<DrawCoordinator>,
     fullscreen: Cell<Option<StyleAndBounds>>,
     initial_placement: Cell<Option<WindowOpenStatus>>,
+    /// Set while the window's first placement is applied (Heronite's patch,
+    /// see `PATCHES.md`): its rect is already in the target monitor's device
+    /// pixels, so the `WM_DPICHANGED` it causes must not scale it again.
+    pub(crate) placing: Cell<bool>,
     hwnd: HWND,
     pub(crate) a11y: RefCell<Option<A11yState>>,
 }
@@ -189,6 +193,7 @@ impl WindowsWindowState {
             display: Cell::new(display),
             fullscreen: Cell::new(fullscreen),
             initial_placement: Cell::new(initial_placement),
+            placing: Cell::new(false),
             hwnd,
             invalidate_devices,
             draw_coordinator,
@@ -377,22 +382,20 @@ impl WindowsWindowInner {
             return Ok(());
         };
         match open_status.state {
-            WindowOpenState::Maximized => unsafe {
-                SetWindowPlacement(self.hwnd, &open_status.placement)
+            WindowOpenState::Maximized => {
+                place(&self.state, self.hwnd, &open_status.placement)
                     .context("failed to set window placement")?;
-                ShowWindowAsync(self.hwnd, SW_MAXIMIZE).ok()?;
-            },
+                unsafe { ShowWindowAsync(self.hwnd, SW_MAXIMIZE).ok()? };
+            }
             WindowOpenState::Fullscreen => {
-                unsafe {
-                    SetWindowPlacement(self.hwnd, &open_status.placement)
-                        .context("failed to set window placement")?
-                };
+                place(&self.state, self.hwnd, &open_status.placement)
+                    .context("failed to set window placement")?;
                 self.toggle_fullscreen();
             }
-            WindowOpenState::Windowed => unsafe {
-                SetWindowPlacement(self.hwnd, &open_status.placement)
+            WindowOpenState::Windowed => {
+                place(&self.state, self.hwnd, &open_status.placement)
                     .context("failed to set window placement")?;
-            },
+            }
         }
         Ok(())
     }
@@ -587,7 +590,7 @@ impl WindowsWindow {
             if !params.focus {
                 placement.showCmd = SW_SHOWNOACTIVATE.0 as u32;
             }
-            unsafe { SetWindowPlacement(hwnd, &placement)? };
+            place(&this.state, hwnd, &placement)?;
         } else {
             this.state.initial_placement.set(Some(WindowOpenStatus {
                 placement,
@@ -1576,6 +1579,15 @@ fn calculate_client_rect(
         origin: logical_point(left as f32, top as f32, scale_factor),
         size: physical_size.to_pixels(scale_factor),
     }
+}
+
+/// `SetWindowPlacement` for a window's first placement, with
+/// [`WindowsWindowState::placing`] set while it runs.
+fn place(state: &WindowsWindowState, hwnd: HWND, placement: &WINDOWPLACEMENT) -> Result<()> {
+    state.placing.set(true);
+    let placed = unsafe { SetWindowPlacement(hwnd, placement) };
+    state.placing.set(false);
+    Ok(placed?)
 }
 
 fn retrieve_window_placement(

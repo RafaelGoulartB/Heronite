@@ -39,6 +39,8 @@ const INDEX: &[(Section, &[&str])] = &[
             "Keep in the tray when closed",
             "Dark tray icon",
             "Hide the tray icon",
+            "Window",
+            "Open the window on",
             "When a game starts and ends",
             "Minimize when a game starts",
             "Stay hidden when a shortcut starts a game",

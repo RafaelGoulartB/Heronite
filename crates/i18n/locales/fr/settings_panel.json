@@ -536,5 +536,12 @@
   "Restart Heronite": "Redémarrer Heronite",
   "The tray changes apply once Heronite starts again.": "Les modifications de la zone de notification s’appliquent au prochain démarrage d’Heronite.",
   "Copy path": "Copier le chemin",
-  "Copied": "Copié"
+  "Copied": "Copié",
+  "Open the window on": "Ouvrir la fenêtre sur",
+  "Where it was left": "Là où elle était",
+  "Screen {n}": "Écran {n}",
+  "Screen {n} (main)": "Écran {n} (principal)",
+  "Applies the next time the window opens. Screens are numbered from left to right. If the screen is not connected, the window opens where it was left.": "S'applique à la prochaine ouverture de la fenêtre. Les écrans sont numérotés de gauche à droite. Si l'écran n'est pas branché, la fenêtre s'ouvre là où elle était.",
+  "Applies the next time the window opens.": "S'applique à la prochaine ouverture de la fenêtre.",
+  "A screen that is not connected": "Un écran qui n'est pas branché"
 }

@@ -894,13 +894,16 @@ pub const WINDOW: &str = "window";
 /// same way. In the system's px (the interface zoom left out), so changing
 /// the zoom does not resize the window it reopens. The position and size are
 /// the window's own while maximized (the ones restoring it goes back to).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WindowPlacement {
     pub x: f32,
     pub y: f32,
     pub width: f32,
     pub height: f32,
     pub maximized: bool,
+    /// The screen it was on (the app's key for it), when known. With screens
+    /// at different scales the position alone can be on two of them.
+    pub screen: Option<String>,
 }
 
 impl WindowPlacement {
@@ -912,18 +915,23 @@ impl WindowPlacement {
             width: num("width")?,
             height: num("height")?,
             maximized: value.get("maximized").and_then(Value::as_bool).unwrap_or(false),
+            screen: value.get("screen").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_owned),
         };
         (p.width >= 1. && p.height >= 1.).then_some(p)
     }
 
-    fn to_value(self) -> Value {
-        json!({
+    fn to_value(&self) -> Value {
+        let mut v = json!({
             "x": self.x.round(),
             "y": self.y.round(),
             "width": self.width.round(),
             "height": self.height.round(),
             "maximized": self.maximized,
-        })
+        });
+        if let Some(screen) = &self.screen {
+            v["screen"] = Value::String(screen.clone());
+        }
+        v
     }
 }
 
@@ -935,7 +943,7 @@ pub fn window_placement(paths: &AppPaths) -> Option<WindowPlacement> {
 }
 
 /// Remembers the main window's placement.
-pub fn set_window_placement(paths: &AppPaths, placement: WindowPlacement) -> Result<()> {
+pub fn set_window_placement(paths: &AppPaths, placement: &WindowPlacement) -> Result<()> {
     json_store::update_value(&paths.ui_state(), |doc| {
         if !doc.is_object() {
             *doc = Value::Object(Default::default());
@@ -1396,10 +1404,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = app_paths(dir.path());
         assert_eq!(window_placement(&paths), None);
-        let p = WindowPlacement { x: -1920., y: 40., width: 1600., height: 1000., maximized: true };
-        set_window_placement(&paths, p).unwrap();
+        let p = WindowPlacement { x: -1920., y: 40., width: 1600., height: 1000., maximized: true, screen: None };
+        set_window_placement(&paths, &p).unwrap();
         UiState::default().save(&paths).unwrap();
-        assert_eq!(window_placement(&paths), Some(p));
+        assert_eq!(window_placement(&paths), Some(p.clone()));
+        // With the screen it was on.
+        let on = WindowPlacement { screen: Some("92ad53a4".into()), ..p };
+        set_window_placement(&paths, &on).unwrap();
+        assert_eq!(window_placement(&paths), Some(on));
         // Unusable sizes or missing fields are no placement.
         std::fs::write(paths.ui_state(), r#"{"window":{"x":0,"y":0,"width":0,"height":600}}"#).unwrap();
         assert_eq!(window_placement(&paths), None);

@@ -11,6 +11,7 @@ use std::sync::OnceLock;
 use super::parts::{column, heading, help, rows, Rows};
 use super::{Section, SettingsPanel, Target};
 use crate::icons::Icon;
+use crate::system::screens;
 use crate::system::settings::KEY_RESTORE_AFTER_GAME;
 use crate::theme;
 use crate::ui::controls::{button_sm, row, with_sub_rows, ButtonKind};
@@ -194,6 +195,13 @@ impl SettingsPanel {
             .when(stores || wine, |c| c.child(heading(tr!("Folders"))).child(folders.card()))
             .when(supported(Feature::Autostart), |c| c.child(heading(tr!("Startup"))).child(self.startup_rows(cx).card()))
             .when(supported(Feature::Tray), |c| c.child(heading(tr!("System tray"))).child(self.tray_rows(cx).card()))
+            .when_some(self.screen_field(cx), |c, field| {
+                c.child(heading(tr!("Window"))).child(
+                    rows()
+                        .field_help(field, vec![help(tr!("Applies the next time the window opens. Screens are numbered from left to right. If the screen is not connected, the window opens where it was left."))])
+                        .card(),
+                )
+            })
             .child(heading(tr!("When a game starts and ends")))
             .child(self.game_rows(cx).card())
             .when(supported(Feature::DesktopShortcuts), |c| c.child(heading(tr!("Game shortcuts"))).child(self.shortcut_rows(cx).card()))
@@ -343,6 +351,23 @@ impl SettingsPanel {
                 crate::language::choose(&app_paths, p, cx);
             }
         }))
+    }
+
+    /// The screen the main window opens on (`system::screens`); `None` with
+    /// one screen or where the app cannot place its window.
+    fn screen_field(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let menu = screens::Menu::new(cx, &self.text(screens::KEY_OPEN_ON_SCREEN))?;
+        let items = menu.names.iter().enumerate().map(|(i, n)| (n.clone(), i == menu.selected)).collect();
+        let shown = menu.names[menu.selected].to_string();
+        Some(div().child(self.select_row(
+            "open-on-screen",
+            Some(tr!("Open the window on")),
+            shown,
+            items,
+            false,
+            cx,
+            move |this, i, _, cx| this.set(screens::KEY_OPEN_ON_SCREEN, Value::String(menu.key(i)), cx),
+        )))
     }
 
     fn max_workers_field(&self, cx: &mut Context<Self>) -> Div {
