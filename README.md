@@ -189,11 +189,11 @@ A controller-first layout for the couch or a TV. Turn it on from the ☰ menu, t
 
 ## Light on your PC
 
-A single native process drawn on the GPU, with no bundled browser like Electron-based launchers carry. The idle numbers come from [`scripts/idle-cost.sh`](scripts/idle-cost.sh), so you can check them on your own PC.
+A single native process drawn on the GPU, with no bundled browser like Electron-based launchers carry. The idle numbers come from [`scripts/idle-cost.sh`](scripts/idle-cost.sh), so you can check them on your own PC. Usage from a collection with 200 games.
 
 | | Heronite Usage |
 |---|---|
-| Memory while idle | **~190 MB** in a single process, **~95 MB** closed to the tray |
+| Memory while idle | **~150 MB** in a single process, **~80 MB** closed to the tray |
 | CPU while idle | **~0.1%** (0.05 s of CPU time over 60 s) |
 | Install size | **64 MB** (app + store login helper) |
 | Start to library on screen | **~215 ms** median |
