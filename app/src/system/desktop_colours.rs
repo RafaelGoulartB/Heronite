@@ -126,11 +126,22 @@ fn read(portal: Option<Rgb>) -> DesktopColours {
     c
 }
 
-/// Windows stores these colours as `AARRGGBB`; the alpha is not part of the
-/// desktop accent.
+/// A Windows accent as the registry stores it: DWM's `ColorizationColor` is
+/// `AARRGGBB`, Explorer's `AccentColorMenu` is `AABBGGRR`. The alpha is not
+/// part of the desktop accent.
 #[cfg(any(test, windows))]
-fn windows_colours(accent: Option<u32>, apps_use_light: Option<u32>) -> DesktopColours {
-    let accent = accent.map(|c| ((c >> 16) as u8, (c >> 8) as u8, c as u8));
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WindowsAccent {
+    Argb(u32),
+    Abgr(u32),
+}
+
+#[cfg(any(test, windows))]
+fn windows_colours(accent: Option<WindowsAccent>, apps_use_light: Option<u32>) -> DesktopColours {
+    let accent = accent.map(|a| match a {
+        WindowsAccent::Argb(c) => ((c >> 16) as u8, (c >> 8) as u8, c as u8),
+        WindowsAccent::Abgr(c) => (c as u8, (c >> 8) as u8, (c >> 16) as u8),
+    });
     let (window_light, window_dark) = match apps_use_light {
         Some(1) => (Some(WINDOWS_LIGHT), None),
         Some(0) => (None, Some(WINDOWS_DARK)),
@@ -143,8 +154,9 @@ fn windows_colours(accent: Option<u32>, apps_use_light: Option<u32>) -> DesktopC
 fn read_windows() -> DesktopColours {
     use heronite_platform::registry::{dword, Hive};
 
-    let accent = dword(Hive::CurrentUser, r"Software\Microsoft\Windows\DWM", "ColorizationColor")
-        .or_else(|| dword(Hive::CurrentUser, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent", "AccentColorMenu"));
+    let accent = dword(Hive::CurrentUser, r"Software\Microsoft\Windows\DWM", "ColorizationColor").map(WindowsAccent::Argb).or_else(|| {
+        dword(Hive::CurrentUser, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent", "AccentColorMenu").map(WindowsAccent::Abgr)
+    });
     let apps_use_light = dword(Hive::CurrentUser, r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme");
     windows_colours(accent, apps_use_light)
 }
@@ -245,7 +257,7 @@ pub fn watch(wait: Duration) -> (Option<DesktopColours>, UnboundedReceiver<Deskt
                 }
                 #[cfg(not(any(target_os = "linux", windows)))]
                 {
-                    let now = read(None);
+                    let now = DesktopColours::default();
                     let _ = first_tx.send(now);
                     publish(now);
                 }
@@ -290,15 +302,18 @@ mod tests {
 
     #[test]
     fn windows_uses_the_registry_accent_and_app_mode() {
+        let blue = (0, 120, 215);
         assert_eq!(
-            windows_colours(Some(0xc400_78d7), Some(1)),
-            DesktopColours { accent: Some((0, 120, 215)), window_dark: None, window_light: Some(WINDOWS_LIGHT) }
+            windows_colours(Some(WindowsAccent::Argb(0xc400_78d7)), Some(1)),
+            DesktopColours { accent: Some(blue), window_dark: None, window_light: Some(WINDOWS_LIGHT) }
         );
         assert_eq!(
-            windows_colours(Some(0xc400_78d7), Some(0)),
-            DesktopColours { accent: Some((0, 120, 215)), window_dark: Some(WINDOWS_DARK), window_light: None }
+            windows_colours(Some(WindowsAccent::Argb(0xc400_78d7)), Some(0)),
+            DesktopColours { accent: Some(blue), window_dark: Some(WINDOWS_DARK), window_light: None }
         );
+        // Explorer's copy of the same accent is stored the other way round.
+        assert_eq!(windows_colours(Some(WindowsAccent::Abgr(0xffd7_7800)), None).accent, Some(blue));
         assert_eq!(windows_colours(None, None), DesktopColours::default());
-        assert_eq!(windows_colours(None, Some(2)), DesktopColours { accent: None, window_dark: None, window_light: None });
+        assert_eq!(windows_colours(None, Some(2)), DesktopColours::default());
     }
 }
