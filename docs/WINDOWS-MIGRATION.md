@@ -21,6 +21,7 @@ What works on Windows, what is left, and what Windows does not need.
 - Desktop and Start menu shortcuts, Add to Steam
 - Installer, portable zip, self-update, releases
 - Installer languages: English, Brazilian Portuguese, Spanish and German; silent updates retain the selected language
+- Appearance → "From the desktop": reads Windows' accent colour and app light/dark mode, and follows changes to those settings
 - Steam's per-game launch options (Settings → Launch of a Steam game, `Feature::SteamGameSettings`): through the running client, or in `userdata\<account>\config\localconfig.vdf` while Steam is closed, as on Linux; the account is the registry's `ActiveProcess\ActiveUser`, else the latest login. No compatibility tool: Steam starts Windows games as they are
 - Native launch extras: before/after scripts (`.bat`, `.cmd`, `.ps1`, programs), delayed companions and presets (variables and arguments); for Steam games they run around `steam://rungameid` (`heronite_launch::steam_extras`); real-process tests cover environment, working folders, normal exit, stop and cancellation before a companion starts
 - Restoring a backup made on Linux
@@ -37,7 +38,6 @@ What works on Windows, what is left, and what Windows does not need.
 - Ludusavi registry entries: in a backup made on Windows, Ludusavi restores them itself, but they are missing from the restore preview and from the undo copy
 - Screenshots of games in legacy exclusive fullscreen: Desktop Duplication loses the display while such a game holds it. HDR capture also still needs a check on a real HDR monitor
 - A new tray icon starts in Windows 11's hidden-icons flyout until the user pins it
-- Appearance → "From the desktop" (accent and panel colour) reads only Linux desktops (`app/src/system/desktop_colours.rs`); on Windows it gets no colour and falls back. It should read Windows' accent colour and light/dark app mode
 
 ## 🚧 Console mode controllers
 
