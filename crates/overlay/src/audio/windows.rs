@@ -121,7 +121,7 @@ pub fn set_default_input(id: &str) {
 }
 
 /// Recorder stream-name selection is a PulseAudio feature, not a WASAPI one.
-pub fn game_stream_names(_game_pid: u32) -> Vec<String> {
+pub fn game_stream_names(_game_pid: u32, _steam_app_id: Option<&str>) -> Vec<String> {
     log::debug!("Core Audio: recorder stream-name selection is unsupported on Windows");
     Vec::new()
 }
