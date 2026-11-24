@@ -118,7 +118,7 @@ fn finish(cx: &mut App, handle: AnyWindowHandle) {
 /// another in debug runs).
 #[cfg(windows)]
 fn display(cx: &App) -> Option<DisplayId> {
-    let screen = crate::overlay::window::target_screen().ok()?;
+    let screen = crate::overlay::window::target_screen(None).ok()?;
     let scale = screen.scale.max(0.1);
     let (x, y) = ((screen.left as f32 + screen.width as f32 / 2.) / scale, (screen.top as f32 + screen.height as f32 / 2.) / scale);
     let distance = |b: Bounds<Pixels>| {

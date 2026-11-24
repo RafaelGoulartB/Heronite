@@ -295,6 +295,12 @@ impl OverlayService {
         }
     }
 
+    /// The process of [`current`](Self::current)'s game, once known: the
+    /// overlay shows on its window's monitor.
+    fn game_pid(&self) -> Option<u32> {
+        self.games.last().and_then(|g| g.pid)
+    }
+
     /// The game the panel is about: the one started last.
     pub fn current(&self) -> Option<GameNow> {
         let game = self.games.last()?.clone();
@@ -554,7 +560,7 @@ impl OverlayService {
         let service = cx.entity().downgrade();
         let controllers = self.controllers.clone();
         let (paths, step) = (self.data_paths.clone(), self.prefs.volume_step);
-        let display = window::Display::current(cx);
+        let display = window::Display::current(cx, self.game_pid());
         let scale = display.scale();
         match window::open_panel(cx, display, self.prefs.side, layer, keyboard, move |window, cx| {
             #[cfg(windows)]
@@ -726,7 +732,7 @@ impl OverlayService {
             return false;
         }
         let opts = heronite_images::Opts::new(self.data_paths.images_cache_dir(), Some(AppPaths::for_data(&self.data_paths).thumbs_dir()));
-        let side = (ICON_PX * window::Display::current(cx).scale()).round() as u32;
+        let side = (ICON_PX * window::Display::current(cx, self.game_pid()).scale()).round() as u32;
         let ticket = self.achievement_queue.ticket();
         let icon_url = unlock.achievement.icon.clone();
         cx.spawn(async move |this, cx| {

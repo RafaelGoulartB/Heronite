@@ -483,7 +483,8 @@ impl ConsoleSummon {
             }
             self.notice = None;
         }
-        let display = window::Display::current(cx);
+        // No game runs (`blocked`): where the user is.
+        let display = window::Display::current(cx, None);
         let scale = display.scale();
         match window::open_corner_notice(cx, display, !self.debug_window, NOTICE_SIZE, |_, cx| cx.new(|_| NoticeView::new(shown, scale))) {
             Ok(handle) => self.notice = Some(handle),

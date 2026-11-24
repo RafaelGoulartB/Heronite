@@ -42,12 +42,15 @@ impl Display {
     /// Height of the tallest display. Wayland has no primary display (GPUI
     /// returns none), and the compositor puts the surface on the focused one,
     /// which this cannot know: one display is the usual case. Windows uses
-    /// the target monitor (`target_screen`).
+    /// the target monitor (`target_screen`): the one of the window of the
+    /// game whose process is `game`, when it has one.
     /// `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for it (sizes of other
     /// screens in debug captures).
-    pub fn current(cx: &App) -> Self {
+    pub fn current(cx: &App, game: Option<u32>) -> Self {
         #[cfg(windows)]
-        let screen = target_screen();
+        let screen = target_screen(game);
+        #[cfg(not(windows))]
+        let _ = game;
         let height = crate::env::parse::<f32>("HERONITE_DEBUG_OVERLAY_DISPLAY").unwrap_or_else(|| {
             #[cfg(windows)]
             match &screen {
@@ -106,19 +109,30 @@ pub fn exclusive_fullscreen() -> bool {
     false
 }
 
-/// The monitor of the foreground window (the game's). In debug captures,
+/// The monitor of the window of the game whose process is `game` (the one
+/// "Back to game" focuses), else of the foreground window. The game's comes
+/// first: the foreground may be on another monitor while it plays (the
+/// desktop's or the taskbar's, with a controller in hand). In debug captures,
 /// `HERONITE_DEBUG_OVERLAY_MONITOR=<x>,<y>` picks the one holding that desktop
 /// point (physical px) instead, so another monitor is tested without moving
 /// the focus.
 #[cfg(windows)]
-pub(crate) fn target_screen() -> std::io::Result<heronite_platform::overlay_window::Screen> {
+pub(crate) fn target_screen(game: Option<u32>) -> std::io::Result<heronite_platform::overlay_window::Screen> {
     use heronite_platform::overlay_window;
     let point = crate::env::value("HERONITE_DEBUG_OVERLAY_MONITOR").and_then(|v| {
         let (x, y) = v.split_once(',')?;
         Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
     });
-    match point {
-        Some((x, y)) => overlay_window::screen_at(x, y),
+    if let Some((x, y)) = point {
+        return overlay_window::screen_at(x, y);
+    }
+    let window = game.and_then(heronite_overlay::game_window::window);
+    match window.map(overlay_window::window_screen) {
+        Some(Ok(screen)) => Ok(screen),
+        Some(Err(e)) => {
+            log::debug!("overlay: cannot read the game window's monitor: {e}");
+            overlay_window::foreground_screen()
+        }
         None => overlay_window::foreground_screen(),
     }
 }

@@ -4,6 +4,7 @@
 //! and nothing runs in its process.
 
 use std::io;
+use std::num::NonZeroIsize;
 
 use windows_sys::Win32::Foundation::{HWND, LPARAM};
 use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
@@ -32,6 +33,54 @@ pub fn focus_window_of(pids: &[u32]) -> io::Result<()> {
             Err(io::Error::other("Windows kept the foreground on another window"))
         }
     }
+}
+
+/// The foreground window when one of `pids` owns it and it is not
+/// minimised. Cheap: no window is listed.
+pub fn foreground_of(pids: &[u32]) -> Option<NonZeroIsize> {
+    pick_front(foreground(), &[], pids).and_then(usable)
+}
+
+/// The window of `pids` being played: the foreground one when it is
+/// theirs, else the one [`focus_window_of`] would bring forward. `None`
+/// when it is minimised (it then shows on no monitor).
+pub fn window_of(pids: &[u32]) -> Option<NonZeroIsize> {
+    let front = foreground();
+    let hwnd = match pick_front(front, &[], pids) {
+        Some(hwnd) => hwnd,
+        None => pick_front(front, &top_level_windows(), pids)?,
+    };
+    usable(hwnd)
+}
+
+/// The foreground window and its process (0, 0 for none).
+fn foreground() -> (isize, u32) {
+    // SAFETY: the handle is only passed to Windows; the output is a local.
+    unsafe {
+        let front = GetForegroundWindow();
+        let mut pid = 0;
+        GetWindowThreadProcessId(front, &mut pid);
+        (front as isize, pid)
+    }
+}
+
+/// `hwnd` unless it is null or minimised.
+fn usable(hwnd: isize) -> Option<NonZeroIsize> {
+    // SAFETY: a handle Windows gave, only passed back to it, which checks it.
+    if unsafe { IsIconic(hwnd as HWND) } != 0 {
+        return None;
+    }
+    NonZeroIsize::new(hwnd)
+}
+
+/// `front` (the foreground window and its process) when one of `pids` owns
+/// it, else the first of theirs in `windows` ([`pick`]).
+fn pick_front(front: (isize, u32), windows: &[(isize, u32)], pids: &[u32]) -> Option<isize> {
+    let (hwnd, pid) = front;
+    if hwnd != 0 && pid != 0 && pids.contains(&pid) {
+        return Some(hwnd);
+    }
+    pick(windows, pids)
 }
 
 /// The first window of `windows` (z-order, top first) owned by one of `pids`.
@@ -85,7 +134,17 @@ unsafe fn bring_forward(hwnd: HWND) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::pick;
+    use super::{pick, pick_front};
+
+    #[test]
+    fn the_game_in_front_is_the_one_played() {
+        let windows = [(1, 10), (3, 30), (4, 20)];
+        assert_eq!(pick_front((4, 20), &windows, &[20, 30]), Some(4), "the foreground beats a higher window of the game");
+        assert_eq!(pick_front((1, 10), &windows, &[20, 30]), Some(3), "another program in front: the game's top window");
+        assert_eq!(pick_front((0, 0), &windows, &[20]), Some(4), "no foreground window");
+        assert_eq!(pick_front((1, 10), &[], &[20]), None, "the game in the background, no windows listed");
+        assert_eq!(pick_front((5, 0), &windows, &[0]), None, "a window without a process is nobody's");
+    }
 
     #[test]
     fn picks_the_top_window_of_the_game() {
