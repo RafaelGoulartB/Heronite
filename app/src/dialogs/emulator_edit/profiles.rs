@@ -29,6 +29,16 @@ fn platform_id(text: &str) -> String {
     heronite_metadata::platforms::by_name(text).map_or("other", |p| p.id).to_owned()
 }
 
+/// Sets the profile's typed platform and the id it names. A catalog
+/// profile left on its platform keeps its id; one saved before the id
+/// followed the text (`other`) gets it now.
+fn set_platform(p: &mut UserEmulatorProfile, platform: String) {
+    if p.platform_name.as_deref().unwrap_or("") != platform || matches!(p.platform_id.as_deref(), None | Some("" | "other")) {
+        p.platform_id = Some(platform_id(&platform));
+    }
+    p.platform_name = (!platform.is_empty()).then_some(platform);
+}
+
 impl EmulatorEditDialog {
     pub(super) fn core_relevant(&self, p: &UserEmulatorProfile) -> bool {
         p.core_path.is_some()
@@ -64,11 +74,7 @@ impl EmulatorEditDialog {
         let (Some(i), Some(f)) = (self.open_profile, self.form.as_ref()) else { return };
         let Some(p) = self.profiles.get_mut(i) else { return };
         p.name = text_of(&f.name, cx);
-        let platform = text_of(&f.platform, cx);
-        if p.platform_name.as_deref().unwrap_or("") != platform {
-            p.platform_id = Some(platform_id(&platform));
-        }
-        p.platform_name = (!platform.is_empty()).then_some(platform);
+        set_platform(p, text_of(&f.platform, cx));
         p.arguments = text_of(&f.arguments, cx);
         p.extensions = split_extensions(&text_of(&f.extensions, cx));
         let core = text_of(&f.core, cx);
@@ -149,7 +155,8 @@ impl EmulatorEditDialog {
 
 #[cfg(test)]
 mod tests {
-    use super::{platform_id, split_extensions};
+    use super::{platform_id, set_platform, split_extensions};
+    use heronite_launch::emulators::UserEmulatorProfile;
 
     #[test]
     fn extensions_are_normalised() {
@@ -163,5 +170,24 @@ mod tests {
         assert_eq!(platform_id("sega saturn"), "sega_saturn");
         assert_eq!(platform_id("My Console"), "other");
         assert_eq!(platform_id(""), "other");
+    }
+
+    fn profile(id: &str, name: &str) -> UserEmulatorProfile {
+        UserEmulatorProfile { platform_id: Some(id.into()), platform_name: Some(name.into()), ..Default::default() }
+    }
+
+    #[test]
+    fn platform_id_follows_the_typed_platform() {
+        let mut p = profile("other", "Other");
+        set_platform(&mut p, "Sega Saturn".into());
+        assert_eq!((p.platform_id.as_deref(), p.platform_name.as_deref()), (Some("sega_saturn"), Some("Sega Saturn")));
+        // Saved before this fix: same text, id still `other`.
+        let mut p = profile("other", "Sega Saturn");
+        set_platform(&mut p, "Sega Saturn".into());
+        assert_eq!(p.platform_id.as_deref(), Some("sega_saturn"));
+        // A catalog profile left on its platform keeps its id.
+        let mut p = profile("nintendo_super_nes", "Super Nintendo");
+        set_platform(&mut p, "Super Nintendo".into());
+        assert_eq!(p.platform_id.as_deref(), Some("nintendo_super_nes"));
     }
 }

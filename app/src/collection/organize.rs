@@ -56,14 +56,15 @@ fn emulated_system(g: &CollectionGame, systems: &HashMap<String, String>) -> Opt
 }
 
 fn system_of(meta: &LocalGameMeta, record: &[String], systems: &HashMap<String, String>) -> Option<String> {
+    use heronite_metadata::platforms::{by_id, resolve, Platform};
+    // The catalog's name, else the platform table's (`sega_cd` has no
+    // emulator in the catalog but a profile can still name it).
+    let name = |p: &Platform| systems.get(p.id).cloned().unwrap_or_else(|| p.name.to_owned());
     let id = meta.platform_id.as_deref()?;
     if id != "other" {
-        return systems.get(id).cloned();
+        return systems.get(id).cloned().or_else(|| by_id(id).map(name));
     }
-    match heronite_metadata::platforms::resolve(meta, record) {
-        Some(p) => Some(systems.get(p.id).cloned().unwrap_or_else(|| p.name.to_owned())),
-        None => systems.get(id).cloned(),
-    }
+    resolve(meta, record).map(name).or_else(|| systems.get(id).cloned())
 }
 
 /// Platform id → name, from the emulator catalog.
@@ -127,5 +128,18 @@ mod tests {
         let systems = system_names();
         assert_eq!(system_of(&rom("other", "/games/roms/x.chd"), &[], &systems).as_deref(), Some("Other"));
         assert_eq!(system_of(&rom("sega_saturn", "/games/roms/x.chd"), &[], &systems).as_deref(), Some("Sega Saturn"));
+    }
+
+    #[test]
+    fn platforms_without_a_catalog_emulator_keep_their_name() {
+        let systems = system_names();
+        assert_eq!(system_of(&rom("sega_cd", "/games/roms/x.chd"), &[], &systems).as_deref(), Some("Sega CD"));
+    }
+
+    #[test]
+    fn the_catalog_names_a_resolved_platform() {
+        let systems = system_names();
+        let snes = ["Super Nintendo Entertainment System".to_string()];
+        assert_eq!(system_of(&rom("other", "/games/roms/x.chd"), &snes, &systems).as_deref(), Some("Super Nintendo"));
     }
 }
