@@ -114,17 +114,10 @@ impl CollectionView {
                 let g = &self.groups[group];
                 let gid = g.id.clone();
                 let pick = self.group_pick(&gid, cx);
-                let header = list::group_header(g, pick).id(SharedString::from(format!("group-{gid}"))).cursor_pointer().on_click(
-                    cx.listener(move |this, _, _, cx| {
-                        this.ui.toggle_group(&gid);
-                        this.save_ui();
-                        if let Some(g) = this.groups.iter_mut().find(|g| g.id == gid) {
-                            g.collapsed = !g.collapsed;
-                        }
-                        this.rebuild_items();
-                        cx.notify();
-                    }),
-                );
+                let header = list::group_header(g, pick)
+                    .id(SharedString::from(format!("group-{gid}")))
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, _, cx| this.toggle_group_fold(&gid, cx)));
                 let m = self.list_metrics();
                 // Pinned: the copy over the list stands in for it, otherwise
                 // both show, a few pixels apart, while it scrolls under.
@@ -383,7 +376,17 @@ impl CollectionView {
         let sticky = self.sticky();
         self.stuck_group = sticky.map(|(g, _)| g);
         let sticky = sticky.map(|(g, shift)| {
-            let pick = self.group_pick(&self.groups[g].id.clone(), cx);
+            let gid = self.groups[g].id.clone();
+            let pick = self.group_pick(&gid, cx);
+            // Clickable like the header it stands in for, which is out of
+            // reach above the list; the shade under it is not. Clicks stop
+            // here (not on the card or the hidden header under it); the
+            // wheel goes through to the list.
+            let header = list::group_header(&self.groups[g], pick)
+                .id(SharedString::from(format!("group-pinned-{gid}")))
+                .block_mouse_except_scroll()
+                .cursor_pointer()
+                .on_click(cx.listener(move |this, _, _, cx| this.toggle_group_fold(&gid, cx)));
             div()
                 .absolute()
                 .top(px(shift))
@@ -392,7 +395,7 @@ impl CollectionView {
                 .pl(px(m.pad_l))
                 .pr(px(m.pad_r))
                 .child(if rows { list::stuck_scrim_rows() } else { list::stuck_scrim(grid) })
-                .child(list::group_header(&self.groups[g], pick))
+                .child(header)
         });
         div()
             .relative()

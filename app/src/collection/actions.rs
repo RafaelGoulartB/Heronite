@@ -384,6 +384,18 @@ impl CollectionView {
         self.rebuild_with(anchor);
     }
 
+    /// Folds or opens group `gid`, from its header in the list or from the
+    /// copy pinned over it. Folding from far down the group lands on its
+    /// header (see `vm::resolve_anchor`).
+    pub(super) fn toggle_group_fold(&mut self, gid: &SharedString, cx: &mut Context<Self>) {
+        let Some(g) = self.groups.iter_mut().find(|g| g.id == *gid) else { return };
+        g.collapsed = !g.collapsed;
+        self.ui.toggle_group(gid);
+        self.save_ui();
+        self.rebuild_items();
+        cx.notify();
+    }
+
     pub(super) fn rebuild_items(&mut self) {
         let anchor = self.scroll_anchor();
         self.rebuild_with(anchor);
