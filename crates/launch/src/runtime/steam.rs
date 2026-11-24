@@ -16,7 +16,7 @@ use super::state::{Control, Shared};
 use super::{LaunchEvent, LaunchRequest};
 use crate::log_writer::GameLog;
 use crate::plan::SteamExtras;
-use crate::playtime_watch::{wait_for_steam_session, LogMarks, SteamWaitOutcome};
+use crate::playtime_watch::{wait_for_steam_session, LogMarks, SteamWaitOutcome, SteamWaitSources};
 use crate::prepare::Notice;
 use crate::procs::processes_matching;
 use crate::record;
@@ -68,8 +68,10 @@ pub(super) fn run_steam(
     // is what opened it.
     let opened_steam = !shared.steam.client_running(&*shared.procs);
     let silent_steam = opened_steam && GlobalSettings::load(&shared.paths).flag_or(KEY_START_SILENT, true);
-    // What Steam logs from here on tells whether it got the URI.
+    // What Steam logs from here on tells whether it got the URI and whether
+    // it is still preparing the launch (updates, shaders, runtime, setup).
     let marks = LogMarks::capture(&shared.steam.log_files());
+    let content_marks = LogMarks::capture(&shared.steam.content_log_files());
     let sent_at = Instant::now();
     let open_result = if silent_steam {
         let root = shared.steam.install_for_app(app_id);
@@ -91,14 +93,26 @@ pub(super) fn run_steam(
         cfg.start_timeout += cfg.cold_start_grace;
     }
     let mut checked_delivery = false;
-    let locator = shared.steam.clone();
+    let mut logged_preparing = false;
+    let console_logs = || shared.steam.log_files();
+    let content_logs = || shared.steam.content_log_files();
+    let manifest_updating = || shared.steam.is_app_updating(app_id);
+    let client_running = || shared.steam.client_running(&*shared.procs);
+    let sources = SteamWaitSources {
+        console_logs: &console_logs,
+        content_logs: &content_logs,
+        console_marks: &marks,
+        content_marks: &content_marks,
+        manifest_updating: &manifest_updating,
+        client_running: &client_running,
+    };
     let mut announced: Option<u32> = None;
     // Started once Steam's logs show the game; their delays count from then.
     let companions: RefCell<Option<Companions>> = RefCell::new(None);
     let outcome = wait_for_steam_session(
         app_id,
         &*shared.procs,
-        &move || locator.log_files(),
+        &sources,
         &cfg,
         &control.abort,
         &control.wake,
@@ -122,7 +136,11 @@ pub(super) fn run_steam(
                 *companions.borrow_mut() = Some(Companions::new(&extras.companions, Instant::now(), None));
             }
         },
-        &mut || {
+        &mut |preparing| {
+            if preparing && !logged_preparing {
+                logged_preparing = true;
+                log.info("Steam is preparing the game (update, shaders, or setup); waiting for it to finish");
+            }
             // Windows has no other way to ask Steam than the one that was used.
             // A silent launch invokes the Steam client directly and handles
             // quick exits and desktop fallback itself (`open_steam_silent`),
