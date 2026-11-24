@@ -2,9 +2,9 @@
 //! windows' background. On Linux, the accent comes from the XDG settings
 //! portal (GNOME 47+, KDE Plasma 6, COSMIC), else KDE's `kdeglobals` or
 //! GNOME's `accent-color` setting; the windows' background from KDE's colour
-//! scheme, or libadwaita's on GNOME. On Windows, read the accent and app mode
-//! from the user's registry settings. Read on a thread of its own (one per
-//! process), again when the settings change.
+//! scheme, or libadwaita's on GNOME. On Windows, the accent comes from the
+//! user's registry settings, and the windows' background is Windows 11's.
+//! Read on a thread of its own (one per process), again when they change.
 
 use std::sync::{mpsc, Mutex};
 use std::time::Duration;
@@ -24,8 +24,7 @@ const ADWAITA_DARK: Rgb = (34, 34, 38);
 /// Breeze's accent, KDE's default.
 #[cfg(any(test, target_os = "linux"))]
 const BREEZE_ACCENT: Rgb = (61, 174, 233);
-/// Windows 11's default app surfaces, used when Windows has no custom panel
-/// colour to offer.
+/// Windows 11's app background, light and dark.
 #[cfg(any(test, windows))]
 const WINDOWS_LIGHT: Rgb = (243, 243, 243);
 #[cfg(any(test, windows))]
@@ -137,17 +136,12 @@ enum WindowsAccent {
 }
 
 #[cfg(any(test, windows))]
-fn windows_colours(accent: Option<WindowsAccent>, apps_use_light: Option<u32>) -> DesktopColours {
+fn windows_colours(accent: Option<WindowsAccent>) -> DesktopColours {
     let accent = accent.map(|a| match a {
         WindowsAccent::Argb(c) => ((c >> 16) as u8, (c >> 8) as u8, c as u8),
         WindowsAccent::Abgr(c) => (c as u8, (c >> 8) as u8, (c >> 16) as u8),
     });
-    let (window_light, window_dark) = match apps_use_light {
-        Some(1) => (Some(WINDOWS_LIGHT), None),
-        Some(0) => (None, Some(WINDOWS_DARK)),
-        _ => (None, None),
-    };
-    DesktopColours { accent, window_dark, window_light }
+    DesktopColours { accent, window_dark: Some(WINDOWS_DARK), window_light: Some(WINDOWS_LIGHT) }
 }
 
 #[cfg(windows)]
@@ -157,8 +151,7 @@ fn read_windows() -> DesktopColours {
     let accent = dword(Hive::CurrentUser, r"Software\Microsoft\Windows\DWM", "ColorizationColor").map(WindowsAccent::Argb).or_else(|| {
         dword(Hive::CurrentUser, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent", "AccentColorMenu").map(WindowsAccent::Abgr)
     });
-    let apps_use_light = dword(Hive::CurrentUser, r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme");
-    windows_colours(accent, apps_use_light)
+    windows_colours(accent)
 }
 
 /// The portal's accent; its channels out of 0..=1 mean the desktop has none.
@@ -301,19 +294,14 @@ mod tests {
     }
 
     #[test]
-    fn windows_uses_the_registry_accent_and_app_mode() {
+    fn windows_uses_the_registry_accent() {
         let blue = (0, 120, 215);
         assert_eq!(
-            windows_colours(Some(WindowsAccent::Argb(0xc400_78d7)), Some(1)),
-            DesktopColours { accent: Some(blue), window_dark: None, window_light: Some(WINDOWS_LIGHT) }
-        );
-        assert_eq!(
-            windows_colours(Some(WindowsAccent::Argb(0xc400_78d7)), Some(0)),
-            DesktopColours { accent: Some(blue), window_dark: Some(WINDOWS_DARK), window_light: None }
+            windows_colours(Some(WindowsAccent::Argb(0xc400_78d7))),
+            DesktopColours { accent: Some(blue), window_dark: Some(WINDOWS_DARK), window_light: Some(WINDOWS_LIGHT) }
         );
         // Explorer's copy of the same accent is stored the other way round.
-        assert_eq!(windows_colours(Some(WindowsAccent::Abgr(0xffd7_7800)), None).accent, Some(blue));
-        assert_eq!(windows_colours(None, None), DesktopColours::default());
-        assert_eq!(windows_colours(None, Some(2)), DesktopColours::default());
+        assert_eq!(windows_colours(Some(WindowsAccent::Abgr(0xffd7_7800))).accent, Some(blue));
+        assert_eq!(windows_colours(None).accent, None);
     }
 }
