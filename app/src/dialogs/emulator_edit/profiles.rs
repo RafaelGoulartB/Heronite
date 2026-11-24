@@ -197,9 +197,9 @@ mod tests {
         assert_eq!(p.platform_id.as_deref(), Some("nintendo_super_nes"));
         // Renamed to text naming no platform: a catalog profile keeps its
         // id, one set up by hand is `other`.
-        let mut p = UserEmulatorProfile { definition_profile_id: Some("n64".into()), ..profile("nintendo_n64", "Nintendo 64") };
+        let mut p = UserEmulatorProfile { definition_profile_id: Some("n64".into()), ..profile("nintendo_64", "Nintendo 64") };
         set_platform(&mut p, "N64 (Mupen)".into());
-        assert_eq!(p.platform_id.as_deref(), Some("nintendo_n64"));
+        assert_eq!(p.platform_id.as_deref(), Some("nintendo_64"));
         let mut p = profile("sega_saturn", "Sega Saturn");
         set_platform(&mut p, "My Console".into());
         assert_eq!(p.platform_id.as_deref(), Some("other"));
