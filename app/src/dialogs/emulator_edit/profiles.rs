@@ -23,6 +23,28 @@ fn split_extensions(text: &str) -> Vec<String> {
     out
 }
 
+/// The platform id a profile's typed platform names (`Sega Saturn` →
+/// `sega_saturn`).
+fn platform_id(text: &str) -> Option<&'static str> {
+    heronite_metadata::platforms::by_name(text).map(|p| p.id)
+}
+
+/// Sets the profile's typed platform and the id it names. A catalog
+/// profile left on its platform, or renamed to text naming none, keeps its
+/// id; one saved before the id followed the text (`other`) gets it now; a
+/// profile set up by hand naming none is `other`.
+fn set_platform(p: &mut UserEmulatorProfile, platform: String) {
+    if p.platform_name.as_deref().unwrap_or("") != platform || matches!(p.platform_id.as_deref(), None | Some("" | "other")) {
+        let catalog = p.definition_profile_id.as_deref().is_some_and(|d| d != "custom");
+        match platform_id(&platform) {
+            Some(id) => p.platform_id = Some(id.into()),
+            None if catalog => {}
+            None => p.platform_id = Some("other".into()),
+        }
+    }
+    p.platform_name = (!platform.is_empty()).then_some(platform);
+}
+
 impl EmulatorEditDialog {
     pub(super) fn core_relevant(&self, p: &UserEmulatorProfile) -> bool {
         p.core_path.is_some()
@@ -58,8 +80,7 @@ impl EmulatorEditDialog {
         let (Some(i), Some(f)) = (self.open_profile, self.form.as_ref()) else { return };
         let Some(p) = self.profiles.get_mut(i) else { return };
         p.name = text_of(&f.name, cx);
-        let platform = text_of(&f.platform, cx);
-        p.platform_name = (!platform.is_empty()).then_some(platform);
+        set_platform(p, text_of(&f.platform, cx));
         p.arguments = text_of(&f.arguments, cx);
         p.extensions = split_extensions(&text_of(&f.extensions, cx));
         let core = text_of(&f.core, cx);
@@ -140,11 +161,47 @@ impl EmulatorEditDialog {
 
 #[cfg(test)]
 mod tests {
-    use super::split_extensions;
+    use super::{platform_id, set_platform, split_extensions};
+    use heronite_launch::emulators::UserEmulatorProfile;
 
     #[test]
     fn extensions_are_normalised() {
         assert_eq!(split_extensions(".ISO, cue  chd,,iso"), ["iso", "cue", "chd"]);
         assert!(split_extensions("  ").is_empty());
+    }
+
+    #[test]
+    fn typed_platform_sets_its_id() {
+        assert_eq!(platform_id("Sega Saturn"), Some("sega_saturn"));
+        assert_eq!(platform_id("sega saturn"), Some("sega_saturn"));
+        assert_eq!(platform_id("My Console"), None);
+        assert_eq!(platform_id(""), None);
+    }
+
+    fn profile(id: &str, name: &str) -> UserEmulatorProfile {
+        UserEmulatorProfile { platform_id: Some(id.into()), platform_name: Some(name.into()), ..Default::default() }
+    }
+
+    #[test]
+    fn platform_id_follows_the_typed_platform() {
+        let mut p = profile("other", "Other");
+        set_platform(&mut p, "Sega Saturn".into());
+        assert_eq!((p.platform_id.as_deref(), p.platform_name.as_deref()), (Some("sega_saturn"), Some("Sega Saturn")));
+        // Saved before this fix: same text, id still `other`.
+        let mut p = profile("other", "Sega Saturn");
+        set_platform(&mut p, "Sega Saturn".into());
+        assert_eq!(p.platform_id.as_deref(), Some("sega_saturn"));
+        // A catalog profile left on its platform keeps its id.
+        let mut p = profile("nintendo_super_nes", "Super Nintendo");
+        set_platform(&mut p, "Super Nintendo".into());
+        assert_eq!(p.platform_id.as_deref(), Some("nintendo_super_nes"));
+        // Renamed to text naming no platform: a catalog profile keeps its
+        // id, one set up by hand is `other`.
+        let mut p = UserEmulatorProfile { definition_profile_id: Some("n64".into()), ..profile("nintendo_64", "Nintendo 64") };
+        set_platform(&mut p, "N64 (Mupen)".into());
+        assert_eq!(p.platform_id.as_deref(), Some("nintendo_64"));
+        let mut p = profile("sega_saturn", "Sega Saturn");
+        set_platform(&mut p, "My Console".into());
+        assert_eq!(p.platform_id.as_deref(), Some("other"));
     }
 }
