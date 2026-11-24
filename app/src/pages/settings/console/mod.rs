@@ -60,8 +60,8 @@ const GROUPS: [(&str, &[CSec]); 7] = [
         &[
             CSec::Defaults(HSection::Compatibility),
             CSec::Defaults(HSection::Performance),
-            CSec::Defaults(HSection::Gpu),
-            CSec::Defaults(HSection::Launch),
+            CSec::Defaults(HSection::Graphics),
+            CSec::Defaults(HSection::Start),
         ],
     ),
     (n_!("Collection"), &[CSec::Rows(Section::Library), CSec::Rows(Section::Metadata)]),
@@ -92,7 +92,7 @@ impl CSec {
             CSec::Panel(s) | CSec::Rows(s) => s.icon(),
             CSec::Defaults(HSection::Compatibility) => Icon::WineBar,
             CSec::Defaults(HSection::Performance) => Icon::BarChart,
-            CSec::Defaults(HSection::Gpu) => Icon::Memory,
+            CSec::Defaults(HSection::Graphics) => Icon::Memory,
             CSec::Defaults(_) => Icon::PlayArrow,
             CSec::Extras => Icon::Folder,
         }

@@ -21,7 +21,7 @@ use crate::ui::controls::{action_button, button, close_button, dialog_title, kic
 use crate::ui::dialog::{drawer, DrawerProps};
 
 /// The panel's tabs, in order: Wine first.
-const SECTIONS: [Section; 3] = [Section::Compatibility, Section::Launch, Section::Gpu];
+const SECTIONS: [Section; 3] = [Section::Compatibility, Section::Start, Section::Graphics];
 
 const DRAWER_W: f32 = 580.;
 
@@ -44,6 +44,7 @@ impl ClientSettingsDialog {
             steam_app_id: None,
             protondb_id: None,
             game: None,
+            sandbox: false,
         };
         let panel = cx.new(|cx| {
             let mut p = SettingsPanel::new(data_paths, Target::Game(facts), SECTIONS[0], window, cx);

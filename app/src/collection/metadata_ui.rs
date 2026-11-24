@@ -176,7 +176,14 @@ impl CollectionView {
     }
 
     /// Focus footer: "Game settings".
+    /// The selected game's settings, on the group it starts on.
     pub(super) fn open_game_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(game) = self.selected.clone().and_then(|k| self.acting_copy(&k)) else { return };
+        self.open_game_settings_tab(GameTab::settings_start(&game), window, cx);
+    }
+
+    /// "Edit details" of the selected game: its images, details and time played.
+    pub(super) fn open_game_details(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.open_game_settings_tab(GameTab::Game, window, cx);
     }
 
@@ -256,9 +263,9 @@ impl CollectionView {
             w if w.starts_with("metadata:") => self.open_metadata_fake(&w["metadata:".len()..], window, cx),
             w if w == "review" || w.starts_with("review:") => self.open_review_debug(w, window, cx),
             w if w == "covers" || w.starts_with("covers:") => self.open_covers_debug(w.strip_prefix("covers:").unwrap_or(""), window, cx),
-            "gamesettings" => self.open_game_settings_tab(GameTab::Game, window, cx),
-            "gamesettings:details" => self.open_game_settings_tab(GameTab::Game, window, cx),
-            "gamesettings:launch" => self.open_game_settings_tab(GameTab::Actions, window, cx),
+            "gamesettings" => self.open_game_settings(window, cx),
+            "gamesettings:details" => self.open_game_details(window, cx),
+            "gamesettings:launch" => self.open_game_settings_tab(GameTab::Start, window, cx),
             w if w == "webimage" || w.starts_with("webimage:") => {
                 let kind = w.strip_prefix("webimage:").and_then(heronite_metadata::ArtKind::from_field);
                 let Some(key) = self.selected.clone() else { return };

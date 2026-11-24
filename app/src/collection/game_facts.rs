@@ -96,6 +96,10 @@ pub(super) struct Facts {
     pub details_open: Vec<SharedString>,
     /// Day of the Timeline's activity bars under the pointer.
     pub timeline_hover: Option<chrono::NaiveDate>,
+    /// The Setup card's rows of a game (`setup_card.rs`), once read.
+    pub setup: Option<(SharedString, Vec<crate::dialogs::settings_panel::summary::SetupRow>)>,
+    /// A short window shows every Setup row ("Show all").
+    pub setup_all: bool,
     /// Timeline of the focused game and what it was built from.
     timeline: Option<(String, Arc<Vec<TimelineDay>>)>,
 }
@@ -164,6 +168,8 @@ impl CollectionView {
         };
         self.facts.timeline_hover = None;
         self.facts.details_open.clear();
+        self.facts.setup_all = false;
+        self.load_setup(cx);
         // The sections are built again for the new game: no leave event comes.
         self.facts.titles = Default::default();
         let (Some(lib), Some(key)) = (self.lib.clone(), target) else { return };

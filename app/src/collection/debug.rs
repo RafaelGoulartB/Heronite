@@ -339,7 +339,7 @@ impl CollectionView {
             }
             "wine-missing" => self.report_launch_error(heronite_launch::wine::no_wine_message(""), cx),
             "gallery" | "viewer" | "viewer-zoom" | "viewer-fit" | "confirm" | "delete" => self.shots.debug = Some(which),
-            // Game settings tabs: gamesettings:wine|other|advanced|gamescope|gpu|saves|proton|backups|sandbox|actions
+            // Game settings groups: gamesettings:wine|other|advanced|gamescope|gpu|saves|proton|backups|sandbox|start|graphics|actions
             w @ ("gamesettings:wine"
             | "gamesettings:gpu"
             | "gamesettings:sandbox"
@@ -349,16 +349,15 @@ impl CollectionView {
             | "gamesettings:saves"
             | "gamesettings:proton"
             | "gamesettings:backups"
+            | "gamesettings:start"
+            | "gamesettings:graphics"
             | "gamesettings:actions") => {
                 use crate::dialogs::game_settings::Tab;
                 let tab = match w {
-                    "gamesettings:wine" | "gamesettings:proton" => Tab::Compatibility,
-                    "gamesettings:advanced" => Tab::Launch,
-                    "gamesettings:saves" => Tab::CloudSaves,
-                    "gamesettings:backups" => Tab::Saves,
-                    "gamesettings:gpu" => Tab::Gpu,
-                    "gamesettings:sandbox" => Tab::Sandbox,
-                    "gamesettings:actions" => Tab::Actions,
+                    "gamesettings:wine" | "gamesettings:proton" | "gamesettings:sandbox" => Tab::Compatibility,
+                    "gamesettings:advanced" | "gamesettings:start" | "gamesettings:actions" => Tab::Start,
+                    "gamesettings:saves" | "gamesettings:backups" => Tab::Saves,
+                    "gamesettings:gpu" | "gamesettings:gamescope" | "gamesettings:graphics" => Tab::Graphics,
                     _ => Tab::Performance,
                 };
                 self.open_game_settings_tab(tab, window, cx);
