@@ -207,7 +207,9 @@ pub struct CopyGroups {
     pub groups: Vec<CopyGroup>,
     by_key: HashMap<String, usize>,
     /// Entries of other stores that share an id with a game but not its
-    /// title (an edition, or a wrong match): offered, never linked by themselves.
+    /// title (an edition, or a wrong match), and other versions of a ROM
+    /// (one system, one title without its tags): offered, never linked by
+    /// themselves.
     suggestions: HashMap<String, Vec<String>>,
 }
 
@@ -364,6 +366,7 @@ pub fn groups(games: &[Arc<CollectionGame>], file: &CopiesFile) -> CopyGroups {
 
 /// Pairs of other stores that share an id but are not in one group. An id
 /// shared by many entries says little (a wrong match), so it offers nothing.
+/// Also the versions of a ROM: one system, one title once its tags are gone.
 fn suggestions(games: &[Arc<CollectionGame>], sets: &mut Sets<'_>, file: &CopiesFile) -> HashMap<String, Vec<String>> {
     let mut by_id: HashMap<String, Vec<usize>> = HashMap::new();
     for (i, g) in games.iter().enumerate().filter(|(_, g)| joinable(g)) {
@@ -393,8 +396,10 @@ fn suggestions(games: &[Arc<CollectionGame>], sets: &mut Sets<'_>, file: &Copies
     }
     // Versions of one ROM. A dozen is plenty for one game's hacks and
     // regions; more share a title too vague to tell ("Tetris").
+    // Hidden ones stay out (a region hidden to tidy up), and so do the
+    // discs of a game kept apart ("(Disc 2)" is no version of "(Disc 1)").
     let mut versions: HashMap<(String, String), Vec<usize>> = HashMap::new();
-    for (i, g) in games.iter().enumerate() {
+    for (i, g) in games.iter().enumerate().filter(|(_, g)| !g.hidden && !has_disc_tag(&g.title)) {
         if let Some(system) = rom_system(g) {
             let title = title_key(&rom_base_title(&g.title));
             if !title.is_empty() {
@@ -402,7 +407,12 @@ fn suggestions(games: &[Arc<CollectionGame>], sets: &mut Sets<'_>, file: &Copies
             }
         }
     }
-    for roms in versions.values().filter(|v| (2..=12).contains(&v.len())) {
+    for roms in versions.into_values() {
+        // Counted in groups: versions linked already are one.
+        let sets_in = roms.iter().map(|&i| sets.find(i)).collect::<HashSet<_>>().len();
+        if !(2..=12).contains(&sets_in) {
+            continue;
+        }
         for (n, &a) in roms.iter().enumerate() {
             for &b in &roms[n + 1..] {
                 let (ka, kb) = (&games[a].key, &games[b].key);
@@ -416,16 +426,17 @@ fn suggestions(games: &[Arc<CollectionGame>], sets: &mut Sets<'_>, file: &Copies
 }
 
 /// The system a ROM runs on (its platform, else its emulator); `None` for
-/// any other game.
+/// any other game. Custom emulators all have the platform `other`, which
+/// names no system.
 fn rom_system(game: &CollectionGame) -> Option<&str> {
     let meta = game.meta.as_deref().filter(|m| m.launch_kind == "emulator")?;
-    let platform = meta.platform_id.as_deref().filter(|p| !p.is_empty());
+    let platform = meta.platform_id.as_deref().filter(|p| !p.is_empty() && *p != "other");
     platform.or(meta.emulator_id.as_deref()).filter(|s| !s.is_empty())
 }
 
 /// A ROM's title without its `(…)` / `[…]` tags (No-Intro and GoodTools
-/// names: region, languages, revision, hack, translation):
-/// `Super Metroid (USA) (Hack Redux)` → `Super Metroid `.
+/// names: region, languages, revision, hack, translation), compared through
+/// `title_key`: `Super Metroid (USA) (Hack Redux)` → `Super Metroid`.
 fn rom_base_title(title: &str) -> String {
     let mut out = String::with_capacity(title.len());
     let mut depth = 0usize;
@@ -438,6 +449,12 @@ fn rom_base_title(title: &str) -> String {
         }
     }
     out
+}
+
+/// A `(Disc 2)` / `(Disk B)` / `(Side A)` tag: one disc of a game.
+fn has_disc_tag(title: &str) -> bool {
+    let lower = title.to_lowercase();
+    ["(disc ", "(disk ", "(side ", "[disc ", "[disk "].iter().any(|t| lower.contains(t))
 }
 
 /// Which of two copies comes first in a group. A copy the Steam Family

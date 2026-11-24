@@ -124,6 +124,30 @@ fn versions_of_one_rom_are_offered_not_linked() {
 }
 
 #[test]
+fn rom_versions_count_groups_and_skip_discs_and_the_other_platform() {
+    let rom = |app: &str, title: &str, emulator: &str, platform: &str| {
+        game_with(app, "sideload", |info, _, _, meta, _| {
+            info.title = title.into();
+            meta.launch_kind = "emulator".into();
+            meta.emulator_id = Some(emulator.into());
+            meta.platform_id = Some(platform.into());
+        })
+    };
+    // 12 versions linked already and 2 new ones: three groups, still offered.
+    let mut games: Vec<_> = (0..14).map(|i| rom(&format!("v{i}"), &format!("Metroid (Hack {i})"), "e", "snes")).collect();
+    let file = CopiesFile { links: vec![(0..12).map(|i| format!("sideload_v{i}")).collect()], ..Default::default() };
+    assert_eq!(groups(&games, &file).suggested("sideload_v12").len(), 13);
+
+    // Custom emulators share the platform "other": their emulator tells them apart.
+    games = vec![rom("nes", "Tetris (USA)", "custom-nes", "other"), rom("gb", "Tetris (World)", "custom-gb", "other")];
+    assert!(groups(&games, &CopiesFile::default()).suggested("sideload_nes").is_empty());
+
+    // Discs of one game kept apart are no versions.
+    games = vec![rom("d1", "FF7 (USA) (Disc 1)", "e", "psx"), rom("d2", "FF7 (USA) (Disc 2)", "e", "psx")];
+    assert!(groups(&games, &CopiesFile::default()).suggested("sideload_d1").is_empty());
+}
+
+#[test]
 fn emulated_and_browser_games_never_link_by_themselves() {
     let emu = game_with("rom", "sideload", |info, _, md, meta, _| {
         info.title = "Celeste".into();
