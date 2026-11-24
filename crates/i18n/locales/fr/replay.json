@@ -78,7 +78,7 @@
   "Still starting: try again in a moment": "Démarrage en cours : réessayez dans un instant",
   "The audio source was not found": "La source audio est introuvable",
   "The game's is the one its window is on (Hyprland), else the first one.": "Celui du jeu correspond à l’écran de sa fenêtre (Hyprland), sinon au premier écran.",
-  "The game's: no voice chat, music or notifications.": "Celui du jeu : sans discussion vocale, musique ni notifications.",
+  "The game's: no voice chat, music or notifications. Until its sound is found, everything the PC plays is recorded.": "Celui du jeu : sans discussion vocale, musique ni notifications. Tant que le son du jeu n’est pas trouvé, tous les sons du PC sont enregistrés.",
   "The graphics card cannot encode this video format": "La carte graphique ne peut pas encoder ce format vidéo",
   "The graphics card cannot encode video this large": "La carte graphique ne peut pas encoder une vidéo de cette taille",
   "The graphics card encodes the video with a part of its own, and the whole monitor is captured straight from the display. The game still shares the card's memory with it: that is the video memory above.": "La carte graphique encode la vidéo avec un composant dédié et l’écran entier est capturé directement depuis l’affichage. Le jeu partage toujours la mémoire de la carte avec l’enregistrement : il s’agit de la mémoire vidéo indiquée ci-dessus.",

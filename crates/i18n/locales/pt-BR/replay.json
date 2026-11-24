@@ -78,7 +78,7 @@
   "Still starting: try again in a moment": "Ainda começando: tente de novo em instantes",
   "The audio source was not found": "A fonte de áudio não foi encontrada",
   "The game's is the one its window is on (Hyprland), else the first one.": "O do jogo é aquele onde está a janela dele (Hyprland); senão, o primeiro.",
-  "The game's: no voice chat, music or notifications.": "O do jogo: sem chat de voz, música ou notificações.",
+  "The game's: no voice chat, music or notifications. Until its sound is found, everything the PC plays is recorded.": "O do jogo: sem chat de voz, música ou notificações. Até o som dele ser encontrado, tudo o que o PC toca é gravado.",
   "The graphics card cannot encode this video format": "A placa de vídeo não codifica este formato de vídeo",
   "The graphics card cannot encode video this large": "A placa de vídeo não codifica um vídeo deste tamanho",
   "The graphics card encodes the video with a part of its own, and the whole monitor is captured straight from the display. The game still shares the card's memory with it: that is the video memory above.": "A placa de vídeo codifica o vídeo com uma parte própria, e o monitor inteiro é capturado direto da saída de vídeo. O jogo ainda divide a memória da placa com ele: é a memória de vídeo acima.",

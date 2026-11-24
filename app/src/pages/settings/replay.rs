@@ -475,7 +475,7 @@ fn picture_sound_card(d: &SettingsPage, o: &Options, cx: &mut Context<SettingsPa
         Some(i) if !i.app_audio && o.audio == Audio::Game => {
             tr!("This system cannot record one app alone (it needs PipeWire): everything the PC plays is recorded.")
         }
-        _ => tr!("The game's: no voice chat, music or notifications."),
+        _ => tr!("The game's: no voice chat, music or notifications. Until its sound is found, everything the PC plays is recorded."),
     };
     card([
         row(

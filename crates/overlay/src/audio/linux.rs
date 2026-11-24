@@ -183,7 +183,9 @@ fn sink_inputs() -> Vec<SinkInput> {
 }
 
 /// The processes of each client (by index): `application.process.id` and
-/// `pipewire.sec.pid`, the host's pid even from a sandbox with its own pids.
+/// `pipewire.sec.pid`. For a native PipeWire client the latter is the host's
+/// pid even from a sandbox with pids of its own; for a PulseAudio one it is
+/// `pipewire-pulse`'s, which never belongs to a game.
 fn parse_clients(json: &str) -> HashMap<u32, Vec<u32>> {
     let Ok(Value::Array(items)) = serde_json::from_str::<Value>(json) else { return HashMap::new() };
     items
