@@ -339,9 +339,9 @@ impl OverlayService {
             }
         }
         let generation = self.notice.as_ref().map_or(0, |n| n.generation + 1);
-        let display = window::Display::current(cx);
+        let display = window::Display::current(cx, self.game_pid());
         // A Windows notice stays where it was placed: one for another
-        // monitor (the foreground window's moved) replaces it.
+        // monitor (the game's or the foreground window's moved) replaces it.
         #[cfg(windows)]
         if layer && self.notice.as_ref().is_some_and(|n| display.screen().is_some_and(|now| n.screen != Some(now))) {
             if let Some(old) = self.notice.take() {

@@ -143,6 +143,20 @@ fn focus_windows(game_pid: u32) -> Result<(), String> {
     heronite_platform::window_focus::focus_window_of(&process_tree(&procs, game_pid)).map_err(|e| e.to_string())
 }
 
+/// Windows: the game's window being played (the foreground one when it is
+/// the game's, else the one [`focus`] gives the focus to), unless it is
+/// minimised. Blocking: with the game in the background, a snapshot of the
+/// processes (a few ms).
+#[cfg(windows)]
+pub fn window(game_pid: u32) -> Option<std::num::NonZeroIsize> {
+    // The usual case, the game's own process in front, lists nothing.
+    if let Some(front) = heronite_platform::window_focus::foreground_of(&[game_pid]) {
+        return Some(front);
+    }
+    let procs: Vec<(u32, u32)> = heronite_platform::process::snapshot().into_iter().map(|p| (p.pid, p.parent)).collect();
+    heronite_platform::window_focus::window_of(&process_tree(&procs, game_pid))
+}
+
 #[cfg(not(windows))]
 fn focus_windows(_game_pid: u32) -> Result<(), String> {
     Err("Windows is only asked on Windows".into())

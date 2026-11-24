@@ -10,7 +10,8 @@ use std::num::NonZeroIsize;
 
 use windows_sys::Win32::Foundation::{GetLastError, SetLastError, HWND, POINT, RECT};
 use windows_sys::Win32::Graphics::Gdi::{
-    ClientToScreen, GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, HMONITOR, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
+    ClientToScreen, GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, HMONITOR, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    MONITOR_DEFAULTTOPRIMARY,
 };
 use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentProcessId, GetCurrentThreadId};
 use windows_sys::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
@@ -40,6 +41,13 @@ pub struct Screen {
 pub fn foreground_screen() -> io::Result<Screen> {
     // SAFETY: a null foreground window gives the primary monitor.
     screen_of(unsafe { MonitorFromWindow(GetForegroundWindow(), MONITOR_DEFAULTTOPRIMARY) })
+}
+
+/// The monitor of a window (the game's), the nearest one when it is on none.
+pub fn window_screen(handle: NonZeroIsize) -> io::Result<Screen> {
+    // SAFETY: Windows checks the handle. One that closed since gives no
+    // monitor, so GetMonitorInfoW fails and the caller uses the foreground's.
+    screen_of(unsafe { MonitorFromWindow(handle.get() as HWND, MONITOR_DEFAULTTONEAREST) })
 }
 
 /// The monitor holding a desktop point (physical pixels), else the primary.
