@@ -303,6 +303,12 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
         run_in_prefix,
         post_install: Vec::new(),
     });
+    // What legendary starts (`--override-exe` first): MangoHud's config may be its own.
+    let game_program = [opts.alt_exe.as_deref(), Some(s.target_exe.as_str()), game.install.executable.as_deref()]
+        .into_iter()
+        .flatten()
+        .find(|e| !e.is_empty())
+        .map(str::to_string);
     LaunchPlan::Legendary {
         app_name: app.to_string(),
         process: ProcessPlan {
@@ -314,6 +320,7 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
             notes: wine.notes.into_iter().chain(reshade).collect(),
             through_umu,
             sandboxed: prelude.is_some(),
+            game_program,
             ..Default::default()
         },
     }
@@ -527,6 +534,28 @@ mod tests {
         assert_eq!(args[i + 1], "\"/p/GE/proton\" waitforexitandrun");
         assert!(args.contains(&"--no-wine".to_string()));
         assert!(!process.command.env.contains_key("GAMEID") || process.command.env["GAMEID"] == "umu-0");
+    }
+
+    // MangoHud: Linux only.
+    #[cfg(unix)]
+    #[test]
+    fn mangohud_in_the_wrapper_can_be_shown_and_limited_from_the_overlay() {
+        let tmp = tempfile::tempdir().unwrap();
+        let run = tmp.path().join("run").to_string_lossy().into_owned();
+        let p = probe().with_bin("mangohud", "/usr/bin/mangohud").with_env("XDG_RUNTIME_DIR", &run);
+        let mut g = game();
+        g.install.executable = Some(r"Binaries\Win64\Control.exe".into());
+        let s = settings(json!({"showMangohud": true, "heroniteMangohudHidden": true}));
+        let plan = build_plan_with_settings(&ctx(), &p, &g, None, &s, &Default::default());
+        let LaunchPlan::Legendary { mut process, .. } = plan else { panic!("{plan:?}") };
+        assert_eq!(process.game_program.as_deref(), Some(r"Binaries\Win64\Control.exe"));
+        let live = crate::live_fps::prepare(&mut process.command, "Calluna", process.game_program.as_deref(), &p)
+            .expect("legendary's --wrapper runs MangoHud");
+        assert_eq!((live.hud(), live.changes_limit()), (Some(false), true));
+        let c = &process.command;
+        assert_eq!(c.env["MANGOHUD_CONFIG"], "read_cfg", "no_display moves into the file the overlay rewrites");
+        assert_eq!(c.env["MANGOHUD_CONFIGFILE"], format!("{run}/heronite/mangohud/Calluna.conf"));
+        assert_eq!(c.env["PRESSURE_VESSEL_FILESYSTEMS_RO"], format!("{run}/heronite/mangohud"), "umu's container sees it");
     }
 
     fn legendary_process(probe: &FakeProbe, s: &GameSettings, opts: &LaunchOptions) -> ProcessPlan {

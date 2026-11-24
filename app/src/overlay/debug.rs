@@ -150,6 +150,7 @@ fn debug_live_fps(v: &str) -> Option<heronite_launch::live_fps::LiveFps> {
         "mangohud" | "mangohud-hidden" => Some(LiveFps::MangoHud {
             file: std::env::temp_dir().join("heronite-debug-mangohud.conf"),
             base: String::new(),
+            base_file: None,
             smooth: false,
             limit,
             hud: kind == "mangohud",

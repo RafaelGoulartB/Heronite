@@ -287,6 +287,7 @@ pub fn build_wine_plan(
             prep: wine.prep_spec(),
             notes: wine.notes.into_iter().chain(reshade).collect(),
             sandboxed: prelude.is_some(),
+            game_program: Some(executable.to_string()),
             ..Default::default()
         },
     }

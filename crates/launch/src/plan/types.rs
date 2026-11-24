@@ -92,6 +92,10 @@ pub struct ProcessPlan {
     /// Windows: the card the program asks Windows for, written right before
     /// it starts and put back after (see [`crate::gpu::preference`]).
     pub gpu_preference: Option<crate::gpu::preference::Preference>,
+    /// The game's own program (a Windows `.exe`, a Linux binary), also when
+    /// legendary or wrappers start it: MangoHud picks a config of the game's
+    /// own by its name (see [`crate::live_fps`]).
+    pub game_program: Option<String>,
 }
 
 /// How to find a game another launcher started when the command that asked

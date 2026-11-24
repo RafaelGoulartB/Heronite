@@ -213,7 +213,7 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         }
         return finish_aborted(shared, log, req);
     }
-    let live = crate::live_fps::prepare(&mut command, &req.app_name, &*services.probe);
+    let live = crate::live_fps::prepare(&mut command, &req.app_name, plan.game_program.as_deref(), &*services.probe);
     *control.live_fps.lock().unwrap() = live;
     // For the program that really starts (legendary named it above; keep the
     // real game exe even when wrapped under `EpicGamesLauncher.exe`).
@@ -298,6 +298,7 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
             }
         }
         if terminated_at.is_none() {
+            control.follow_mangohud_config();
             companions.start_due(shared, &*services.probe, log, &status);
             // The game is over but what started it waits for these programs.
             if let Some(prefix) = prefix.as_deref().filter(|_| companions.active()) {

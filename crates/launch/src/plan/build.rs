@@ -364,6 +364,7 @@ pub(crate) fn native_plan(
         prep: PrepSpec { umu: umu_missing, ..Default::default() },
         notes,
         sandboxed: sandbox.is_some(),
+        game_program: Some(executable.to_string()),
         ..Default::default()
     })
 }
