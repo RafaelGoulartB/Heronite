@@ -578,7 +578,9 @@ impl CollectionView {
                                 }
                                 ToastAction::LaunchProblem(_) => heronite_i18n::tr!("Details"),
                             })
-                            .when(matches!(action, ToastAction::Undo), |d| d.child(crate::ui::controls::kbd("Ctrl Z")))
+                            .when(matches!(action, ToastAction::Undo | ToastAction::UndoCopies(_)), |d| {
+                                d.child(crate::ui::controls::kbd("Ctrl Z"))
+                            })
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 match &action {
                                     ToastAction::OpenMods(key) => {

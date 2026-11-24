@@ -141,8 +141,10 @@ impl CollectionView {
             weak.update(cx, |this, cx| {
                 this.dialog = None;
                 this.dialog_sub = None;
-                // Started meanwhile (quick launch): its Play would stop it.
-                if !this.is_running(&copy) {
+                // A version started meanwhile (quick launch): Play would stop it.
+                let group: Vec<String> =
+                    this.lib.as_ref().map(|l| l.copies_of(&copy).iter().map(|g| g.key.clone()).collect()).unwrap_or_default();
+                if !group.iter().any(|k| this.is_running(k)) {
                     this.play_copy_now(&copy, cx);
                 }
                 cx.notify();
