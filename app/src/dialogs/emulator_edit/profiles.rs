@@ -24,17 +24,23 @@ fn split_extensions(text: &str) -> Vec<String> {
 }
 
 /// The platform id a profile's typed platform names (`Sega Saturn` →
-/// `sega_saturn`), else `other`.
-fn platform_id(text: &str) -> String {
-    heronite_metadata::platforms::by_name(text).map_or("other", |p| p.id).to_owned()
+/// `sega_saturn`).
+fn platform_id(text: &str) -> Option<&'static str> {
+    heronite_metadata::platforms::by_name(text).map(|p| p.id)
 }
 
 /// Sets the profile's typed platform and the id it names. A catalog
-/// profile left on its platform keeps its id; one saved before the id
-/// followed the text (`other`) gets it now.
+/// profile left on its platform, or renamed to text naming none, keeps its
+/// id; one saved before the id followed the text (`other`) gets it now; a
+/// profile set up by hand naming none is `other`.
 fn set_platform(p: &mut UserEmulatorProfile, platform: String) {
     if p.platform_name.as_deref().unwrap_or("") != platform || matches!(p.platform_id.as_deref(), None | Some("" | "other")) {
-        p.platform_id = Some(platform_id(&platform));
+        let catalog = p.definition_profile_id.as_deref().is_some_and(|d| d != "custom");
+        match platform_id(&platform) {
+            Some(id) => p.platform_id = Some(id.into()),
+            None if catalog => {}
+            None => p.platform_id = Some("other".into()),
+        }
     }
     p.platform_name = (!platform.is_empty()).then_some(platform);
 }
@@ -166,10 +172,10 @@ mod tests {
 
     #[test]
     fn typed_platform_sets_its_id() {
-        assert_eq!(platform_id("Sega Saturn"), "sega_saturn");
-        assert_eq!(platform_id("sega saturn"), "sega_saturn");
-        assert_eq!(platform_id("My Console"), "other");
-        assert_eq!(platform_id(""), "other");
+        assert_eq!(platform_id("Sega Saturn"), Some("sega_saturn"));
+        assert_eq!(platform_id("sega saturn"), Some("sega_saturn"));
+        assert_eq!(platform_id("My Console"), None);
+        assert_eq!(platform_id(""), None);
     }
 
     fn profile(id: &str, name: &str) -> UserEmulatorProfile {
@@ -189,5 +195,13 @@ mod tests {
         let mut p = profile("nintendo_super_nes", "Super Nintendo");
         set_platform(&mut p, "Super Nintendo".into());
         assert_eq!(p.platform_id.as_deref(), Some("nintendo_super_nes"));
+        // Renamed to text naming no platform: a catalog profile keeps its
+        // id, one set up by hand is `other`.
+        let mut p = UserEmulatorProfile { definition_profile_id: Some("n64".into()), ..profile("nintendo_n64", "Nintendo 64") };
+        set_platform(&mut p, "N64 (Mupen)".into());
+        assert_eq!(p.platform_id.as_deref(), Some("nintendo_n64"));
+        let mut p = profile("sega_saturn", "Sega Saturn");
+        set_platform(&mut p, "My Console".into());
+        assert_eq!(p.platform_id.as_deref(), Some("other"));
     }
 }
