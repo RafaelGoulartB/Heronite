@@ -254,6 +254,14 @@ impl CollectionView {
                         _ if step == "undo" => {
                             this.undo_batch(cx);
                         }
+                        // The dock's Merge, then its toast's Undo.
+                        _ if step == "merge" => this.link_selected_copies(cx),
+                        _ if step == "undo-copies" => {
+                            if let Some(super::ToastAction::UndoCopies(before)) = this.toast_action.clone() {
+                                this.toast = None;
+                                this.undo_copies(&before, cx);
+                            }
+                        }
                         _ => {}
                     }
                     cx.notify();

@@ -39,6 +39,8 @@ impl CollectionView {
         let Some(lib) = self.lib.as_ref().filter(|l| l.copies.get(&game.key).is_some()) else { return Vec::new() };
         let all = lib.copies_of(&game.key);
         let details = copies::copy_details(&all.iter().map(|g| &***g).collect::<Vec<_>>());
+        // Versions of a ROM go by their names; a lone ROM by its emulator.
+        let versions = all.iter().filter(|c| is_rom(c)).count() > 1;
         let mut v: Vec<GameActionItem> = all
             .iter()
             .zip(details)
@@ -46,10 +48,10 @@ impl CollectionView {
             .map(|(c, detail)| {
                 // A ROM goes by its version ("Play Super Metroid (Hack Redux)"):
                 // every ROM's store is "Emulator".
-                let rom = is_rom(c).then(|| detail.unwrap_or_else(|| copies::own_title(c).to_string()));
+                let rom = (versions && is_rom(c)).then(|| detail.unwrap_or_else(|| copies::own_title(c).to_string()));
                 let (label, ic) = match (c.installed, rom) {
                     (true, Some(title)) => (tr!("Play {title}", title = title), Icon::PlayArrow),
-                    (true, None) => (tr!("Play with {store}", store = c.source_label), Icon::PlayArrow),
+                    (true, None) => (tr!("Play with {store}", store = copies::store_label(c)), Icon::PlayArrow),
                     (false, _) => (tr!("Install with {store}", store = c.source_label), Icon::Download),
                 };
                 GameActionItem::new(
@@ -189,9 +191,21 @@ impl CollectionView {
                 }
             }
         }
+        let before = std::sync::Arc::new(copies::CopiesFile::read(&self.data_paths));
         let res = copies::link(&self.data_paths, &all);
+        let linked = res.is_ok();
         let n = all.len();
         self.after_copies_change(res, Some(trn!(n, "Linked as {n} copy of one game", "Linked as {n} copies of one game")), cx);
+        // A Merge of the wrong games (a whole selection) goes back in one click.
+        if linked {
+            self.toast_action = Some(super::ToastAction::UndoCopies(before));
+        }
+    }
+
+    /// The Undo of a link: the copies as they were before it.
+    pub(super) fn undo_copies(&mut self, before: &copies::CopiesFile, cx: &mut Context<Self>) {
+        let res = copies::restore(&self.data_paths, before);
+        self.after_copies_change(res, None, cx);
     }
 
     /// "Link as copies" on the selected games.

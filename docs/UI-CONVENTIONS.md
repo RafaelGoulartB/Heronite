@@ -547,7 +547,7 @@ batch change writes off the UI thread and its toast offers Undo (also Ctrl Z, 20
 `dialogs/batch_edit.rs`: a drawer with the series and the tag fields of all the selected games; a tag only some have is
 dashed with "3/7" (click: give it to all), × takes one out of all, typing + Enter adds one to all; nothing is written
 until "Apply". Debug: `HERONITE_DEBUG_MULTI=<n>`, `HERONITE_DEBUG_DOCK=status|categories|metadata`,
-`HERONITE_DEBUG_DIALOG=batchedit`, `HERONITE_DEBUG_BATCH=status:<id>,cat:<name>,fav,hide,undo` (data copy only),
+`HERONITE_DEBUG_DIALOG=batchedit`, `HERONITE_DEBUG_BATCH=status:<id>,cat:<name>,fav,hide,undo,merge,undo-copies` (data copy only),
 `HERONITE_DEBUG_MENU_METADATA=1` (with `HERONITE_DEBUG_MENU` on a selected game: the batch menu's Metadata flyout).
 
 The **Metadata popover** (`collection/metadata_menu.rs`, 300px, above the dock's Metadata button; the dock's button

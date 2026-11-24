@@ -259,6 +259,12 @@ fn a_detached_copy_leaves_its_group_and_the_others_stay_linked() {
     assert!(file.preferred.is_empty());
     assert_eq!(file.apart, [["b".to_string(), "a".to_string()], ["b".to_string(), "c".to_string()]]);
 
+    // Undo of a link: the decisions as they were.
+    let before = CopiesFile::read(&paths);
+    link(&paths, &["a".into(), "b".into()]).unwrap();
+    restore(&paths, &before).unwrap();
+    assert_eq!(CopiesFile::read(&paths), before);
+
     // The last pair of a group is no group: the link goes too.
     detach(&paths, "c", &["a".into(), "c".into()]).unwrap();
     assert!(CopiesFile::read(&paths).links.is_empty());

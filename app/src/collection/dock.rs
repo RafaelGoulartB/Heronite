@@ -267,9 +267,15 @@ impl CollectionView {
             return None;
         }
         let n = games.len();
-        // Narrow windows: the plain actions keep only their icons (the
-        // labelled dock is about 1270px wide in German, the longest labels).
-        let compact = f32::from(crate::ui::content_size(window).width) < 1320.;
+        // Narrow windows: the plain actions keep only their icons, below
+        // the labelled dock's width with a margin (measured at 100%: about
+        // 1115px in English, 1200 in Portuguese and French, 1270 in German).
+        let full_width = match heronite_i18n::current() {
+            heronite_i18n::Lang::En => 1180.,
+            heronite_i18n::Lang::De => 1320.,
+            _ => 1260.,
+        };
+        let compact = f32::from(crate::ui::content_size(window).width) < full_width;
         let label = |s: &str| (!compact).then(|| SharedString::from(s.to_string()));
         let shown = self.shown_keys();
         let all_shown = shown.iter().all(|k| self.sel.contains(k));

@@ -140,6 +140,8 @@ enum ToastAction {
     ShowAgeRatings,
     /// Undoes the last bulk metadata update.
     UndoMetadata,
+    /// Puts back the copies as they were before a link (Merge).
+    UndoCopies(std::sync::Arc<heronite_data::copies::CopiesFile>),
 }
 
 pub struct CollectionView {
@@ -563,7 +565,8 @@ impl CollectionView {
                                 | ToastAction::RestoreNote(..)
                                 | ToastAction::RestoreLeftOff(..)
                                 | ToastAction::ShowAgeRatings
-                                | ToastAction::UndoMetadata => {
+                                | ToastAction::UndoMetadata
+                                | ToastAction::UndoCopies(_) => {
                                     heronite_i18n::tr!("Undo")
                                 }
                                 ToastAction::ViewLog(_) => heronite_i18n::tr!("View log"),
@@ -610,6 +613,10 @@ impl CollectionView {
                                         this.journal_restore_left_off(key.clone(), (**left).clone(), cx);
                                     }
                                     ToastAction::ShowAgeRatings => this.set_age_ratings_shown(true, cx),
+                                    ToastAction::UndoCopies(before) => {
+                                        this.toast = None;
+                                        this.undo_copies(before, cx);
+                                    }
                                     ToastAction::UndoMetadata => {
                                         this.toast = None;
                                         crate::dialogs::metadata_update::hub::hub(cx).update(cx, |h, cx| h.undo(cx));

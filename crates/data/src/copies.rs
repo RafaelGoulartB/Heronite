@@ -119,6 +119,14 @@ pub fn detach(paths: &DataPaths, key: &str, members: &[String]) -> Result<()> {
     })
 }
 
+/// Puts back the decisions read before a change (the Undo of a link).
+pub fn restore(paths: &DataPaths, before: &CopiesFile) -> Result<()> {
+    json_store::update::<CopiesFile, _>(&paths.copies(), |file| {
+        *file = before.clone();
+        Ok(())
+    })
+}
+
 /// Makes `key` the default copy of its group (`members`).
 pub fn set_preferred(paths: &DataPaths, key: &str, members: &[String]) -> Result<()> {
     json_store::update::<CopiesFile, _>(&paths.copies(), |file| {
