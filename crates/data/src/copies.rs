@@ -100,7 +100,9 @@ pub fn unlink(paths: &DataPaths, members: &[String]) -> Result<()> {
 }
 
 /// Takes `key` out of its group (`members`): it becomes a game of its own
-/// and never links by itself to the others again, which stay grouped.
+/// and never links by itself to the others again. The others stay grouped
+/// when linked by hand (every ROM group); an automatic group stays only
+/// where they still share an id.
 pub fn detach(paths: &DataPaths, key: &str, members: &[String]) -> Result<()> {
     json_store::update::<CopiesFile, _>(&paths.copies(), |file| {
         for group in &mut file.links {

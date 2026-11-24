@@ -103,7 +103,8 @@ impl CollectionView {
 
     /// Play on a group whose installed copies are all ROMs (romhacks,
     /// regions, revisions of one game) asks which version to play, starting
-    /// on the one played last. Returns `true` when it asked.
+    /// on the one Play would start (the default, else the one played last).
+    /// Returns `true` when it asked.
     pub(super) fn ask_which_version(&mut self, key: &str, cx: &mut Context<Self>) -> bool {
         if !self.ui.group_copies {
             return false;
@@ -122,12 +123,8 @@ impl CollectionView {
         if versions.len() < 2 || !versions.iter().all(|(g, _)| is_rom(g)) {
             return false;
         }
-        let last = versions
-            .iter()
-            .filter_map(|(g, _)| Some((chrono::DateTime::parse_from_rfc3339(g.last_played.as_deref()?).ok()?, &g.key)))
-            .max_by_key(|(t, _)| *t)
-            .map(|(_, k)| k.clone())
-            .or_else(|| lib.launch_copy(key).map(|g| g.key.clone()));
+        // `copies_of` is in play order: the first installed copy is the one Play starts.
+        let first = versions.first().map(|(g, _)| g.key.clone());
         let rows = versions
             .iter()
             .map(|(g, detail)| {
@@ -142,22 +139,23 @@ impl CollectionView {
             weak.update(cx, |this, cx| {
                 this.dialog = None;
                 this.dialog_sub = None;
-                let game = this.lib.as_ref().and_then(|l| l.get(&copy)).cloned();
-                if let Some(game) = game {
-                    this.primary_action_on(&game, cx);
+                // Started meanwhile (quick launch): its Play would stop it.
+                if !this.is_running(&copy) {
+                    this.play_copy_now(&copy, cx);
                 }
                 cx.notify();
             })
             .ok();
         });
-        let view = cx.new(|_| PickRomDialog::versions(title, rows, last, on_play));
+        let view = cx.new(|_| PickRomDialog::versions(title, rows, first, on_play));
         self.open_dialog(view, cx);
         true
     }
 
     /// Takes the copy `key` out of its group; the other copies stay grouped.
     pub(super) fn detach_copy(&mut self, key: &str, cx: &mut Context<Self>) {
-        let members: Vec<String> = self.with_copies(key).iter().map(|g| g.key.clone()).collect();
+        // The whole group, even with "Group copies of a game" off.
+        let Some(members) = self.lib.as_ref().and_then(|l| l.copies.get(key)).map(|g| g.members.clone()) else { return };
         let res = copies::detach(&self.data_paths, key, &members);
         self.after_copies_change(res, Some(tr!("It is a game of its own again").to_string()), cx);
     }

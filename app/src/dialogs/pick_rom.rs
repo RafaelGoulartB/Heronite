@@ -18,7 +18,7 @@ use crate::ui::fields::paragraph;
 
 /// What the dialog picks: one ROM of a game, or one copy of a group.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum PickKind {
+enum PickKind {
     Disc,
     Version,
 }

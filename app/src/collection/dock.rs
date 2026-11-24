@@ -267,8 +267,9 @@ impl CollectionView {
             return None;
         }
         let n = games.len();
-        // Narrow windows: the plain actions keep only their icons.
-        let compact = f32::from(crate::ui::content_size(window).width) < 1180.;
+        // Narrow windows: the plain actions keep only their icons (the
+        // labelled dock is about 1270px wide in German, the longest labels).
+        let compact = f32::from(crate::ui::content_size(window).width) < 1320.;
         let label = |s: &str| (!compact).then(|| SharedString::from(s.to_string()));
         let shown = self.shown_keys();
         let all_shown = shown.iter().all(|k| self.sel.contains(k));
