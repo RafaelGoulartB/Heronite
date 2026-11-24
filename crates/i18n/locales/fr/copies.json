@@ -17,5 +17,9 @@
   "Install this copy": "Installer cette copie",
   "Play with {store}": "Jouer avec {store}",
   "Install with {store}": "Installer avec {store}",
-  "Link as copies of one game": "Associer comme copies d’un même jeu"
+  "Link as copies of one game": "Associer comme copies d’un même jeu",
+  "Choose version": "Choisir la version",
+  "This game has more than one version. Pick which one to play.": "Ce jeu a plus d’une version. Choisissez laquelle lancer.",
+  "It is a game of its own again": "C’est de nouveau un jeu à part",
+  "Remove from the group": "Retirer du groupe"
 }

@@ -248,6 +248,23 @@ fn decisions_round_trip_and_keep_unknown_fields() {
 }
 
 #[test]
+fn a_detached_copy_leaves_its_group_and_the_others_stay_linked() {
+    let (_dir, paths) = paths();
+    let members: Vec<String> = ["a", "b", "c"].map(String::from).to_vec();
+    link(&paths, &members).unwrap();
+    set_preferred(&paths, "b", &members).unwrap();
+    detach(&paths, "b", &members).unwrap();
+    let file = CopiesFile::read(&paths);
+    assert_eq!(file.links, [vec!["a", "c"]]);
+    assert!(file.preferred.is_empty());
+    assert_eq!(file.apart, [["b".to_string(), "a".to_string()], ["b".to_string(), "c".to_string()]]);
+
+    // The last pair of a group is no group: the link goes too.
+    detach(&paths, "c", &["a".into(), "c".into()]).unwrap();
+    assert!(CopiesFile::read(&paths).links.is_empty());
+}
+
+#[test]
 fn groups_survive_reloads_and_refreshes_and_every_record_stays() {
     use crate::library::Library;
     let (_dir, paths) = paths();

@@ -99,6 +99,24 @@ pub fn unlink(paths: &DataPaths, members: &[String]) -> Result<()> {
     })
 }
 
+/// Takes `key` out of its group (`members`): it becomes a game of its own
+/// and never links by itself to the others again, which stay grouped.
+pub fn detach(paths: &DataPaths, key: &str, members: &[String]) -> Result<()> {
+    json_store::update::<CopiesFile, _>(&paths.copies(), |file| {
+        for group in &mut file.links {
+            group.retain(|k| k != key);
+        }
+        file.links.retain(|g| g.len() > 1);
+        file.preferred.retain(|k| k != key);
+        for other in members.iter().filter(|m| *m != key) {
+            if !file.is_apart(key, other) {
+                file.apart.push([key.to_owned(), other.clone()]);
+            }
+        }
+        Ok(())
+    })
+}
+
 /// Makes `key` the default copy of its group (`members`).
 pub fn set_preferred(paths: &DataPaths, key: &str, members: &[String]) -> Result<()> {
     json_store::update::<CopiesFile, _>(&paths.copies(), |file| {
@@ -390,7 +408,7 @@ pub fn store_label(game: &CollectionGame) -> &str {
 }
 
 /// The title a copy goes by in its store (the Collection's when the store has none).
-fn own_title(game: &CollectionGame) -> &str {
+pub fn own_title(game: &CollectionGame) -> &str {
     Some(game.game.title.trim()).filter(|t| !t.is_empty()).unwrap_or(&game.title)
 }
 

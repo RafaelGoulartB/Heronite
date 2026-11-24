@@ -539,7 +539,8 @@ the cards from the last one clicked, Ctrl A selects every card on screen, and th
 games are selected do the cards get a round tick on the top-right (filled = selected, the others dimmed, no play bar),
 a plain click ticks or unticks, group headers get "Select group", the grid's drawer steps aside, and the dock floats at
 the bottom: × (or Esc) ends it, the count and "Select all N", Status ▾ and Categories ▾ (popovers above the dock),
-Favourite, Hide, Metadata ▾ (a popover above the dock, see below) and Edit (F3). Right-clicking a selected card opens
+Favourite, Hide, Metadata ▾ (a popover above the dock, see below), Edit (F3) and, with two or more, Merge ("Link as
+copies of one game": romhacks, regions or editions become one card). Right-clicking a selected card opens
 the same actions as a menu, its Metadata row a flyout with the popover's rows. Categories have three states (round tick: all, dash: some, ring: none); each click moves
 some → all → none → as it was (Playnite's assign / remove / leave alone), the next step shows under the pointer. Every
 batch change writes off the UI thread and its toast offers Undo (also Ctrl Z, 20 steps). F3 opens

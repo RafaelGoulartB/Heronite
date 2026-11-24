@@ -356,6 +356,14 @@ impl CollectionView {
                     .child(kbd("F3"))
                     .on_click(cx.listener(|this, _, window, cx| this.open_batch_edit(window, cx))),
             )
+            // Versions of one game (romhacks, regions, editions) become one card.
+            .when(n > 1, |d| {
+                d.child(
+                    dock_button("dock-copies", Icon::CallMerge, label(tr!("Merge")), false)
+                        .tooltip(crate::ui::tooltip(tr!("Link as copies of one game")))
+                        .on_click(cx.listener(|this, _, _, cx| this.link_selected_copies(cx))),
+                )
+            })
             // Only games added to Heronite can leave the Collection; the dialog asks first.
             .when(removable, |d| {
                 d.child(div().w(px(1.)).h(px(24.)).mx(px(4.)).flex_none().bg(theme::glass_border())).child(

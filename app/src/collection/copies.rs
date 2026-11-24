@@ -1,8 +1,10 @@
 //! Copies of one game from several stores (`heronite_data::copies`): the
-//! focus panel's Copies card (each copy, Play it, make it the default,
-//! the possible copies to link, ungroup), and the changes that go to every
-//! copy of a grouped card (status, favourite, hidden, categories, rating).
+//! focus panel's Copies card (each copy, Play it, make it the default, take
+//! it out of the group, the possible copies to link, ungroup), the version
+//! a group of ROMs asks for on Play, and the changes that go to every copy
+//! of a grouped card (status, favourite, hidden, categories, rating).
 
+use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui_kit::prelude::*;
@@ -14,6 +16,7 @@ use heronite_i18n::{tr, trn};
 use super::focus::panel;
 use super::game_actions::{GameAction, GameActionItem};
 use super::CollectionView;
+use crate::dialogs::pick_rom::PickRomDialog;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::{icon, tooltip};
@@ -34,15 +37,20 @@ impl CollectionView {
     /// GOG"), and "Ungroup copies".
     pub(super) fn copies_actions(&self, game: &CollectionGame) -> Vec<GameActionItem> {
         let Some(lib) = self.lib.as_ref().filter(|l| l.copies.get(&game.key).is_some()) else { return Vec::new() };
-        let mut v: Vec<GameActionItem> = lib
-            .copies_of(&game.key)
-            .into_iter()
-            .filter(|c| c.key != game.key && !self.playing.contains_key(&c.app_name))
-            .map(|c| {
-                let (label, ic) = if c.installed {
-                    (tr!("Play with {store}", store = c.source_label), Icon::PlayArrow)
-                } else {
-                    (tr!("Install with {store}", store = c.source_label), Icon::Download)
+        let all = lib.copies_of(&game.key);
+        let details = copies::copy_details(&all.iter().map(|g| &***g).collect::<Vec<_>>());
+        let mut v: Vec<GameActionItem> = all
+            .iter()
+            .zip(details)
+            .filter(|(c, _)| c.key != game.key && !self.playing.contains_key(&c.app_name))
+            .map(|(c, detail)| {
+                // A ROM goes by its version ("Play Super Metroid (Hack Redux)"):
+                // every ROM's store is "Emulator".
+                let rom = is_rom(c).then(|| detail.unwrap_or_else(|| copies::own_title(c).to_string()));
+                let (label, ic) = match (c.installed, rom) {
+                    (true, Some(title)) => (tr!("Play {title}", title = title), Icon::PlayArrow),
+                    (true, None) => (tr!("Play with {store}", store = c.source_label), Icon::PlayArrow),
+                    (false, _) => (tr!("Install with {store}", store = c.source_label), Icon::Download),
                 };
                 GameActionItem::new(
                     GameAction::PlayCopy(c.key.clone()),
@@ -91,6 +99,67 @@ impl CollectionView {
     pub(super) fn play_copy(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
         self.install_or_play_on(&game, window, cx);
+    }
+
+    /// Play on a group whose installed copies are all ROMs (romhacks,
+    /// regions, revisions of one game) asks which version to play, starting
+    /// on the one played last. Returns `true` when it asked.
+    pub(super) fn ask_which_version(&mut self, key: &str, cx: &mut Context<Self>) -> bool {
+        if !self.ui.group_copies {
+            return false;
+        }
+        let Some(lib) = self.lib.clone() else { return false };
+        if lib.copies.get(key).is_none() {
+            return false;
+        }
+        let all = lib.copies_of(key);
+        // Play on a group that runs (or starts) stops it.
+        if all.iter().any(|g| self.playing.contains_key(&g.app_name) || self.preparing.contains_key(&g.app_name)) {
+            return false;
+        }
+        let details = copies::copy_details(&all.iter().map(|g| &***g).collect::<Vec<_>>());
+        let versions: Vec<(&Arc<CollectionGame>, Option<String>)> = all.iter().copied().zip(details).filter(|(g, _)| g.installed).collect();
+        if versions.len() < 2 || !versions.iter().all(|(g, _)| is_rom(g)) {
+            return false;
+        }
+        let last = versions
+            .iter()
+            .filter_map(|(g, _)| Some((chrono::DateTime::parse_from_rfc3339(g.last_played.as_deref()?).ok()?, &g.key)))
+            .max_by_key(|(t, _)| *t)
+            .map(|(_, k)| k.clone())
+            .or_else(|| lib.launch_copy(key).map(|g| g.key.clone()));
+        let rows = versions
+            .iter()
+            .map(|(g, detail)| {
+                let name = detail.clone().unwrap_or_else(|| copies::own_title(g).to_string());
+                (name, g.key.clone(), format!("{} · {}", copies::store_label(g), g.playtime_label()))
+            })
+            .collect();
+        let title = lib.get(key).map(|g| g.title.clone()).unwrap_or_default();
+        self.context_menu = None;
+        let weak = cx.entity().downgrade();
+        let on_play: Rc<dyn Fn(String, &mut App)> = Rc::new(move |copy, cx| {
+            weak.update(cx, |this, cx| {
+                this.dialog = None;
+                this.dialog_sub = None;
+                let game = this.lib.as_ref().and_then(|l| l.get(&copy)).cloned();
+                if let Some(game) = game {
+                    this.primary_action_on(&game, cx);
+                }
+                cx.notify();
+            })
+            .ok();
+        });
+        let view = cx.new(|_| PickRomDialog::versions(title, rows, last, on_play));
+        self.open_dialog(view, cx);
+        true
+    }
+
+    /// Takes the copy `key` out of its group; the other copies stay grouped.
+    pub(super) fn detach_copy(&mut self, key: &str, cx: &mut Context<Self>) {
+        let members: Vec<String> = self.with_copies(key).iter().map(|g| g.key.clone()).collect();
+        let res = copies::detach(&self.data_paths, key, &members);
+        self.after_copies_change(res, Some(tr!("It is a game of its own again").to_string()), cx);
     }
 
     /// Makes `key` the copy its group plays and shows.
@@ -177,9 +246,11 @@ impl CollectionView {
             );
             let launch = lib.launch_copy(key).map(|g| g.key.clone());
             let details = copies::copy_details(&copies.iter().map(|g| &***g).collect::<Vec<_>>());
+            // With two copies, taking one out is "Ungroup copies".
+            let detachable = copies.len() > 2;
             for (i, (g, detail)) in copies.iter().zip(details).enumerate() {
                 let plays = launch.as_deref() == Some(g.key.as_str());
-                card = card.child(self.copy_row(g, detail, i == 0, group.chosen, plays, cx));
+                card = card.child(self.copy_row(g, detail, i == 0, group.chosen, plays, detachable, cx));
             }
             let key = key.clone();
             card = card.child(
@@ -240,7 +311,7 @@ impl CollectionView {
     }
 
     /// One copy: its store, its title when it differs, its own playtime, and
-    /// Play / "Make default".
+    /// Play / "Make default" / "Remove from the group".
     fn copy_row(
         &self,
         g: &CollectionGame,
@@ -248,6 +319,7 @@ impl CollectionView {
         first: bool,
         chosen: bool,
         plays: bool,
+        detachable: bool,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let key = g.key.clone();
@@ -296,15 +368,41 @@ impl CollectionView {
             .tooltip(tooltip(play_tip))
             // Stops this copy when it runs, even if another copy runs too.
             .on_click(cx.listener(move |this, _, window, cx| this.play_copy(&key, window, cx)));
-        row_base(g, detail).id(SharedString::from(format!("copy-{}", g.key))).child(star).child(play)
+        let detach = detachable.then(|| {
+            let key = g.key.clone();
+            div()
+                .id(SharedString::from(format!("copy-detach-{key}")))
+                .flex_none()
+                .size(px(24.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded_full()
+                .cursor_pointer()
+                .hover(|s| s.bg(theme::ink_a(0.1)))
+                .child(icon(Icon::Close, px(14.), theme::ink_a(0.55)))
+                .tooltip(tooltip(tr!("Remove from the group")))
+                .on_click(cx.listener(move |this, _, _, cx| this.detach_copy(&key, cx)))
+        });
+        row_base(g, detail).id(SharedString::from(format!("copy-{}", g.key))).child(star).child(play).children(detach)
     }
+}
+
+/// An emulated game: its copies are versions of a ROM.
+fn is_rom(g: &CollectionGame) -> bool {
+    g.launch_kind.as_deref() == Some("emulator")
 }
 
 /// A copy's store (its emulator for a ROM), what tells it apart from the
 /// other copies (`copies::copy_details`: an edition, a region, a ROM's
-/// file) and its playtime.
+/// file) and its playtime. A ROM leads with its version (romhacks of one
+/// game share their emulator), wrapped rather than cut, as the hack or
+/// region ends the name; its emulator goes under it.
 fn row_base(g: &CollectionGame, detail: Option<String>) -> Div {
-    let store = copies::store_label(g).to_string();
+    let (store, detail) = match detail {
+        Some(version) if is_rom(g) => (version, Some(copies::store_label(g).to_string())),
+        detail => (copies::store_label(g).to_string(), detail),
+    };
     div().flex().items_center().gap(px(8.)).py(px(4.)).text_size(px(13.)).child(
         div()
             .flex_1()
@@ -316,8 +414,8 @@ fn row_base(g: &CollectionGame, detail: Option<String>) -> Div {
                     .flex()
                     .items_center()
                     .gap(px(6.))
-                    .child(div().text_color(theme::ink_a(0.94)).child(store))
-                    .when(g.installed, |d| d.child(div().size(px(6.)).rounded_full().bg(theme::success()))),
+                    .child(div().min_w_0().text_color(theme::ink_a(0.94)).child(store))
+                    .when(g.installed, |d| d.child(div().flex_none().size(px(6.)).rounded_full().bg(theme::success()))),
             )
             .child(div().truncate().text_size(px(11.5)).text_color(theme::ink_a(0.55)).child(match detail {
                 Some(t) => format!("{t} · {}", g.playtime_label()),

@@ -1,5 +1,6 @@
 //! `PickRomDialog` ("Choose disc"): a title with several ROMs asks which one
-//! to launch.
+//! to launch. The same list asks which version to play of a group of ROM
+//! copies (romhacks, regions, revisions: "Choose version").
 
 mod console;
 
@@ -15,10 +16,20 @@ use crate::ui::controls::{action_button, button, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::paragraph;
 
+/// What the dialog picks: one ROM of a game, or one copy of a group.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PickKind {
+    Disc,
+    Version,
+}
+
 pub struct PickRomDialog {
     title: String,
-    /// `(name, path)`.
+    kind: PickKind,
+    /// `(name, id)`: a ROM's path, or a copy's Collection key.
     roms: Vec<(String, String)>,
+    /// The second line of each row: a ROM's path, or a copy's emulator and playtime.
+    descs: Vec<String>,
     selected: Option<String>,
     on_play: Rc<dyn Fn(String, &mut App)>,
     console_list: crate::console::list::ListNav,
@@ -28,10 +39,47 @@ impl EventEmitter<DialogEvent> for PickRomDialog {}
 
 impl PickRomDialog {
     pub fn new(title: String, roms: Vec<(String, String)>, selected_path: Option<String>, on_play: Rc<dyn Fn(String, &mut App)>) -> Self {
-        let selected = selected_path.filter(|p| roms.iter().any(|(_, rp)| rp == p)).or_else(|| roms.first().map(|(_, p)| p.clone()));
-        let mut this = Self { title, roms, selected, on_play, console_list: Default::default() };
+        let descs = roms.iter().map(|(_, p)| p.clone()).collect();
+        Self::with(title, PickKind::Disc, roms, descs, selected_path, on_play)
+    }
+
+    /// The versions of a group of ROM copies: `(name, key, desc)`.
+    pub fn versions(
+        title: String,
+        versions: Vec<(String, String, String)>,
+        selected_key: Option<String>,
+        on_play: Rc<dyn Fn(String, &mut App)>,
+    ) -> Self {
+        let (roms, descs) = versions.into_iter().map(|(name, key, desc)| ((name, key), desc)).unzip();
+        Self::with(title, PickKind::Version, roms, descs, selected_key, on_play)
+    }
+
+    fn with(
+        title: String,
+        kind: PickKind,
+        roms: Vec<(String, String)>,
+        descs: Vec<String>,
+        selected: Option<String>,
+        on_play: Rc<dyn Fn(String, &mut App)>,
+    ) -> Self {
+        let selected = selected.filter(|p| roms.iter().any(|(_, rp)| rp == p)).or_else(|| roms.first().map(|(_, p)| p.clone()));
+        let mut this = Self { title, kind, roms, descs, selected, on_play, console_list: Default::default() };
         this.console_focus_selected();
         this
+    }
+
+    fn heading(&self) -> String {
+        match self.kind {
+            PickKind::Disc => tr!("Choose disc").to_string(),
+            PickKind::Version => tr!("Choose version").to_string(),
+        }
+    }
+
+    fn intro(&self) -> String {
+        match self.kind {
+            PickKind::Disc => tr!("This title has more than one ROM. Pick which disc to launch.").to_string(),
+            PickKind::Version => tr!("This game has more than one version. Pick which one to play.").to_string(),
+        }
     }
 }
 
@@ -55,7 +103,7 @@ impl Render for PickRomDialog {
             return self.render_console();
         }
         let mut list = div().flex().flex_col().gap(px(8.));
-        for (i, (name, path)) in self.roms.iter().enumerate() {
+        for (i, ((name, path), desc)) in self.roms.iter().zip(&self.descs).enumerate() {
             let on = self.selected.as_deref() == Some(path.as_str());
             let p1 = path.clone();
             let label = if name.is_empty() { self.title.clone() } else { name.clone() };
@@ -87,16 +135,11 @@ impl Render for PickRomDialog {
                             .flex_col()
                             .min_w_0()
                             .child(div().font_weight(theme::W_BOLD).text_size(px(14.)).text_color(theme::text_primary()).child(label))
-                            .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(path.clone())),
+                            .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(desc.clone())),
                     ),
             );
         }
-        let body = div()
-            .flex()
-            .flex_col()
-            .gap(px(12.))
-            .child(paragraph(tr!("This title has more than one ROM. Pick which disc to launch.")))
-            .child(list);
+        let body = div().flex().flex_col().gap(px(12.)).child(paragraph(self.intro())).child(list);
         let footer = div()
             .flex()
             .gap(px(10.))
@@ -117,7 +160,7 @@ impl Render for PickRomDialog {
         dialog(
             DialogProps {
                 id: "pick-rom".into(),
-                title: tr!("Choose disc").into(),
+                title: self.heading().into(),
                 width: 520f32.min(f32::from(crate::ui::content_size(window).width) * 0.9) + 64.,
                 height: None,
             },

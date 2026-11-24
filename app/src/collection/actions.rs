@@ -260,7 +260,7 @@ impl CollectionView {
     /// Card play button / focus primary button. A game with actions that
     /// count as playing asks how to play first ([`Self::ask_how_to_play`]).
     pub(super) fn primary_action(&mut self, key: &str, cx: &mut Context<Self>) {
-        if self.ask_how_to_play(key, cx) {
+        if self.ask_which_version(key, cx) || self.ask_how_to_play(key, cx) {
             return;
         }
         self.play_now(key, cx);
