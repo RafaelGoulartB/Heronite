@@ -45,7 +45,8 @@ use crate::runtime::GameRuntime;
 const START_AFTER: Duration = Duration::from_secs(8);
 /// A change of the options waits this long, so several clicks restart once.
 const RESTART_AFTER: Duration = Duration::from_millis(1500);
-/// Saves wait for the game's sound this long, then record without it.
+/// The recorder looks for the game's own sound this long, then keeps
+/// recording everything the PC plays.
 const AUDIO_WAIT: Duration = Duration::from_secs(180);
 const AUDIO_POLL: Duration = Duration::from_secs(5);
 /// Hidden folder of the captures root where the recorder writes a save
@@ -415,6 +416,17 @@ impl ReplayService {
         }
     }
 
+    /// The Steam app id of the last game started, when Steam runs it: its
+    /// processes run apart from the pid Steam names (see
+    /// `heronite_overlay::audio::game_stream_names`).
+    fn steam_app_id(&self) -> Option<String> {
+        let game = self.games.last()?;
+        game.app_name
+            .strip_prefix("steam_")
+            .map(String::from)
+            .or_else(|| self.runtime.session_info(&game.app_name).filter(|i| i.runner == "steam").and_then(|i| i.steam_app_id))
+    }
+
     /// The game that decides: the last one started.
     fn current_key(&self) -> Option<&str> {
         self.games.last().and_then(|g| g.key.as_deref())
@@ -525,6 +537,7 @@ impl ReplayService {
         self.set_status(Status::Starting, cx);
         let data_paths = self.data_paths.clone();
         let game_pid = self.games.last().and_then(|g| g.pid);
+        let steam_app_id = self.steam_app_id();
         let stopping = self.stopping.clone();
         let cached = self.detected.clone();
         cx.spawn(async move |this, cx| {
@@ -544,7 +557,7 @@ impl ReplayService {
             let (tx, mut rx) = unbounded();
             let launched = cx
                 .background_spawn(async move {
-                    launch(&data_paths, &opts, game_pid, cached, move |state| {
+                    launch(&data_paths, &opts, game_pid, steam_app_id.as_deref(), cached, move |state| {
                         let _ = tx.unbounded_send(state.clone());
                     })
                 })
@@ -617,10 +630,12 @@ impl ReplayService {
         .detach();
     }
 
-    /// The game played nothing when the recorder started: once it does,
-    /// start again with its sound (the few seconds kept so far had none).
+    /// The game's streams were not found when the recorder started, so it
+    /// records everything the PC plays: once they are, start again with only
+    /// the game's sound.
     fn wait_for_game_audio(&mut self, epoch: u64, cx: &mut Context<Self>) {
         let Some(pid) = self.games.last().and_then(|g| g.pid) else { return };
+        let steam_app_id = self.steam_app_id();
         cx.spawn(async move |this, cx| {
             let until = Instant::now() + AUDIO_WAIT;
             while Instant::now() < until {
@@ -628,13 +643,15 @@ impl ReplayService {
                 if this.update(cx, |s, _| s.epoch != epoch).unwrap_or(true) {
                     return;
                 }
-                let names = cx.background_spawn(async move { heronite_overlay::audio::game_stream_names(pid) }).await;
+                let steam_app_id = steam_app_id.clone();
+                let names =
+                    cx.background_spawn(async move { heronite_overlay::audio::game_stream_names(pid, steam_app_id.as_deref()) }).await;
                 if names.is_empty() {
                     continue;
                 }
                 this.update(cx, |s, cx| {
                     if s.epoch == epoch {
-                        log::info!("replay: the game plays sound now ({}): recording it", names.join(", "));
+                        log::info!("replay: the game plays sound now ({}): recording only it", names.join(", "));
                         // After the save in progress, if any.
                         s.restart(cx);
                     }
@@ -642,6 +659,7 @@ impl ReplayService {
                 .ok();
                 return;
             }
+            log::info!("replay: the game's own sound was not found: recording everything the PC plays");
         })
         .detach();
     }
@@ -729,7 +747,8 @@ struct Launched {
     monitor: String,
     codec: Codec,
     detected: (Program, Info),
-    /// It records without the game's sound, which is not playing yet.
+    /// It records everything the PC plays: the game's own streams were not
+    /// found yet.
     waits_for_game_audio: bool,
 }
 
@@ -739,6 +758,7 @@ fn launch(
     data_paths: &DataPaths,
     opts: &Options,
     game_pid: Option<u32>,
+    steam_app_id: Option<&str>,
     cached: Option<(Program, Info)>,
     on_state: impl Fn(&State) + Send + Sync + 'static,
 ) -> Result<Launched, String> {
@@ -768,22 +788,33 @@ fn launch(
     let encoding = Encoding { codec, vulkan: info.uses_vulkan(opts.encoder, codec) };
     let screen = pick_screen(&info, opts, game_pid).ok_or_else(|| tr!("No monitor to record was found").to_string())?;
     let names = match (opts.audio, game_pid) {
-        (Audio::Game, Some(pid)) if info.app_audio => heronite_overlay::audio::game_stream_names(pid),
+        (Audio::Game, Some(pid)) if info.app_audio => heronite_overlay::audio::game_stream_names(pid, steam_app_id),
         _ => Vec::new(),
     };
-    let game_audio = match opts.audio {
-        // Without PipeWire one app cannot be recorded alone: everything is.
-        Audio::Game if !info.app_audio => Some("default_output".to_string()),
-        Audio::Game => backend::plan::app_audio(&names),
-        _ => None,
-    };
-    let waits_for_game_audio = opts.audio == Audio::Game && game_audio.is_none();
+    let (game_audio, waits_for_game_audio) = game_audio(opts.audio, info.app_audio, &names);
     let monitor = screen.name.clone();
     let staging = root.join(STAGING);
     clean_staging(&staging);
     let plan = Plan::new(opts, screen, encoding, game_audio, staging, program.socket_path());
     let recorder = Recorder::start(program.clone(), plan, on_state).map_err(|e| e.to_string())?;
     Ok(Launched { recorder, root, monitor, codec, detected: (program, info), waits_for_game_audio })
+}
+
+/// The `-a` of the game's sound, from its streams' `names`, and whether to
+/// keep looking for them. Until they are found (the game plays nothing yet,
+/// or its streams cannot be told apart: a sandbox, no `pactl`), everything
+/// the PC plays: a replay with sound beats a silent one.
+fn game_audio(audio: Audio, app_audio: bool, names: &[String]) -> (Option<String>, bool) {
+    const ALL: &str = "default_output";
+    match audio {
+        // Without PipeWire one app cannot be recorded alone: everything is.
+        Audio::Game if !app_audio => (Some(ALL.to_string()), false),
+        Audio::Game => match backend::plan::app_audio(names) {
+            Some(game) => (Some(game), false),
+            None => (Some(ALL.to_string()), true),
+        },
+        _ => (None, false),
+    }
 }
 
 /// The monitor chosen in the options, else the game's, else the first.
@@ -842,9 +873,20 @@ fn move_into(staged: &Path, folder: &Path) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     // Not `super::*`: GPUI's prelude has a `test` attribute of its own.
-    use heronite_data::replay_prefs::ReplayPrefs;
+    use heronite_data::replay_prefs::{Audio, ReplayPrefs};
 
-    use super::{clean_staging, decide, move_into, Status, STAGING};
+    use super::{clean_staging, decide, game_audio, move_into, Status, STAGING};
+
+    #[test]
+    fn a_game_whose_sound_is_not_found_records_everything() {
+        let all = Some("default_output".to_string());
+        let game = ["witcher3.exe".to_string()];
+        assert_eq!(game_audio(Audio::Game, true, &game), (Some("app:witcher3.exe".into()), false));
+        assert_eq!(game_audio(Audio::Game, true, &[]), (all.clone(), true), "never a silent replay; keeps looking");
+        assert_eq!(game_audio(Audio::Game, false, &game), (all.clone(), false), "no app audio without PipeWire");
+        assert_eq!(game_audio(Audio::All, true, &[]), (None, false), "the plan adds everything itself");
+        assert_eq!(game_audio(Audio::Off, true, &game), (None, false));
+    }
 
     #[test]
     fn each_game_decides_whether_it_records() {

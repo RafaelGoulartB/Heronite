@@ -4,6 +4,7 @@
 //! own streams and of the other apps playing (a browser tab, a music
 //! player). Every call is blocking (it runs `pactl`).
 
+use std::collections::HashMap;
 use std::process::Command;
 use std::time::Duration;
 
@@ -35,8 +36,8 @@ pub fn read(game_pid: Option<u32>) -> Option<AudioState> {
     let inputs = pactl(&["-f", "json", "list", "sources"]).map(|t| parse_sources(&t)).unwrap_or_default();
     let default_source = pactl(&["get-default-source"]).map(|s| s.trim().to_string()).unwrap_or_default();
     let default_input = inputs.iter().position(|s| s.name == default_source);
-    let streams = pactl(&["-f", "json", "list", "sink-inputs"]).map(|t| parse_sink_inputs(&t)).unwrap_or_default();
-    let is_game = |s: &SinkInput| game_pid.zip(s.pid).is_some_and(|(game, pid)| belongs_to(pid, game));
+    let streams = sink_inputs();
+    let is_game = |s: &SinkInput| game_pid.is_some_and(|game| s.pids.iter().any(|pid| belongs_to(*pid, game)));
     let game = streams.iter().find(|s| is_game(s));
     let apps = group_apps(streams.iter().filter(|s| !is_game(s)));
     Some(AudioState {
@@ -146,10 +147,18 @@ pub fn set_game_muted(game_pid: u32, muted: bool) {
 
 /// The names gpu-screen-recorder's `app:` finds the game's playing streams
 /// by (`application.name`, else `node.name`), without repeats. Empty while
-/// the game plays nothing. Blocking.
-pub fn game_stream_names(game_pid: u32) -> Vec<String> {
+/// the game plays nothing. A Steam game (`steam_app_id`) is also looked for
+/// under Steam's `reaper`: the pid Steam names is its runtime's launch
+/// client, apart from the game. Blocking.
+pub fn game_stream_names(game_pid: u32, steam_app_id: Option<&str>) -> Vec<String> {
+    let steam = steam_app_id
+        .filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()))
+        .map(crate::procs::steam_game_processes)
+        .unwrap_or_default();
     let mut names: Vec<String> = Vec::new();
-    for s in game_streams(game_pid) {
+    let streams = sink_inputs();
+    let game = streams.into_iter().filter(|s| s.pids.iter().any(|pid| steam.contains(pid) || belongs_to(*pid, game_pid)));
+    for s in game {
         if let Some(app) = s.app.filter(|a| !names.iter().any(|n| n.eq_ignore_ascii_case(a))) {
             names.push(app);
         }
@@ -161,8 +170,40 @@ pub fn game_stream_names(game_pid: u32) -> Vec<String> {
 /// process is in the game's process group (the launcher starts each game as
 /// its own group) or descends from it.
 fn game_streams(game_pid: u32) -> Vec<SinkInput> {
+    sink_inputs().into_iter().filter(|s| s.pids.iter().any(|pid| belongs_to(*pid, game_pid))).collect()
+}
+
+/// The playback streams, each with its process. A native PipeWire stream
+/// (`winepipewire.drv`, SDL, PipeWire's ALSA plugin) names no process: its
+/// client does.
+fn sink_inputs() -> Vec<SinkInput> {
     let Some(text) = pactl(&["-f", "json", "list", "sink-inputs"]) else { return Vec::new() };
-    parse_sink_inputs(&text).into_iter().filter(|s| s.pid.is_some_and(|pid| belongs_to(pid, game_pid))).collect()
+    let clients = pactl(&["-f", "json", "list", "clients"]).map(|t| parse_clients(&t)).unwrap_or_default();
+    parse_sink_inputs(&text, &clients)
+}
+
+/// The processes of each client (by index): `application.process.id` and
+/// `pipewire.sec.pid`, the host's pid even from a sandbox with its own pids.
+fn parse_clients(json: &str) -> HashMap<u32, Vec<u32>> {
+    let Ok(Value::Array(items)) = serde_json::from_str::<Value>(json) else { return HashMap::new() };
+    items
+        .iter()
+        .filter_map(|c| {
+            let index = as_u32(c.get("index")?)?;
+            let props = c.get("properties")?;
+            let pids = ["application.process.id", "pipewire.sec.pid"].iter().filter_map(|k| as_u32(props.get(*k)?)).collect();
+            Some((index, pids))
+        })
+        .collect()
+}
+
+/// A number, or a string holding one (`pactl` writes ids both ways).
+fn as_u32(v: &Value) -> Option<u32> {
+    match v {
+        Value::Number(n) => u32::try_from(n.as_u64()?).ok(),
+        Value::String(s) => s.trim().parse().ok(),
+        _ => None,
+    }
 }
 
 struct Sink {
@@ -206,8 +247,9 @@ fn parse_sources(json: &str) -> Vec<Output> {
 
 struct SinkInput {
     index: u32,
-    /// Not reported by native PipeWire streams.
-    pid: Option<u32>,
+    /// Its process: the stream's own `application.process.id`, then its
+    /// client's pids (a native PipeWire stream reports none of its own).
+    pids: Vec<u32>,
     name: String,
     /// `application.name`, else `node.name`: what a recorder's `app:` matches.
     app: Option<String>,
@@ -220,7 +262,7 @@ struct SinkInput {
     muted: bool,
 }
 
-fn parse_sink_inputs(json: &str) -> Vec<SinkInput> {
+fn parse_sink_inputs(json: &str, clients: &HashMap<u32, Vec<u32>>) -> Vec<SinkInput> {
     let Ok(Value::Array(items)) = serde_json::from_str::<Value>(json) else { return Vec::new() };
     items
         .iter()
@@ -237,7 +279,13 @@ fn parse_sink_inputs(json: &str) -> Vec<SinkInput> {
                 .to_string();
             Some(SinkInput {
                 index,
-                pid: prop("application.process.id").and_then(|p| p.parse().ok()),
+                pids: {
+                    let own = prop("application.process.id").and_then(|p| p.parse().ok());
+                    let client = s.get("client").and_then(as_u32).and_then(|c| clients.get(&c)).into_iter().flatten().copied();
+                    let mut pids: Vec<u32> = own.into_iter().chain(client).collect();
+                    pids.dedup();
+                    pids
+                },
                 name,
                 app: prop("application.name").or(prop("node.name")).map(str::to_string),
                 binary,
@@ -299,13 +347,32 @@ mod tests {
                        "volume":{"front-left":{"value_percent":"85%"},"front-right":{"value_percent":"85%"}}},
                       {"index":8,"properties":{"node.name":"pw-play"}},
                       {"properties":{}}]"#;
-        let s = parse_sink_inputs(json);
+        let s = parse_sink_inputs(json, &HashMap::new());
         assert_eq!(s.len(), 2);
-        assert_eq!((s[0].index, s[0].pid, s[0].volume, s[0].muted), (7, Some(4242), 85, true));
-        assert_eq!((s[1].pid, s[1].name.as_str()), (None, "pw-play"), "native PipeWire streams have no pid");
+        assert_eq!((s[0].index, s[0].pids.as_slice(), s[0].volume, s[0].muted), (7, [4242].as_slice(), 85, true));
+        assert_eq!((s[1].pids.as_slice(), s[1].name.as_str()), ([].as_slice(), "pw-play"), "no pid and no client");
         assert_eq!(parse_mute("Mute: yes\n"), Some(true));
         assert_eq!(parse_mute("Mute: no"), Some(false));
         assert_eq!(parse_mute("Failure"), None);
+    }
+
+    #[test]
+    fn a_native_pipewire_stream_takes_its_clients_pid() {
+        // pactl's sink-inputs name their client as a string, its clients
+        // their index as a number.
+        let clients = parse_clients(
+            r#"[{"index":2408,"properties":{"application.name":"pw-cat","application.process.id":"773010","pipewire.sec.pid":"773010"}},
+                {"index":51,"properties":{"application.process.id":"2","pipewire.sec.pid":"720250"}},
+                {"index":"x","properties":{}}]"#,
+        );
+        assert_eq!(clients.len(), 2);
+        let json = r#"[{"index":2409,"client":"2408","properties":{"application.name":"witcher3.exe","node.name":"witcher3.exe"}},
+                      {"index":2410,"client":"51","properties":{"node.name":"flatpak-game"}},
+                      {"index":2411,"client":"9","properties":{"application.name":"wine","application.process.id":"4242"}}]"#;
+        let s = parse_sink_inputs(json, &clients);
+        assert_eq!(s[0].pids, [773010]);
+        assert_eq!(s[1].pids, [2, 720250], "a sandbox's own pid, then the host's");
+        assert_eq!(s[2].pids, [4242], "an unknown client adds nothing");
     }
 
     #[test]
@@ -332,7 +399,7 @@ mod tests {
           {"index":4,"corked":true,"properties":{"application.name":"mpv"}},
           {"index":5,"corked":false,"properties":{"application.name":"Discord","media.role":"event"}}
         ]"#;
-        let inputs = parse_sink_inputs(json);
+        let inputs = parse_sink_inputs(json, &HashMap::new());
         let apps = group_apps(inputs.iter());
         assert_eq!(apps.len(), 2, "paused streams and event sounds are left out");
         assert_eq!((apps[0].name.as_str(), apps[0].binary.as_str(), apps[0].volume), ("Google Chrome", "chrome", 80));

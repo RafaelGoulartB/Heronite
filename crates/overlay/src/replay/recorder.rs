@@ -230,12 +230,13 @@ fn supervise(shared: &Shared, program: &Program, mut plan: Plan) {
         cmd.args(plan.args());
         clean_env(&mut cmd);
         log::info!(
-            "replay: starting the recorder on {} ({}, {} s in {}, {} kbit/s)",
+            "replay: starting the recorder on {} ({}, {} s in {}, {} kbit/s, sound: {})",
             plan.screen.name,
             plan.codec_arg(),
             plan.buffer_seconds,
             plan.storage.as_str(),
-            plan.video_kbps
+            plan.video_kbps,
+            if plan.audio.is_empty() { "none".to_string() } else { plan.audio.join(", ") }
         );
         let out =
             Run::new().cancel(&shared.cancel).poll(&poll).on_line(&mut on_line).grace(Duration::from_secs(5)).no_capture().run(&mut cmd);
