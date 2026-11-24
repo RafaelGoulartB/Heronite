@@ -14,6 +14,7 @@ pub mod notify;
 pub mod own_exe;
 pub mod power;
 pub mod protocol;
+pub mod screens;
 pub mod settings;
 pub mod shortcuts;
 pub mod signals;

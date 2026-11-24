@@ -45,5 +45,18 @@ minimized while maximized.
   windows in a thread-local; the functions do what `Platform::hide_cursor_until_mouse_moves`
   and the windows' `restore_cursor_after_hide` do.
 
+A window's first placement on a monitor with another scale than the one
+Windows creates it on (`CW_USEDEFAULT`, the primary): `retrieve_window_placement`
+already converts its rect with the target monitor's scale, but moving there
+sends `WM_DPICHANGED`, whose suggested RECT scales the size a second time (a
+window opened on a 225% screen next to a 100% one came out over twice as
+wide). `place` (`src/window.rs`) sets `WindowsWindowState::placing` around
+that `SetWindowPlacement`, and `handle_dpi_changed_msg` (`src/events.rs`) then
+keeps the window's size and only updates its logical size.
+`handle_dpi_changed_msg` also sets the window's `display` to the monitor it is
+on: `handle_move_msg` changes it only when the window's centre leaves the old
+monitor's logical bounds, and monitors at different scales overlap there, so
+`Window::display` kept naming the monitor a window was dragged away from.
+
 To update: copy the new release from `~/.cargo/registry/src/*/` over this
 folder (without its `Cargo.lock`) and apply these changes again.

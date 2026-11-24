@@ -821,6 +821,18 @@ impl SettingsPanel {
                 self.c_toggle("noTrayIcon", false, tr!("Hide the tray icon"), Some(tr!("Takes effect after Heronite restarts.")), false),
             ]);
         }
+        use crate::system::screens::{Menu, KEY_OPEN_ON_SCREEN};
+        if let Some(menu) = Menu::new(cx, &self.text(KEY_OPEN_ON_SCREEN)) {
+            let (names, selected) = (menu.names.clone(), menu.selected);
+            v.extend([
+                Self::c_header(tr!("Window")),
+                item(
+                    Row::choice("c:open-on-screen", tr!("Open the window on"), names, selected)
+                        .desc(tr!("Applies the next time the window opens.")),
+                    Act::Choice(Rc::new(move |this, i, cx| this.set(KEY_OPEN_ON_SCREEN, Value::String(menu.key(i)), cx))),
+                ),
+            ]);
+        }
         if self.restart_needed() {
             let free = crate::system::restart_blocker(cx).is_none();
             v.push(Self::c_do("restart-now", tr!("Restart now"), Icon::Replay, free, |_, _, cx| crate::system::restart_now(cx)));

@@ -894,6 +894,16 @@ impl WindowsWindowInner {
         let is_maximized = self.state.is_maximized();
         let new_scale_factor = new_dpi / USER_DEFAULT_SCREEN_DPI as f32;
         self.state.scale_factor.set(new_scale_factor);
+        // The window is on another monitor (Heronite's patch, see
+        // `PATCHES.md`): `handle_move_msg` misses it when the monitors'
+        // logical bounds overlap, which they do at different scales.
+        let monitor = unsafe { MonitorFromWindow(handle, MONITOR_DEFAULTTONULL) };
+        if !monitor.is_invalid()
+            && let Some(display) =
+                WindowsDisplay::new(WindowsDisplay::display_id_for_monitor(monitor))
+        {
+            self.state.display.set(display);
+        }
         self.state.border_offset.update(handle).log_err();
 
         self.state
@@ -929,6 +939,18 @@ impl WindowsWindowInner {
                 // SetWindowPos may not send WM_SIZE for maximized windows in some cases,
                 // so we manually update the size to ensure proper rendering
                 let device_size = size(DevicePixels(width), DevicePixels(height));
+                self.handle_size_change(device_size, new_scale_factor, true);
+            }
+        } else if self.state.placing.get() {
+            // The first placement's rect is already in this monitor's device
+            // pixels (Heronite's patch, see `PATCHES.md`): the suggested RECT
+            // would scale it a second time. Only the logical size changes.
+            let mut client = RECT::default();
+            if unsafe { GetClientRect(handle, &mut client) }.log_err().is_some() {
+                let device_size = size(
+                    DevicePixels(client.right - client.left),
+                    DevicePixels(client.bottom - client.top),
+                );
                 self.handle_size_change(device_size, new_scale_factor, true);
             }
         } else {

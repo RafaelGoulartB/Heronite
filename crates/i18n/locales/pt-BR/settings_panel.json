@@ -536,5 +536,12 @@
   "Restart Heronite": "Reiniciar o Heronite",
   "The tray changes apply once Heronite starts again.": "As mudanças da bandeja valem quando o Heronite abrir de novo.",
   "Copy path": "Copiar caminho",
-  "Copied": "Copiado"
+  "Copied": "Copiado",
+  "Open the window on": "Abrir a janela na",
+  "Where it was left": "Onde ficou da última vez",
+  "Screen {n}": "Tela {n}",
+  "Screen {n} (main)": "Tela {n} (principal)",
+  "Applies the next time the window opens. Screens are numbered from left to right. If the screen is not connected, the window opens where it was left.": "Vale a partir da próxima vez que a janela abrir. As telas são numeradas da esquerda para a direita. Se a tela não estiver conectada, a janela abre onde ficou da última vez.",
+  "Applies the next time the window opens.": "Vale a partir da próxima vez que a janela abrir.",
+  "A screen that is not connected": "Uma tela que não está conectada"
 }
