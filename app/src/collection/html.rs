@@ -26,7 +26,7 @@ fn decode_entities(s: &str) -> String {
     while let Some(i) = rest.find('&') {
         out.push_str(&rest[..i]);
         rest = &rest[i..];
-        let Some(end) = rest[..rest.len().min(12)].find(';') else {
+        let Some(end) = rest.as_bytes()[..rest.len().min(12)].iter().position(|&b| b == b';') else {
             out.push('&');
             rest = &rest[1..];
             continue;
@@ -224,5 +224,19 @@ mod tests {
         assert!(matches!(&b[3], Block::ListItem(s) if s[0].text == "Discover!"));
         assert!(matches!(&b[4], Block::ListItem(s) if s[0].text == "Two"));
         assert_eq!(b.len(), 5);
+    }
+
+    #[test]
+    fn decodes_entities_across_utf8_boundaries() {
+        // Unescaped '&' where byte offset 12 falls inside '–' (bytes 11..14).
+        let html = "<p>A & something–more &ndash; done</p>";
+        assert_eq!(parse(html), vec![Block::Para(vec![Span { text: "A & something–more – done".into(), bold: false, italic: false }])]);
+
+        // Unrecognized sequence with multi-byte UTF-8 and ';' within 12 bytes, plus 2-byte/4-byte chars across offset 12.
+        let html = "<p>&foo–; & 123456789é & 123456789🎮</p>";
+        assert_eq!(
+            parse(html),
+            vec![Block::Para(vec![Span { text: "&foo–; & 123456789é & 123456789🎮".into(), bold: false, italic: false }])]
+        );
     }
 }
