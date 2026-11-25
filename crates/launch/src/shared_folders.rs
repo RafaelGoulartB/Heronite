@@ -50,6 +50,29 @@ pub fn container_env(folders: &[String], existing: &[Option<String>]) -> Option<
     Some(parts.join(":"))
 }
 
+/// Adds the folder chosen for `store` (`heronite_data::store_folders`: a
+/// store client's games folder), and the ones it had before, to the folders
+/// `settings` shows to Proton, so umu's container mounts them and the client
+/// installs and starts its games there. Only folders that `exists` says are
+/// there (an unplugged drive is left out), each once: one inside a folder
+/// already shown is not added.
+pub fn add_store_folder(
+    settings: &mut crate::settings::GameSettings,
+    global: &crate::settings::JsonMap,
+    store: &str,
+    home: &str,
+    exists: &dyn Fn(&str) -> bool,
+) {
+    use heronite_data::store_folders::{before, own};
+    for folder in own(global, store, home).into_iter().chain(before(global, store, home)) {
+        let folder = if folder.len() > 1 { folder.trim_end_matches('/') } else { &folder }.to_string();
+        let shown = settings.shared_folders.iter().any(|f| Path::new(&folder).starts_with(f));
+        if folder.starts_with('/') && folder != "/" && !folder.contains(':') && !shown && exists(&folder) {
+            settings.shared_folders.push(folder);
+        }
+    }
+}
+
 /// The `dosdevices` folder of a prefix (Proton keeps the Wine prefix in
 /// `<prefix>/pfx`). `None` until Wine/Proton has created it.
 fn dosdevices(prefix: &str) -> Option<std::path::PathBuf> {
@@ -141,6 +164,25 @@ mod tests {
         assert_eq!(parse(Some(&v)), vec!["/data".to_string(), "/games".to_string()]);
         assert!(parse(Some(&json!("x"))).is_empty());
         assert!(parse(None).is_empty());
+    }
+
+    #[test]
+    fn a_store_clients_folder_is_shown_once() {
+        let global = json!({
+            "heroniteStoreFolders": {"ea": "/data/Games/EA/", "ubisoft": "/srv/Ubi", "gog": "a:b"},
+            "heroniteStoreFoldersBefore": {"ea": ["/old/EA", "/gone/EA"]}
+        });
+        let global = global.as_object().unwrap();
+        let exists = |f: &str| !f.starts_with("/gone");
+        let mut s = crate::settings::GameSettings { shared_folders: vec!["/srv".into()], ..Default::default() };
+        add_store_folder(&mut s, global, "ea", "/home/u", &exists);
+        add_store_folder(&mut s, global, "ea", "/home/u", &exists);
+        // Inside a folder shown already.
+        add_store_folder(&mut s, global, "ubisoft", "/home/u", &exists);
+        add_store_folder(&mut s, global, "gog", "/home/u", &exists);
+        add_store_folder(&mut s, global, "rockstar", "/home/u", &exists);
+        // The folder it had before is still shown, a missing one is not.
+        assert_eq!(s.shared_folders, ["/srv", "/data/Games/EA", "/old/EA"]);
     }
 
     #[test]

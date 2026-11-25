@@ -142,7 +142,8 @@ fn wine_plan(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, client: Clie
     let Some(prefix) = prefix_of(&ctx.paths, client, &probe.home()) else { return not_set_up(client) };
     let Some(exe) = client_exe(probe, client, &prefix.to_string_lossy()) else { return not_set_up(client) };
 
-    let settings = load_game_settings(&ctx.paths, client.config_app(), &ctx.global, probe);
+    let mut settings = load_game_settings(&ctx.paths, client.config_app(), &ctx.global, probe);
+    crate::shared_folders::add_store_folder(&mut settings, &ctx.global.defaults, client.id(), &probe.home(), &|f| probe.exists(f));
     if settings.sandbox.enabled {
         return LaunchPlan::Unavailable(tr!(
             "The sandbox does not run {client}. Turn it off in Stores → {client}.",

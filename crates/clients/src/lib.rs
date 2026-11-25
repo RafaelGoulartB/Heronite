@@ -19,11 +19,14 @@
 //!   keeps its games and its sign-in.
 //! * [`ea_account`] and [`owned`]: the EA account's library (optional),
 //!   which brings the games it owns that are not installed.
+//! * [`games_folder`]: the folder out of the prefix a client installs its
+//!   games to, when one is chosen.
 
 pub mod battlenet;
 pub mod collection;
 pub mod ea;
 pub mod ea_account;
+pub mod games_folder;
 pub mod native;
 pub mod owned;
 pub mod place;
