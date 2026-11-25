@@ -141,6 +141,12 @@ pub(super) fn synced_text(at: &str, now: chrono::DateTime<chrono::Local>) -> Opt
     Some(tr!("Last synced {when}", when = when))
 }
 
+/// Whether the page shows the client's install folder: under Wine (on
+/// Windows the client is the PC's, with its own settings), once it is set up.
+pub(super) fn shows_games_folder(st: &ClientState) -> bool {
+    !heronite_clients::native() && st.installed()
+}
+
 /// `path` with the home folder written `~`.
 pub(super) fn tilde(path: &Path, home: &str) -> String {
     match path.strip_prefix(home) {

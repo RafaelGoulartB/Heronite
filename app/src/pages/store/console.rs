@@ -9,12 +9,21 @@ use heronite_i18n::{tr, trn};
 
 use super::{installed_count, StoreKind, StorePage, Then};
 use crate::console::kit::{self, u};
+use crate::console::layers::HasLayer;
 use crate::console::list::{Outcome, Row};
 use crate::console::osk::{Osk, OskEvent};
 use crate::console::sheet::{Sheet, SheetEvent};
+use crate::console::Layer;
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
+use crate::pages::store_folder::StoreFolder;
 use crate::pages::{stores, PageEvent};
+
+impl<K: StoreKind> HasLayer for StorePage<K> {
+    fn layer_mut(&mut self) -> &mut Layer {
+        &mut self.layer
+    }
+}
 
 impl<K: StoreKind> StorePage<K> {
     fn console_rows(&self, cx: &App) -> Vec<Row> {
@@ -91,6 +100,7 @@ impl<K: StoreKind> StorePage<K> {
         if let Some((text, _)) = &self.notice {
             rows.push(Row::info("notice", text.clone(), ""));
         }
+        rows.extend(self.folder.read(cx).console_rows());
         rows
     }
 
@@ -132,7 +142,10 @@ impl<K: StoreKind> StorePage<K> {
                 });
                 self.layer.open(&osk, sub);
             }
-            _ => {}
+            _ => {
+                let folder = self.folder.clone();
+                StoreFolder::console_activate(&folder, id, &mut self.layer, window, cx);
+            }
         }
     }
 

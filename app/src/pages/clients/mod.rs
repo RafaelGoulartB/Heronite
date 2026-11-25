@@ -20,6 +20,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::clients::Client;
 
+use super::store_folder::{Owner, StoreFolder};
 use super::{Page, PageCtx, PageEvent};
 use crate::dialogs::client_settings::ClientSettingsDialog;
 use crate::dialogs::DialogEvent;
@@ -76,6 +77,8 @@ pub struct ClientPage<K: ClientKind> {
     ea_window: bool,
     /// Why the login window last failed, shown under the card.
     ea_notice: Option<String>,
+    /// Where the client installs its games, when one is chosen.
+    folder: Entity<StoreFolder>,
     /// Console mode: focused row and the open sheet / browser.
     console_list: crate::console::list::ListNav,
     layer: crate::console::Layer,
@@ -96,6 +99,9 @@ impl<K: ClientKind> ClientPage<K> {
         // A window closed to the tray takes its pages without hiding them
         // first: the client is not asked whether it runs any more.
         cx.on_release(|this, cx| this.svc.update(cx, |s, cx| s.set_visible(K::CLIENT, false, cx))).detach();
+        let paths = ctx.data_paths.clone();
+        let folder = cx.new(|cx| StoreFolder::new(paths, Owner::Client(K::CLIENT), cx));
+        cx.observe(&folder, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
             ctx,
             svc,
@@ -106,6 +112,7 @@ impl<K: ClientKind> ClientPage<K> {
             dialog_sub: None,
             ea_window: false,
             ea_notice: None,
+            folder,
             console_list: Default::default(),
             layer: Default::default(),
             kind: PhantomData,
@@ -125,6 +132,8 @@ impl<K: ClientKind> ClientPage<K> {
         self.svc.update(cx, |s, cx| s.set_visible(K::CLIENT, shown, cx));
         if shown {
             self.load_wine(cx);
+            // A prefix set up or moved since: how the client sees the folder.
+            self.folder.update(cx, |f, cx| f.reload(cx));
         } else {
             self.confirm_forget = false;
         }

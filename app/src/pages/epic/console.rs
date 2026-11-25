@@ -11,12 +11,21 @@ use heronite_i18n::{tr, trn};
 
 use super::{installed_count, EpicPage};
 use crate::console::kit::{self, u};
+use crate::console::layers::HasLayer;
 use crate::console::list::{Outcome, Row};
 use crate::console::osk::{Osk, OskEvent};
 use crate::console::sheet::{Sheet, SheetEvent};
+use crate::console::Layer;
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
+use crate::pages::store_folder::StoreFolder;
 use crate::pages::{stores, Page, PageEvent};
+
+impl HasLayer for EpicPage {
+    fn layer_mut(&mut self) -> &mut Layer {
+        &mut self.layer
+    }
+}
 
 impl EpicPage {
     fn console_rows(&self, cx: &App) -> Vec<Row> {
@@ -132,6 +141,7 @@ impl EpicPage {
                     .icon(Icon::Download),
             ),
         }
+        rows.extend(self.folder.read(cx).console_rows());
         rows
     }
 
@@ -207,7 +217,10 @@ impl EpicPage {
                     this.svc.update(cx, |s, cx| s.eos_remove(cx));
                 },
             ),
-            _ => {}
+            _ => {
+                let folder = self.folder.clone();
+                StoreFolder::console_activate(&folder, id, &mut self.layer, window, cx);
+            }
         }
     }
 

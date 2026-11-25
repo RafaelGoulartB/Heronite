@@ -13,6 +13,7 @@ use gpui_kit::*;
 use heronite_epic::eos_overlay;
 use heronite_epic::user::BROWSER_LOGIN_URL;
 
+use super::store_folder::{Owner, StoreFolder};
 use super::{columns, status_pill, stores, Page, PageCtx, PageEvent};
 use crate::dialogs::epic_import::EpicImportPicker;
 use crate::dialogs::epic_install::{EpicInstallDialog, Mode};
@@ -39,6 +40,8 @@ pub struct EpicPage {
     notice: Option<(SharedString, bool)>,
     dialog: Option<AnyView>,
     dialog_sub: Option<Subscription>,
+    /// Where new Epic games go.
+    folder: Entity<StoreFolder>,
     /// Console mode: focused row and the open sheet / keyboard.
     console_list: crate::console::list::ListNav,
     layer: crate::console::Layer,
@@ -55,6 +58,9 @@ impl EpicPage {
         // Installed version and the latest one (Heroic asks when the settings open).
         svc.update(cx, |s, cx| s.eos_reload(true, cx));
         let debug = crate::env::value("HERONITE_DEBUG_EPIC_PAGE");
+        let paths = ctx.data_paths.clone();
+        let folder = cx.new(|cx| StoreFolder::new(paths, Owner::Store(heronite_data::store_folders::EPIC, "Epic Games"), cx));
+        cx.observe(&folder, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
             ctx,
             svc,
@@ -66,6 +72,7 @@ impl EpicPage {
             notice: None,
             dialog: None,
             dialog_sub: None,
+            folder,
             console_list: Default::default(),
             layer: Default::default(),
         };
@@ -80,6 +87,11 @@ impl EpicPage {
             _ => {}
         }
         this
+    }
+
+    /// The page came on screen: the default install folder may have changed.
+    pub fn shown(&mut self, cx: &mut Context<Self>) {
+        self.folder.update(cx, |f, cx| f.reload(cx));
     }
 
     fn open_dialog<V>(&mut self, view: Entity<V>, window: &mut Window, cx: &mut Context<Self>)
@@ -500,9 +512,14 @@ impl Render for EpicPage {
             .text_color(theme::text_muted())
             .child(tr!("Games are installed, updated and verified with legendary."))
             .into_any_element()]);
-        let side = div().child(caption("EOS Overlay")).child(self.eos_panel(cx)).child(caption(tr!("About"))).child(about);
-        // Wide: the account and library on the left; the EOS Overlay and
-        // how it works on the right.
+        let side = div()
+            .child(self.folder.clone())
+            .child(caption("EOS Overlay"))
+            .child(self.eos_panel(cx))
+            .child(caption(tr!("About")))
+            .child(about);
+        // Wide: the account and library on the left; where games go, the
+        // EOS Overlay and how it works on the right.
         let wide = stores::content_width(window) >= 1000.;
         let body = columns(wide, [column, side]);
         div()

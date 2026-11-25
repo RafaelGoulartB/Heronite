@@ -1,0 +1,15 @@
+{
+  "Choose a folder to keep the games of {client} out of its Wine prefix.": "Choisissez un dossier pour garder les jeux de {client} hors de son préfixe Wine.",
+  "Choose the install folder of {store}": "Choisir le dossier d’installation de {store}",
+  "Default install folder, from Settings → General": "Dossier d’installation par défaut, dans Paramètres → Général",
+  "Heronite sets this folder in {client} each time it opens it, so new games go here. Games already installed stay where they are.": "Heronite règle ce dossier dans {client} chaque fois qu’il l’ouvre : les nouveaux jeux arrivent ici. Les jeux déjà installés restent où ils sont.",
+  "Inside its Wine prefix": "Dans son préfixe Wine",
+  "New {store} games are installed here. The install dialog can still put one somewhere else.": "Les nouveaux jeux {store} sont installés ici. La fenêtre d’installation permet toujours d’en placer un ailleurs.",
+  "Only for {store}": "Uniquement pour {store}",
+  "Path in {client}": "Chemin dans {client}",
+  "Use default": "Par défaut",
+  "Use the default folder": "Utiliser le dossier par défaut",
+  "{client} asks where to install each game: choose {path}. Games already installed stay where they are.": "{client} demande où installer chaque jeu : choisissez {path}. Les jeux déjà installés restent où ils sont.",
+  "{client} is open: close it and open it again for the change to apply.": "{client} est ouvert : fermez-le et rouvrez-le pour que le changement s’applique.",
+  "{client}'s own folder": "Le dossier propre à {client}"
+}

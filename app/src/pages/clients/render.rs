@@ -341,6 +341,9 @@ impl<K: ClientKind> Render for ClientPage<K> {
             }
             right = right.child(self.render_games(&st, cx));
         }
+        if logic::shows_games_folder(&st) {
+            right = right.child(self.folder.clone());
+        }
         if logic::shows_shortcuts(&st) {
             left = left.child(self.render_shortcuts(&st, cx));
         }

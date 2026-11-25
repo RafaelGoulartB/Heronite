@@ -299,10 +299,10 @@ impl<K: StoreKind> Render for StorePage<K> {
                     .child(err.lines().next().unwrap_or("").to_string()),
             );
         }
-        // Wide: the account and library on the left; achievements and how
-        // it works on the right.
+        // Wide: the account and library on the left; where games go,
+        // achievements and how it works on the right.
         let wide = stores::content_width(window) >= 1000.;
-        let side = div().children(self.render_comet(cx)).child(self.render_about());
+        let side = div().child(self.folder.clone()).children(self.render_comet(cx)).child(self.render_about());
         let body = columns(wide, [column, side]);
         div()
             .size_full()
