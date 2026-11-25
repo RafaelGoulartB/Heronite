@@ -1,8 +1,10 @@
 //! XInput polling never consumes input: games may also receive the controls.
 //! With no controller connected, sleep until the next slot scan.
 
+use std::collections::BTreeMap;
 use std::io;
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use heronite_platform::{gamepad, pad_battery};
@@ -76,7 +78,7 @@ fn run(opts: Options, rx: Receiver<Cmd>, mut on_event: impl FnMut(Event)) {
         looks += 1;
         let (tx, n) = (found_tx.clone(), looks);
         let spawned = std::thread::Builder::new().name("overlay-controllers".into()).spawn(move || {
-            let _ = tx.send((n, other_controllers()));
+            let _ = tx.send((n, other_controllers(true)));
         });
         if let Err(error) = spawned {
             log::warn!("overlay input: cannot look for HID controllers: {error}");
@@ -185,26 +187,61 @@ fn controller(index: u32) -> Controller {
     Controller { name, id: ControllerId::XInput(index), bluetooth: None }
 }
 
+/// The receivers that looks (`other_controllers`) found linked to a
+/// controller, by USB ids, and whether the latest look missed it. Some send
+/// their battery seldom: one is dropped once two looks in a row read nothing.
+static LINKED: Mutex<BTreeMap<(u16, u16), bool>> = Mutex::new(BTreeMap::new());
+
+/// When the last look began, and how long [`list_controllers`] goes by it.
+static LOOKED: Mutex<Option<Instant>> = Mutex::new(None);
+const RELOOK: Duration = Duration::from_secs(30);
+
 /// The controllers XInput does not list that a battery driver knows
 /// (PlayStation, Switch, 8BitDo in D-input mode…), for their battery. They
-/// do not drive the overlay. A receiver counts only while it reads a
-/// controller's battery: it is there with none linked. Blocking: the HID
-/// collections are listed, and a receiver is read (up to a couple of seconds).
-fn other_controllers() -> Vec<Controller> {
-    match pad_battery::pads() {
-        Ok(pads) => pads
-            .into_iter()
-            .filter(|p| !p.xinput)
-            .filter(|p| !p.receiver || matches!(pad_battery::read(p.vendor, p.product), Ok(Some(_))))
-            .map(|p| Controller {
-                name: p.model.to_string(),
-                id: ControllerId::Hid { vendor: p.vendor, product: p.product },
-                bluetooth: None,
-            })
-            .collect(),
+/// do not drive the overlay. A receiver is there with no controller linked:
+/// it counts while looks read a controller's battery through it ([`LINKED`]).
+/// `look`: read each receiver (up to a couple of seconds, requests on some),
+/// else go by the earlier looks. Blocking: the HID collections are listed.
+fn other_controllers(look: bool) -> Vec<Controller> {
+    let pads: Vec<_> = match pad_battery::pads() {
+        Ok(pads) => pads.into_iter().filter(|p| !p.xinput).collect(),
         Err(error) => {
             log::warn!("overlay input: listing HID controllers: {error}");
-            Vec::new()
+            return Vec::new();
+        }
+    };
+    let read: Vec<((u16, u16), bool)> = if look {
+        *LOOKED.lock().unwrap_or_else(PoisonError::into_inner) = Some(Instant::now());
+        pads.iter()
+            .filter(|p| p.receiver)
+            .map(|p| ((p.vendor, p.product), matches!(pad_battery::read(p.vendor, p.product), Ok(Some(_)))))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let mut linked = LINKED.lock().unwrap_or_else(PoisonError::into_inner);
+    linked.retain(|&(vendor, product), _| pads.iter().any(|p| p.vendor == vendor && p.product == product));
+    for (ids, read) in read {
+        remember(&mut linked, ids, read);
+    }
+    pads.into_iter()
+        .filter(|p| !p.receiver || linked.contains_key(&(p.vendor, p.product)))
+        .map(|p| Controller { name: p.model.to_string(), id: ControllerId::Hid { vendor: p.vendor, product: p.product }, bluetooth: None })
+        .collect()
+}
+
+/// Notes whether a look `read` a battery through the receiver `ids`
+/// ([`LINKED`]).
+fn remember(linked: &mut BTreeMap<(u16, u16), bool>, ids: (u16, u16), read: bool) {
+    match (read, linked.get(&ids)) {
+        (true, _) => {
+            linked.insert(ids, false);
+        }
+        (false, Some(false)) => {
+            linked.insert(ids, true);
+        }
+        (false, _) => {
+            linked.remove(&ids);
         }
     }
 }
@@ -216,8 +253,10 @@ fn listed(pads: &[Option<Adapter>], others: &[Controller]) -> Vec<Controller> {
 }
 
 /// Blocking snapshot of the four documented XInput slots and of the other
-/// controllers a battery driver knows. Failures are logged, rather than
-/// presented as unsupported controllers or fabricated devices.
+/// controllers a battery driver knows. Receivers are looked at once per
+/// [`RELOOK`] at most (Settings asks every few seconds), else go by the last
+/// look. Failures are logged, rather than presented as unsupported
+/// controllers or fabricated devices.
 pub fn list_controllers() -> Vec<Controller> {
     let xinput = (0..gamepad::CONTROLLER_COUNT).filter_map(|index| match gamepad::state(index) {
         Ok(Some(_)) => Some(controller(index)),
@@ -227,7 +266,8 @@ pub fn list_controllers() -> Vec<Controller> {
             None
         }
     });
-    xinput.chain(other_controllers()).collect()
+    let look = LOOKED.lock().unwrap_or_else(PoisonError::into_inner).is_none_or(|at| at.elapsed() >= RELOOK);
+    xinput.chain(other_controllers(look)).collect()
 }
 
 #[cfg(test)]
@@ -241,6 +281,21 @@ mod tests {
             assert_eq!(controller.id, ControllerId::XInput(index));
             assert!(controller.bluetooth.is_none());
         }
+    }
+
+    #[test]
+    fn a_receiver_is_dropped_after_two_looks_read_nothing() {
+        let (mut linked, ids) = (BTreeMap::new(), (0x28DE, 0x1142));
+        remember(&mut linked, ids, false);
+        assert!(!linked.contains_key(&ids), "never linked");
+        remember(&mut linked, ids, true);
+        remember(&mut linked, ids, false);
+        assert!(linked.contains_key(&ids), "one miss keeps it");
+        remember(&mut linked, ids, true);
+        remember(&mut linked, ids, false);
+        assert!(linked.contains_key(&ids), "a reading in between starts over");
+        remember(&mut linked, ids, false);
+        assert!(!linked.contains_key(&ids), "two misses in a row drop it");
     }
 
     #[test]
