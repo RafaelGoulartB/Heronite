@@ -301,7 +301,8 @@ impl Device {
     }
 
     /// Starts an overlapped operation and waits for it: the bytes moved,
-    /// `None` after `timeout` (it is then cancelled, and waited for).
+    /// `None` after `timeout` (it is then cancelled, and waited for; one that
+    /// ended meanwhile still counts).
     fn run(&self, timeout: Duration, start: impl FnOnce(*mut OVERLAPPED) -> i32) -> io::Result<Option<usize>> {
         let file = self.raw();
         let mut ov = OVERLAPPED { hEvent: self.event.as_raw_handle() as HANDLE, ..Default::default() };
@@ -311,8 +312,7 @@ impl Device {
         }
         let ms = u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX);
         // SAFETY: the event belongs to the operation started above.
-        let done = unsafe { WaitForSingleObject(ov.hEvent, ms) } == WAIT_OBJECT_0;
-        if !done {
+        if unsafe { WaitForSingleObject(ov.hEvent, ms) } != WAIT_OBJECT_0 {
             // SAFETY: cancels this thread's operations on the handle.
             unsafe { CancelIo(file) };
         }
@@ -320,7 +320,7 @@ impl Device {
         // SAFETY: `ov` is the operation's; waiting (TRUE) keeps `ov` and the
         // buffer alive until Windows is done with them, cancelled or not.
         let ok = unsafe { GetOverlappedResult(file, &ov, &mut moved, 1) } != 0;
-        Ok((done && ok).then_some(moved as usize))
+        Ok(ok.then_some(moved as usize))
     }
 }
 

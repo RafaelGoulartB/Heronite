@@ -8,6 +8,8 @@
 //! - DualSense: USB report `01` byte 53, Bluetooth report `31` byte 54; bits
 //!   0-3 the level (0..=10), bits 4-7 the state (1 charging, 2 full).
 //!
+//! A level `n` below 10 stands for `n`0 to `n`9 %, read as its middle.
+//!
 //! Layout reference: Linux `drivers/hid/hid-playstation.c`.
 //!
 //! Over Bluetooth both controllers send a reduced report `01` (no battery)
@@ -128,12 +130,8 @@ fn parse_ds4(report: &[u8], link: Link) -> Option<Reply> {
     }
     let level = i32::from(byte & 0x0F);
     let cable = byte & 0x10 != 0;
-    let percent = match (cable, level) {
-        (true, 11..) => 100,
-        (true, _) => level * 10,
-        (false, _) => level * 10 + 5,
-    };
-    Some(Reply::Battery(Reading { percent: percent.clamp(0, 100) as u8, charging: cable && level < 11 }))
+    let percent = if level >= 10 { 100 } else { level * 10 + 5 };
+    Some(Reply::Battery(Reading { percent: percent as u8, charging: cable && level < 11 }))
 }
 
 /// An input report of a DualSense or DualSense Edge (`[0]` its id).
@@ -177,7 +175,7 @@ mod tests {
         // On battery: 7 of 10.
         assert_eq!(parse_ds4(&report(0x01, 64, 30, 0x07), Link::Adapter), battery(75, false));
         // On a cable, charging, then full.
-        assert_eq!(parse_ds4(&report(0x01, 64, 30, 0x14), Link::Cable), battery(40, true));
+        assert_eq!(parse_ds4(&report(0x01, 64, 30, 0x14), Link::Cable), battery(45, true), "the level's middle, as off the cable");
         assert_eq!(parse_ds4(&report(0x01, 64, 30, 0x1B), Link::Cable), battery(100, false));
         assert_eq!(parse_ds4(&report(0x01, 64, 30, 0x0A), Link::Adapter), battery(100, false), "10 of 10, clamped");
         // Over Bluetooth, the full report.
