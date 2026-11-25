@@ -47,6 +47,14 @@ pub struct Controller {
     pub bluetooth: Option<String>,
 }
 
+impl Controller {
+    /// It drives the overlay: not one listed for its battery only
+    /// ([`ControllerId::Hid`]).
+    pub fn drives_overlay(&self) -> bool {
+        !matches!(self.id, ControllerId::Hid { .. })
+    }
+}
+
 /// How the system names a controller.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ControllerId {
