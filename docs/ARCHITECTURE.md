@@ -505,8 +505,12 @@ text size) and applies it.
   with no exclusive grab (games can still see the buttons; the open panel takes
   the foreground, which most games respect). A controller is
   named by `input::ControllerId`: its XInput slot there, its evdev node on
-  Linux. Controller battery is XInput's coarse estimate; Bluetooth disconnect
-  is not offered.
+  Linux. On Windows, controller battery comes from `heronite-platform::pad_battery`:
+  drivers ported from BatteryHub read the controllers they know by their USB ids
+  through their HID collections (`heronite-platform::hid`), and list the ones
+  XInput does not (`ControllerId::Hid`, battery only); Xbox controllers on
+  batteries get Windows.Gaming.Input's percentage, else XInput's coarse level.
+  Bluetooth disconnect is not offered.
   `audio::windows` adapts Core Audio (`heronite-platform::audio`): endpoint
   volume/mute, microphone mute and active per-app/game sessions, identified by
   stable session IDs rather than enumeration order. The default output and

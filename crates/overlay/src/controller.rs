@@ -81,18 +81,62 @@ pub fn disconnect(address: &str) -> Result<(), String> {
     Err(err.trim().to_string())
 }
 
-/// Coarse XInput charge, or `None` for wired/unknown/disconnected devices.
-/// XInput does not report charging. Native failures are logged.
+/// The charge of a controller (`None` when it tells none: wired, unknown,
+/// asleep). Native failures are logged. Blocking, up to a couple of seconds.
+/// - one a battery driver knows (`heronite_platform::pad_battery`): its
+///   driver's reading, or none. XInput calls most of these wired, or "full"
+///   whatever their charge;
+/// - another XInput controller on batteries: its percentage by
+///   Windows.Gaming.Input, else XInput's coarse level (0, 33, 67 or 100 %,
+///   without charging).
 #[cfg(windows)]
 pub fn battery(id: &ControllerId) -> Option<Battery> {
-    let &ControllerId::XInput(index) = id else {
-        log::warn!("overlay controller: not an XInput controller: {id:?}");
-        return None;
+    use heronite_platform::{gamepad, pad_battery};
+    let index = match *id {
+        ControllerId::Hid { vendor, product } => return driver_battery(vendor, product),
+        ControllerId::XInput(index) => index,
+        ControllerId::Evdev(_) => {
+            log::warn!("overlay controller: not a Windows controller: {id:?}");
+            return None;
+        }
     };
-    match heronite_platform::gamepad::battery(index) {
-        Ok(percent) => percent.map(|percent| Battery { percent, charging: false }),
+    let ids = match gamepad::product(index) {
+        Ok(ids) => ids,
+        Err(error) => {
+            log::warn!("overlay controller: XInputGetCapabilitiesEx slot {}: {error}", index + 1);
+            None
+        }
+    };
+    if let Some((vendor, product)) = ids.filter(|&(v, p)| pad_battery::knows(v, p)) {
+        return driver_battery(vendor, product);
+    }
+    let coarse = match gamepad::battery(index) {
+        Ok(percent) => percent?,
         Err(error) => {
             log::warn!("overlay controller: XInputGetBatteryInformation slot {}: {error}", index + 1);
+            return None;
+        }
+    };
+    let precise = ids.and_then(|(vendor, product)| match pad_battery::xbox(vendor, product) {
+        Ok(reading) => reading,
+        Err(error) => {
+            log::warn!("overlay controller: Windows.Gaming.Input battery of {vendor:04x}:{product:04x}: {error}");
+            None
+        }
+    });
+    Some(match precise {
+        Some(r) => Battery { percent: r.percent, charging: r.charging },
+        None => Battery { percent: coarse, charging: false },
+    })
+}
+
+/// The battery driver's reading of `vendor:product`.
+#[cfg(windows)]
+fn driver_battery(vendor: u16, product: u16) -> Option<Battery> {
+    match heronite_platform::pad_battery::read(vendor, product) {
+        Ok(reading) => reading.map(|r| Battery { percent: r.percent, charging: r.charging }),
+        Err(error) => {
+            log::warn!("overlay controller: battery of {vendor:04x}:{product:04x}: {error}");
             None
         }
     }

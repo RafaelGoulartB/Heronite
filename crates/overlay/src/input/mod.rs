@@ -55,4 +55,8 @@ pub enum ControllerId {
     /// Its XInput slot (below `heronite_platform::gamepad::CONTROLLER_COUNT`),
     /// on Windows.
     XInput(u32),
+    /// On Windows, a controller XInput does not list (PlayStation, Switch,
+    /// 8BitDo in D-input mode…) that a battery driver knows, by its USB ids
+    /// (`heronite_platform::pad_battery`). It does not drive the overlay.
+    Hid { vendor: u16, product: u16 },
 }

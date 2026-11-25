@@ -1,13 +1,16 @@
-//! Documented XInput 1.4 queries. XInput does not expose Guide, the controller's
-//! transport, exclusive input, or a Bluetooth disconnect operation.
+//! XInput 1.4 queries: the documented ones, and [`product`] (an undocumented
+//! export). XInput does not expose Guide, the controller's transport,
+//! exclusive input, or a Bluetooth disconnect operation.
 
 use std::io;
+use std::sync::OnceLock;
 
 use windows_sys::Win32::Foundation::{ERROR_DEVICE_NOT_CONNECTED, ERROR_SUCCESS};
+use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32};
 use windows_sys::Win32::UI::Input::XboxController::{
     XInputGetBatteryInformation, XInputGetState, BATTERY_DEVTYPE_GAMEPAD, BATTERY_LEVEL_EMPTY, BATTERY_LEVEL_FULL, BATTERY_LEVEL_LOW,
     BATTERY_LEVEL_MEDIUM, BATTERY_TYPE_ALKALINE, BATTERY_TYPE_DISCONNECTED, BATTERY_TYPE_NIMH, BATTERY_TYPE_UNKNOWN, BATTERY_TYPE_WIRED,
-    XINPUT_BATTERY_INFORMATION, XINPUT_STATE, XUSER_MAX_COUNT,
+    XINPUT_BATTERY_INFORMATION, XINPUT_CAPABILITIES, XINPUT_STATE, XUSER_MAX_COUNT,
 };
 
 pub const CONTROLLER_COUNT: u32 = XUSER_MAX_COUNT;
@@ -48,6 +51,59 @@ pub fn battery(index: u32) -> io::Result<Option<u8>> {
         ERROR_DEVICE_NOT_CONNECTED => Ok(None),
         code => Err(io::Error::from_raw_os_error(code as i32)),
     }
+}
+
+/// The USB vendor and product id of the controller in slot `index`, to tell
+/// which one it is (many report their battery their own way:
+/// [`crate::pad_battery`]). `None` when the slot is empty or this XInput lacks the
+/// query: `XInputGetCapabilitiesEx`, xinput1_4's export 108, undocumented
+/// but used by SDL and BatteryHub for the same thing.
+pub fn product(index: u32) -> io::Result<Option<(u16, u16)>> {
+    validate_index(index)?;
+    let Some(caps_ex) = caps_ex() else { return Ok(None) };
+    let mut caps = CapabilitiesEx::default();
+    // SAFETY: the slot is valid and `caps` is the structure the export fills
+    // (the documented XINPUT_CAPABILITIES, then the ids).
+    let status = unsafe { caps_ex(1, index, 0, &mut caps) };
+    match status {
+        ERROR_SUCCESS => Ok((caps.vendor != 0).then_some((caps.vendor, caps.product))),
+        ERROR_DEVICE_NOT_CONNECTED => Ok(None),
+        code => Err(io::Error::from_raw_os_error(code as i32)),
+    }
+}
+
+/// What `XInputGetCapabilitiesEx` fills: XINPUT_CAPABILITIES, then the ids.
+#[repr(C)]
+#[derive(Default)]
+struct CapabilitiesEx {
+    caps: XINPUT_CAPABILITIES,
+    vendor: u16,
+    product: u16,
+    version: u16,
+    unknown1: u16,
+    unknown2: u32,
+}
+
+type CapsExFn = unsafe extern "system" fn(u32, u32, u32, *mut CapabilitiesEx) -> u32;
+
+/// xinput1_4's export 108, looked up once; `None` when it is missing.
+fn caps_ex() -> Option<CapsExFn> {
+    static FOUND: OnceLock<Option<usize>> = OnceLock::new();
+    let address = *FOUND.get_or_init(|| {
+        let name: Vec<u16> = "xinput1_4.dll".encode_utf16().chain([0]).collect();
+        // SAFETY: the name is NUL-terminated; the DLL stays loaded for the
+        // process (XInputGetState links it already).
+        let module = unsafe { LoadLibraryExW(name.as_ptr(), std::ptr::null_mut(), LOAD_LIBRARY_SEARCH_SYSTEM32) };
+        if module.is_null() {
+            return None;
+        }
+        // SAFETY: an ordinal lookup (the "name" is the ordinal, as MAKEINTRESOURCEA does).
+        let proc = unsafe { GetProcAddress(module, 108 as *const u8) };
+        proc.map(|p| p as usize)
+    });
+    // SAFETY: the address is export 108 of xinput1_4, whose signature
+    // `CapsExFn` is (DWORD, DWORD, DWORD, struct*) -> DWORD.
+    address.map(|a| unsafe { std::mem::transmute::<usize, CapsExFn>(a) })
 }
 
 fn validate_index(index: u32) -> io::Result<()> {
@@ -128,5 +184,6 @@ mod tests {
     fn invalid_slots_fail_before_native_calls() {
         assert_eq!(state(CONTROLLER_COUNT).unwrap_err().kind(), io::ErrorKind::InvalidInput);
         assert_eq!(battery(u32::MAX).unwrap_err().kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(product(CONTROLLER_COUNT).unwrap_err().kind(), io::ErrorKind::InvalidInput);
     }
 }

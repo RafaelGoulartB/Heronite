@@ -218,8 +218,10 @@ impl OverlayPanel {
                 None => tr!("Not reported").to_string(),
             };
             rows.push(Row::info(SharedString::from(format!("battery-{i}")), tr!("Battery"), level).icon(Icon::BatteryFull));
-            let link = if cfg!(windows) {
+            let link = if cfg!(windows) && matches!(c.id, heronite_overlay::input::ControllerId::XInput(_)) {
                 tr!("Not reported by XInput")
+            } else if cfg!(windows) {
+                tr!("Not reported")
             } else if c.bluetooth.is_some() {
                 tr!("Bluetooth")
             } else {
