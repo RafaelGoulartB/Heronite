@@ -253,7 +253,8 @@ pub fn read_psp_disc_id(rom: &Path) -> Option<String> {
 
 fn ps3_title(data: Option<Vec<u8>>) -> Option<String> {
     let id = read_sfo(&data?).get("TITLE_ID")?.clone();
-    let ok = id.len() == 9 && id[..4].chars().all(|c| c.is_ascii_uppercase()) && id[4..].chars().all(|c| c.is_ascii_digit());
+    let b = id.as_bytes();
+    let ok = b.len() == 9 && b[..4].iter().all(u8::is_ascii_uppercase) && b[4..].iter().all(u8::is_ascii_digit);
     ok.then_some(id)
 }
 
@@ -585,5 +586,11 @@ mod tests {
         let m = read_sfo(&s);
         assert_eq!(m["A"], "1");
         assert_eq!(m["B"], "two");
+    }
+
+    #[test]
+    fn ps3_title_ignores_non_ascii_title_id() {
+        // 9 UTF-8 bytes where byte 4 falls inside '–' (bytes 2..5).
+        assert_eq!(ps3_title(Some(sfo(&[("TITLE_ID", "AB–1234")]))), None);
     }
 }

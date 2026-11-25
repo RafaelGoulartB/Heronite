@@ -510,8 +510,9 @@ pub fn percent_decode(s: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
+            let hex = |b: u8| (b as char).to_digit(16);
+            if let (Some(hi), Some(lo)) = (hex(bytes[i + 1]), hex(bytes[i + 2])) {
+                out.push((hi * 16 + lo) as u8);
                 i += 3;
                 continue;
             }
@@ -539,5 +540,12 @@ mod tests {
         );
         assert!(p.resolve_localart("localart://art/../../etc/passwd", None).is_none());
         assert!(p.resolve_localart("localart://screenshots/a.png", None).is_none());
+    }
+
+    #[test]
+    fn percent_decode_handles_utf8_after_percent() {
+        assert_eq!(percent_decode("100%–done"), "100%–done");
+        assert_eq!(percent_decode("%aé%41"), "%aéA");
+        assert_eq!(percent_decode("%+a"), "%+a");
     }
 }
