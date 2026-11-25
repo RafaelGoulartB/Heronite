@@ -31,6 +31,8 @@ pub(crate) fn items(ctx: &Ctx, lib: &Library, listed: &[Item], walked: &SizeCach
     ]
     .into_iter()
     .flatten()
+    // The folders of the stores Heronite installs for (a client's games are the client's).
+    .chain(heronite_data::store_folders::INSTALLED_BY_HERONITE.iter().filter_map(|s| heronite_data::store_folders::own(&global, s, &home)))
     .map(|s| PathBuf::from(s.trim_end_matches(std::path::is_separator)))
     .filter(|p| p.is_absolute() && p.is_dir())
     // A whole drive (`D:\`) is no games folder: everything else on it would show.

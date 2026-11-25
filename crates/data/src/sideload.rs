@@ -476,6 +476,7 @@ pub fn remove_prefix(paths: &DataPaths, app_name: &str, home: &str) -> PrefixOut
         text("winePrefix"),
     ]
     .into_iter()
+    .chain(crate::store_folders::all(&global, home))
     .map(PathBuf::from)
     .collect();
     let prefix = PathBuf::from(prefix);
