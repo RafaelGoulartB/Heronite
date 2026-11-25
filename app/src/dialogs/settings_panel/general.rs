@@ -144,14 +144,19 @@ impl SettingsPanel {
         let stores = heronite_platform::features::any_store();
         let mut folders = rows();
         if stores || wine {
-            folders = folders.field(self.path_row(
+            let row = self.path_row(
                 "defaultInstallPath",
                 Some(tr!("Default install folder")),
                 true,
                 tr!("Choose the default installation folder"),
                 false,
                 cx,
-            ));
+            );
+            folders = if stores {
+                folders.field_help(row, vec![help(tr!("A store can have a folder of its own: choose it on the store's page, in Stores."))])
+            } else {
+                folders.field(row)
+            };
         }
         if wine {
             folders = folders

@@ -1,4 +1,5 @@
 {
+  "A store can have a folder of its own: choose it on the store's page, in Stores.": "Une boutique peut avoir son propre dossier : choisissez-le sur la page de la boutique, dans Boutiques.",
   "Choose a folder to keep the games of {client} out of its Wine prefix.": "Choisissez un dossier pour garder les jeux de {client} hors de son préfixe Wine.",
   "Choose the install folder of {store}": "Choisir le dossier d’installation de {store}",
   "Default install folder, from Settings → General": "Dossier d’installation par défaut, dans Paramètres → Général",
