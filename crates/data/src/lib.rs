@@ -64,6 +64,7 @@ pub mod status;
 pub mod status_history;
 pub mod steam_owned;
 pub mod steam_tags;
+pub mod store_folders;
 pub mod timeline;
 pub mod ui_state;
 pub mod xbox;
