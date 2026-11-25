@@ -77,12 +77,8 @@ impl EpicInstallDialog {
         let title = game.get("title").and_then(Value::as_str).unwrap_or(&app_name).to_string();
         let home = heronite_epic::ops::home();
         let global = game_config::load_global(&data_paths, &home);
-        let default_install = global
-            .get("defaultInstallPath")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-            .map(|s| s.trim_matches('\'').to_string())
-            .unwrap_or_else(|| game_config::default_install_dir(&home));
+        // Epic's own folder, else the default one.
+        let default_install = heronite_data::store_folders::install_dir(&global, heronite_data::store_folders::EPIC, &home);
         let prefix_dir = global
             .get("defaultWinePrefixDir")
             .and_then(Value::as_str)

@@ -89,6 +89,14 @@ impl Store {
             Store::Amazon => "Amazon Games",
         }
     }
+
+    /// Its key in `heronite_data::store_folders`.
+    pub fn folder_key(self) -> &'static str {
+        match self {
+            Store::Gog => heronite_data::store_folders::GOG,
+            Store::Amazon => heronite_data::store_folders::AMAZON,
+        }
+    }
 }
 
 /// Account, library counts and updates of a [`Store`].
