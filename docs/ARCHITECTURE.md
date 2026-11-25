@@ -508,8 +508,9 @@ text size) and applies it.
   Linux. On Windows, controller battery comes from `heronite-platform::pad_battery`:
   drivers ported from BatteryHub read the controllers they know by their USB ids
   through their HID collections (`heronite-platform::hid`), and list the ones
-  XInput does not (`ControllerId::Hid`, battery only); Xbox controllers on
-  batteries get Windows.Gaming.Input's percentage, else XInput's coarse level.
+  XInput does not (`ControllerId::Hid`, battery only). Other XInput controllers
+  (and known ones whose driver reads nothing) on batteries get
+  Windows.Gaming.Input's percentage, else XInput's coarse level.
   Bluetooth disconnect is not offered.
   `audio::windows` adapts Core Audio (`heronite-platform::audio`): endpoint
   volume/mute, microphone mute and active per-app/game sessions, identified by

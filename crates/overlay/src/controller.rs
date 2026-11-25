@@ -84,11 +84,13 @@ pub fn disconnect(address: &str) -> Result<(), String> {
 /// The charge of a controller (`None` when it tells none: wired, unknown,
 /// asleep). Native failures are logged. Blocking, up to a couple of seconds.
 /// - one a battery driver knows (`heronite_platform::pad_battery`): its
-///   driver's reading, or none. XInput calls most of these wired, or "full"
+///   driver's reading first. XInput calls most of these wired, or "full"
 ///   whatever their charge;
-/// - another XInput controller on batteries: its percentage by
-///   Windows.Gaming.Input, else XInput's coarse level (0, 33, 67 or 100 %,
-///   without charging).
+/// - else, for an XInput controller (one whose driver read nothing too, in
+///   Xbox mode say): on batteries, its percentage by Windows.Gaming.Input,
+///   else XInput's coarse level (0, 33, 67 or 100 %, without charging);
+///   wired to XInput, the battery usages of the HID standard when no driver
+///   knows it and it has them.
 #[cfg(windows)]
 pub fn battery(id: &ControllerId) -> Option<Battery> {
     use heronite_platform::{gamepad, pad_battery};
@@ -107,11 +109,15 @@ pub fn battery(id: &ControllerId) -> Option<Battery> {
             None
         }
     };
-    if let Some((vendor, product)) = ids.filter(|&(v, p)| pad_battery::knows(v, p)) {
-        return driver_battery(vendor, product);
+    let known = ids.filter(|&(v, p)| pad_battery::knows(v, p));
+    if let Some(battery) = known.and_then(|(vendor, product)| driver_battery(vendor, product)) {
+        return Some(battery);
     }
     let coarse = match gamepad::battery(index) {
-        Ok(percent) => percent?,
+        Ok(Some(percent)) => percent,
+        // `pad_battery::read` tries the HID standard's usages for ids no
+        // driver knows (a known one was read above).
+        Ok(None) => return ids.filter(|_| known.is_none()).and_then(|(vendor, product)| driver_battery(vendor, product)),
         Err(error) => {
             log::warn!("overlay controller: XInputGetBatteryInformation slot {}: {error}", index + 1);
             return None;
