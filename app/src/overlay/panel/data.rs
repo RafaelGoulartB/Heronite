@@ -175,22 +175,28 @@ impl OverlayPanel {
         .detach();
     }
 
+    /// Reads every controller's battery, side by side (a receiver whose
+    /// controller sleeps takes a couple of seconds to give up). The readings
+    /// land only while the list they were made for is still the panel's.
     pub(super) fn load_batteries(&mut self, cx: &mut Context<Self>) {
-        let list = self.controllers.clone();
-        cx.spawn(async move |this, cx| {
-            let read = cx
-                .background_spawn(async move {
-                    list.into_iter()
-                        .map(|c| {
-                            let b = controller::battery(&c.id);
-                            (c, b)
-                        })
-                        .collect::<Vec<_>>()
+        let asked = self.controllers.clone();
+        let reads: Vec<_> = asked
+            .iter()
+            .cloned()
+            .map(|c| {
+                cx.background_spawn(async move {
+                    let b = controller::battery(&c.id);
+                    (c, b)
                 })
-                .await;
+            })
+            .collect();
+        cx.spawn(async move |this, cx| {
+            let read = futures::future::join_all(reads).await;
             this.update(cx, |this, cx| {
-                this.data.controllers = read;
-                cx.notify();
+                if this.controllers == asked {
+                    this.data.controllers = read;
+                    cx.notify();
+                }
             })
             .ok();
         })

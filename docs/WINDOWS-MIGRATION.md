@@ -80,8 +80,11 @@ does not inject code into games.
   panel is open it owns the foreground, so games that ignore the controller
   in the background (SDL's default, Unity, Unreal: most of them) do not see
   the navigation; games that poll XInput regardless still do. Non-XInput controllers need an XInput mapping here (console
-  mode reads them through SDL). Battery levels
-  are coarse estimates; transport and Bluetooth disconnect are unavailable.
+  mode reads them through SDL). Battery levels come from the drivers of
+  `heronite-platform::pad_battery` for the controllers they know, which the
+  Controller tab lists even when XInput does not; for other Xbox controllers,
+  from Windows.Gaming.Input, else XInput's coarse estimate. Transport and
+  Bluetooth disconnect are unavailable.
 - **Panel:** Home, Screenshots, Notes (including the on-screen keyboard),
   Audio and Controller reuse the Linux views. Screenshot capture uses the
   existing Windows backend.

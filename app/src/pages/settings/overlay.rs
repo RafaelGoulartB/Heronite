@@ -99,10 +99,16 @@ pub(super) fn set_controllers(d: &mut SettingsPage, list: Vec<Controller>) {
     d.overlay.controllers = Some(list);
 }
 
-fn controllers_text(list: Option<&Vec<Controller>>) -> String {
+/// The controllers found that drive the overlay (not the ones Windows lists
+/// for their battery only); `None` while they are looked for.
+fn overlay_controllers(d: &SettingsPage) -> Option<Vec<&Controller>> {
+    d.overlay.controllers.as_ref().map(|l| l.iter().filter(|c| c.drives_overlay()).collect())
+}
+
+fn controllers_text(list: Option<&[&Controller]>) -> String {
     match list {
         None => tr!("Looking for controllers…").into(),
-        Some(l) if l.is_empty() => tr!("None found. Connect a controller; it is looked for again when a game starts.").into(),
+        Some([]) => tr!("None found. Connect a controller; it is looked for again when a game starts.").into(),
         Some(l) => l.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", "),
     }
 }
@@ -305,7 +311,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let status_line = |text: String, ok: bool| {
         div().text_size(px(13.)).text_color(if ok { theme::text_primary() } else { theme::danger_text() }).max_w(px(420.)).child(text)
     };
-    let found = d.overlay.controllers.as_ref().is_some_and(|l| !l.is_empty()) || d.overlay.controllers.is_none();
+    let controllers = overlay_controllers(d);
+    let found = controllers.as_ref().is_none_or(|l| !l.is_empty());
 
     let main = card([with_sub_rows(
         toggle_row("overlay-enabled", tr!("Turn on the overlay"), Some(labels::turn_on_desc()), p.enabled)
@@ -394,7 +401,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
 
     let status = card([
         row(tr!("Desktop"), None, status_line(desktop, desktop_ok)).into_any_element(),
-        row(tr!("Controllers"), None, status_line(controllers_text(d.overlay.controllers.as_ref()), found)).into_any_element(),
+        row(tr!("Controllers"), None, status_line(controllers_text(controllers.as_deref()), found)).into_any_element(),
     ]);
 
     let notes = div()
@@ -503,7 +510,8 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     let accelerators = console_accelerators(&p.keyboard_accelerator);
     let accel_index = accelerators.iter().position(|a| *a == p.keyboard_accelerator).unwrap_or(0);
     let (desktop, desktop_ok) = crate::overlay::desktop_status();
-    let found = match &d.overlay.controllers {
+    let controllers = overlay_controllers(d);
+    let found = match &controllers {
         None => String::new(),
         Some(l) => trn!(l.len(), "{n} controller found", "{n} controllers found"),
     };
@@ -534,7 +542,7 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
         Row::choice("side", tr!("Side of the screen"), vec![tr!("Left").into(), tr!("Right").into()], usize::from(p.side == Side::Right)),
         Row::header(tr!("Status")),
         Row::info("desktop", tr!("Desktop"), if desktop_ok { tr!("Supported") } else { tr!("Not supported") }).desc(desktop),
-        Row::info("controllers", tr!("Controllers"), found).desc(controllers_text(d.overlay.controllers.as_ref())),
+        Row::info("controllers", tr!("Controllers"), found).desc(controllers_text(controllers.as_deref())),
     ]);
     if cfg!(windows) {
         rows.extend([

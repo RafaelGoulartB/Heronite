@@ -47,6 +47,14 @@ pub struct Controller {
     pub bluetooth: Option<String>,
 }
 
+impl Controller {
+    /// It drives the overlay: not one listed for its battery only
+    /// ([`ControllerId::Hid`]).
+    pub fn drives_overlay(&self) -> bool {
+        !matches!(self.id, ControllerId::Hid { .. })
+    }
+}
+
 /// How the system names a controller.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ControllerId {
@@ -55,4 +63,8 @@ pub enum ControllerId {
     /// Its XInput slot (below `heronite_platform::gamepad::CONTROLLER_COUNT`),
     /// on Windows.
     XInput(u32),
+    /// On Windows, a controller XInput does not list (PlayStation, Switch,
+    /// 8BitDo in D-input mode…) that a battery driver knows, by its USB ids
+    /// (`heronite_platform::pad_battery`). It does not drive the overlay.
+    Hid { vendor: u16, product: u16 },
 }

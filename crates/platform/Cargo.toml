@@ -20,6 +20,8 @@ pollster = "0.4"
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
     "Wdk_System_Threading",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Devices_HumanInterfaceDevice",
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_NetworkManagement_IpHelper",
@@ -31,6 +33,7 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_Console",
     "Win32_System_Diagnostics_Debug",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_IO",
     "Win32_System_JobObjects",
     "Win32_System_Power",
     "Win32_System_LibraryLoader",
@@ -58,6 +61,11 @@ sdl3-sys = { version = "=0.7.2", default-features = false, features = [
 # COM interfaces (`.lnk` shortcuts through the shell's ShellLink, DXGI's
 # graphics adapters for the GPU preference).
 windows = { version = "0.62", features = [
+    # Xbox controllers' battery (`pad_battery::xbox`).
+    "Devices_Power",
+    "Foundation_Collections",
+    "Gaming_Input",
+    "System_Power",
     "Win32_Devices_FunctionDiscovery",
     "Win32_Foundation",
     "Win32_Graphics_Dxgi",

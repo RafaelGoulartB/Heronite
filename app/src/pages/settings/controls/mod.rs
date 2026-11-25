@@ -417,7 +417,7 @@ fn device_bar(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
         Some([one, rest @ ..]) => {
             let hint = if !rest.is_empty() {
                 Some(trn!(rest.len(), "And {n} more: Overlay lists them.", "And {n} more: Overlay lists them."))
-            } else if cfg!(windows) {
+            } else if cfg!(windows) && matches!(one.id, heronite_overlay::input::ControllerId::XInput(_)) {
                 Some(tr!("XInput controller. Back + Start replaces Guide.").to_string())
             } else {
                 Some(tr!("{family} layout", family = family_name(look::glyphs_for_controller(&one.name))))
