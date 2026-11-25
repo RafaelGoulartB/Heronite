@@ -365,6 +365,8 @@ impl Render for EpicPage {
                         .into_any_element(),
                 );
             }
+            column = column.child(caption(tr!("Account"))).child(card(rows));
+            let mut rows: Vec<AnyElement> = Vec::new();
             let line = format!(
                 "{}  \u{b7}  {}  \u{b7}  {}",
                 trn!(stats.owned, "{n} game in your library", "{n} games in your library"),
@@ -385,7 +387,7 @@ impl Render for EpicPage {
                 !refreshing,
                 cx.listener(|this, _, _, cx| this.svc.update(cx, |s, cx| s.refresh_library(cx))),
             ));
-            rows.push(row(tr!("Library"), Some(&line), lib_actions).into_any_element());
+            rows.push(row(tr!("Your games"), Some(&line), lib_actions).into_any_element());
             rows.push(
                 row(
                     tr!("Import an installed game"),
@@ -415,7 +417,7 @@ impl Render for EpicPage {
                     .into_any_element(),
                 );
             }
-            column = column.child(caption(tr!("Account"))).child(card(rows));
+            column = column.child(caption(tr!("Library"))).child(card(rows));
         } else {
             let login = row(
                 tr!("Log in with Epic Games"),
@@ -491,13 +493,18 @@ impl Render for EpicPage {
                     .child(err.lines().next().unwrap_or("").to_string()),
             );
         }
-        let eos = div()
-            .child(caption("EOS Overlay"))
-            .child(self.eos_panel(cx))
-            .child(div().mt(px(18.)).mx(px(6.)).child(meta_text(tr!("Games are installed, updated and verified with legendary."))));
-        // Wide: the account on the left, the EOS Overlay on the right.
+        let about = card([div()
+            .py(px(12.))
+            .text_size(px(13.))
+            .line_height(px(19.))
+            .text_color(theme::text_muted())
+            .child(tr!("Games are installed, updated and verified with legendary."))
+            .into_any_element()]);
+        let side = div().child(caption("EOS Overlay")).child(self.eos_panel(cx)).child(caption(tr!("About"))).child(about);
+        // Wide: the account and library on the left; the EOS Overlay and
+        // how it works on the right.
         let wide = stores::content_width(window) >= 1000.;
-        let body = columns(wide, [column, eos]);
+        let body = columns(wide, [column, side]);
         div()
             .size_full()
             .relative()

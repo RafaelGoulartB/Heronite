@@ -80,6 +80,8 @@ impl<K: StoreKind> StorePage<K> {
                     .into_any_element(),
             );
         }
+        let account = div().child(caption(tr!("Account"))).child(card(rows));
+        let mut rows: Vec<AnyElement> = Vec::new();
         let updates = state.updates.len();
         let line = format!(
             "{}  \u{b7}  {}  \u{b7}  {}",
@@ -107,7 +109,7 @@ impl<K: StoreKind> StorePage<K> {
                 this.svc.update(cx, |s, cx| s.store_refresh(store, false, false, cx));
             }),
         ));
-        rows.push(row(tr!("Library"), Some(&line), lib_actions).into_any_element());
+        rows.push(row(tr!("Your games"), Some(&line), lib_actions).into_any_element());
         rows.push(
             row(
                 tr!("Import an installed game"),
@@ -151,7 +153,7 @@ impl<K: StoreKind> StorePage<K> {
                 .into_any_element(),
             );
         }
-        div().child(caption(tr!("Account"))).child(card(rows))
+        account.child(caption(tr!("Library"))).child(card(rows))
     }
 
     fn render_login(&mut self, state: &StoreState, cx: &mut Context<Self>) -> Div {
@@ -297,9 +299,10 @@ impl<K: StoreKind> Render for StorePage<K> {
                     .child(err.lines().next().unwrap_or("").to_string()),
             );
         }
-        // Wide: the account on the left, the About card on the right.
+        // Wide: the account and library on the left; achievements and how
+        // it works on the right.
         let wide = stores::content_width(window) >= 1000.;
-        let side = self.render_about().children(self.render_comet(cx));
+        let side = div().children(self.render_comet(cx)).child(self.render_about());
         let body = columns(wide, [column, side]);
         div()
             .size_full()
