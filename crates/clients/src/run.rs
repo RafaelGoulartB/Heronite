@@ -31,7 +31,8 @@ fn open_args(client: Client) -> Vec<String> {
 fn setup_of(paths: &DataPaths, client: Client, home: &str, probe: &dyn Probe) -> Result<(PathBuf, PlanContext, GameSettings), String> {
     let prefix = prefix_of(paths, client, home).ok_or_else(|| not_set_up(client))?;
     let ctx = PlanContext::load(paths);
-    let settings = load_game_settings(paths, client.config_app(), &ctx.global, probe);
+    let mut settings = load_game_settings(paths, client.config_app(), &ctx.global, probe);
+    heronite_launch::shared_folders::add_store_folder(&mut settings, &ctx.global.defaults, client.id(), home, &|f| probe.exists(f));
     Ok((prefix, ctx, settings))
 }
 
@@ -89,6 +90,10 @@ fn prepare_open(
 pub fn open(paths: &DataPaths, client: Client, home: &str) -> Result<std::process::Child, String> {
     if crate::native() {
         return crate::native::open(client, &Place::machine());
+    }
+    // Where it installs games, set before it reads its settings.
+    if prefix_of(paths, client, home).is_some_and(|prefix| !running_in(&SystemProcs, client, &prefix).0) {
+        crate::games_folder::apply(paths, client, home);
     }
     let command = prepare_open(paths, client, home, &SystemProbe, &SystemProcs, Some(&SystemNet))?;
     let mut cmd = spawn::std_command(&command);

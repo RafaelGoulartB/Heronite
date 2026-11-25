@@ -153,12 +153,8 @@ impl StoreInstallDialog {
             std::env::var("HOME").unwrap_or_default()
         };
         let global = game_config::load_global(&data_paths, &home);
-        let default_install = global
-            .get("defaultInstallPath")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-            .map(|s| s.trim_matches('\'').to_string())
-            .unwrap_or_else(|| game_config::default_install_dir(&home));
+        // The store's own folder, else the default one.
+        let default_install = heronite_data::store_folders::install_dir(&global, store.folder_key(), &home);
         let prefix_dir = global
             .get("defaultWinePrefixDir")
             .and_then(Value::as_str)

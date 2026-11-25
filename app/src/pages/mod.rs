@@ -18,6 +18,7 @@ pub mod side_nav;
 pub mod stats;
 pub mod steam;
 pub mod store;
+pub mod store_folder;
 pub mod stores;
 pub mod wine_manager;
 pub mod xbox;

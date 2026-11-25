@@ -82,6 +82,7 @@ pub fn plan(paths: &DataPaths, input: &UninstallInput) -> UninstallPlan {
         text("winePrefix"),
     ]
     .into_iter()
+    .chain(crate::store_folders::all(&global, input.home))
     .filter(|p| !p.is_empty())
     .map(|p| PathBuf::from(game_config::expand_tilde(&p, input.home)))
     .collect();
@@ -559,6 +560,11 @@ mod tests {
         let default_install = e.mkdir("Games/Heronite");
         assert!(blocked(&default_install, &[]).is_some(), "default install path");
         assert!(e.plan(Some(&e.mkdir("Games/Heronite/A")), &[]).files.unwrap().removable());
+
+        // A store's own install folder is kept too.
+        let epic = e.mkdir("Games/Epic");
+        crate::store_folders::set(&e.paths, e.home(), crate::store_folders::EPIC, Some(epic.to_str().unwrap())).unwrap();
+        assert!(blocked(&epic, &[]).is_some(), "a store's install folder");
 
         let pack = e.mkdir("Games/Pack");
         let other = e.mkdir("Games/Pack/Other").join("other.exe");

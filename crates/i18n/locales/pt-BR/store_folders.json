@@ -1,0 +1,16 @@
+{
+  "A store can have a folder of its own: choose it on the store's page, in Stores.": "Cada loja pode ter uma pasta própria: escolha-a na página da loja, em Lojas.",
+  "Choose a folder to keep the games of {client} out of its Wine prefix.": "Escolha uma pasta para manter os jogos do {client} fora do prefixo Wine dele.",
+  "Choose the install folder of {store}": "Escolha a pasta de instalação de {store}",
+  "Default install folder, from Settings → General": "Pasta de instalação padrão, de Configurações → Geral",
+  "Heronite sets this folder in {client} each time it opens it, so new games go here. Games already installed stay where they are.": "O Heronite define esta pasta no {client} sempre que o abre, então os jogos novos vão para cá. Os jogos já instalados continuam onde estão.",
+  "Inside its Wine prefix": "Dentro do prefixo Wine dele",
+  "New {store} games are installed here. The install dialog can still put one somewhere else.": "Os jogos novos da {store} são instalados aqui. Na janela de instalação você ainda pode pôr um jogo em outro lugar.",
+  "Only for {store}": "Só para {store}",
+  "Path in {client}": "Caminho no {client}",
+  "Use default": "Usar padrão",
+  "Use the default folder": "Usar a pasta padrão",
+  "{client} asks where to install each game: choose {path}. Games already installed stay where they are.": "O {client} pergunta onde instalar cada jogo: escolha {path}. Os jogos já instalados continuam onde estão.",
+  "{client} is open: close it and open it again for the change to apply.": "O {client} está aberto: feche-o e abra de novo para a mudança valer.",
+  "{client}'s own folder": "A pasta do próprio {client}"
+}

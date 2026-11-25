@@ -15,6 +15,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::{tr, trc};
 
+use super::store_folder::{Owner, StoreFolder};
 use super::{PageCtx, PageEvent};
 use crate::dialogs::store_import::StoreImportPicker;
 use crate::dialogs::store_install::{StoreInstallDialog, StoreInstallMode};
@@ -69,6 +70,8 @@ pub struct StorePage<K: StoreKind> {
     notice: Option<(SharedString, bool)>,
     dialog: Option<AnyView>,
     dialog_sub: Option<Subscription>,
+    /// Where the store's new games go.
+    folder: Entity<StoreFolder>,
     /// Console mode: focused row and the open sheet / keyboard.
     console_list: crate::console::list::ListNav,
     layer: crate::console::Layer,
@@ -132,6 +135,9 @@ impl<K: StoreKind> StorePage<K> {
         .detach();
         super::stores::watch(cx);
         let code = new_input(window, cx, "", tr!("Paste the address of the page or its code"));
+        let paths = ctx.data_paths.clone();
+        let folder = cx.new(|cx| StoreFolder::new(paths, Owner::Store(K::STORE.folder_key(), K::STORE.name()), cx));
+        cx.observe(&folder, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
             ctx,
             svc,
@@ -145,6 +151,7 @@ impl<K: StoreKind> StorePage<K> {
             notice: None,
             dialog: None,
             dialog_sub: None,
+            folder,
             console_list: Default::default(),
             layer: Default::default(),
             kind: PhantomData,
@@ -160,6 +167,11 @@ impl<K: StoreKind> StorePage<K> {
 
     fn store(&self) -> Store {
         K::STORE
+    }
+
+    /// The page came on screen: the default install folder may have changed.
+    pub fn shown(&mut self, cx: &mut Context<Self>) {
+        self.folder.update(cx, |f, cx| f.reload(cx));
     }
 
     /// The page of this store.

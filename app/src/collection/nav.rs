@@ -563,6 +563,22 @@ impl CollectionView {
             Page::Ea => set_client_shown::<pages::clients::EaKind>(&p.ea, true, cx),
             Page::Ubisoft => set_client_shown::<pages::clients::UbisoftKind>(&p.ubisoft, true, cx),
             Page::Rockstar => set_client_shown::<pages::clients::RockstarKind>(&p.rockstar, true, cx),
+            // The default install folder may have changed in Settings.
+            Page::Epic => {
+                if let Some(v) = p.epic.clone().and_then(|v| v.downcast::<pages::epic::EpicPage>().ok()) {
+                    v.update(cx, |p, cx| p.shown(cx));
+                }
+            }
+            Page::Gog => {
+                if let Some(v) = p.gog.clone().and_then(|v| v.downcast::<pages::store::GogPage>().ok()) {
+                    v.update(cx, |p, cx| p.shown(cx));
+                }
+            }
+            Page::Amazon => {
+                if let Some(v) = p.amazon.clone().and_then(|v| v.downcast::<pages::store::AmazonPage>().ok()) {
+                    v.update(cx, |p, cx| p.shown(cx));
+                }
+            }
             _ => {}
         }
     }

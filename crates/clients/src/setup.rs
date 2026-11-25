@@ -141,7 +141,9 @@ fn install_under_wine_with(
     check_cancel(cancel)?;
 
     let ctx = PlanContext::load(paths);
-    let settings = load_game_settings(paths, client.config_app(), &ctx.global, probe);
+    let mut settings = load_game_settings(paths, client.config_app(), &ctx.global, probe);
+    // The installer may start the client, which then sees its games folder.
+    heronite_launch::shared_folders::add_store_folder(&mut settings, &ctx.global.defaults, client.id(), home, &|f| probe.exists(f));
     let installed = find_exe(client, &Place::Prefix(prefix.clone())).is_some();
     spawn::ensure_umu(&ctx, probe, net, &settings, cancel, installed, || {
         let _ = writeln!(log, "Downloading the umu runtime...");
@@ -183,6 +185,7 @@ fn install_under_wine_with(
     if find_exe(client, &place).is_none() {
         bail!(tr!("{client} was not installed. The installer's log is in {log}", client = client.name(), log = log_file.display()));
     }
+    crate::games_folder::apply(paths, client, home);
     Ok(())
 }
 

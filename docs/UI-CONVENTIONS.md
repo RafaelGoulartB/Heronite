@@ -442,7 +442,17 @@ with its icon, a line on where it stands (its games, "Not logged in", "Not set u
 signed in / set up, amber something to do, accent working, ring not used), then a dashed "Other launchers" link at the
 bottom that opens Settings → Other launchers; on the right the store's name, its lead and its page (LB / RB switch
 stores in console mode, whose pages keep their tabs). The list reads the services and repaints only when what it shows
-changes (`stores::watch`); the row (and the console sidebar's) opens the store shown last. A client's page
+changes (`stores::watch`); the row (and the console sidebar's) opens the store shown last. Epic Games, GOG and
+Amazon Games split the account (name, Log out) from the library (counts, Refresh, Import) on the left; the right
+column holds the "Install folder" card, then the EOS Overlay (Epic) or the achievements switch (GOG), then About.
+The "Install folder" card (`pages::store_folder`, one entity per page, also its console rows) shows where the store's
+new games go: the default install folder ("Default install folder, from Settings → General", Change…) until one is
+chosen, then that folder ("Only for <store>", Open, Change…, Use default); the install dialogs start in it. Under
+Wine a client's page has it under its installed games ("Inside its Wine prefix", Choose…; chosen, also "Path in
+<client>" with the `Z:\` path and Copy), and the note says whether Heronite sets it in the client (EA app, Ubisoft
+Connect) or the client asks for each game (Battle.net, Rockstar Games); changed while the client is open, it says to
+close and reopen it (`HERONITE_DEBUG_STORE_FOLDER=reopen` with `HERONITE_DEBUG_CLIENT=<id>:running`). Steam and Xbox
+have none. A client's page
 (`pages/clients/`, one `ClientPage<K>` for the four) is a card with the client's state and its main action (Set up, the
 setup's step with Cancel, Open, Close), its prefix and Wine with "Wine settings" (`dialogs/client_settings`: the game
 settings panel bound to the client's own settings), the sign-in the client's files show, on Linux its Shortcuts (a

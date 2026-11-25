@@ -197,6 +197,11 @@ impl GameRuntime {
             return Err(epic_signed_out_message(&game.title));
         }
         let ctx = PlanContext::load(&self.paths);
+        // A store client that starts one of its games installs the next ones
+        // in its games folder.
+        if let Some(client) = client_of(game).filter(|_| !heronite_clients::native()) {
+            heronite_clients::games_folder::apply(&self.paths, client, &heronite_launch::probe::Probe::home(&SystemProbe));
+        }
         if game.launch_kind.as_deref() == Some("emulator") {
             let wanted = rom.clone().or_else(|| game.meta.as_ref().and_then(|m| m.selected_rom_path.clone()));
             if let Some(state) = heronite_emulation::PendingLaunchStates::global().take(&game.app_name, wanted.as_deref()) {
