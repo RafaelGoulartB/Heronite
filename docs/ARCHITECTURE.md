@@ -118,7 +118,10 @@ text size) and applies it.
   `json_store` (electron-store read-modify-write: tab indent, atomic write,
   unknown keys kept), `temps` (atomic writes and the startup `.tmp` sweep),
   `proc` (`guard` and `Run`: helper processes die with the app), and one
-  module per data file: `library`, `collection`, `sideload`, `game_config`,
+  module per data file: `library`, `collection`, `sideload`, `game_config`
+  (and `store_folders`, a store's own install folder in its global defaults:
+  none at first, Epic Games, GOG and Amazon Games then use the default one,
+  a client its own inside its prefix; the folders it had before are kept),
   `settings` (and `source_prefs`, the per-source part of its metadata),
   `status`, `status_history` (when each game's status changed, in
   `local_library/status-history.json`, recorded by the status setters), `sessions`, `playtime`, `ui_state`, `appearance`,
@@ -386,7 +389,15 @@ text size) and applies it.
   `product.db` protobuf and `Battle.net.config`; `ea`: `installerdata.xml`
   of each game; `ubisoft`: its `Installs` keys and
   `ConnectSecureStorage.dat`; `rockstar`: its uninstall and `Rockstar
-  Games` keys and the Social Club profiles). `collection::sync` writes the
+  Games` keys and the Social Club profiles). `games_folder` is the folder
+  out of the prefix a client installs its games to, when one is chosen on
+  its page: shown to Proton with the shared folders, with the ones it had
+  before that are still there (umu's container mounts them), seen as
+  `Z:\...` by the client, and written into the EA app's
+  `machine.ini` and Ubisoft Connect's `settings.yaml` when it is chosen,
+  after the setup, before the client opens and before one of its games
+  starts (Battle.net and the Rockstar Games Launcher ask for each game).
+  `collection::sync` writes the
   games as `sideload` entries of `launchKind` `client` (`source` the
   client's id, `launcherArgs` what the client is asked: `--exec="launch
   WoW"`, `origin2://game/launch?...`, `uplay://launch/<id>/0`,
