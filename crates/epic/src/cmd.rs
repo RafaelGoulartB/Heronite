@@ -36,10 +36,12 @@ impl Output {
         self.code == Some(0) && !self.aborted
     }
 
-    /// `ERROR:` / `CRITICAL:` lines of legendary's log, for messages.
+    /// What the tool said went wrong, for messages: the `ERROR:` and
+    /// `CRITICAL:` lines of its log, and the exception a Python traceback
+    /// ends with ([`heronite_data::proc::error_lines`]).
     pub fn error_lines(&self) -> String {
-        let all = format!("{}\n{}", self.stderr, self.stdout);
-        let lines: Vec<&str> = all.lines().filter(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.contains("Traceback")).collect();
+        let mut lines = heronite_data::proc::error_lines(&self.stderr);
+        lines.extend(heronite_data::proc::error_lines(&self.stdout));
         lines.join("\n")
     }
 }

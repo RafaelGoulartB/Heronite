@@ -125,11 +125,7 @@ pub fn run_wait(spawner: &dyn Spawner, cmd: &crate::plan::Command, timeout: Dura
 
 /// The first line of a legendary output that reports a failure.
 pub fn sync_problem(output: &str) -> Option<String> {
-    output
-        .lines()
-        .map(str::trim)
-        .find(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.starts_with("Traceback"))
-        .map(|l| l.to_string())
+    heronite_data::proc::error_lines(output).first().map(|l| l.trim().to_string())
 }
 
 /// Windows wine commands (`reg add`, `wineboot -u`) in the game's prefix.
