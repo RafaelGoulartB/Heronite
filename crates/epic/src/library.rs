@@ -222,20 +222,45 @@ pub struct RefreshResult {
     pub launcher_import: Option<crate::ops::OpResult>,
 }
 
+/// Seconds legendary waits for an answer of Epic's servers while it lists
+/// the library (`--api-timeout`, since 0.20.23; its own default is 10). The
+/// list of a big account, or any answer on a slow connection, takes longer
+/// than that, and legendary ends on the first answer that does not come in
+/// time. Its look-up of one game in the catalog keeps its own 10 seconds.
+const API_TIMEOUT: &str = "60";
+
+/// `legendary list --third-party`: `None` when it worked, else why not.
+fn list_games(legendary: &Legendary) -> Option<String> {
+    match legendary.run(&["--api-timeout", API_TIMEOUT, "list", "--third-party"], &[]) {
+        Ok(out) if out.success() => None,
+        Ok(out) => {
+            let why = out.error_lines();
+            Some(if why.is_empty() { "legendary list failed".to_string() } else { why })
+        }
+        Err(err) => Some(format!("{err:#}")),
+    }
+}
+
+/// The connection to Epic broke before the answer was whole (the errors of
+/// `requests` legendary ends on). Not a server that cannot be reached, or
+/// that did not answer in [`API_TIMEOUT`]: asking again would fail again,
+/// after as long a wait.
+fn connection_broke(why: &str) -> bool {
+    ["ChunkedEncodingError", "ContentDecodingError", "Connection aborted", "Connection broken"].iter().any(|e| why.contains(e))
+}
+
 /// `refresh`: `legendary list --third-party`, then rebuild the library file.
 pub fn refresh(data_paths: &DataPaths, legendary: &Legendary) -> Result<RefreshResult> {
     if !user::is_logged_in(data_paths) {
         return Ok(RefreshResult::default());
     }
     log::info!("Refreshing Epic Games...");
-    let mut list_error = None;
-    match legendary.run(&["list", "--third-party"], &[]) {
-        Ok(out) if out.success() => {}
-        Ok(out) => {
-            let why = out.error_lines();
-            list_error = Some(if why.is_empty() { "legendary list failed".to_string() } else { why });
-        }
-        Err(err) => list_error = Some(format!("{err:#}")),
+    let mut list_error = list_games(legendary);
+    // legendary keeps what it fetched before the connection broke, so a
+    // second run goes on from there.
+    if let Some(e) = list_error.as_deref().filter(|e| connection_broke(e)) {
+        log::warn!("legendary list lost the connection to Epic, trying once more: {e}");
+        list_error = list_games(legendary);
     }
     if let Some(e) = &list_error {
         log::error!("Failed to refresh library: {e}");
@@ -431,11 +456,92 @@ mod tests {
         let r = refresh(&data_paths, &lg).unwrap();
         assert_eq!(r.games, 1);
         assert!(r.list_error.unwrap().contains("offline"));
-        assert_eq!(tool.calls(), ["list --third-party"]);
+        assert_eq!(tool.calls(), ["--api-timeout 60 list --third-party"]);
         // Logged out: nothing runs.
         std::fs::remove_file(data_paths.legendary_config_dir().join("user.json")).unwrap();
         assert_eq!(refresh(&data_paths, &lg).unwrap().games, 0);
         assert_eq!(tool.calls().len(), 1);
+    }
+
+    /// A crash of legendary: Python tracebacks, and no `ERROR` line.
+    fn crash(exception: &str) -> Reply {
+        Reply::new()
+            .err("Traceback (most recent call last):")
+            .err("  File \"urllib3/connectionpool.py\", line 534, in _make_request")
+            .err("TimeoutError: The read operation timed out")
+            .err("")
+            .err("During handling of the above exception, another exception occurred:")
+            .err("")
+            .err("Traceback (most recent call last):")
+            .err("  File \"legendary/api/egs.py\", line 173, in get_game_assets")
+            .err(exception)
+            .exit(1)
+    }
+
+    /// #449: Epic did not answer in time, and all the app said was
+    /// "Traceback (most recent call last):".
+    #[test]
+    fn refresh_says_which_exception_ended_legendary() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        setup(&data_paths);
+        let timeout =
+            "requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='x.epicgames.com', port=443): Read timed out. (read timeout=60)";
+        let tool = fake_tool(dir.path()).otherwise(crash(timeout));
+        let r = refresh(&data_paths, &legendary_of(&tool, dir.path())).unwrap();
+        assert_eq!(r.list_error.as_deref(), Some(timeout));
+        // Not asked again: that would be another minute for the same answer.
+        assert_eq!(tool.calls().len(), 1);
+        // What it had on disk is still the library.
+        assert_eq!(r.games, 1);
+    }
+
+    #[test]
+    fn refresh_asks_once_more_when_the_connection_broke() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        setup(&data_paths);
+        let aborted = "requests.exceptions.ConnectionError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))";
+        let tool = fake_tool(dir.path()).otherwise(crash(aborted));
+        let r = refresh(&data_paths, &legendary_of(&tool, dir.path())).unwrap();
+        assert_eq!(r.list_error.as_deref(), Some(aborted));
+        assert_eq!(tool.calls(), ["--api-timeout 60 list --third-party"; 2]);
+    }
+
+    /// The second run gets the list: nothing is reported.
+    #[cfg(unix)]
+    #[test]
+    fn refresh_is_fine_when_the_second_list_works() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        setup(&data_paths);
+        let once = dir.path().join("failed-once");
+        let body = format!(
+            "[ -e '{once}' ] && exit 0\ntouch '{once}'\necho 'Traceback (most recent call last):' >&2\necho \"requests.exceptions.ChunkedEncodingError: ('Connection broken: IncompleteRead(5 bytes read)')\" >&2\nexit 1",
+            once = once.display()
+        );
+        let lg = crate::cmd::testing::fake(dir.path(), &body);
+        let r = refresh(&data_paths, &lg).unwrap();
+        assert_eq!(r.list_error, None);
+        assert_eq!(crate::cmd::testing::calls(dir.path()).len(), 2);
+    }
+
+    #[test]
+    fn only_a_connection_that_broke_is_worth_a_second_list() {
+        assert!(connection_broke(
+            "requests.exceptions.ConnectionError: ('Connection aborted.', ConnectionResetError(104, 'Connection reset by peer'))"
+        ));
+        assert!(connection_broke(
+            "requests.exceptions.ContentDecodingError: ('Received response with content-encoding: gzip, but failed to decode it.')"
+        ));
+        // Epic cannot be reached, did not answer in time, or refused the login.
+        assert!(!connection_broke(
+            "requests.exceptions.ConnectionError: HTTPSConnectionPool(host='x', port=443): Max retries exceeded (Caused by NameResolutionError(\"Failed to resolve 'x'\"))"
+        ));
+        assert!(!connection_broke(
+            "requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='x', port=443): Read timed out. (read timeout=60)"
+        ));
+        assert!(!connection_broke("[cli] ERROR: Login failed, cannot continue!"));
     }
 
     /// Compares the rebuilt library with the file Heronite wrote. Read-only:
