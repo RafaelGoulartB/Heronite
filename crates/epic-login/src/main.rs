@@ -78,7 +78,7 @@ const EA_DONE: &str = "ea-signed-in";
 /// follows one).
 const EA_MAX_RETURNS: u32 = 5;
 const GOG_LOGIN_URL: &str = "https://auth.gog.com/auth?client_id=46899977096215655&redirect_uri=https%3A%2F%2Fembed.gog.com%2Fon_login_success%3Forigin%3Dclient&response_type=code&layout=galaxy";
-/// A desktop browser: the GOG and Amazon pages refuse unknown web views.
+/// A desktop browser: the Amazon pages refuse unknown web views.
 /// (WebView2's own user agent is one already: Microsoft Edge's.)
 #[cfg(target_os = "linux")]
 const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
@@ -114,11 +114,16 @@ impl Store {
         }
     }
 
+    /// The user agent of the store's pages; `None` keeps WebKitGTK's own.
     #[cfg(target_os = "linux")]
-    fn user_agent(self) -> &'static str {
+    fn user_agent(self) -> Option<&'static str> {
         match self {
-            Self::Epic => EPIC_USER_AGENT,
-            Self::Gog | Self::Amazon | Self::Xbox | Self::Ea => BROWSER_USER_AGENT,
+            Self::Epic => Some(EPIC_USER_AGENT),
+            // GOG's login is behind Cloudflare's check (Turnstile), which
+            // never lets a WebKit through that says it is Chrome: it asks
+            // "Verify you are human" and the box fails every time.
+            Self::Gog => None,
+            Self::Amazon | Self::Xbox | Self::Ea => Some(BROWSER_USER_AGENT),
         }
     }
 
@@ -310,9 +315,11 @@ fn main() {
     // The popups and their views live as long as the login window.
     let popups: std::rc::Rc<std::cell::RefCell<Vec<(gtk::Window, wry::WebView)>>> = Default::default();
     let (popup_parent, popup_list) = (window.clone(), popups.clone());
-    let mut builder = WebViewBuilder::new()
-        .with_incognito(true)
-        .with_user_agent(store.user_agent())
+    let mut builder = WebViewBuilder::new().with_incognito(true);
+    if let Some(agent) = store.user_agent() {
+        builder = builder.with_user_agent(agent);
+    }
+    builder = builder
         // The page that carries the code is not loaded: take the code and stop there.
         .with_navigation_handler(move |url| match store.code_from_url(&url) {
             Some(code) => {
@@ -461,9 +468,11 @@ fn open_popup(
     popup.set_title(store.title());
     popup.set_transient_for(Some(parent));
     popup.set_default_size(480, 640);
-    let built = WebViewBuilder::new()
-        .with_related_view(opener)
-        .with_user_agent(store.user_agent())
+    let mut builder = WebViewBuilder::new().with_related_view(opener);
+    if let Some(agent) = store.user_agent() {
+        builder = builder.with_user_agent(agent);
+    }
+    let built = builder
         .with_navigation_handler(move |url| match store.code_from_url(&url) {
             Some(code) => {
                 let _ = tx.send(code);
@@ -503,6 +512,16 @@ mod tests {
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// GOG's login never passes Cloudflare's check for a WebKit that says
+    /// it is Chrome.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn gog_keeps_the_web_views_own_user_agent() {
+        assert_eq!(Store::Gog.user_agent(), None);
+        assert_eq!(Store::Epic.user_agent(), Some(EPIC_USER_AGENT));
+        assert_eq!(Store::Amazon.user_agent(), Some(BROWSER_USER_AGENT));
     }
 
     #[test]
