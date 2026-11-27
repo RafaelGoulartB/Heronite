@@ -155,7 +155,7 @@ impl CollectionView {
                     // The copies take the top-right, or go beside "Playing" when a category style has it.
                     let corner_taken =
                         categories.as_ref().is_some_and(|(style, _)| crate::collection::category_badges::takes_top_right(*style));
-                    let copies = (theme.tiles.badges != Badges::Off).then(|| self.console_copy_count(key)).filter(|n| *n > 1);
+                    let copies = Some(self.console_copy_count(key)).filter(|n| *n > 1);
                     let categories = categories.and_then(|(style, list)| {
                         crate::collection::category_badges::overlay(
                             style,

@@ -589,6 +589,7 @@ impl CollectionView {
             let grey = grey && !g.installed;
             let title = g.title.clone();
             let categories = self.console_categories(&key);
+            let copies = self.console_copies_corner(&key);
             let d = i as f32 - index as f32;
             // A click: ↓ from the pills, ← → to the cover; A on the focused one.
             let mut pads = if pills_focus { vec![Pad::Down] } else { Vec::new() };
@@ -622,6 +623,7 @@ impl CollectionView {
                     .children(categories.as_ref().and_then(|(style, list)| {
                         crate::collection::category_badges::overlay(*style, list, tile::category_area(cw, k * p.scale, dpr), false)
                     }))
+                    .children(copies.map(tile::copies_corner))
                     .when(p.shade > 0.005, |f| f.child(div().absolute().inset_0().bg(kit::dim(p.shade))));
                 // A thin ring a little way out from the cover.
                 let gap = 6. * k;

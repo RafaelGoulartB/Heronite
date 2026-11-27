@@ -288,7 +288,8 @@ impl CollectionView {
                     .into_any_element()
             }
         };
-        let pill = kit::row_base(focused).h(u(ROW_H)).gap(u(14.)).child(what).child(
+        let copies = Some(self.console_copy_count(key)).filter(|n| *n > 1).map(super::super::tile::copies_badge);
+        let pill = kit::row_base(focused).h(u(ROW_H)).gap(u(14.)).child(what).children(copies).child(
             div()
                 .flex_none()
                 .text_size(u(12.))

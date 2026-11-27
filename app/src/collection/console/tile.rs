@@ -196,7 +196,8 @@ impl CollectionView {
             badge: if theme.tiles.badges == Badges::Off { None } else { running },
             favourite: all_badges && game.as_ref().is_some_and(|g| g.favourite),
             new: all_badges && game.as_ref().and_then(|g| self.game_extras.added.get(&g.key)).is_some_and(|d| is_new(d)),
-            copies: if theme.tiles.badges == Badges::Off { 0 } else { self.console_copy_count(key) },
+            // What the game is, not a decoration: shown even with badges off.
+            copies: self.console_copy_count(key),
             title: title.clone(),
             top_r: !has_header,
             bottom_r: !has_bar,
@@ -408,6 +409,27 @@ impl TileArt {
             .when(self.new && !corner_taken, |d| d.child(new_badge(if top_r { inner } else { px(0.) })))
             .when(self.favourite && !corner_taken, |d| d.child(favourite_badge(self.new)))
             .children(copies.filter(|_| moved_copies.is_none()).map(|n| copies_badge(n).absolute().top(u(8.)).right(u(8.))))
+    }
+}
+
+impl CollectionView {
+    /// Where the copies badge of `key` goes on a cover a layout draws
+    /// itself ([`copies_corner`]): how many copies, and whether a category
+    /// style takes the top-right. `None` for a game without copies.
+    pub(super) fn console_copies_corner(&self, key: &str) -> Option<(usize, bool)> {
+        let n = self.console_copy_count(key);
+        (n > 1).then(|| (n, self.console_categories(key).is_some_and(|(style, _)| cats::takes_top_right(style))))
+    }
+}
+
+/// [`copies_badge`] in a cover's top-right corner, or its top-left when
+/// `corner_taken` by a category style.
+pub(super) fn copies_corner((n, corner_taken): (usize, bool)) -> Div {
+    let badge = copies_badge(n).absolute().top(u(8.));
+    if corner_taken {
+        badge.left(u(8.))
+    } else {
+        badge.right(u(8.))
     }
 }
 

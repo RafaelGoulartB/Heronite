@@ -409,6 +409,7 @@ impl CollectionView {
             .overflow_hidden()
             .bg(kit::ink(0.07))
             .children(src.map(|s| img(s).absolute().inset_0().size_full().object_fit(ObjectFit::Cover)))
+            .children(self.console_copies_corner(key).map(super::super::tile::copies_corner))
     }
 
     fn dash_game(&mut self, key: &SharedString, w: f32, h: f32, on: bool, window: &Window) -> Div {
