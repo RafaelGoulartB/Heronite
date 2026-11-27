@@ -83,6 +83,19 @@ pub(super) fn daily_rank(key: &str, day: u64) -> u64 {
     fxhash(key) ^ day.wrapping_mul(0x9e37_79b9_7f4a_7c15)
 }
 
+/// The library as the console's lists see it: with "Group copies of a
+/// game", dated by each game's latest play ([`CopyGroups::with_latest_play`]),
+/// so its default copy can stand for it in a row of recent games.
+///
+/// [`CopyGroups::with_latest_play`]: heronite_data::copies::CopyGroups::with_latest_play
+fn console_view(lib: &Library, group_copies: bool) -> Vec<Arc<CollectionGame>> {
+    if group_copies {
+        lib.copies.with_latest_play(&lib.games)
+    } else {
+        lib.games.clone()
+    }
+}
+
 /// Everything the games and shelves of a source read; they are rebuilt when
 /// any of it differs from what the cached ones were built from.
 struct Inputs {
@@ -94,12 +107,16 @@ struct Inputs {
     smart: SmartGroups,
     epoch: u64,
     day: i64,
+    /// "Group copies of a game" (one cover per game, as on the desktop).
+    group_copies: bool,
 }
 
 /// The games and shelves of each source seen lately, for [`Inputs`].
 #[derive(Default)]
 pub(super) struct SourceCache {
     built_from: Option<Inputs>,
+    /// The library as the console's lists see it ([`console_view`]).
+    view: Option<Arc<Vec<Arc<CollectionGame>>>>,
     games: HashMap<String, Arc<Vec<Arc<CollectionGame>>>>,
     shelves: HashMap<String, Arc<Vec<Shelf>>>,
 }
@@ -118,8 +135,10 @@ impl SourceCache {
                 && b.day == day
                 && b.categories == view.categories
                 && b.smart == view.smart_groups
+                && b.group_copies == view.ui.group_copies
         });
         if !same {
+            self.view = None;
             self.games.clear();
             self.shelves.clear();
             self.built_from = Some(Inputs {
@@ -130,6 +149,7 @@ impl SourceCache {
                 smart: view.smart_groups.clone(),
                 epoch,
                 day,
+                group_copies: view.ui.group_copies,
             });
         }
     }
@@ -172,22 +192,85 @@ impl CollectionView {
         }
     }
 
-    /// The games of `source`, in library order.
+    /// The games of `source`, in library order: a game with copies once
+    /// while they are grouped (see [`console_view`]).
     pub(super) fn console_games(&self, source: &str) -> Vec<Arc<CollectionGame>> {
         self.cached_games(source).to_vec()
     }
 
     fn cached_games(&self, source: &str) -> Arc<Vec<Arc<CollectionGame>>> {
         let Some(lib) = self.lib.as_ref() else { return Arc::default() };
-        let mut cache = self.console.sources.borrow_mut();
-        cache.check(self, lib);
-        if let Some(games) = cache.games.get(source) {
-            return games.clone();
+        {
+            let mut cache = self.console.sources.borrow_mut();
+            cache.check(self, lib);
+            if let Some(games) = cache.games.get(source) {
+                return games.clone();
+            }
         }
-        let games: Arc<Vec<Arc<CollectionGame>>> =
-            Arc::new(lib.games.iter().filter(|g| self.console_in_source(lib, g, source)).cloned().collect());
-        cache.games.insert(source.to_string(), games.clone());
+        let games = Arc::new(self.collapse_copies(lib, self.source_copies(lib, source)));
+        self.console.sources.borrow_mut().games.insert(source.to_string(), games.clone());
         games
+    }
+
+    /// Every copy of the games of `source` (see [`Self::source_copies`]), for
+    /// a layout that filters them further and then shows each game once
+    /// ([`Self::collapse_copies`] / [`Self::collapse_keys`]).
+    pub(in crate::collection::console) fn console_copies(&self, source: &str) -> Vec<Arc<CollectionGame>> {
+        self.lib.as_ref().map(|lib| self.source_copies(lib, source)).unwrap_or_default()
+    }
+
+    /// Every copy of the games of `source`, before a group shows once: a
+    /// shelf picks its games among them, so "Store: GOG" still finds a GOG copy.
+    fn source_copies(&self, lib: &Arc<Library>, source: &str) -> Vec<Arc<CollectionGame>> {
+        let view = {
+            let mut cache = self.console.sources.borrow_mut();
+            cache.check(self, lib);
+            cache.view.get_or_insert_with(|| Arc::new(console_view(lib, self.ui.group_copies))).clone()
+        };
+        view.iter().filter(|g| self.console_in_source(lib, g, source)).cloned().collect()
+    }
+
+    /// When `g`'s game was last played: on any of its copies while they are
+    /// grouped, as its rows sort it ([`console_view`]).
+    pub(in crate::collection::console) fn console_last_played(&self, g: &CollectionGame) -> Option<String> {
+        match self.lib.as_ref().filter(|_| self.ui.group_copies) {
+            Some(lib) if lib.copies.get(&g.key).is_some() => {
+                lib.copies_of(&g.key).into_iter().filter_map(|c| c.last_played.as_deref()).max().map(str::to_owned)
+            }
+            _ => g.last_played.clone(),
+        }
+    }
+
+    /// How many copies the game `key` has while they are grouped (1 alone).
+    pub(in crate::collection::console) fn console_copy_count(&self, key: &str) -> usize {
+        match self.lib.as_ref().filter(|_| self.ui.group_copies) {
+            Some(lib) => lib.copies.get(key).map_or(1, |g| g.members.len()),
+            None => 1,
+        }
+    }
+
+    /// Each game with copies once, by its first copy in `games` in the
+    /// group's order (the default first), as the Collection shows them.
+    pub(in crate::collection::console) fn collapse_copies<G: std::borrow::Borrow<CollectionGame>>(
+        &self,
+        lib: &Library,
+        games: Vec<G>,
+    ) -> Vec<G> {
+        if self.ui.group_copies {
+            lib.copies.collapse(games)
+        } else {
+            games
+        }
+    }
+
+    /// [`Self::collapse_copies`] for a list of keys, in their order.
+    pub(in crate::collection::console) fn collapse_keys(&self, lib: &Library, keys: Vec<SharedString>) -> Vec<SharedString> {
+        if !self.ui.group_copies {
+            return keys;
+        }
+        let games: Vec<&CollectionGame> = keys.iter().filter_map(|k| lib.get(k).map(|g| g.as_ref())).collect();
+        let kept: std::collections::HashSet<String> = lib.copies.collapse(games).into_iter().map(|g| g.key.clone()).collect();
+        keys.into_iter().filter(|k| kept.contains(k.as_ref())).collect()
     }
 
     /// The theme's shelves over `source`, empty ones left out.
@@ -210,9 +293,9 @@ impl CollectionView {
         shelves
     }
 
-    fn build_shelves(&self, lib: &Library, source: &str) -> Vec<Shelf> {
+    fn build_shelves(&self, lib: &Arc<Library>, source: &str) -> Vec<Shelf> {
         let theme = crate::console::look::theme();
-        let games = self.cached_games(source);
+        let games = self.source_copies(lib, source);
         let games: Vec<&CollectionGame> = games.iter().map(|g| g.as_ref()).collect();
         let limit = if theme.shelf_limit == 0 { usize::MAX } else { theme.shelf_limit as usize };
         // `statuses` stands for one shelf per status of the library, in its order.
@@ -246,7 +329,8 @@ impl CollectionView {
 
     fn shelf_games<'a>(&self, lib: &Library, games: &[&'a CollectionGame], kind: &str) -> Vec<&'a CollectionGame> {
         let (k, value) = kind.split_once(':').unwrap_or((kind, ""));
-        let pick = |f: &dyn Fn(&CollectionGame) -> bool| games.iter().copied().filter(|g| f(g)).collect::<Vec<_>>();
+        // A game with copies once, whichever of its copies the shelf picks.
+        let pick = |f: &dyn Fn(&CollectionGame) -> bool| self.collapse_copies(lib, games.iter().copied().filter(|g| f(g)).collect());
         match k {
             "recent" => {
                 let mut v = by_last_played(pick(&|g| g.last_played.is_some()));
@@ -257,27 +341,27 @@ impl CollectionView {
             "installed" => by_last_played(pick(&|g| g.installed)),
             "added" => {
                 let org = self.organize();
-                let mut v: Vec<(&CollectionGame, &str)> = games.iter().filter_map(|g| Some((*g, org.added(g)?))).collect();
+                let mut v: Vec<(&CollectionGame, &str)> =
+                    pick(&|g| org.added(g).is_some()).into_iter().filter_map(|g| Some((g, org.added(g)?))).collect();
                 v.sort_by(|a, b| b.1.cmp(a.1));
                 v.into_iter().take(20).map(|(g, _)| g).collect()
             }
             "backlog-short" => {
-                let mut v: Vec<(&CollectionGame, f64)> = games
-                    .iter()
-                    .filter(|g| status_is(lib, g, "plan-to-play") || (g.playtime_minutes == 0 && g.last_played.is_none()))
-                    .filter_map(|g| Some((*g, self.wiki.hltb(&g.title, &g.game.title)?.main_story)))
-                    .filter(|(_, h)| *h > 0. && *h <= 15.)
-                    .collect();
+                let mut v: Vec<(&CollectionGame, f64)> =
+                    pick(&|g| status_is(lib, g, "plan-to-play") || (g.playtime_minutes == 0 && g.last_played.is_none()))
+                        .into_iter()
+                        .filter_map(|g| Some((g, self.wiki.hltb(&g.title, &g.game.title)?.main_story)))
+                        .filter(|(_, h)| *h > 0. && *h <= 15.)
+                        .collect();
                 v.sort_by(|a, b| a.1.total_cmp(&b.1));
                 v.into_iter().map(|(g, _)| g).collect()
             }
             "random" => {
                 // A different pick each day, the same all day long.
                 let day = today() as u64;
-                let mut v: Vec<(u64, &CollectionGame)> = games
-                    .iter()
-                    .filter(|g| status_is(lib, g, "plan-to-play") || g.playtime_minutes == 0)
-                    .map(|g| (daily_rank(&g.key, day), *g))
+                let mut v: Vec<(u64, &CollectionGame)> = pick(&|g| status_is(lib, g, "plan-to-play") || g.playtime_minutes == 0)
+                    .into_iter()
+                    .map(|g| (daily_rank(&g.key, day), g))
                     .collect();
                 v.sort_by_key(|(h, _)| *h);
                 v.into_iter().take(6).map(|(_, g)| g).collect()

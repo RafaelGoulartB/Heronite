@@ -41,7 +41,7 @@ const RADIUS: f32 = 26.;
 /// "Change pictures…"), the player's screenshots when there are some
 /// (`shots`), then "Full page".
 fn sheet_rows(all: Vec<Row>, shots: usize) -> Vec<Row> {
-    let mut rows: Vec<Row> = ["primary", "status", "favourite", "settings", "x:pictures", "achievements"]
+    let mut rows: Vec<Row> = ["primary", "copy-default", "status", "favourite", "settings", "x:pictures", "achievements"]
         .into_iter()
         .filter_map(|id| all.iter().find(|r| r.id.as_ref() == id).cloned())
         .collect();

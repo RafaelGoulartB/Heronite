@@ -196,6 +196,8 @@ impl CollectionView {
             badge: if theme.tiles.badges == Badges::Off { None } else { running },
             favourite: all_badges && game.as_ref().is_some_and(|g| g.favourite),
             new: all_badges && game.as_ref().and_then(|g| self.game_extras.added.get(&g.key)).is_some_and(|d| is_new(d)),
+            // What the game is, not a decoration: shown even with badges off.
+            copies: self.console_copy_count(key),
             title: title.clone(),
             top_r: !has_header,
             bottom_r: !has_bar,
@@ -268,6 +270,9 @@ struct TileArt {
     badge: Option<&'static str>,
     favourite: bool,
     new: bool,
+    /// How many copies the game has from several stores (the desktop's
+    /// "⧉ 2"); shown from 2.
+    copies: usize,
     title: String,
     /// Round the art's top / bottom corners (no strip / bar on that side).
     top_r: bool,
@@ -311,7 +316,10 @@ impl TileArt {
         let circles = if style == Some(CategoryStyle::Circles) { cats::circles(&self.categories, area(false)) } else { Vec::new() };
         let moved_new = corner_taken && self.new;
         let moved_heart = corner_taken && self.favourite;
-        let stack = (self.badge.is_some() || moved_new || moved_heart || !circles.is_empty()).then(|| {
+        // The copies take the top-right as on the desktop, else join the stack.
+        let copies = (self.copies > 1).then_some(self.copies);
+        let moved_copies = copies.filter(|_| corner_taken || self.new || self.favourite);
+        let stack = (self.badge.is_some() || moved_new || moved_heart || moved_copies.is_some() || !circles.is_empty()).then(|| {
             div()
                 .absolute()
                 .top(u(8.))
@@ -321,6 +329,7 @@ impl TileArt {
                 .items_start()
                 .gap(u(6.))
                 .children(self.badge.map(|b| kit::badge(b, theme::console_btn_a())))
+                .children(moved_copies.map(copies_badge))
                 .when(moved_new || moved_heart, |d| {
                     d.child(
                         div()
@@ -399,7 +408,59 @@ impl TileArt {
             .children(stack)
             .when(self.new && !corner_taken, |d| d.child(new_badge(if top_r { inner } else { px(0.) })))
             .when(self.favourite && !corner_taken, |d| d.child(favourite_badge(self.new)))
+            .children(copies.filter(|_| moved_copies.is_none()).map(|n| copies_badge(n).absolute().top(u(8.)).right(u(8.))))
     }
+}
+
+impl CollectionView {
+    /// Where the copies badge of `key` goes on a cover a layout draws
+    /// itself ([`copies_corner`]): how many copies, and whether a category
+    /// style takes the top-right. `None` for a game without copies.
+    pub(super) fn console_copies_corner(&self, key: &str) -> Option<(usize, bool)> {
+        let n = self.console_copy_count(key);
+        (n > 1).then(|| (n, self.console_categories(key).is_some_and(|(style, _)| cats::takes_top_right(style))))
+    }
+}
+
+/// [`copies_badge`] in a cover's top-right corner, or its top-left when
+/// `corner_taken` by a category style.
+pub(super) fn copies_corner(at: (usize, bool)) -> Div {
+    copies_corner_at(at, kit::scale())
+}
+
+/// [`copies_corner`] on a cover drawn `unit` px per design px (a cover that
+/// shrinks away from the focus).
+pub(super) fn copies_corner_at((n, corner_taken): (usize, bool), unit: f32) -> Div {
+    let badge = copies_badge_at(n, unit).absolute().top(px(8. * unit));
+    if corner_taken {
+        badge.left(px(8. * unit))
+    } else {
+        badge.right(px(8. * unit))
+    }
+}
+
+/// The number of copies of a game owned in several stores, with the
+/// desktop card's icon.
+pub(super) fn copies_badge(copies: usize) -> Div {
+    copies_badge_at(copies, kit::scale())
+}
+
+fn copies_badge_at(copies: usize, unit: f32) -> Div {
+    let v = |d: f32| px(d * unit);
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(v(4.))
+        .px(v(7.))
+        .py(v(3.))
+        .rounded(v(6.))
+        .bg(theme::black_a(0.62))
+        .text_size(v(12.))
+        .font_weight(theme::W_BOLD)
+        .text_color(theme::white_a(0.9))
+        .child(crate::ui::icon(Icon::ContentCopy, v(13.), theme::white_a(0.9)))
+        .child(copies.to_string())
 }
 
 /// "New", flush with the art's top-right corner (`corner` rounds it).

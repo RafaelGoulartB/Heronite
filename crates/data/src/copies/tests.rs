@@ -236,6 +236,34 @@ fn collapse_shows_one_copy_per_group_the_best_one_the_filter_kept() {
 }
 
 #[test]
+fn the_default_copy_stands_for_its_game_among_recent_ones_by_its_latest_play() {
+    let played = |runner: &str, app: &str, title: &str, when: Option<&str>| {
+        game(app, title, |s| {
+            s.runner = Some(runner.into());
+            s.last_played = when.map(str::to_string);
+        })
+    };
+    let games = [
+        played("legendary", "h", "Hades", Some("2025-06-01T00:00:00.000Z")),
+        played("gog", "1", "Hades", Some("2026-03-01T00:00:00.000Z")),
+        // The default copy, never played itself.
+        played("nile", "a", "Hades", None),
+        played("gog", "2", "Celeste", Some("2026-01-01T00:00:00.000Z")),
+    ];
+    let file = CopiesFile {
+        links: vec![games[..3].iter().map(|g| g.key.clone()).collect()],
+        preferred: vec!["nile_a".into()],
+        ..Default::default()
+    };
+    let g = groups(&games, &file);
+    // A row of recent games: the played ones, newest first, each game once.
+    let mut recent: Vec<Arc<CollectionGame>> = g.with_latest_play(&games).into_iter().filter(|g| g.last_played.is_some()).collect();
+    recent.sort_by(|a, b| b.last_played.cmp(&a.last_played));
+    let shown: Vec<_> = g.collapse(recent).iter().map(|g| (g.key.clone(), g.last_played.clone().unwrap())).collect();
+    assert_eq!(shown, [("nile_a".into(), "2026-03-01T00:00:00.000Z".into()), ("gog_2".into(), "2026-01-01T00:00:00.000Z".into())]);
+}
+
+#[test]
 fn totals_sum_the_copies_once_each() {
     let a = game("1", "Hades", |s| {
         s.runner = Some("gog".into());

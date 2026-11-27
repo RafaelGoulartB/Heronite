@@ -151,10 +151,10 @@ pub(crate) fn played_time(g: &CollectionGame) -> Option<String> {
     (g.playtime_minutes > 0).then(|| heronite_data::collection::format_playtime_minutes(g.playtime_minutes))
 }
 
-/// "3 days ago · 12h 40m"; `long` says "Last played 3 days ago · 12h 40m".
-/// "Not played yet" for a game never played.
-pub(crate) fn played_line(g: &CollectionGame, long: bool) -> String {
-    let when = match g.last_played.as_deref().and_then(played_ago) {
+/// "3 days ago · 12h 40m" (`last`: when it was last played); `long` says
+/// "Last played 3 days ago · 12h 40m". "Not played yet" for a game never played.
+pub(crate) fn played_line(g: &CollectionGame, last: Option<&str>, long: bool) -> String {
+    let when = match last.and_then(played_ago) {
         Some(ago) if long => tr!("Last played {when}", when = ago.to_lowercase()),
         Some(ago) => ago,
         None => tr!("Not played yet").to_string(),
@@ -284,7 +284,7 @@ impl CollectionView {
         if let Some(time) = played_time(g) {
             lines.push((Icon::AccessTime, time, None));
         }
-        if let Some(ago) = g.last_played.as_deref().and_then(played_ago) {
+        if let Some(ago) = self.console_last_played(g).as_deref().and_then(played_ago) {
             lines.push((Icon::History, ago, None));
         }
         if let Some(size) = g.details.install_size.as_deref().filter(|s| g.installed && !s.is_empty() && *s != "0") {
@@ -354,7 +354,7 @@ impl CollectionView {
             self.console_name(&g, size, window)
         };
         let mut line = Self::console_facts(&g);
-        if let Some(ago) = g.last_played.as_deref().and_then(played_ago).filter(|_| how.last_played) {
+        if let Some(ago) = self.console_last_played(&g).as_deref().and_then(played_ago).filter(|_| how.last_played) {
             line = format!("{line} \u{b7} {}", tr!("Last played {when}", when = ago.to_lowercase()));
         }
         let facts = theme.hero.facts.then(|| match theme.hero.fact_style {

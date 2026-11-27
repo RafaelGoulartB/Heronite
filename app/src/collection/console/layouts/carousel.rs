@@ -399,7 +399,7 @@ impl CollectionView {
     fn carousel_facts(&self, g: &CollectionGame) -> Div {
         let dash = || "\u{2014}".to_string();
         let played = played_time(g).unwrap_or_else(dash);
-        let last = g.last_played.as_deref().and_then(played_ago).unwrap_or_else(|| tr!("Never").to_string());
+        let last = self.console_last_played(g).as_deref().and_then(played_ago).unwrap_or_else(|| tr!("Never").to_string());
         let mut row = div()
             .flex()
             .items_center()
@@ -489,7 +489,8 @@ impl CollectionView {
             self.playing.contains_key(&g.app_name)
                 || lib.statuses.iter().any(|s| s.id == g.status_id && matches!(s.slug.as_str(), "playing" | "endless"))
         };
-        let games = self.console_games(spec.source.as_str());
+        // Every copy, then each game once by a copy the pill keeps.
+        let games = self.console_copies(spec.source.as_str());
         let picked: Vec<&CollectionGame> = games
             .iter()
             .map(|g| g.as_ref())
@@ -500,7 +501,7 @@ impl CollectionView {
                 _ => true,
             })
             .collect();
-        keys(by_title(picked))
+        keys(by_title(self.collapse_copies(lib, picked)))
     }
 
     /// The rail letter of `key`'s game (`#` for digits and symbols).
@@ -588,6 +589,7 @@ impl CollectionView {
             let grey = grey && !g.installed;
             let title = g.title.clone();
             let categories = self.console_categories(&key);
+            let copies = self.console_copies_corner(&key);
             let d = i as f32 - index as f32;
             // A click: ↓ from the pills, ← → to the cover; A on the focused one.
             let mut pads = if pills_focus { vec![Pad::Down] } else { Vec::new() };
@@ -621,6 +623,7 @@ impl CollectionView {
                     .children(categories.as_ref().and_then(|(style, list)| {
                         crate::collection::category_badges::overlay(*style, list, tile::category_area(cw, k * p.scale, dpr), false)
                     }))
+                    .children(copies.map(|c| tile::copies_corner_at(c, k * p.scale)))
                     .when(p.shade > 0.005, |f| f.child(div().absolute().inset_0().bg(kit::dim(p.shade))));
                 // A thin ring a little way out from the cover.
                 let gap = 6. * k;

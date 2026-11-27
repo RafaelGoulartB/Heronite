@@ -19,6 +19,7 @@
 //! again, and the preferred copies. Keys of games that are not in the
 //! library are kept, so a game that comes back joins its group again.
 
+use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
@@ -235,15 +236,36 @@ impl CopyGroups {
         out
     }
 
+    /// `games` (the Collection's) with every copy dated by the last time any
+    /// copy of its game was played: a game played on another store counts
+    /// as played then, so its default copy can stand for it among recent games.
+    pub fn with_latest_play(&self, games: &[Arc<CollectionGame>]) -> Vec<Arc<CollectionGame>> {
+        let mut latest: Vec<Option<&str>> = vec![None; self.groups.len()];
+        for g in games {
+            if let Some(&i) = self.by_key.get(&g.key) {
+                latest[i] = latest[i].max(g.last_played.as_deref());
+            }
+        }
+        games
+            .iter()
+            .map(|g| match self.by_key.get(&g.key).and_then(|&i| latest[i]) {
+                Some(last) if g.last_played.as_deref() != Some(last) => {
+                    Arc::new(CollectionGame { last_played: Some(last.to_owned()), ..CollectionGame::clone(g) })
+                }
+                _ => g.clone(),
+            })
+            .collect()
+    }
+
     /// The list with each group's copies shown once: by its first copy (in
     /// the group's order) that is in `filtered`, at that copy's place. So a
     /// filter that only one copy matches ("Store: GOG", "Installed") still
     /// shows that copy.
-    pub fn collapse(&self, filtered: Vec<Arc<CollectionGame>>) -> Vec<Arc<CollectionGame>> {
+    pub fn collapse<G: Borrow<CollectionGame>>(&self, filtered: Vec<G>) -> Vec<G> {
         if self.groups.is_empty() {
             return filtered;
         }
-        let shown: HashSet<&str> = filtered.iter().map(|g| g.key.as_str()).collect();
+        let shown: HashSet<&str> = filtered.iter().map(|g| g.borrow().key.as_str()).collect();
         let representative: HashMap<usize, &str> = self
             .groups
             .iter()
@@ -252,10 +274,11 @@ impl CopyGroups {
             .collect();
         let keep: HashSet<String> = filtered
             .iter()
+            .map(|g| g.borrow())
             .filter(|g| self.by_key.get(&g.key).is_none_or(|i| representative.get(i) == Some(&g.key.as_str())))
             .map(|g| g.key.clone())
             .collect();
-        filtered.into_iter().filter(|g| keep.contains(&g.key)).collect()
+        filtered.into_iter().filter(|g| keep.contains(&g.borrow().key)).collect()
     }
 }
 

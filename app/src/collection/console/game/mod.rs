@@ -85,6 +85,12 @@ impl CollectionView {
             primary = primary.desc(step.label());
         }
         let mut rows = vec![primary];
+        // A game owned on several stores: the copy Play starts (the desktop's
+        // star). Right under Play, so it keeps its place whichever copy the
+        // page shows after a change.
+        if let Some((_, names, index)) = self.default_copy_choices(g) {
+            rows.push(Row::choice("copy-default", tr!("Default copy"), names, index).icon(Icon::Star));
+        }
         // The actions the user added; one that plays waits for the game to end.
         for a in self.actions_of(&g.key) {
             if a.plays() && playing {
@@ -224,6 +230,32 @@ impl CollectionView {
         rows.push(Row::header(tr!("Manage")));
         rows.extend(manage);
         rows
+    }
+
+    /// The copies of `g`'s game while they are grouped, for "Default copy":
+    /// their keys and names in a fixed order (so ◀ ▶ walk them while the
+    /// default changes) and the default's place among them.
+    fn default_copy_choices(&self, g: &CollectionGame) -> Option<(Vec<String>, Vec<SharedString>, usize)> {
+        let lib = self.lib.as_ref().filter(|_| self.ui.group_copies)?;
+        let group = lib.copies.get(&g.key)?;
+        let mut copies = lib.copies_of(&g.key);
+        copies.sort_by(|a, b| a.key.cmp(&b.key));
+        let details = heronite_data::copies::copy_details(&copies.iter().map(|g| &***g).collect::<Vec<_>>());
+        let names = copies
+            .iter()
+            .zip(details)
+            .map(|(c, detail)| {
+                let store = heronite_data::copies::store_label(c);
+                SharedString::from(match detail {
+                    // Versions of a ROM go by their names (every one is "Emulator").
+                    Some(version) if c.launch_kind.as_deref() == Some("emulator") => version,
+                    Some(detail) => format!("{store} \u{b7} {detail}"),
+                    None => store.to_string(),
+                })
+            })
+            .collect();
+        let index = copies.iter().position(|c| c.key == group.members[0]).unwrap_or(0);
+        Some((copies.iter().map(|c| c.key.clone()).collect(), names, index))
     }
 
     /// "Achievements" (with how many are unlocked), when the game has some
@@ -552,6 +584,13 @@ impl CollectionView {
                 ("status", Value::Choice { index, .. }) => {
                     if let Some(st) = self.lib.as_ref().and_then(|l| l.statuses.get(index)).cloned() {
                         self.set_status(key, st.id, cx);
+                    }
+                }
+                ("copy-default", Value::Choice { index, .. }) => {
+                    if let Some(copy) = self.default_copy_choices(&g).and_then(|(keys, _, _)| keys.into_iter().nth(index)) {
+                        self.make_default_copy(&copy, cx);
+                        // The page goes on with the copy that now plays.
+                        self.console.screen = super::Screen::Game(copy.into());
                     }
                 }
                 // Every copy, as on the desktop (the card may show another copy).
