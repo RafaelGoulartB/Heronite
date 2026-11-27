@@ -140,6 +140,8 @@ const PANEL_W: f32 = 360.;
 /// Width of the Rail while the menu is closed, and the height of its rows.
 const RAIL_W: f32 = 74.;
 const RAIL_ROW: f32 = 46.;
+/// The hint bar over the foot of the open menu, design px.
+const HINT_BAR: f32 = 60.;
 
 /// The side and width of the Rail when the theme has one: the content keeps
 /// clear of it.
@@ -280,14 +282,23 @@ impl CollectionView {
     /// Rail shows). `rail` makes them compact, with a ☰ on top and gaps for
     /// separators.
     fn menu_list(&self, items: &[Item], focused: Option<usize>, rail: bool, downloads: &Option<String>) -> Div {
-        // Sized so every item fits the 800-unit console height (the list does not scroll).
+        // Sized so every item fits the 800-unit console height (the Sidebar and the Rail scroll when it does not).
         let mut list = div().flex().flex_col().gap(u(if rail { 2. } else { 4. }));
         if rail {
-            list = list.child(div().h(u(RAIL_ROW)).px(u(24.)).flex().items_center().child(icon(Icon::Menu, u(26.), theme::text_muted())));
+            list = list.child(div().flex_none().h(u(RAIL_ROW)).px(u(24.)).flex().items_center().child(icon(
+                Icon::Menu,
+                u(26.),
+                theme::text_muted(),
+            )));
         }
         for (i, item) in items.iter().enumerate() {
             if *item == Item::Separator {
-                list = list.child(if rail { div().h(u(16.)) } else { div().my(u(10.)).mx(u(18.)).h(px(1.)).bg(kit::ink(0.1)) });
+                // Kept whole while the list scrolls.
+                list = list.child(if rail {
+                    div().flex_none().h(u(16.))
+                } else {
+                    div().flex_none().my(u(10.)).mx(u(18.)).h(px(1.)).bg(kit::ink(0.1))
+                });
                 continue;
             }
             let on = focused == Some(i);
@@ -341,7 +352,16 @@ impl CollectionView {
 
     /// A full-height panel on the theme's side, over the dimmed screen.
     fn render_menu_sidebar(&self, items: &[Item], focused: usize, side: Side, downloads: Option<String>) -> AnyElement {
-        let list = self.menu_list(items, Some(focused), false, &downloads);
+        // The items fit 800 design px; a larger interface scale leaves fewer,
+        // so the list scrolls and keeps the focused item in view.
+        self.console.menu_scroll.scroll_to_item(focused);
+        let list = self
+            .menu_list(items, Some(focused), false, &downloads)
+            .id("console-menu")
+            .flex_1()
+            .min_h_0()
+            .overflow_y_scroll()
+            .track_scroll(&self.console.menu_scroll);
         let right = side == Side::Right;
         let panel = div()
             .absolute()
@@ -352,6 +372,8 @@ impl CollectionView {
             .flex_col()
             .px(u(16.))
             .pt(u(36.))
+            // The hint bar is drawn over the panel's foot: the list ends above it.
+            .pb(u(HINT_BAR))
             .bg(theme::console_sidebar())
             .border_color(kit::ink(0.08))
             .shadow(kit::shadow(0.5, 0., 40.))
@@ -376,10 +398,32 @@ impl CollectionView {
     fn render_menu_rail(&self, items: &[Item], focused: Option<usize>, side: Side, downloads: Option<String>) -> AnyElement {
         let open = focused.is_some();
         let right = side == Side::Right;
-        let list = self.menu_list(items, focused, true, &downloads).w(u(PANEL_W - 32.)).flex_none();
+        // As the Sidebar's: the list scrolls to the focused item (after the ☰),
+        // and is back at the top while closed.
+        match focused {
+            Some(f) => self.console.menu_scroll.scroll_to_item(if f == 0 { 0 } else { f + 1 }),
+            None => self.console.menu_scroll.set_offset(point(px(0.), px(0.))),
+        }
+        let list = self
+            .menu_list(items, focused, true, &downloads)
+            .id("console-rail")
+            .w(u(PANEL_W - 32.))
+            .flex_none()
+            .h_full()
+            .overflow_y_scroll()
+            .track_scroll(&self.console.menu_scroll);
         let edge = if right { 270. } else { 90. };
-        let panel =
-            div().absolute().top_0().bottom_0().flex().flex_col().pt(u(28.)).overflow_hidden().border_color(kit::ink(0.08)).eats_clicks();
+        let panel = div()
+            .absolute()
+            .top_0()
+            .bottom_0()
+            .flex()
+            .flex_col()
+            .pt(u(28.))
+            .pb(u(HINT_BAR))
+            .overflow_hidden()
+            .border_color(kit::ink(0.08))
+            .eats_clicks();
         let panel = if right { panel.right_0().border_l_1() } else { panel.left_0().border_r_1() };
         let panel = motion::spring("console-rail", panel, motion::SOFT, open, move |d, t| {
             let fade = |c: Hsla, a: f32| Hsla { a: c.a * a, ..c };
@@ -391,7 +435,7 @@ impl CollectionView {
                 .border_color(fade(kit::ink(0.08), t))
                 .shadow(kit::shadow(0.5 * t, 0., 40.));
             let shade = linear_gradient(edge, linear_color_stop(kit::dim(0.4 * (1. - t)), 0.), linear_color_stop(kit::dim(0.), 1.));
-            d.child(div().absolute().inset_0().bg(shade)).child(div().relative().opacity(0.55 + 0.45 * t).child(list))
+            d.child(div().absolute().inset_0().bg(shade)).child(div().relative().flex_1().min_h_0().opacity(0.55 + 0.45 * t).child(list))
         });
         // Open, a click on the dimmed screen closes it; closed, the screen keeps its clicks.
         let scrim = div().absolute().inset_0().when(open, |d| d.occlude().on_pads([Pad::B]));

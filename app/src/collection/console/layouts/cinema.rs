@@ -64,6 +64,11 @@ pub(super) fn page_head_h(logo_h: f32, button_h: f32) -> f32 {
     let name = if logo_h > 0. { logo_h } else { NAME_LINE };
     name + LOGO_GAP + FACTS_H + 14. + GENRES_H + BUTTONS_GAP + button_h
 }
+/// The room for the logo over the facts and the genres when the main row
+/// starts at `row_top` (from the top of the body, design px).
+fn block_top_room(row_top: f32) -> f32 {
+    row_top - BLOCK_GAP + RING_ROOM - (LOGO_GAP + FACTS_H + 14. + GENRES_H)
+}
 /// Heights of the facts and genres lines.
 const FACTS_H: f32 = 44.;
 const GENRES_H: f32 = 24.;
@@ -443,7 +448,10 @@ impl CollectionView {
         if let (Some(g), false, false) = (game.as_ref(), moving, deep) {
             let id = format!("cinema-{tab}-{}-{returns}", all[index]);
             let block_w = (vw * 0.5).clamp(520., 900.);
-            let block = self.cinema_block(g, &id, LOGO_SLIDE, block_w, LOGO.1, window);
+            // The logo takes what is left over the facts and the genres, so a
+            // larger interface scale does not push it up under the top bar.
+            let room = block_top_room(geo.row_top);
+            let block = self.cinema_block(g, &id, LOGO_SLIDE, block_w, room.clamp(48., LOGO.1), window);
             // Behind the facts, the genres and the foot of the logo: a tall
             // logo's top stays clear, so the shade fades out well under the
             // top bar (it is drawn over the bar's art, after it).
@@ -822,6 +830,18 @@ mod tests {
         assert!(x >= o && x + 200. <= o + 2000. && x + 200. + 120. - 0.01 <= o + 2000.);
         // Back to the start: the row's own start.
         assert_eq!(row_offset(0, 200., 100., 2000., 900.), 0.);
+    }
+
+    #[test]
+    fn the_logo_fits_between_the_top_bar_and_the_facts() {
+        // The 1280×800 design: the whole logo.
+        let body = 724.;
+        assert!(block_top_room(Geo::new(body, cover_h(body), 1.5, 2).row_top) >= LOGO.1);
+        // At the largest interface scale (140%) less is left, and the logo
+        // takes only that: the block's top stays under the top bar.
+        let body = 800. / 1.4 - 76.;
+        let room = block_top_room(Geo::new(body, cover_h(body), 1.5, 2).row_top);
+        assert!(room > 48. && room < LOGO.1, "{room}");
     }
 
     #[test]
