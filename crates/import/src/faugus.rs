@@ -155,7 +155,11 @@ mod tests {
             own.env,
             [("DXVK_HUD".to_string(), "fps".to_string()), ("MANGOHUD_CONFIG".to_string(), "fps, font_size=24".to_string())]
         );
-        let tux = tux.own.clone().unwrap();
-        assert_eq!((tux.program.as_str(), tux.wine), ("/opt/tux/supertux", None));
+        // `/opt/...` is a full path on Linux only.
+        #[cfg(unix)]
+        {
+            let tux = tux.own.clone().unwrap();
+            assert_eq!((tux.program.as_str(), tux.wine), ("/opt/tux/supertux", None));
+        }
     }
 }
