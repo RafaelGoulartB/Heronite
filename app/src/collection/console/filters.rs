@@ -15,6 +15,7 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::console_theme::{Layout, TabSpec};
+use heronite_data::CollectionGame;
 use heronite_i18n::{n_, tr};
 
 use super::super::CollectionView;
@@ -219,12 +220,15 @@ impl CollectionView {
         let focus = self.focused_filter()?;
         let lib = self.lib.clone()?;
         let (target, spec) = self.filters_target();
-        let games = self.console_games(&spec.source);
+        // What each "Show" choice lists: a game with copies once, by a copy it keeps.
+        let games = self.console_copies(&spec.source);
+        let count = |f: &dyn Fn(&CollectionGame) -> bool| {
+            self.collapse_copies(&lib, games.iter().map(|g| g.as_ref()).filter(|g| f(g)).collect::<Vec<&CollectionGame>>()).len()
+        };
+        let counts = [count(&|_| true), count(&|g| g.installed), count(&|g| !g.installed)];
         let shown = self.grid_keys(target, &spec).len();
         let f = self.tab_nav(target).grid.filters.clone();
         let search = self.console.search.clone();
-        let installed = games.iter().filter(|g| g.installed).count();
-        let counts = [games.len(), installed, games.len() - installed];
 
         let tint = |on: bool| -> Hsla {
             if on {
@@ -342,7 +346,7 @@ impl CollectionView {
             .border_color(kit::ink(0.08))
             .text_size(u(15.))
             .text_color(theme::text_muted())
-            .child(tr!("{shown} of {total} games", shown, total = games.len()));
+            .child(tr!("{shown} of {total} games", shown, total = counts[0]));
         let panel = div()
             .absolute()
             .top_0()

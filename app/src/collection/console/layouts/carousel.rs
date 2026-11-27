@@ -489,7 +489,8 @@ impl CollectionView {
             self.playing.contains_key(&g.app_name)
                 || lib.statuses.iter().any(|s| s.id == g.status_id && matches!(s.slug.as_str(), "playing" | "endless"))
         };
-        let games = self.console_games(spec.source.as_str());
+        // Every copy, then each game once by a copy the pill keeps.
+        let games = self.console_copies(spec.source.as_str());
         let picked: Vec<&CollectionGame> = games
             .iter()
             .map(|g| g.as_ref())
@@ -500,7 +501,7 @@ impl CollectionView {
                 _ => true,
             })
             .collect();
-        keys(by_title(picked))
+        keys(by_title(self.collapse_copies(lib, picked)))
     }
 
     /// The rail letter of `key`'s game (`#` for digits and symbols).

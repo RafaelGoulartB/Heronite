@@ -85,6 +85,12 @@ impl CollectionView {
             primary = primary.desc(step.label());
         }
         let mut rows = vec![primary];
+        // A game owned on several stores: the copy Play starts (the desktop's
+        // star). Right under Play, so it keeps its place whichever copy the
+        // page shows after a change.
+        if let Some((_, names, index)) = self.default_copy_choices(g) {
+            rows.push(Row::choice("copy-default", tr!("Default copy"), names, index).icon(Icon::Star));
+        }
         // The actions the user added; one that plays waits for the game to end.
         for a in self.actions_of(&g.key) {
             if a.plays() && playing {
@@ -124,10 +130,6 @@ impl CollectionView {
             rows.push(Row::choice("status", tr!("Status"), names, index).icon(Icon::Flag));
         }
         rows.push(Row::toggle("favourite", tr!("Favourite"), g.favourite).icon(Icon::Favorite));
-        // A game owned on several stores: the copy Play starts (the desktop's star).
-        if let Some((_, names, index)) = self.default_copy_choices(g) {
-            rows.push(Row::choice("copy-default", tr!("Default copy"), names, index).icon(Icon::Star));
-        }
         // An Epic game's other ways to start; Play uses the one picked.
         if g.installed && !self.facts.launch_options.is_empty() && self.selected.as_deref() == Some(g.key.as_str()) {
             let choices = super::super::launch_options::choices(&self.facts.launch_options);

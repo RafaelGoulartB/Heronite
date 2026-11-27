@@ -212,6 +212,13 @@ impl CollectionView {
         games
     }
 
+    /// Every copy of the games of `source` (see [`Self::source_copies`]), for
+    /// a layout that filters them further and then shows each game once
+    /// ([`Self::collapse_copies`] / [`Self::collapse_keys`]).
+    pub(in crate::collection::console) fn console_copies(&self, source: &str) -> Vec<Arc<CollectionGame>> {
+        self.lib.as_ref().map(|lib| self.source_copies(lib, source)).unwrap_or_default()
+    }
+
     /// Every copy of the games of `source`, before a group shows once: a
     /// shelf picks its games among them, so "Store: GOG" still finds a GOG copy.
     fn source_copies(&self, lib: &Arc<Library>, source: &str) -> Vec<Arc<CollectionGame>> {
@@ -227,19 +234,35 @@ impl CollectionView {
     /// grouped, as its rows sort it ([`console_view`]).
     pub(in crate::collection::console) fn console_last_played(&self, g: &CollectionGame) -> Option<String> {
         match self.lib.as_ref().filter(|_| self.ui.group_copies) {
-            Some(lib) if lib.copies.get(&g.key).is_some() => lib.copy_totals(&g.key).last_played,
+            Some(lib) if lib.copies.get(&g.key).is_some() => {
+                lib.copies_of(&g.key).into_iter().filter_map(|c| c.last_played.as_deref()).max().map(str::to_owned)
+            }
             _ => g.last_played.clone(),
         }
     }
 
     /// Each game with copies once, by its first copy in `games` in the
     /// group's order (the default first), as the Collection shows them.
-    fn collapse_copies<G: std::borrow::Borrow<CollectionGame>>(&self, lib: &Library, games: Vec<G>) -> Vec<G> {
+    pub(in crate::collection::console) fn collapse_copies<G: std::borrow::Borrow<CollectionGame>>(
+        &self,
+        lib: &Library,
+        games: Vec<G>,
+    ) -> Vec<G> {
         if self.ui.group_copies {
             lib.copies.collapse(games)
         } else {
             games
         }
+    }
+
+    /// [`Self::collapse_copies`] for a list of keys, in their order.
+    pub(in crate::collection::console) fn collapse_keys(&self, lib: &Library, keys: Vec<SharedString>) -> Vec<SharedString> {
+        if !self.ui.group_copies {
+            return keys;
+        }
+        let games: Vec<&CollectionGame> = keys.iter().filter_map(|k| lib.get(k).map(|g| g.as_ref())).collect();
+        let kept: std::collections::HashSet<String> = lib.copies.collapse(games).into_iter().map(|g| g.key.clone()).collect();
+        keys.into_iter().filter(|k| kept.contains(k.as_ref())).collect()
     }
 
     /// The theme's shelves over `source`, empty ones left out.

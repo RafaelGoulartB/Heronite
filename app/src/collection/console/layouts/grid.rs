@@ -285,7 +285,9 @@ impl CollectionView {
     /// The keys the Grid of a tab shows now (also for the layouts that reuse its filters).
     pub(crate) fn grid_keys(&mut self, tab: usize, spec: &TabSpec) -> Vec<SharedString> {
         let Some(lib) = self.lib.clone() else { return Vec::new() };
-        let mut games = self.console_games(&spec.source);
+        // Every copy, so a filter that only one copy of a game passes
+        // ("Installed", a store's smart category) still shows that copy.
+        let mut games = self.console_copies(&spec.source);
         let group = self.console.tab_navs.get(tab).map_or(0, |n| n.grid.filters.group);
         if let Some(group) = group.checked_sub(1).and_then(|i| self.smart_groups.groups.get(i)) {
             let facts = self.group_facts(&lib.statuses);
@@ -295,7 +297,7 @@ impl CollectionView {
         let cats = std::mem::take(&mut self.categories);
         let keys = self.tab_nav(tab).grid.keys(&games, &lib, &cats, &search);
         self.categories = cats;
-        keys
+        self.collapse_keys(&lib, keys)
     }
 
     /// LT / RT jump by letter: the theme asks for it and the games are
