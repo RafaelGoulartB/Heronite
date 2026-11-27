@@ -3,19 +3,26 @@
 //! (`local_library/library.json`) with the launcher's command line
 //! ([`LAUNCH_KIND`]), plus the launcher's play time when it is ahead.
 //! Playnite's games that can start without it are brought over as this
-//! app's own instead ([`crate::transfer`]).
+//! app's own instead ([`crate::transfer`]), and so are the ones of Lutris,
+//! Bottles and Faugus that can when the user picks that they start here
+//! ([`Own`]): an executable entry with the launcher's program, and game
+//! settings with its arguments, Wine prefix, Wine and environment
+//! variables. Brought over, a game is the user's: later imports only raise
+//! its play time. Once the user picks that the launcher starts them again,
+//! the next import turns them back into entries that ask it.
 
 use std::collections::{BTreeSet, HashSet};
 use std::path::Path;
 
 use anyhow::Result;
-use heronite_data::launchers::{Launcher, LAUNCH_KIND, PREFIX_KEY, RUNS_FROM_KEY};
+use heronite_data::launchers::{brought_over, Launcher, LAUNCH_KIND, PREFIX_KEY, RUNS_FROM_KEY};
 use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta, LocalMetaFile, TimestampFile};
+use heronite_data::sideload::WORKING_DIR_KEY;
 use heronite_data::{json_store, DataPaths};
 use serde_json::{json, Map, Value};
 
 use crate::transfer::{self, Transfer};
-use crate::{Game, Report};
+use crate::{Game, Own, Report};
 
 /// The Collection's name for `game` of `launcher`: `lutris_12`.
 pub fn app_name(launcher: Launcher, id: &str) -> String {
@@ -23,7 +30,7 @@ pub fn app_name(launcher: Launcher, id: &str) -> String {
     format!("{}_{id}", launcher.id())
 }
 
-fn entry(launcher: Launcher, game: &Game) -> GameInfo {
+fn entry(launcher: Launcher, game: &Game, here: Option<&Own>) -> GameInfo {
     let mut info = GameInfo {
         runner: "sideload".into(),
         app_name: app_name(launcher, &game.id),
@@ -44,8 +51,78 @@ fn entry(launcher: Launcher, game: &Game) -> GameInfo {
     info.rest.insert("canRunOffline".into(), Value::Bool(true));
     if let Some(t) = &game.transfer {
         transfer::entry(&mut info, game, t);
+    } else if let Some(own) = here {
+        own_entry(&mut info, game, own);
     }
     info
+}
+
+/// The sideload entry of a game brought over from Lutris, Bottles or
+/// Faugus: its program, and the program's folder when it has none.
+fn own_entry(info: &mut GameInfo, game: &Game, own: &Own) {
+    let parent = Path::new(&own.program).parent().map(|p| p.to_string_lossy().into_owned()).filter(|p| !p.is_empty());
+    // Never a drive's root: the folder stays the launcher's (`launchers::managed_paths`).
+    let folder = game.folder.clone().or_else(|| parent.clone().filter(|p| Path::new(p).components().count() > 2));
+    info.install.executable = Some(own.program.clone());
+    info.install.platform = Some(if game.windows { "Windows" } else { "linux" }.into());
+    info.install.install_path = folder.clone();
+    info.folder_name = folder.or_else(|| parent.clone());
+    if let Some(dir) = own.working_dir.as_ref().filter(|d| Some(d.trim_end_matches('/')) != parent.as_deref()) {
+        info.rest.insert(WORKING_DIR_KEY.into(), Value::String(dir.clone()));
+    }
+}
+
+/// The Collection entry of a game brought over from Lutris, Bottles or
+/// Faugus starts its program. The launcher's Wine prefix stays noted: it is
+/// still the launcher's ([`heronite_data::launchers::managed_paths`]).
+fn set_own_meta(meta: &mut LocalGameMeta, game: &Game, own: &Own) {
+    meta.launch_kind = "executable".into();
+    meta.remapped_executable = Some(own.program.clone());
+    meta.launcher_args = None;
+    set_paths(meta, game);
+}
+
+/// How `game` starts here, when it is brought over from Lutris, Bottles or
+/// Faugus (`start_here`).
+fn here(game: &Game, start_here: bool) -> Option<&Own> {
+    game.own.as_ref().filter(|_| start_here && game.transfer.is_none())
+}
+
+/// The game settings of the games about to be brought over from Lutris,
+/// Bottles or Faugus: their Wine prefix and Wine, arguments and environment
+/// variables (added to the ones the game already has here). A game that
+/// fails is logged; the others are still written.
+fn settle_own(paths: &DataPaths, home: &Path, games: &[(String, &Game, &Own)]) {
+    let home = home.to_string_lossy();
+    for (app, game, own) in games {
+        let mut changes: Vec<(String, Value)> = Vec::new();
+        if game.windows {
+            if let Some(prefix) = &game.prefix {
+                changes.push(("winePrefix".into(), json!(prefix)));
+            }
+            if let Some(w) = &own.wine {
+                let kind = if w.proton { "proton" } else { "wine" };
+                changes.push(("wineVersion".into(), json!({"bin": w.bin, "name": w.name, "type": kind})));
+            }
+        }
+        if !own.args.trim().is_empty() {
+            changes.push(("launcherArgs".into(), json!(own.args.trim())));
+        }
+        if !own.env.is_empty() {
+            let current = heronite_data::game_config::game_overrides(paths, app);
+            let mut list: Vec<Value> = current.get("enviromentOptions").and_then(Value::as_array).cloned().unwrap_or_default();
+            let set = |list: &[Value], key: &str| list.iter().any(|e| e.get("key").and_then(Value::as_str) == Some(key));
+            for (key, value) in &own.env {
+                if !set(&list, key) {
+                    list.push(json!({"key": key, "value": value}));
+                }
+            }
+            changes.push(("enviromentOptions".into(), Value::Array(list)));
+        }
+        if let Err(e) = heronite_data::game_config::set_game_settings(paths, app, &home, &changes) {
+            log::warn!("Bringing {} over: its game settings: {e:#}", game.title);
+        }
+    }
 }
 
 fn meta(launcher: Launcher, game: &Game, status: &str) -> LocalGameMeta {
@@ -92,6 +169,8 @@ fn refresh(entry: &mut Map<String, Value>, fresh: &GameInfo) -> bool {
     install["install_path"] = json!(fresh.install.install_path);
     install["platform"] = json!(fresh.install.platform);
     install["executable"] = json!("");
+    // Back from starting here: the launcher starts it in its own folder.
+    entry.remove(WORKING_DIR_KEY);
     *entry != before
 }
 
@@ -109,43 +188,61 @@ fn take_over(entry: &mut Map<String, Value>, fresh: &GameInfo) -> Result<bool> {
 /// Brings `games` of `launcher` into the Collection: new ones are added,
 /// known ones refreshed, the ones the launcher no longer has stay as not
 /// installed. The ones in `removed` (app names: the user took them out) are
-/// left out. A Playnite game brought over before is the user's: only its
-/// play time moves. `home` is the user's home folder.
-pub fn sync(paths: &DataPaths, home: &Path, launcher: Launcher, games: &[Game], removed: &BTreeSet<String>) -> Result<Report> {
+/// left out. A game brought over before is the user's: only its play time
+/// moves (for Lutris, Bottles and Faugus while `start_here`; without it,
+/// they ask the launcher again). `home` is the user's home folder.
+pub fn sync(
+    paths: &DataPaths,
+    home: &Path,
+    launcher: Launcher,
+    games: &[Game],
+    removed: &BTreeSet<String>,
+    start_here: bool,
+) -> Result<Report> {
     let mut report = Report::default();
+    let start_here = start_here && launcher.can_start_here();
     let games: Vec<&Game> = games.iter().filter(|g| !removed.contains(&app_name(launcher, &g.id))).collect();
     let metas: LocalMetaFile = json_store::read(&paths.local_meta())?;
     let ours: HashSet<String> = metas.games.values().filter(|m| m.source == launcher.id()).map(|m| m.app_name.clone()).collect();
     let own: HashSet<String> = metas
         .games
         .values()
-        .filter(|m| launcher == Launcher::Playnite && m.source == launcher.id() && m.launch_kind != LAUNCH_KIND)
+        .filter(|m| m.source == launcher.id() && brought_over(m) && (start_here || !launcher.can_start_here()))
         .map(|m| m.app_name.clone())
         .collect();
     let fresh: Vec<(GameInfo, &Game)> =
-        games.iter().filter(|g| !own.contains(&app_name(launcher, &g.id))).map(|g| (entry(launcher, g), *g)).collect();
+        games.iter().filter(|g| !own.contains(&app_name(launcher, &g.id))).map(|g| (entry(launcher, g, here(g, start_here)), *g)).collect();
     let wanted: HashSet<&str> = fresh.iter().map(|(i, _)| i.app_name.as_str()).collect();
     let copying: Vec<(String, &Game, &Transfer)> =
         fresh.iter().filter_map(|(i, g)| Some((i.app_name.clone(), *g, g.transfer.as_deref()?))).collect();
+    let bringing: Vec<(String, &Game, &Own)> =
+        fresh.iter().filter_map(|(i, g)| Some((i.app_name.clone(), *g, here(g, start_here)?))).collect();
     transfer::record_added(paths, &copying);
     // What they carry goes first: a game is brought over once its entry is
     // written, and never again (writing it twice changes nothing).
     transfer::settle(paths, home, &copying);
+    settle_own(paths, home, &bringing);
 
     let statuses = heronite_data::status::load_statuses(paths).unwrap_or_else(|_| heronite_data::status::default_statuses());
     json_store::update_if_changed::<LocalMetaFile, _>(&paths.local_meta(), |file| {
         for (info, game) in &fresh {
-            match (file.games.get_mut(&info.app_name), game.transfer.as_deref()) {
-                (Some(m), Some(t)) => transfer::set_meta(m, game, t, &statuses, false),
-                (Some(m), None) => {
+            match (file.games.get_mut(&info.app_name), game.transfer.as_deref(), here(game, start_here)) {
+                (Some(m), Some(t), _) => transfer::set_meta(m, game, t, &statuses, false),
+                (Some(m), None, Some(own)) => set_own_meta(m, game, own),
+                (Some(m), None, None) => {
+                    // Also one that started here before the launcher was picked again.
+                    m.launch_kind = LAUNCH_KIND.into();
+                    m.remapped_executable = None;
                     m.launcher_args = Some(game.command.clone());
                     set_paths(m, game);
                 }
-                (None, t) => {
+                (None, t, own) => {
                     let status = heronite_data::status::inferred_status_id(game.minutes as f64, &statuses);
                     let mut m = meta(launcher, game, &status);
                     if let Some(t) = t {
                         transfer::set_meta(&mut m, game, t, &statuses, true);
+                    } else if let Some(own) = own {
+                        set_own_meta(&mut m, game, own);
                     }
                     file.games.insert(info.app_name.clone(), m);
                 }
@@ -169,7 +266,8 @@ pub fn sync(paths: &DataPaths, home: &Path, launcher: Launcher, games: &[Game], 
             let Some(app) = obj.get("app_name").and_then(Value::as_str).map(str::to_owned) else { continue };
             if let Some((info, game)) = fresh.iter().find(|(i, _)| i.app_name == app) {
                 seen.insert(app);
-                let changed = if game.transfer.is_some() { take_over(obj, info)? } else { refresh(obj, info) };
+                let changed =
+                    if game.transfer.is_some() || here(game, start_here).is_some() { take_over(obj, info)? } else { refresh(obj, info) };
                 if changed {
                     report.updated += 1;
                 }
@@ -195,8 +293,8 @@ pub fn sync(paths: &DataPaths, home: &Path, launcher: Launcher, games: &[Game], 
     if report.added > 0 {
         log::info!("Added {} game(s) from {} to the Collection", report.added, launcher.name());
     }
-    if !copying.is_empty() {
-        log::info!("Brought {} game(s) over from {}: they start here", copying.len(), launcher.name());
+    if copying.len() + bringing.len() > 0 {
+        log::info!("Brought {} game(s) over from {}: they start here", copying.len() + bringing.len(), launcher.name());
     }
     Ok(report)
 }
@@ -306,7 +404,7 @@ mod tests {
         let paths = DataPaths::at(dir.path());
         let first = [game("1", "Celeste", 90), game("2", "Hades", 0)];
         assert_eq!(
-            sync(&paths, Path::new("/home/u"), Launcher::Lutris, &first, &BTreeSet::new()).unwrap(),
+            sync(&paths, Path::new("/home/u"), Launcher::Lutris, &first, &BTreeSet::new(), false).unwrap(),
             Report { added: 2, updated: 0 }
         );
 
@@ -324,14 +422,14 @@ mod tests {
         // Again: nothing new, and nothing written (the Collection would reload).
         let (meta_time, list_time) = (json_store::mtime(&paths.local_meta()), json_store::mtime(&paths.sideload_library()));
         std::thread::sleep(std::time::Duration::from_millis(20));
-        assert_eq!(sync(&paths, Path::new("/home/u"), Launcher::Lutris, &first, &BTreeSet::new()).unwrap(), Report::default());
+        assert_eq!(sync(&paths, Path::new("/home/u"), Launcher::Lutris, &first, &BTreeSet::new(), false).unwrap(), Report::default());
         assert_eq!((json_store::mtime(&paths.local_meta()), json_store::mtime(&paths.sideload_library())), (meta_time, list_time));
 
         // Hades was removed from Lutris, Celeste renamed and played more.
         let mut renamed = game("1", "Celeste (2018)", 120);
         renamed.last_played = Some("2026-02-01T00:00:00.000Z".into());
         assert_eq!(
-            sync(&paths, Path::new("/home/u"), Launcher::Lutris, &[renamed], &BTreeSet::new()).unwrap(),
+            sync(&paths, Path::new("/home/u"), Launcher::Lutris, &[renamed], &BTreeSet::new(), false).unwrap(),
             Report { added: 0, updated: 3 }
         );
         let lib = Library::load(&paths).unwrap();
@@ -351,7 +449,7 @@ mod tests {
         let paths = DataPaths::at(dir.path());
         let removed: BTreeSet<String> = ["lutris_2".to_string()].into();
         let games = [game("1", "Celeste", 0), game("2", "Hades", 0)];
-        assert_eq!(sync(&paths, Path::new("/home/u"), Launcher::Lutris, &games, &removed).unwrap(), Report { added: 1, updated: 0 });
+        assert_eq!(sync(&paths, Path::new("/home/u"), Launcher::Lutris, &games, &removed, false).unwrap(), Report { added: 1, updated: 0 });
         let lib = Library::load(&paths).unwrap();
         assert!(lib.get("sideload_lutris_1").is_some() && lib.get("sideload_lutris_2").is_none());
     }
@@ -366,7 +464,7 @@ mod tests {
         castlevania.prefix = None;
         castlevania.runs_from = Some("/emulators/duckstation".into());
         assert_eq!(
-            sync(&paths, Path::new("/home/u"), Launcher::Playnite, &[castlevania], &BTreeSet::new()).unwrap(),
+            sync(&paths, Path::new("/home/u"), Launcher::Playnite, &[castlevania], &BTreeSet::new(), false).unwrap(),
             Report { added: 1, updated: 0 }
         );
         let lib = Library::load(&paths).unwrap();
@@ -428,7 +526,7 @@ mod tests {
         let id = "71581114-f5b5-44e2-b5c9-d2ff835b199e";
         let app = format!("playnite_{id}");
         let sotn = copied(id, "Castlevania", program("/games/sotn/bin/sotn.exe", "-windowed -lang en", Some("/games/sotn")));
-        assert_eq!(sync(&paths, home, Launcher::Playnite, std::slice::from_ref(&sotn), &BTreeSet::new()).unwrap().added, 1);
+        assert_eq!(sync(&paths, home, Launcher::Playnite, std::slice::from_ref(&sotn), &BTreeSet::new(), false).unwrap().added, 1);
 
         let lib = Library::load(&paths).unwrap();
         let g = lib.get(&format!("sideload_{app}")).unwrap();
@@ -465,8 +563,8 @@ mod tests {
         heronite_data::status::set_game_status(&paths, &app, "completed", &Default::default()).unwrap();
         let mut renamed = copied(id, "Castlevania: SOTN", program("/elsewhere/sotn.exe", "", None));
         renamed.minutes = 300;
-        assert_eq!(sync(&paths, home, Launcher::Playnite, &[renamed], &BTreeSet::new()).unwrap(), Report { added: 0, updated: 1 });
-        assert_eq!(sync(&paths, home, Launcher::Playnite, &[], &BTreeSet::new()).unwrap(), Report::default());
+        assert_eq!(sync(&paths, home, Launcher::Playnite, &[renamed], &BTreeSet::new(), false).unwrap(), Report { added: 0, updated: 1 });
+        assert_eq!(sync(&paths, home, Launcher::Playnite, &[], &BTreeSet::new(), false).unwrap(), Report::default());
         let lib = Library::load(&paths).unwrap();
         let g = lib.get(&format!("sideload_{app}")).unwrap();
         assert_eq!((g.title.as_str(), g.installed, g.playtime_minutes), ("Castlevania", true, 300));
@@ -486,7 +584,7 @@ mod tests {
         let app = format!("playnite_{id}");
         let mut linked = copied(id, "Okami", program("/x.exe", "", None));
         linked.transfer = None;
-        sync(&paths, home, Launcher::Playnite, &[linked], &BTreeSet::new()).unwrap();
+        sync(&paths, home, Launcher::Playnite, &[linked], &BTreeSet::new(), false).unwrap();
         heronite_data::status::set_game_status(&paths, &app, "playing", &Default::default()).unwrap();
         assert_eq!(Library::load(&paths).unwrap().get(&format!("sideload_{app}")).unwrap().launch_kind.as_deref(), Some(LAUNCH_KIND));
 
@@ -497,7 +595,7 @@ mod tests {
             args: r#"-batch -fullscreen "{ImagePath}""#.into(),
             roms: vec![rom],
         };
-        let report = sync(&paths, home, Launcher::Playnite, &[copied(id, "Okami", start)], &BTreeSet::new()).unwrap();
+        let report = sync(&paths, home, Launcher::Playnite, &[copied(id, "Okami", start)], &BTreeSet::new(), false).unwrap();
         assert_eq!(report, Report { added: 0, updated: 1 });
         let lib = Library::load(&paths).unwrap();
         let g = lib.get(&format!("sideload_{app}")).unwrap();
@@ -511,6 +609,98 @@ mod tests {
         assert_eq!(g.game.install.executable.as_deref(), Some("/emu/pcsx2/pcsx2-qt.exe"));
         // The day it was added to Playnite.
         assert_eq!(heronite_data::added::load(&paths).get(&format!("sideload_{app}")).map(String::as_str), Some("2021-06-01"));
+    }
+
+    fn startable(id: &str, title: &str) -> Game {
+        let mut g = game(id, title, 90);
+        g.own = Some(Own {
+            program: format!("/games/{id}/bin/game.exe"),
+            args: "-windowed".into(),
+            working_dir: Some(format!("/games/{id}")),
+            wine: Some(crate::Wine { bin: "/lutris/runners/wine/ge-8/bin/wine".into(), name: "ge-8".into(), proton: false }),
+            env: vec![("DXVK_HUD".into(), "fps".into()), ("WINEDEBUG".into(), "-all".into())],
+        });
+        g
+    }
+
+    /// Picked to start here, a Lutris game that can comes over as this
+    /// app's own with its settings; picked back, Lutris starts it again.
+    #[test]
+    fn lutris_games_start_here_when_picked() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let home = Path::new("/home/u");
+        let mut doom = game("2", "Doom", 0);
+        doom.windows = false;
+        let games = [startable("1", "Celeste"), doom];
+        // The user already set a variable of their own for it here.
+        let mine = [("enviromentOptions".to_string(), json!([{"key": "WINEDEBUG", "value": "+mine"}]))];
+        heronite_data::game_config::set_game_settings(&paths, "lutris_1", "/home/u", &mine).unwrap();
+        assert_eq!(sync(&paths, home, Launcher::Lutris, &games, &BTreeSet::new(), true).unwrap(), Report { added: 2, updated: 0 });
+
+        let lib = Library::load(&paths).unwrap();
+        let celeste = lib.get("sideload_lutris_1").unwrap();
+        assert_eq!((celeste.source_label, celeste.launch_kind.as_deref()), ("Lutris", Some("executable")));
+        let m = celeste.meta.as_ref().unwrap();
+        assert_eq!((m.remapped_executable.as_deref(), m.launcher_args.as_deref()), (Some("/games/1/bin/game.exe"), None));
+        // Still Lutris': uninstalling never deletes it.
+        assert_eq!(m.extra.get(PREFIX_KEY), Some(&json!("/prefixes/1")));
+        assert_eq!(celeste.game.install.executable.as_deref(), Some("/games/1/bin/game.exe"));
+        assert_eq!(heronite_data::sideload::working_dir_of(&celeste.game), Some("/games/1"));
+        let config = heronite_data::game_config::game_overrides(&paths, "lutris_1");
+        assert_eq!(config["winePrefix"], "/prefixes/1");
+        assert_eq!(config["wineVersion"], json!({"bin": "/lutris/runners/wine/ge-8/bin/wine", "name": "ge-8", "type": "wine"}));
+        assert_eq!(config["launcherArgs"], "-windowed");
+        assert_eq!(config["enviromentOptions"], json!([{"key": "WINEDEBUG", "value": "+mine"}, {"key": "DXVK_HUD", "value": "fps"}]));
+        let managed = heronite_data::launchers::managed_paths(&paths, "/home/u");
+        assert!(managed.iter().any(|p| p.path == Path::new("/prefixes/1") && p.owner == "Lutris"));
+        // One only Lutris can start keeps asking it.
+        assert_eq!(lib.get("sideload_lutris_2").unwrap().launch_kind.as_deref(), Some(LAUNCH_KIND));
+
+        // Brought over, it is the user's: Lutris' changes only move its play time.
+        let mut moved = startable("1", "Celeste (2018)");
+        moved.own.as_mut().unwrap().program = "/elsewhere/game.exe".into();
+        moved.minutes = 200;
+        assert_eq!(sync(&paths, home, Launcher::Lutris, &[moved.clone()], &BTreeSet::new(), true).unwrap().updated, 2);
+        let lib = Library::load(&paths).unwrap();
+        let celeste = lib.get("sideload_lutris_1").unwrap();
+        assert_eq!((celeste.title.as_str(), celeste.playtime_minutes), ("Celeste", 200));
+        assert_eq!(celeste.meta.as_ref().unwrap().remapped_executable.as_deref(), Some("/games/1/bin/game.exe"));
+
+        // Lutris starts them again.
+        sync(&paths, home, Launcher::Lutris, &[moved.clone()], &BTreeSet::new(), false).unwrap();
+        let lib = Library::load(&paths).unwrap();
+        let celeste = lib.get("sideload_lutris_1").unwrap();
+        assert_eq!(celeste.launch_kind.as_deref(), Some(LAUNCH_KIND));
+        let m = celeste.meta.as_ref().unwrap();
+        assert_eq!((m.launcher_args.as_deref(), m.remapped_executable.as_deref()), (Some("lutris lutris:rungameid/1"), None));
+        assert_eq!(celeste.game.install.executable.as_deref(), Some(""));
+        assert_eq!(heronite_data::sideload::working_dir_of(&celeste.game), None);
+
+        // And here again, from where Lutris has it now.
+        sync(&paths, home, Launcher::Lutris, &[moved], &BTreeSet::new(), true).unwrap();
+        let lib = Library::load(&paths).unwrap();
+        let celeste = lib.get("sideload_lutris_1").unwrap();
+        assert_eq!(celeste.launch_kind.as_deref(), Some("executable"));
+        assert_eq!(celeste.game.install.executable.as_deref(), Some("/elsewhere/game.exe"));
+        // The variables it got stay as they are, none twice.
+        let config = heronite_data::game_config::game_overrides(&paths, "lutris_1");
+        assert_eq!(config["enviromentOptions"].as_array().unwrap().len(), 2);
+    }
+
+    /// Only Lutris', Bottles' and Faugus' games start here on the user's pick.
+    #[test]
+    fn start_here_is_only_lutris_bottles_and_faugus() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let g = startable("00000003-0000-0000-0000-000000000003", "Okami");
+        sync(&paths, Path::new("/home/u"), Launcher::Playnite, std::slice::from_ref(&g), &BTreeSet::new(), true).unwrap();
+        let lib = Library::load(&paths).unwrap();
+        assert_eq!(
+            lib.get(&format!("sideload_{}", app_name(Launcher::Playnite, &g.id))).unwrap().launch_kind.as_deref(),
+            Some(LAUNCH_KIND)
+        );
+        assert!(Launcher::Lutris.can_start_here() && !Launcher::Playnite.can_start_here() && !Launcher::Heroic.can_start_here());
     }
 
     #[test]

@@ -4,13 +4,15 @@
 //! import on for is `local_library/launcher-imports.json`.
 //!
 //! Lutris, Bottles and Faugus keep starting their games: the entries hold
-//! the command that asks them to ([`LAUNCH_KIND`]). Heroic's games added by
-//! hand and Playnite's that can start without it are copied as this app's
-//! own and start here; Playnite starts the rest.
+//! the command that asks them to ([`LAUNCH_KIND`]), unless the user picks
+//! that they start here ([`ImportPrefs::start_here`]): the ones that can
+//! are then brought over as this app's own. Heroic's games added by hand
+//! and Playnite's that can start without it are always copied as this
+//! app's own and start here; Playnite starts the rest.
 //!
 //! The folders and Wine prefixes of those games belong to their launcher
-//! ([`managed_paths`]), Playnite's brought over too: uninstalling a game
-//! never deletes them.
+//! ([`managed_paths`]), the ones brought over too ([`brought_over`]):
+//! uninstalling a game never deletes them.
 //! The same goes for the prefix and the games of a store client
 //! ([`crate::clients`]) and the games of the Xbox app ([`crate::xbox`]).
 
@@ -76,6 +78,20 @@ impl Launcher {
     pub fn from_source(source: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|l| l.id() == source)
     }
+
+    /// Whether the user picks if its games start here, without it
+    /// ([`ImportPrefs::start_here`]): Lutris, Bottles and Faugus. Heroic's
+    /// and Playnite's games start here whenever they can.
+    pub fn can_start_here(self) -> bool {
+        matches!(self, Launcher::Lutris | Launcher::Bottles | Launcher::Faugus)
+    }
+}
+
+/// A Collection entry of a launcher's game that starts here, without it
+/// (brought over from Lutris, Bottles, Faugus or Playnite). Heroic's copies
+/// are this app's games like any other.
+pub fn brought_over(meta: &LocalGameMeta) -> bool {
+    Launcher::from_source(&meta.source).is_some_and(|l| l != Launcher::Heroic) && meta.launch_kind != LAUNCH_KIND
 }
 
 /// `launchKind` of the games another launcher starts (`launcherArgs` holds
@@ -117,6 +133,13 @@ pub struct ImportPrefs {
     /// out until it is turned off and on again.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub removed: BTreeMap<Launcher, BTreeSet<String>>,
+    /// Launchers whose games start here, without them
+    /// ([`Launcher::can_start_here`]): each game the import can start here
+    /// comes over as this app's own, with its program, arguments, Wine
+    /// prefix, Wine and environment variables. Turned off, those go back to
+    /// asking the launcher.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub start_here: BTreeSet<Launcher>,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -157,9 +180,9 @@ pub fn managed_paths(paths: &DataPaths, home: &str) -> Vec<Managed> {
                 LAUNCH_KIND => Launcher::from_source(&m.source)?.name(),
                 clients::LAUNCH_KIND => Client::from_id(&m.source)?.name(),
                 xbox::LAUNCH_KIND => xbox::NAME,
-                // Brought over from Playnite: its folder (often one of many
-                // ROMs) is still Playnite's too.
-                _ if m.source == Launcher::Playnite.id() => Launcher::Playnite.name(),
+                // Brought over: its folder (for Playnite often one of many
+                // ROMs) and prefix are still the launcher's.
+                _ if brought_over(m) => Launcher::from_source(&m.source)?.name(),
                 _ => return None,
             };
             Some((m.app_name.as_str(), (owner, m)))

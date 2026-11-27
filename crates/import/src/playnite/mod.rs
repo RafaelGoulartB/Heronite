@@ -270,6 +270,7 @@ fn game(d: &Document, install: &Install, resolver: &Resolver, names: &library::N
         banner: media("BackgroundImage"),
         prefix: None,
         transfer,
+        own: None,
         id,
     })
 }

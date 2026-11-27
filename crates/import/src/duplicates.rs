@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use heronite_data::launchers::{kept_apart_key, Launcher, LAUNCH_KIND, PREFIX_KEY};
+use heronite_data::launchers::{brought_over, kept_apart_key, Launcher, LAUNCH_KIND, PREFIX_KEY};
 use heronite_data::{fuzzy, game_config, json_store, CollectionGame, DataPaths, Library};
 use serde_json::Value;
 
@@ -81,10 +81,10 @@ fn is_mine(g: &CollectionGame) -> bool {
 }
 
 /// The game of Lutris, Bottles, Faugus or Playnite behind `g` (one brought
-/// over from Playnite too), when it is one still installed.
+/// over from them too), when it is one still installed.
 fn launcher_of(g: &CollectionGame) -> Option<Launcher> {
     let m = g.meta.as_ref()?;
-    let theirs = m.launch_kind == LAUNCH_KIND || m.source == Launcher::Playnite.id();
+    let theirs = m.launch_kind == LAUNCH_KIND || brought_over(m);
     (g.installed && theirs).then(|| Launcher::from_source(&m.source)).flatten()
 }
 
@@ -222,6 +222,7 @@ mod tests {
                 lutris("10", "Portal", "/home/u/Games/portal", None),
             ],
             &BTreeSet::new(),
+            false,
         )
         .unwrap();
         add_mine(
@@ -277,6 +278,7 @@ mod tests {
                 lutris("3", "Celeste", "/h/Celeste", Some("/h/pfx")),
             ],
             &BTreeSet::new(),
+            false,
         )
         .unwrap();
         add_mine(
@@ -323,7 +325,7 @@ mod tests {
             actions: vec![],
         };
         let hades = Game { transfer: Some(Box::new(transfer)), ..lutris("1", "Hades", "/g/Hades", None) };
-        collection::sync(&paths, std::path::Path::new("/home/u"), Launcher::Playnite, &[hades], &BTreeSet::new()).unwrap();
+        collection::sync(&paths, std::path::Path::new("/home/u"), Launcher::Playnite, &[hades], &BTreeSet::new(), false).unwrap();
         add_mine(&paths, &[("m1", "My Hades", "/g/Hades/Hades.exe")]);
         let lib = Library::load_with(&paths, true).unwrap();
         let pairs: Vec<_> = find(&lib, &paths, "/home/u", &BTreeSet::new())

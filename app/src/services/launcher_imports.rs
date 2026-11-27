@@ -81,6 +81,9 @@ pub struct LauncherImports {
     pub in_collection: BTreeMap<Launcher, usize>,
     /// Importing (or removing) right now.
     pub busy: BTreeSet<Launcher>,
+    /// Launchers to import again once their import running now is done (it
+    /// read the choices before they changed).
+    again: BTreeSet<Launcher>,
     pub errors: BTreeMap<Launcher, String>,
     /// Games in the Collection twice (see [`Resolve`]).
     pub duplicates: Vec<Duplicate>,
@@ -113,6 +116,7 @@ impl LauncherImports {
             prefs,
             in_collection: BTreeMap::new(),
             busy: BTreeSet::new(),
+            again: BTreeSet::new(),
             errors: BTreeMap::new(),
             duplicates: Vec::new(),
             resolving: BTreeSet::new(),
@@ -326,6 +330,25 @@ impl LauncherImports {
         cx.notify();
     }
 
+    /// Picks whether `launcher`'s games start here or through it
+    /// ([`Launcher::can_start_here`]); while its import is on, they change
+    /// over now.
+    pub fn set_start_here(&mut self, launcher: Launcher, on: bool, cx: &mut Context<Self>) {
+        if !launcher.can_start_here() {
+            return;
+        }
+        if on {
+            self.prefs.start_here.insert(launcher);
+        } else {
+            self.prefs.start_here.remove(&launcher);
+        }
+        self.save(cx);
+        if self.prefs.enabled.contains(&launcher) {
+            self.import(launcher, cx);
+        }
+        cx.notify();
+    }
+
     fn save(&self, cx: &mut Context<Self>) {
         *self.saving.lock().unwrap() = self.prefs.clone();
         let (saving, paths) = (self.saving.clone(), self.paths.clone());
@@ -349,10 +372,12 @@ impl LauncherImports {
     /// Reads `launcher`'s library and brings its games in.
     pub fn import(&mut self, launcher: Launcher, cx: &mut Context<Self>) {
         if !self.busy.insert(launcher) {
+            self.again.insert(launcher);
             return;
         }
         let paths = self.paths.clone();
         let removed = self.prefs.removed.get(&launcher).cloned().unwrap_or_default();
+        let start_here = self.prefs.start_here.contains(&launcher);
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
@@ -361,7 +386,7 @@ impl LauncherImports {
                     if found.in_use {
                         return Err(heronite_i18n::tr!("Close {launcher} to bring its games in.", launcher = launcher.name()));
                     }
-                    let report = heronite_import::sync(&paths, &home(), &found, &removed).map_err(|e| format!("{e:#}"))?;
+                    let report = heronite_import::sync(&paths, &home(), &found, &removed, start_here).map_err(|e| format!("{e:#}"))?;
                     Ok((report, found.count(), heronite_import::collection::counts(&paths)[&launcher]))
                 })
                 .await;
@@ -383,6 +408,9 @@ impl LauncherImports {
                         log::warn!("Importing from {}: {e}", launcher.name());
                         this.errors.insert(launcher, e);
                     }
+                }
+                if this.again.remove(&launcher) && this.prefs.enabled.contains(&launcher) {
+                    this.import(launcher, cx);
                 }
                 cx.notify();
             })
