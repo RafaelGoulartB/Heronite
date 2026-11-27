@@ -241,6 +241,14 @@ impl CollectionView {
         }
     }
 
+    /// How many copies the game `key` has while they are grouped (1 alone).
+    pub(in crate::collection::console) fn console_copy_count(&self, key: &str) -> usize {
+        match self.lib.as_ref().filter(|_| self.ui.group_copies) {
+            Some(lib) => lib.copies.get(key).map_or(1, |g| g.members.len()),
+            None => 1,
+        }
+    }
+
     /// Each game with copies once, by its first copy in `games` in the
     /// group's order (the default first), as the Collection shows them.
     pub(in crate::collection::console) fn collapse_copies<G: std::borrow::Borrow<CollectionGame>>(
