@@ -26,6 +26,7 @@
   "Could not queue the installation: {error}": "Não foi possível enfileirar a instalação: {error}",
   "Could not read the library: {error}": "Não foi possível ler a biblioteca: {error}",
   "Could not refresh the Epic library: {error}": "Não foi possível atualizar a biblioteca da Epic: {error}",
+  "Epic is limiting requests for now. Try again in a few minutes.": "A Epic está limitando as requisições no momento. Tente de novo em alguns minutos.",
   "Could not remove the shortcuts of {title}: {error}": "Não foi possível remover os atalhos de {title}: {error}",
   "Current order": "Ordem atual",
   "Disabling EOS Overlay": "Desativando o EOS Overlay",

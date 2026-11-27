@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use heronite_data::json_store;
 use heronite_data::DataPaths;
+use heronite_i18n::tr;
 use serde_json::{json, Map, Value};
 
 use crate::cache_store::CacheStore;
@@ -229,15 +230,49 @@ pub struct RefreshResult {
 /// time. Its look-up of one game in the catalog keeps its own 10 seconds.
 const API_TIMEOUT: &str = "60";
 
+/// Lines of what legendary printed on stderr that go to the log when the
+/// list fails: how far it got ("Fetching metadata for 778 app(s).") and the
+/// traceback, which the message leaves out.
+const LOGGED_LINES: usize = 40;
+
 /// `legendary list --third-party`: `None` when it worked, else why not.
 fn list_games(legendary: &Legendary) -> Option<String> {
     match legendary.run(&["--api-timeout", API_TIMEOUT, "list", "--third-party"], &[]) {
         Ok(out) if out.success() => None,
         Ok(out) => {
-            let why = out.error_lines();
-            Some(if why.is_empty() { "legendary list failed".to_string() } else { why })
+            log::warn!("legendary list failed, the end of what it said:\n{}", last_lines(&out.stderr, LOGGED_LINES));
+            Some(list_failure(&out.error_lines()))
         }
         Err(err) => Some(format!("{err:#}")),
+    }
+}
+
+/// The message of a failed list, from its [`Output::error_lines`](crate::cmd::Output::error_lines).
+fn list_failure(why: &str) -> String {
+    if why.is_empty() {
+        return "legendary list failed".to_string();
+    }
+    if rate_limited(why) {
+        return format!("{}\n{why}", tr!("Epic is limiting requests for now. Try again in a few minutes."));
+    }
+    why.to_string()
+}
+
+/// Epic (its store's Cloudflare, which answers the achievements legendary
+/// asks for each game) turned the requests away for a while: an HTTP 429.
+fn rate_limited(why: &str) -> bool {
+    why.contains("429 Client Error") || why.contains("Too Many Requests")
+}
+
+/// The last `n` lines of `text`.
+fn last_lines(text: &str, n: usize) -> &str {
+    if n == 0 {
+        return "";
+    }
+    let text = text.trim_end();
+    match text.match_indices('\n').nth_back(n - 1) {
+        Some((i, _)) => &text[i + 1..],
+        None => text,
     }
 }
 
@@ -542,6 +577,49 @@ mod tests {
             "requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='x', port=443): Read timed out. (read timeout=60)"
         ));
         assert!(!connection_broke("[cli] ERROR: Login failed, cannot continue!"));
+    }
+
+    /// Cloudflare's 429 on the achievements of a big library, right after the
+    /// login: the message says to wait, then what legendary ended on.
+    #[test]
+    fn refresh_says_to_wait_when_epic_limits_the_requests() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        setup(&data_paths);
+        let limited =
+            "requests.exceptions.HTTPError: 429 Client Error: Too Many Requests for url: https://launcher.store.epicgames.com/graphql";
+        let tool = fake_tool(dir.path()).otherwise(
+            Reply::new()
+                .err("[Core] INFO: Fetching metadata for 778 app(s).")
+                .err("Traceback (most recent call last):")
+                .err("  File \"legendary/api/egs.py\", line 266, in get_game_achievements")
+                .err(limited)
+                .exit(1),
+        );
+        let r = refresh(&data_paths, &legendary_of(&tool, dir.path())).unwrap();
+        let why = r.list_error.unwrap();
+        assert_eq!(why, format!("Epic is limiting requests for now. Try again in a few minutes.\n{limited}"));
+        assert_eq!(tool.calls().len(), 1);
+    }
+
+    #[test]
+    fn only_a_429_is_epic_limiting_the_requests() {
+        assert!(rate_limited("requests.exceptions.HTTPError: 429 Client Error: Too Many Requests for url: https://x"));
+        assert!(!rate_limited("requests.exceptions.HTTPError: 504 Server Error: Gateway Timeout for url: https://x"));
+        assert!(!rate_limited(
+            "requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='x', port=443): Read timed out. (read timeout=60)"
+        ));
+        assert_eq!(list_failure(""), "legendary list failed");
+        assert_eq!(list_failure("[cli] ERROR: Login failed"), "[cli] ERROR: Login failed");
+    }
+
+    #[test]
+    fn the_log_gets_the_last_lines() {
+        assert_eq!(last_lines("a\nb\nc\n", 2), "b\nc");
+        assert_eq!(last_lines("a\nb\nc", 3), "a\nb\nc");
+        assert_eq!(last_lines("a\nb", 10), "a\nb");
+        assert_eq!(last_lines("a\nb", 0), "");
+        assert_eq!(last_lines("", 5), "");
     }
 
     /// Compares the rebuilt library with the file Heronite wrote. Read-only:
