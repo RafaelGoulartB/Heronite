@@ -240,7 +240,10 @@ fn list_games(legendary: &Legendary) -> Option<String> {
     match legendary.run(&["--api-timeout", API_TIMEOUT, "list", "--third-party"], &[]) {
         Ok(out) if out.success() => None,
         Ok(out) => {
-            log::warn!("legendary list failed, the end of what it said:\n{}", last_lines(&out.stderr, LOGGED_LINES));
+            let said = last_lines(&out.stderr, LOGGED_LINES);
+            if !said.is_empty() {
+                log::warn!("legendary list failed, the end of what it said:\n{said}");
+            }
             Some(list_failure(&out.error_lines()))
         }
         Err(err) => Some(format!("{err:#}")),
@@ -259,9 +262,11 @@ fn list_failure(why: &str) -> String {
 }
 
 /// Epic (its store's Cloudflare, which answers the achievements legendary
-/// asks for each game) turned the requests away for a while: an HTTP 429.
+/// asks for each game) turned the requests away for a while: an HTTP 429 is
+/// what legendary ended on (the last line; an error it logged and went on
+/// from is not the reason).
 fn rate_limited(why: &str) -> bool {
-    why.contains("429 Client Error") || why.contains("Too Many Requests")
+    why.lines().last().is_some_and(|end| end.contains("429 Client Error") || end.contains("Too Many Requests"))
 }
 
 /// The last `n` lines of `text`.
@@ -605,6 +610,13 @@ mod tests {
     #[test]
     fn only_a_429_is_epic_limiting_the_requests() {
         assert!(rate_limited("requests.exceptions.HTTPError: 429 Client Error: Too Many Requests for url: https://x"));
+        // No reason given (some proxies), or a reason alone.
+        assert!(rate_limited("requests.exceptions.HTTPError: 429 Client Error:  for url: https://x"));
+        assert!(rate_limited("requests.exceptions.HTTPError: Too Many Requests"));
+        // A 429 legendary logged and went on from is not what ended it.
+        assert!(!rate_limited(
+            "[Core] ERROR: 429 Client Error: Too Many Requests\nrequests.exceptions.ReadTimeout: HTTPSConnectionPool(host='x', port=443): Read timed out. (read timeout=60)"
+        ));
         assert!(!rate_limited("requests.exceptions.HTTPError: 504 Server Error: Gateway Timeout for url: https://x"));
         assert!(!rate_limited(
             "requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='x', port=443): Read timed out. (read timeout=60)"
@@ -620,6 +632,7 @@ mod tests {
         assert_eq!(last_lines("a\nb", 10), "a\nb");
         assert_eq!(last_lines("a\nb", 0), "");
         assert_eq!(last_lines("", 5), "");
+        assert_eq!(last_lines("a\r\nb\r\nc\r\n", 2), "b\r\nc");
     }
 
     /// Compares the rebuilt library with the file Heronite wrote. Read-only:

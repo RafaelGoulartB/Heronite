@@ -176,7 +176,7 @@ impl Downloads {
                         Ok(None)
                     }
                     Err(err) => {
-                        // Shown on the page only: the log keeps it too.
+                        // Shown on the page; logged too, so a report has it.
                         log::warn!("Amazon Games: could not start the sign-in: {err:#}");
                         Err(format!("{err:#}"))
                     }
