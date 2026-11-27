@@ -8,12 +8,10 @@
 //! says runs on batteries ([`xbox`]'s caller checks that first).
 
 use std::io;
-use std::sync::OnceLock;
 use std::time::Duration;
 
 use windows::Gaming::Input::RawGameController;
 use windows::System::Power::BatteryStatus;
-use windows::Win32::System::Com::CoIncrementMTAUsage;
 
 use super::Reading;
 
@@ -34,7 +32,7 @@ pub fn xbox(vendor: u16, product: u16) -> io::Result<Option<Reading>> {
     if !VENDORS.contains(&vendor) {
         return Ok(None);
     }
-    mta();
+    crate::com::keep_mta();
     let mut list = RawGameController::RawGameControllers().map_err(io::Error::other)?;
     if list.Size().map_err(io::Error::other)? == 0 {
         std::thread::sleep(FIRST_LIST);
@@ -48,20 +46,6 @@ pub fn xbox(vendor: u16, product: u16) -> io::Result<Option<Reading>> {
     let full = report.FullChargeCapacityInMilliwattHours().and_then(|r| r.Value()).ok();
     let status = report.Status().ok();
     Ok(reading(remaining, full, status))
-}
-
-/// Keeps the process's multithreaded COM apartment up from the first call
-/// on: Windows.Gaming.Input's objects, cached by `windows`, live in it, and
-/// the calling threads (a pool) need not join it themselves.
-fn mta() {
-    static KEPT: OnceLock<()> = OnceLock::new();
-    KEPT.get_or_init(|| {
-        // SAFETY: plain call; the cookie is never released, the apartment stays
-        // for the process.
-        if let Err(error) = unsafe { CoIncrementMTAUsage() } {
-            log::warn!("CoIncrementMTAUsage: {error}");
-        }
-    });
 }
 
 /// A battery report as a reading: `None` without capacities, or when the

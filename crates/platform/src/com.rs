@@ -1,9 +1,10 @@
 //! COM on the current thread for as long as a guard lives (Windows).
 
 use std::marker::PhantomData;
+use std::sync::OnceLock;
 
 use windows::Win32::Foundation::RPC_E_CHANGED_MODE;
-use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT};
+use windows::Win32::System::Com::{CoIncrementMTAUsage, CoInitializeEx, CoUninitialize, COINIT};
 
 /// COM for the current thread while it lives, in the apartment `flags` asks
 /// for. A thread already in COM in the other apartment keeps its own
@@ -33,6 +34,21 @@ impl Drop for Com {
             unsafe { CoUninitialize() };
         }
     }
+}
+
+/// Keeps the process's multithreaded COM apartment up from the first call
+/// on: the WinRT objects `windows` caches (Windows.Gaming.Input's, the media
+/// controls') live in it, and the calling threads (a pool) need not join it
+/// themselves.
+pub(crate) fn keep_mta() {
+    static KEPT: OnceLock<()> = OnceLock::new();
+    KEPT.get_or_init(|| {
+        // SAFETY: plain call; the cookie is never released, the apartment stays
+        // for the process.
+        if let Err(error) = unsafe { CoIncrementMTAUsage() } {
+            log::warn!("CoIncrementMTAUsage: {error}");
+        }
+    });
 }
 
 #[cfg(test)]
