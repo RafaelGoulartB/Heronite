@@ -75,6 +75,9 @@ pub fn start_login(nile: &Nile) -> Result<Option<LoginRequest>> {
     }
     let why = out.error_lines();
     if why.is_empty() {
+        // Nothing to name it (a program that could not start, output that is
+        // not nile's): the log keeps what it printed.
+        log::warn!("nile auth --login (exit {:?}) printed:\n{}\n{}", out.code, out.stderr.trim_end(), out.stdout.trim_end());
         bail!(tr!("Could not start the Amazon Games sign-in"));
     }
     bail!(tr!("Could not start the Amazon Games sign-in: {error}", error = why));
