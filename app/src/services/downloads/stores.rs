@@ -175,7 +175,11 @@ impl Downloads {
                         this.store_reload_local(Store::Amazon, cx);
                         Ok(None)
                     }
-                    Err(err) => Err(format!("{err:#}")),
+                    Err(err) => {
+                        // Shown on the page; logged too, so a report has it.
+                        log::warn!("amazon: {err:#}");
+                        Err(format!("{err:#}"))
+                    }
                 };
                 then(this, res, cx);
                 cx.notify();

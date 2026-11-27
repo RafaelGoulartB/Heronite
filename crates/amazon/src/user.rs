@@ -75,9 +75,42 @@ pub fn start_login(nile: &Nile) -> Result<Option<LoginRequest>> {
     }
     let why = out.error_lines();
     if why.is_empty() {
+        // No error to name it (output this nile does not usually print): the
+        // log keeps what it printed.
+        log::warn!("{}", unexplained_start(out.code, &out.stderr, &out.stdout));
         bail!(tr!("Could not start the Amazon Games sign-in"));
     }
     bail!(tr!("Could not start the Amazon Games sign-in: {error}", error = why));
+}
+
+/// Fields of the sign-in request that stay out of the log (as the
+/// `--code-verifier` of a logged command line does).
+const SECRET_FIELDS: [&str; 3] = ["code_verifier", "serial", "client_id"];
+
+/// Lines of each stream, and characters of each line, that
+/// [`unexplained_start`] logs at most (a page of HTML from a proxy is not
+/// worth more).
+const LOGGED_LINES: usize = 40;
+const LOGGED_LINE_CHARS: usize = 300;
+
+/// What the log gets of a start that failed without an error line: the end
+/// of both streams, without a line that carries a field of [`SECRET_FIELDS`]
+/// (a request nile printed in another shape than [`parse_login_request`] reads).
+fn unexplained_start(code: Option<i32>, stderr: &str, stdout: &str) -> String {
+    let shown = |text: &str| {
+        let lines: Vec<&str> = heronite_data::proc::last_lines(text, LOGGED_LINES)
+            .lines()
+            .map(|l| if SECRET_FIELDS.iter().any(|f| l.contains(f)) { "[a line of the sign-in request, not shown]" } else { l })
+            .map(|l| l.char_indices().nth(LOGGED_LINE_CHARS).map_or(l, |(i, _)| &l[..i]))
+            .collect();
+        if lines.is_empty() {
+            "(nothing)".to_string()
+        } else {
+            lines.join("\n")
+        }
+    };
+    let exit = code.map_or_else(|| "a signal".to_string(), |c| c.to_string());
+    format!("nile auth --login ended with {exit} and no error.\nstderr:\n{}\nstdout:\n{}", shown(stderr), shown(stdout))
 }
 
 /// The JSON object nile prints: `{client_id, code_verifier, serial, url}`.
@@ -273,6 +306,26 @@ mod tests {
         assert!(err.contains("boom"), "{err}");
         let nile = env.nile(Reply::new());
         assert!(start_login(&nile).is_err());
+    }
+
+    /// A request in another shape (several lines, a field missing) is not
+    /// read, and its secret fields stay out of the log.
+    #[test]
+    fn a_start_without_an_error_logs_what_nile_printed_but_the_request() {
+        let stdout = "{\n  \"client_id\": \"cid\",\n  \"code_verifier\": \"VERIFIER\",\n  \"serial\": \"SER\",\n  \"url\": \"u\"\n}\n";
+        let env = Env::new();
+        let nile = env.nile(Reply::new().out(stdout).exit(1));
+        assert!(start_login(&nile).is_err());
+        let logged = unexplained_start(Some(1), "", stdout);
+        assert!(!logged.contains("VERIFIER") && !logged.contains("SER") && !logged.contains("cid"), "{logged}");
+        assert!(logged.starts_with("nile auth --login ended with 1 and no error.\nstderr:\n(nothing)\nstdout:\n{"), "{logged}");
+        assert!(logged.contains("\"url\": \"u\""), "{logged}");
+        assert!(unexplained_start(None, "boom\n", "").contains("ended with a signal"));
+        // A big page is cut to its end, in short lines.
+        let page = format!("{}{}", "<p>x</p>\n".repeat(500), "y".repeat(5000));
+        let logged = unexplained_start(Some(1), &page, "");
+        assert_eq!(logged.lines().filter(|l| l.starts_with("<p>")).count(), 39);
+        assert!(logged.contains(&format!("{}\nstdout:", "y".repeat(300))), "{logged}");
     }
 
     #[test]

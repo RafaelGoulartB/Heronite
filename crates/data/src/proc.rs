@@ -419,6 +419,202 @@ pub fn output(cmd: &mut Command) -> io::Result<RunOutput> {
     Run::new().run(cmd)
 }
 
+/// What starts every Python traceback.
+const TRACEBACK: &str = "Traceback (most recent call last):";
+
+/// The last `n` lines of `text` (for a log: the end of what a tool said).
+pub fn last_lines(text: &str, n: usize) -> &str {
+    if n == 0 {
+        return "";
+    }
+    let text = text.trim_end();
+    match text.match_indices('\n').nth_back(n - 1) {
+        Some((i, _)) => &text[i + 1..],
+        None => text,
+    }
+}
+
+/// The lines of a Python tool's output (legendary, gogdl, nile) that say
+/// what went wrong: its `ERROR` and `CRITICAL` log lines and, for a
+/// traceback, the exception it ends with (`requests.exceptions.ReadTimeout:
+/// ...`) in place of its `Traceback (most recent call last):` header, which
+/// says nothing. Of the exceptions of one chain ("During handling of the
+/// above exception...") only the last, the one that ended the tool, is kept.
+/// A traceback whose exception is not found (cut short, or of a kind not
+/// read here) keeps its header, so a crash still shows.
+pub fn error_lines(output: &str) -> Vec<&str> {
+    let mut found = Vec::new();
+    // The header of the traceback being read, until its exception comes.
+    let mut open: Option<&str> = None;
+    // The exception the last traceback ended with: dropped when another of
+    // its chain follows.
+    let mut last: Option<&str> = None;
+    for line in output.lines() {
+        if line.starts_with(TRACEBACK) {
+            found.extend(open.take().into_iter().chain(last.take()));
+            open = Some(line);
+        } else if line.ends_with("another exception occurred:") || line.ends_with("of the following exception:") {
+            // The chain goes on: what came before did not end the tool, read
+            // or not.
+            open = None;
+            last = None;
+        } else if open.is_some() {
+            // The frames are indented; the first line that is not names the
+            // exception. Log lines of other threads may come in between.
+            if line.trim().is_empty() || line.starts_with(char::is_whitespace) {
+                continue;
+            }
+            if names_exception(line) {
+                open = None;
+                last = Some(line);
+            } else if is_logged_error(line) {
+                found.push(line);
+            }
+        } else if is_logged_error(line) {
+            // Any other line (the rest of a message of several lines, the
+            // log of another thread) leaves `last` for the chain to drop.
+            found.extend(last.take());
+            found.push(line);
+        }
+    }
+    found.extend(open.into_iter().chain(last));
+    if found.is_empty() {
+        // An exception group: every line of it is indented.
+        found.extend(output.lines().rfind(|l| l.contains(TRACEBACK)));
+    }
+    found
+}
+
+fn is_logged_error(line: &str) -> bool {
+    line.contains("ERROR") || line.contains("CRITICAL")
+}
+
+/// `KeyboardInterrupt`, `zlib.error: ...`, `requests.exceptions.ReadTimeout:
+/// ...`: a dotted name, alone or before `: `. Not a log line (`[cli] INFO:
+/// ...`, `WARNING:urllib3.connectionpool:...`, `ERROR: ...`) nor a line of
+/// code (`try:`).
+fn names_exception(line: &str) -> bool {
+    let (name, alone_or_with_message) = match line.split_once(':') {
+        Some((name, message)) => (name, message.starts_with(' ')),
+        None => (line, true),
+    };
+    // `f.<locals>.Error`: a class made inside a function.
+    let identifier = |part: &str| {
+        part == "<locals>"
+            || part.starts_with(|c: char| c.is_alphabetic() || c == '_') && part.chars().all(|c| c.is_alphanumeric() || c == '_')
+    };
+    alone_or_with_message && name.split('.').all(identifier) && name.chars().any(char::is_lowercase)
+}
+
+#[cfg(test)]
+mod error_lines_tests {
+    use super::{error_lines, last_lines};
+
+    /// What legendary 0.21.1 prints when Epic does not answer in time
+    /// (shortened: one frame per traceback).
+    const READ_TIMEOUT: &str = r#"[cli] INFO: Logging in...
+[Core] INFO: Trying to re-use existing login session...
+Traceback (most recent call last):
+  File "/tmp/legendary/urllib3/connectionpool.py", line 534, in _make_request
+    response = conn.getresponse()
+TimeoutError: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/tmp/legendary/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+        method=request.method,
+    ...<9 lines>...
+    )
+urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='launcher-public-service-prod06.ol.epicgames.com', port=443): Read timed out. (read timeout=10)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "/tmp/legendary/legendary/api/egs.py", line 173, in get_game_assets
+    r = self.session.get(f'https://{self._launcher_host}/launcher/api/public/assets/{platform}',
+        ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='launcher-public-service-prod06.ol.epicgames.com', port=443): Read timed out. (read timeout=10)
+"#;
+
+    #[test]
+    fn a_chain_of_tracebacks_is_the_exception_that_ended_the_tool() {
+        assert_eq!(
+            error_lines(READ_TIMEOUT),
+            ["requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='launcher-public-service-prod06.ol.epicgames.com', port=443): Read timed out. (read timeout=10)"]
+        );
+    }
+
+    #[test]
+    fn logged_errors_are_kept_in_order_with_the_exception() {
+        let output = "[Core] ERROR: first\n[cli] INFO: fine\nTraceback (most recent call last):\n  File \"a.py\", line 1\n    raise ERROR\nKeyError: 'records'\n[cli] CRITICAL: last";
+        assert_eq!(error_lines(output), ["[Core] ERROR: first", "KeyError: 'records'", "[cli] CRITICAL: last"]);
+        assert_eq!(error_lines("all good\n[cli] INFO: done"), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn two_tracebacks_that_are_not_a_chain_are_both_kept() {
+        let output = "Traceback (most recent call last):\n  File \"a.py\", line 1\nKeyboardInterrupt\nTraceback (most recent call last):\n  File \"b.py\", line 2\nValueError: no";
+        assert_eq!(error_lines(output), ["KeyboardInterrupt", "ValueError: no"]);
+    }
+
+    /// The inner exception of a chain has a message of two lines, and
+    /// another thread logs before the chain goes on.
+    #[test]
+    fn lines_between_the_tracebacks_of_a_chain_do_not_keep_the_inner_exception() {
+        let output = "Traceback (most recent call last):\n  File \"a.py\", line 1\nValueError: line 1\nline 2\n[DLM] INFO: worker 3 done\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"b.py\", line 2\nKeyError: 'final'";
+        assert_eq!(error_lines(output), ["KeyError: 'final'"]);
+    }
+
+    #[test]
+    fn log_lines_inside_a_traceback_are_not_its_exception() {
+        let output = "Traceback (most recent call last):\n  File \"a.py\", line 1\nWARNING:urllib3.connectionpool:Retrying\nERROR: worker died\n  File \"b.py\", line 2\nzlib.error: Error -3 while decompressing data";
+        assert_eq!(error_lines(output), ["ERROR: worker died", "zlib.error: Error -3 while decompressing data"]);
+    }
+
+    /// The inner exception is of a kind not read here (the tool printed it
+    /// in colour): its header must not be what is shown.
+    #[test]
+    fn a_chain_goes_on_past_an_exception_that_was_not_read() {
+        let output = "Traceback (most recent call last):\n  File \"a.py\", line 1\n\x1b[1;35mKeyError\x1b[0m: 'inner'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"b.py\", line 2\nmod.f.<locals>.Failed: outer";
+        assert_eq!(error_lines(output), ["mod.f.<locals>.Failed: outer"]);
+    }
+
+    #[test]
+    fn code_lines_inside_a_traceback_are_not_its_exception() {
+        let output = "Traceback (most recent call last):\nFile \"a.py\", line 1\ntry:\nDetails:\nValueError: real";
+        assert_eq!(error_lines(output), ["ValueError: real"]);
+    }
+
+    #[test]
+    fn an_exception_group_keeps_its_header() {
+        let output = "  + Exception Group Traceback (most recent call last):\n  |   File \"a.py\", line 1\n  | ExceptionGroup: several (2 sub-exceptions)";
+        assert_eq!(error_lines(output), ["  + Exception Group Traceback (most recent call last):"]);
+        // The group that ended the tool, not the traceback before it.
+        let chained = format!("Traceback (most recent call last):\n  File \"a.py\", line 1\nValueError: inner\n\nDuring handling of the above exception, another exception occurred:\n\n{output}");
+        assert_eq!(error_lines(&chained), ["  + Exception Group Traceback (most recent call last):"]);
+    }
+
+    #[test]
+    fn a_traceback_cut_short_keeps_its_header_and_the_errors_logged_inside() {
+        assert_eq!(error_lines("Traceback (most recent call last):"), ["Traceback (most recent call last):"]);
+        let output = "Traceback (most recent call last):\n  File \"a.py\", line 1\n[DLM] ERROR: worker died";
+        assert_eq!(error_lines(output), ["[DLM] ERROR: worker died", "Traceback (most recent call last):"]);
+    }
+
+    #[test]
+    fn the_log_gets_the_last_lines() {
+        assert_eq!(last_lines("a\nb\nc\n", 2), "b\nc");
+        assert_eq!(last_lines("a\nb\nc", 3), "a\nb\nc");
+        assert_eq!(last_lines("a\nb", 10), "a\nb");
+        assert_eq!(last_lines("a\nb", 0), "");
+        assert_eq!(last_lines("", 5), "");
+        assert_eq!(last_lines("a\r\nb\r\nc\r\n", 2), "b\r\nc");
+    }
+}
+
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;

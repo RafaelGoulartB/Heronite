@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use heronite_data::json_store;
 use heronite_data::DataPaths;
+use heronite_i18n::tr;
 use serde_json::{json, Map, Value};
 
 use crate::cache_store::CacheStore;
@@ -222,20 +223,80 @@ pub struct RefreshResult {
     pub launcher_import: Option<crate::ops::OpResult>,
 }
 
+/// Seconds legendary waits for an answer of Epic's servers while it lists
+/// the library (`--api-timeout`, since 0.20.23; its own default is 10). The
+/// list of a big account, or any answer on a slow connection, takes longer
+/// than that, and legendary ends on the first answer that does not come in
+/// time. Its look-up of one game in the catalog keeps its own 10 seconds.
+const API_TIMEOUT: &str = "60";
+
+/// Lines of what legendary printed on stderr that go to the log when the
+/// list fails: how far it got ("Fetching metadata for 778 app(s).") and the
+/// traceback, which the message leaves out.
+const LOGGED_LINES: usize = 40;
+
+/// `legendary list --third-party`: `None` when it worked, else why not.
+fn list_games(legendary: &Legendary) -> Option<String> {
+    match legendary.run(&["--api-timeout", API_TIMEOUT, "list", "--third-party"], &[]) {
+        Ok(out) if out.success() => None,
+        Ok(out) => {
+            let said = heronite_data::proc::last_lines(&out.stderr, LOGGED_LINES);
+            if !said.is_empty() {
+                log::warn!("legendary list failed, the end of what it said:\n{said}");
+            }
+            Some(list_failure(&out.error_lines(), ended_on(&out)))
+        }
+        Err(err) => Some(format!("{err:#}")),
+    }
+}
+
+/// The error legendary ended on: the last of its stderr (where it logs and
+/// crashes), or of its stdout when stderr has none.
+fn ended_on(out: &crate::cmd::Output) -> Option<&str> {
+    let last = |text| heronite_data::proc::error_lines(text).last().copied();
+    last(&out.stderr).or_else(|| last(&out.stdout))
+}
+
+/// The message of a failed list, from its [`Output::error_lines`](crate::cmd::Output::error_lines)
+/// and the one it [`ended_on`].
+fn list_failure(why: &str, ended_on: Option<&str>) -> String {
+    if why.is_empty() {
+        return "legendary list failed".to_string();
+    }
+    if ended_on.is_some_and(rate_limited) {
+        return format!("{}\n{why}", tr!("Epic is limiting requests for now. Try again in a few minutes."));
+    }
+    why.to_string()
+}
+
+/// Epic (its store's Cloudflare, which answers the achievements legendary
+/// asks for each game) turned the requests away for a while: the error
+/// legendary ended on is an HTTP 429 (an error it logged and went on from is
+/// not the reason).
+fn rate_limited(end: &str) -> bool {
+    end.contains("429 Client Error") || end.contains("Too Many Requests")
+}
+
+/// The connection to Epic broke before the answer was whole (the errors of
+/// `requests` legendary ends on). Not a server that cannot be reached, or
+/// that did not answer in [`API_TIMEOUT`]: asking again would fail again,
+/// after as long a wait.
+fn connection_broke(why: &str) -> bool {
+    ["ChunkedEncodingError", "ContentDecodingError", "Connection aborted", "Connection broken"].iter().any(|e| why.contains(e))
+}
+
 /// `refresh`: `legendary list --third-party`, then rebuild the library file.
 pub fn refresh(data_paths: &DataPaths, legendary: &Legendary) -> Result<RefreshResult> {
     if !user::is_logged_in(data_paths) {
         return Ok(RefreshResult::default());
     }
     log::info!("Refreshing Epic Games...");
-    let mut list_error = None;
-    match legendary.run(&["list", "--third-party"], &[]) {
-        Ok(out) if out.success() => {}
-        Ok(out) => {
-            let why = out.error_lines();
-            list_error = Some(if why.is_empty() { "legendary list failed".to_string() } else { why });
-        }
-        Err(err) => list_error = Some(format!("{err:#}")),
+    let mut list_error = list_games(legendary);
+    // legendary keeps what it fetched before the connection broke, so a
+    // second run goes on from there.
+    if let Some(e) = list_error.as_deref().filter(|e| connection_broke(e)) {
+        log::warn!("legendary list lost the connection to Epic, trying once more: {e}");
+        list_error = list_games(legendary);
     }
     if let Some(e) = &list_error {
         log::error!("Failed to refresh library: {e}");
@@ -431,11 +492,144 @@ mod tests {
         let r = refresh(&data_paths, &lg).unwrap();
         assert_eq!(r.games, 1);
         assert!(r.list_error.unwrap().contains("offline"));
-        assert_eq!(tool.calls(), ["list --third-party"]);
+        assert_eq!(tool.calls(), ["--api-timeout 60 list --third-party"]);
         // Logged out: nothing runs.
         std::fs::remove_file(data_paths.legendary_config_dir().join("user.json")).unwrap();
         assert_eq!(refresh(&data_paths, &lg).unwrap().games, 0);
         assert_eq!(tool.calls().len(), 1);
+    }
+
+    /// A crash of legendary: Python tracebacks, and no `ERROR` line.
+    fn crash(exception: &str) -> Reply {
+        Reply::new()
+            .err("Traceback (most recent call last):")
+            .err("  File \"urllib3/connectionpool.py\", line 534, in _make_request")
+            .err("TimeoutError: The read operation timed out")
+            .err("")
+            .err("During handling of the above exception, another exception occurred:")
+            .err("")
+            .err("Traceback (most recent call last):")
+            .err("  File \"legendary/api/egs.py\", line 173, in get_game_assets")
+            .err(exception)
+            .exit(1)
+    }
+
+    /// #449: Epic did not answer in time, and all the app said was
+    /// "Traceback (most recent call last):".
+    #[test]
+    fn refresh_says_which_exception_ended_legendary() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        setup(&data_paths);
+        let timeout =
+            "requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='x.epicgames.com', port=443): Read timed out. (read timeout=60)";
+        let tool = fake_tool(dir.path()).otherwise(crash(timeout));
+        let r = refresh(&data_paths, &legendary_of(&tool, dir.path())).unwrap();
+        assert_eq!(r.list_error.as_deref(), Some(timeout));
+        // Not asked again: that would be another minute for the same answer.
+        assert_eq!(tool.calls().len(), 1);
+        // What it had on disk is still the library.
+        assert_eq!(r.games, 1);
+    }
+
+    #[test]
+    fn refresh_asks_once_more_when_the_connection_broke() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        setup(&data_paths);
+        let aborted = "requests.exceptions.ConnectionError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))";
+        let tool = fake_tool(dir.path()).otherwise(crash(aborted));
+        let r = refresh(&data_paths, &legendary_of(&tool, dir.path())).unwrap();
+        assert_eq!(r.list_error.as_deref(), Some(aborted));
+        assert_eq!(tool.calls(), ["--api-timeout 60 list --third-party"; 2]);
+    }
+
+    /// The second run gets the list: nothing is reported.
+    #[cfg(unix)]
+    #[test]
+    fn refresh_is_fine_when_the_second_list_works() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        setup(&data_paths);
+        let once = dir.path().join("failed-once");
+        let body = format!(
+            "[ -e '{once}' ] && exit 0\ntouch '{once}'\necho 'Traceback (most recent call last):' >&2\necho \"requests.exceptions.ChunkedEncodingError: ('Connection broken: IncompleteRead(5 bytes read)')\" >&2\nexit 1",
+            once = once.display()
+        );
+        let lg = crate::cmd::testing::fake(dir.path(), &body);
+        let r = refresh(&data_paths, &lg).unwrap();
+        assert_eq!(r.list_error, None);
+        assert_eq!(crate::cmd::testing::calls(dir.path()).len(), 2);
+    }
+
+    #[test]
+    fn only_a_connection_that_broke_is_worth_a_second_list() {
+        assert!(connection_broke(
+            "requests.exceptions.ConnectionError: ('Connection aborted.', ConnectionResetError(104, 'Connection reset by peer'))"
+        ));
+        assert!(connection_broke(
+            "requests.exceptions.ContentDecodingError: ('Received response with content-encoding: gzip, but failed to decode it.')"
+        ));
+        // Epic cannot be reached, did not answer in time, or refused the login.
+        assert!(!connection_broke(
+            "requests.exceptions.ConnectionError: HTTPSConnectionPool(host='x', port=443): Max retries exceeded (Caused by NameResolutionError(\"Failed to resolve 'x'\"))"
+        ));
+        assert!(!connection_broke(
+            "requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='x', port=443): Read timed out. (read timeout=60)"
+        ));
+        assert!(!connection_broke("[cli] ERROR: Login failed, cannot continue!"));
+    }
+
+    /// Cloudflare's 429 on the achievements of a big library, right after the
+    /// login: the message says to wait, then what legendary ended on.
+    #[test]
+    fn refresh_says_to_wait_when_epic_limits_the_requests() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        setup(&data_paths);
+        let limited =
+            "requests.exceptions.HTTPError: 429 Client Error: Too Many Requests for url: https://launcher.store.epicgames.com/graphql";
+        let tool = fake_tool(dir.path()).otherwise(
+            Reply::new()
+                .err("[Core] INFO: Fetching metadata for 778 app(s).")
+                .err("Traceback (most recent call last):")
+                .err("  File \"legendary/api/egs.py\", line 266, in get_game_achievements")
+                .err(limited)
+                .exit(1),
+        );
+        let r = refresh(&data_paths, &legendary_of(&tool, dir.path())).unwrap();
+        let why = r.list_error.unwrap();
+        assert_eq!(why, format!("Epic is limiting requests for now. Try again in a few minutes.\n{limited}"));
+        assert_eq!(tool.calls().len(), 1);
+    }
+
+    #[test]
+    fn only_a_429_is_epic_limiting_the_requests() {
+        assert!(rate_limited("requests.exceptions.HTTPError: 429 Client Error: Too Many Requests for url: https://x"));
+        // No reason given (some proxies), or a reason alone.
+        assert!(rate_limited("requests.exceptions.HTTPError: 429 Client Error:  for url: https://x"));
+        assert!(rate_limited("requests.exceptions.HTTPError: Too Many Requests"));
+        // A 429 legendary logged and went on from is not what ended it.
+        let out =
+            |stderr: &str, stdout: &str| crate::cmd::Output { stdout: stdout.into(), stderr: stderr.into(), code: Some(1), aborted: false };
+        let logged = out(
+            "[Core] ERROR: 429 Client Error: Too Many Requests\nTraceback (most recent call last):\nrequests.exceptions.ReadTimeout: HTTPSConnectionPool(host='x', port=443): Read timed out. (read timeout=60)",
+            "",
+        );
+        assert!(!ended_on(&logged).is_some_and(rate_limited));
+        // An error line on stdout does not hide the 429 legendary crashed on.
+        let crashed = out(
+            "Traceback (most recent call last):\nrequests.exceptions.HTTPError: 429 Client Error: Too Many Requests for url: https://x",
+            "ERROR somewhere",
+        );
+        assert!(ended_on(&crashed).is_some_and(rate_limited));
+        assert_eq!(ended_on(&out("", "[cli] ERROR: x")), Some("[cli] ERROR: x"));
+        assert!(!rate_limited("requests.exceptions.HTTPError: 504 Server Error: Gateway Timeout for url: https://x"));
+        assert!(!rate_limited(
+            "requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='x', port=443): Read timed out. (read timeout=60)"
+        ));
+        assert_eq!(list_failure("", None), "legendary list failed");
+        assert_eq!(list_failure("[cli] ERROR: Login failed", Some("[cli] ERROR: Login failed")), "[cli] ERROR: Login failed");
     }
 
     /// Compares the rebuilt library with the file Heronite wrote. Read-only:

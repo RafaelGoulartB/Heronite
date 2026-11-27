@@ -25,19 +25,32 @@ impl Downloads {
                     let lg = Legendary::locate_or_install(&data_paths)?;
                     let info = user::login(&data_paths, &lg, &input)?;
                     // Heroic refreshes the library right after logging in.
-                    let refresh = library::refresh(&data_paths, &lg);
-                    anyhow::Ok((info, refresh.ok(), library::updates_available(&data_paths), read_stats(&data_paths)))
+                    let refresh_error = match library::refresh(&data_paths, &lg) {
+                        Ok(r) => r.list_error,
+                        Err(err) => Some(format!("{err:#}")),
+                    };
+                    anyhow::Ok((info, refresh_error, library::updates_available(&data_paths), read_stats(&data_paths)))
                 })
                 .await;
             this.update(cx, |this, cx| {
                 this.logging_in = false;
                 match res {
-                    Ok((info, _refresh, updates, stats)) => {
+                    Ok((info, refresh_error, updates, stats)) => {
                         let name = info.display_name.clone();
                         this.apply_account(Some(info));
                         this.updates = updates.into_iter().collect();
                         this.stats = stats;
                         this.toast(cx, tr!("Logged in as {name}", name), false);
+                        // Signed in, but the games could not be listed: say
+                        // so, or the library just stays empty.
+                        if let Some(e) = refresh_error {
+                            this.toast(
+                                cx,
+                                tr!("Could not refresh the Epic library: {error}", error = e.lines().next().unwrap_or("")),
+                                true,
+                            );
+                            this.last_error = Some(e);
+                        }
                         this.emit(cx, DownloadsEvent::LibraryChanged);
                     }
                     Err(err) => {
