@@ -81,6 +81,10 @@ struct Pad {
     sx: f32,
     sy: f32,
     kind: Kind,
+    /// `true` when the kernel driver reports `BTN_NORTH` (0x133) as the top
+    /// face button (`Button::Y`) and `BTN_WEST` (0x134) as the left button
+    /// (`Button::X`), rather than `xpad`'s letter order.
+    positional_xy: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -241,6 +245,7 @@ fn read_pad(id: usize, pads: &mut HashMap<usize, Pad>, core: &mut Core) -> Optio
     if shadowed(&pads[&id], pads) {
         return Some(out);
     }
+    let positional_xy = pads[&id].positional_xy;
     let now = Instant::now();
     let mut stick_moved = false;
     let mut dropped = false;
@@ -248,7 +253,7 @@ fn read_pad(id: usize, pads: &mut HashMap<usize, Pad>, core: &mut Core) -> Optio
         let (ty, code, value) = (ev.event_type(), ev.code(), ev.value());
         let step = if ty == evdev::EventType::KEY {
             // 2 = autorepeat of a held key: the core repeats on its own.
-            match (map_key(code), value) {
+            match (map_key(code, positional_xy), value) {
                 (Some(b), 0 | 1) => core.button(id, b, value == 1, now),
                 _ => continue,
             }
@@ -403,7 +408,12 @@ fn scan(
             Ok(Some(mut pad)) => {
                 let id = *next_id;
                 *next_id += 1;
-                log::info!("overlay input: controller {} ({})", pad.info.name, path.display());
+                log::info!(
+                    "overlay input: controller {} ({}{})",
+                    pad.info.name,
+                    path.display(),
+                    if pad.positional_xy { ", positional X/Y" } else { "" }
+                );
                 // Opened while the overlay is open: hold it like the others.
                 if core.holds(id) {
                     let _ = grab(Some(&mut pad), true);
@@ -453,6 +463,13 @@ const ABS_HAT0Y: u16 = 0x11;
 const SYN_DROPPED: u16 = 0x03;
 /// `BTN_MODE` and `KEY_HOMEPAGE`: what [`map_key`] reads as Guide.
 const GUIDE_CODES: [u16; 2] = [0x13c, 172];
+/// Kernel drivers that follow Linux's gamepad spec for the top and left face
+/// buttons: `BTN_NORTH` (0x133) is the top button (Triangle / Nintendo X,
+/// [`Button::Y`]) and `BTN_WEST` (0x134) is the left button (Square /
+/// Nintendo Y, [`Button::X`]). Xbox drivers (`xpad`, `xone`, `xpadneo`,
+/// `hid-microsoft`) and Valve's pads (`hid-steam`, Steam Input's virtual pad)
+/// report Xbox's letters instead (`BTN_X` 0x133 = left, `BTN_Y` 0x134 = top).
+const POSITIONAL_DRIVERS: [&str; 3] = ["playstation", "sony", "nintendo"];
 
 /// Opens `path` when it is a controller: it has a south (A) button. Devices
 /// that only look like gamepads (the "joystick" interface of some wireless
@@ -481,9 +498,23 @@ fn open_pad(path: &Path) -> io::Result<Option<Pad>> {
         (VALVE, _) => Kind::Valve,
         _ => Kind::Physical,
     };
+    let positional_xy = is_positional_driver(driver_of(Path::new("/sys/class/input"), path).as_deref());
     let bluetooth = (id.bus_type().0 == BUS_BLUETOOTH).then(|| dev.unique_name().unwrap_or_default().to_uppercase()).filter(|m| is_mac(m));
     let info = Controller { name: dev.name().unwrap_or("Controller").to_string(), id: ControllerId::Evdev(path.to_path_buf()), bluetooth };
-    Ok(Some(Pad { dev, info, x, y, sx: 0., sy: 0., kind }))
+    Ok(Some(Pad { dev, info, x, y, sx: 0., sy: 0., kind, positional_xy }))
+}
+
+/// The kernel driver bound to the parent device of an evdev node
+/// (`/dev/input/event7`), from `<sysfs_input>/event7/device/device/driver`.
+/// Virtual `uinput` devices have no parent driver and return `None`.
+fn driver_of(sysfs_input: &Path, node: &Path) -> Option<String> {
+    let name = node.file_name()?;
+    let driver = std::fs::read_link(sysfs_input.join(name).join("device/device/driver")).ok()?;
+    Some(driver.file_name()?.to_string_lossy().into_owned())
+}
+
+fn is_positional_driver(driver: Option<&str>) -> bool {
+    driver.is_some_and(|d| POSITIONAL_DRIVERS.contains(&d))
 }
 
 fn set_nonblocking(dev: &evdev::raw_stream::RawDevice) -> io::Result<()> {
@@ -503,14 +534,30 @@ fn is_mac(s: &str) -> bool {
     s.len() == 17 && s.split(':').all(|p| p.len() == 2 && p.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
-/// Kernel key code to a button. X / Y follow `xpad` (Xbox controllers, the
-/// most common on Linux): `BTN_X` (0x133) is X.
-fn map_key(code: u16) -> Option<Button> {
+/// Kernel key code to a button.
+///
+/// Linux aliases `BTN_NORTH` (0x133) with `BTN_X` and `BTN_WEST` (0x134) with
+/// `BTN_Y`. With `positional_xy`, `0x133` is the top button (`Button::Y`) and
+/// `0x134` is the left button (`Button::X`); otherwise they follow `xpad`'s
+/// letter order (`0x133` = `Button::X`, `0x134` = `Button::Y`).
+fn map_key(code: u16, positional_xy: bool) -> Option<Button> {
     Some(match code {
         0x130 => Button::A,
         0x131 => Button::B,
-        0x133 => Button::X,
-        0x134 => Button::Y,
+        0x133 => {
+            if positional_xy {
+                Button::Y
+            } else {
+                Button::X
+            }
+        }
+        0x134 => {
+            if positional_xy {
+                Button::X
+            } else {
+                Button::Y
+            }
+        }
         0x136 => Button::LB,
         0x137 => Button::RB,
         0x138 => Button::LT,
@@ -546,12 +593,56 @@ mod tests {
         assert!(normalize(0, (-32768, 32767)).abs() < 0.001);
         assert_eq!(normalize(255, (0, 255)), 1.);
         assert_eq!(normalize(5, (3, 3)), 0.);
-        assert_eq!(map_key(0x13c), Some(Button::Guide));
-        assert_eq!(map_key(172), Some(Button::Guide));
-        assert_eq!(map_key(0x137), Some(Button::RB));
-        assert_eq!(map_key(0x2c0), None);
+        assert_eq!(map_key(0x130, false), Some(Button::A));
+        assert_eq!(map_key(0x131, false), Some(Button::B));
+        assert_eq!(map_key(0x133, false), Some(Button::X));
+        assert_eq!(map_key(0x134, false), Some(Button::Y));
+        assert_eq!(map_key(0x130, true), Some(Button::A));
+        assert_eq!(map_key(0x131, true), Some(Button::B));
+        assert_eq!(map_key(0x133, true), Some(Button::Y));
+        assert_eq!(map_key(0x134, true), Some(Button::X));
+        assert_eq!(map_key(0x13c, false), Some(Button::Guide));
+        assert_eq!(map_key(172, true), Some(Button::Guide));
+        assert_eq!(map_key(0x137, true), Some(Button::RB));
+        assert_eq!(map_key(0x2c0, false), None);
         assert!(is_mac("aa:bb:cc:dd:ee:ff"));
         assert!(!is_mac("usb-0000:00:14.0-1/input0"));
+    }
+
+    #[test]
+    fn positional_driver_comes_from_sysfs() {
+        let root = tempfile::tempdir().unwrap();
+        let class = root.path().join("class");
+        let drivers = root.path().join("drivers");
+        let add = |event: &str, driver: Option<&str>| {
+            let dev = class.join(event).join("device");
+            std::fs::create_dir_all(&dev).unwrap();
+            if let Some(driver) = driver {
+                let target = drivers.join(driver);
+                std::fs::create_dir_all(&target).unwrap();
+                std::fs::create_dir_all(dev.join("device")).unwrap();
+                std::os::unix::fs::symlink(target, dev.join("device/driver")).unwrap();
+            }
+        };
+        add("event7", Some("playstation"));
+        add("event8", Some("sony"));
+        add("event9", Some("nintendo"));
+        add("event10", Some("xpad"));
+        add("event11", Some("steam"));
+        add("event12", None);
+
+        for (event, want) in [
+            ("event7", true),
+            ("event8", true),
+            ("event9", true),
+            ("event10", false),
+            ("event11", false),
+            ("event12", false),
+            ("event99", false),
+        ] {
+            let driver = driver_of(&class, &PathBuf::from("/dev/input").join(event));
+            assert_eq!(is_positional_driver(driver.as_deref()), want, "{event} ({driver:?})");
+        }
     }
 
     /// A fake controller with a d-pad (`/dev/uinput` must be writable).
