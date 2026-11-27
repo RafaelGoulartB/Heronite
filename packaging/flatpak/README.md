@@ -52,6 +52,10 @@ The app finds out it runs in a sandbox (`heronite_platform::flatpak`):
 - Game shortcuts, Steam shortcuts and the autostart entry start the app
   through the launcher Flatpak exports (`exports/bin/app.heronite.Heronite`), and
   go in the host's `~/.local/share/applications` and `~/.config/autostart`.
+- The overlay's media row talks to the players' MPRIS names
+  (`--talk-name=org.mpris.MediaPlayer2.*`). A cover a browser writes to the
+  host's `/tmp` is not in the sandbox, so its player shows an icon instead;
+  covers in the home folder or on the web show.
 - MangoHud and gamescope are Flathub's Vulkan layers:
   `flatpak install flathub org.freedesktop.Platform.VulkanLayer.MangoHud//26.08 org.freedesktop.Platform.VulkanLayer.gamescope//26.08`.
 - "Keep the computer awake" has no effect: it runs `systemd-inhibit`, which

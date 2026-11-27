@@ -150,9 +150,9 @@ impl OverlayPanel {
         self.achievement_items().into_iter().map(|(r, _)| r).collect()
     }
 
-    /// The image store of the icons, made on first use; what it loads lands
-    /// here and redraws.
-    fn icons(&mut self, cx: &mut Context<Self>) -> &mut ImageStore {
+    /// The image store of the icons (and of the media's covers), made on
+    /// first use; what it loads lands here and redraws.
+    pub(super) fn icons(&mut self, cx: &mut Context<Self>) -> &mut ImageStore {
         if self.icons.is_none() {
             let (store, mut rx) = ImageStore::new(self.paths.images_cache_dir(), &AppPaths::for_data(&self.paths));
             cx.spawn(async move |this, cx| {

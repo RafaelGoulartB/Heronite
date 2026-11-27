@@ -3949,6 +3949,7 @@ dependencies = [
 name = "heronite-overlay"
 version = "1.8.0"
 dependencies = [
+ "base64 0.22.1",
  "evdev",
  "heronite-data",
  "heronite-i18n",
@@ -3958,6 +3959,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "x11rb",
+ "zbus",
 ]
 
 [[package]]

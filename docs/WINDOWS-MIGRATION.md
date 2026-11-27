@@ -88,6 +88,15 @@ does not inject code into games.
 - **Panel:** Home, Screenshots, Notes (including the on-screen keyboard),
   Audio and Controller reuse the Linux views. Screenshot capture uses the
   existing Windows backend.
+- **Media:** the media row of Home and Audio reads the system media
+  transport controls (`Windows.Media.Control`, what the volume flyout
+  shows: Spotify, Apple Music, Media Player, a browser tab playing media)
+  and sends play / pause, next and previous to the chosen session. A
+  browser has a session per tab: a command goes to the tab playing the
+  title shown. Thumbnails come as bytes and are kept in
+  `%LOCALAPPDATA%\heronite\cache\overlay-media`. A desktop program that
+  is not a packaged app is named from its id ("Spotify.exe" → Spotify,
+  Chrome, MSEdge); Firefox's id is a hash, so it shows without an app name.
 - **Audio:** Core Audio supplies system volume/mute, microphone mute and
   active app/game audio sessions. The output and the microphone are switched
   from the panel (Y on Home's mixer, the Output and Microphone rows on Audio)

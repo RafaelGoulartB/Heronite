@@ -1,6 +1,6 @@
 {
   "%m/%d": "%d/%m",
-  "A panel the controller's Guide button or a keyboard shortcut opens over a game launched by Heronite: screenshots, volume, quitting the game.": "Un panneau que le bouton Guide de la manette ou un raccourci clavier ouvre sur un jeu lancé par Heronite : captures d’écran, volume, fermeture du jeu.",
+  "A panel the controller's Guide button or a keyboard shortcut opens over a game launched by Heronite: screenshots, volume, music, quitting the game.": "Un panneau que le bouton Guide de la manette ou un raccourci clavier ouvre sur un jeu lancé par Heronite : captures d’écran, volume, musique, fermeture du jeu.",
   "Adjust": "Ajuster",
   "Also used by the volume rows of the overlay.": "Également utilisé par les lignes de volume de l’overlay.",
   "Audio": "Audio",
@@ -131,5 +131,12 @@
   "Adds the time and a screenshot to the game's journal, to write about later in the overlay's Notes tab or the game's Journal.": "Ajoute l’heure et une capture d’écran au journal du jeu pour y ajouter du texte plus tard dans l’onglet Notes de l’overlay ou le Journal du jeu.",
   "Guide + Y: mark a moment": "Guide + Y : marquer un moment",
   "Off while Guide + Y takes the screenshot: pick another button for it above.": "Désactivé tant que Guide + Y prend la capture d’écran : choisissez un autre bouton ci-dessus.",
-  "Hidden until you show it again or the game ends": "Masqué jusqu'à ce que vous le réaffichiez ou que le jeu se termine"
+  "Hidden until you show it again or the game ends": "Masqué jusqu'à ce que vous le réaffichiez ou que le jeu se termine",
+  "media|Play": "Lire",
+  "media|Pause": "Pause",
+  "media|Next": "Suivant",
+  "media|Previous": "Précédent",
+  "Media player": "Lecteur multimédia",
+  "Other player": "Autre lecteur",
+  "Could not control the player: {err}": "Impossible de contrôler le lecteur : {err}"
 }

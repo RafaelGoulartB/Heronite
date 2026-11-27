@@ -79,6 +79,7 @@ impl OverlayPanel {
             None => rows.extend(mixer::rows(&audio::AudioState::default(), has_game, 0)),
             Some(None) => {}
         }
+        rows.extend(self.media_row());
         let Some(game) = &self.game else {
             rows.push(Row::action("launcher", tr!("Open Heronite")).icon(Icon::Home));
             return rows;
@@ -178,19 +179,25 @@ impl OverlayPanel {
     }
 
     fn audio_rows(&self) -> Vec<Row> {
+        // The media player leads, over the mixer.
+        let mut rows: Vec<Row> = self.media_row().into_iter().collect();
         let a = match &self.data.audio {
-            None => return mixer::rows(&audio::AudioState::default(), self.game.is_some(), 0),
+            None => {
+                rows.extend(mixer::rows(&audio::AudioState::default(), self.game.is_some(), 0));
+                return rows;
+            }
             Some(None) => {
                 let why = if cfg!(windows) {
                     tr!("Windows audio devices are not available.")
                 } else {
                     tr!("It needs pactl (PipeWire or PulseAudio).")
                 };
-                return vec![Row::info("none", tr!("Volume control is not available"), "").desc(why).enabled(false)];
+                rows.push(Row::info("none", tr!("Volume control is not available"), "").desc(why).enabled(false));
+                return rows;
             }
             Some(Some(a)) => a,
         };
-        let mut rows = mixer::rows(a, self.game.is_some(), mixer::AUDIO_APPS);
+        rows.extend(mixer::rows(a, self.game.is_some(), mixer::AUDIO_APPS));
         if !a.outputs.is_empty() {
             let options: Vec<SharedString> = a.outputs.iter().map(|o| mixer::short_row(&o.description).into()).collect();
             rows.push(Row::choice("output", tr!("Output"), options, a.default_output.unwrap_or(0)).icon(Icon::Headphones));

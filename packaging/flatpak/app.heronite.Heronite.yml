@@ -27,6 +27,8 @@ finish-args:
   - --talk-name=org.freedesktop.ScreenSaver
   # GNOME displays for per-game display settings (heronite-display).
   - --talk-name=org.gnome.Mutter.DisplayConfig
+  # The media players' MPRIS, for the overlay's media row (heronite-overlay).
+  - --talk-name=org.mpris.MediaPlayer2.*
   - --system-talk-name=org.freedesktop.UDisks2
   - --system-talk-name=org.freedesktop.UPower
   - --filesystem=home

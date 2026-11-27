@@ -67,6 +67,8 @@ pub mod gpu_adapters;
 #[cfg(windows)]
 pub mod hid;
 #[cfg(windows)]
+pub mod media;
+#[cfg(windows)]
 pub mod overlay_window;
 #[cfg(windows)]
 pub mod pad_battery;
