@@ -518,6 +518,8 @@ pub fn parse_script(text: &str) -> Vec<(Duration, Pad)> {
             "select" => Pad::Select,
             "sup" => Pad::ScrollUp,
             "sdown" => Pad::ScrollDown,
+            "sleft" => Pad::ScrollLeft,
+            "sright" => Pad::ScrollRight,
             other => {
                 log::warn!("HERONITE_DEBUG_PAD: unknown step {other:?}");
                 continue;

@@ -1,12 +1,14 @@
 //! The overlay panel: the game and the session on top, tabs switched with
 //! LB / RB (Home, Screenshots, Notes, Audio, Controller, and Achievements
 //! when the game has them), rows in console mode's look and the button hints
-//! at the bottom. It takes controller presses
-//! (the service forwards them: the window never has the keyboard, so the
-//! game keeps it), and the mouse presses the same way (`console::pointer`).
+//! at the bottom; Home and Audio also have the media player playing
+//! (`media`). It takes controller presses (the service forwards them: the
+//! window never has the keyboard, so the game keeps it), and the mouse
+//! presses the same way (`console::pointer`).
 
 mod achievements;
 mod data;
+mod media;
 mod mixer;
 mod notes;
 mod rows;
@@ -22,6 +24,7 @@ use heronite_overlay::audio::AudioState;
 use heronite_overlay::input::{Button, Controller};
 
 use self::data::Data;
+use self::media::MEDIA;
 use self::rows::CAPTURES;
 use super::{GameNow, OverlayService};
 use crate::console::kit::{self, u};
@@ -118,8 +121,10 @@ pub struct OverlayPanel {
     /// The game's achievements, as the achievements service has them.
     achievements: Option<achievements::Shown>,
     _achievements_sub: Option<Subscription>,
-    /// Their icons (made when the tab is first drawn).
+    /// Their icons and the media's covers (made when first drawn).
     icons: Option<achievements::Icons>,
+    /// The media players and what the media row chose.
+    media: media::Media,
     /// This panel, for the clicks of what it draws.
     me: WeakEntity<Self>,
 }
@@ -146,6 +151,8 @@ pub fn pad_of(b: Button) -> Pad {
         Button::Down => Pad::Down,
         Button::Left => Pad::Left,
         Button::Right => Pad::Right,
+        Button::RightStickLeft => Pad::ScrollLeft,
+        Button::RightStickRight => Pad::ScrollRight,
     }
 }
 
@@ -198,10 +205,12 @@ impl OverlayPanel {
             achievements: None,
             _achievements_sub: None,
             icons: None,
+            media: media::Media::new(&paths),
             me,
         };
         this.load_all(paths, cx);
         this.watch_achievements(cx);
+        this.watch_media(cx);
         // The clock and the session time.
         cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(Duration::from_secs(20)).await;
@@ -333,6 +342,9 @@ impl OverlayPanel {
             if id.as_ref() == CAPTURES && self.capture_pad(pad, cx) {
                 return true;
             }
+            if id.as_ref() == MEDIA && self.media_pad(pad, cx) {
+                return true;
+            }
         }
         if pad == Pad::Y && self.tab() == Tab::Notes && self.data.journal.is_some() {
             self.with_service(cx, |s, cx| s.mark_moment(cx));
@@ -406,6 +418,9 @@ impl OverlayPanel {
                 hint(Btn::B, tr!("Close")),
                 hint(Btn::Bumpers, tr!("Tabs")),
             ];
+        }
+        if self.grid.is_none() && self.nav.focused(&rows).is_some_and(|r| r.id.as_ref() == MEDIA) {
+            return self.media_hints();
         }
         if self.grid.is_some() && notes {
             return vec![hint(Btn::A, tr!("View")), hint(Btn::Y, tr!("Note")), hint(Btn::B, tr!("Close")), hint(Btn::Bumpers, tr!("Tabs"))];
@@ -600,6 +615,8 @@ impl OverlayPanel {
         // From the Screenshots grid, ↑ to above its first row gives the rows the focus back.
         let to_rows: Option<Vec<Pad>> =
             self.grid.filter(|_| self.confirm.is_none()).map(|i| pointer::repeat(Pad::Up, i / shots::COLS + 1).collect());
+        // Before the audio is borrowed: the cover needs the image store.
+        let media_art = if rows.iter().any(|r| r.id.as_ref() == MEDIA) { self.media_art(window, cx) } else { None };
         let placeholder = AudioState::default();
         let has_mixer = rows.iter().any(|r| r.id.as_ref() == mixer::SYSTEM);
         // While the audio is read, the mixer shows empty at its full size.
@@ -609,9 +626,10 @@ impl OverlayPanel {
             Some(None) => None,
         };
         let has_capture = rows.iter().any(|r| r.id.as_ref() == CAPTURES);
+        let has_media = rows.iter().any(|r| r.id.as_ref() == MEDIA);
         let list = match audio.filter(|_| has_mixer) {
-            // With the mixer or the "Capture" row: the rows are drawn here.
-            audio if has_mixer || has_capture => {
+            // With the mixer, the "Capture" row or the media row: the rows are drawn here.
+            audio if has_mixer || has_capture || has_media => {
                 self.nav.clamp(&rows);
                 let focus = list_active.then(|| rows.get(self.nav.focus).map(|r| r.id.clone())).flatten();
                 let mixer_focus = focus.as_ref().filter(|id| mixer::is_mixer(id)).map(|id| id.to_string());
@@ -656,6 +674,11 @@ impl OverlayPanel {
                             list = list.child(self.render_capture(r, list_active && i == self.nav.focus, route));
                             child += 1;
                         }
+                        MEDIA => {
+                            let route = routes.get(MEDIA).map(Vec::as_slice);
+                            list = list.child(self.render_media(r, list_active && i == self.nav.focus, route, media_art.clone()));
+                            child += 1;
+                        }
                         _ => {
                             list = list.child(plain(i, r));
                             child += 1;
@@ -683,9 +706,9 @@ impl OverlayPanel {
             body = body.child(div().px(u(22.)).text_size(u(13.)).text_color(theme::danger_text()).child(e.clone()));
         }
         match self.tab() {
-            // Apps playing take the room of the recent captures (the panel's
-            // height is fixed; the Screenshots tab has them).
-            Tab::Home if !self.apps_playing() => body.child(self.render_recent()),
+            // Apps playing and the media row take the room of the recent
+            // captures (the panel's height is fixed; the Screenshots tab has them).
+            Tab::Home if !self.apps_playing() && self.media_player().is_none() => body.child(self.render_recent()),
             Tab::Home => body,
             Tab::Shots => body.child(self.render_grid()),
             Tab::Notes | Tab::Audio | Tab::Controller | Tab::Achievements => body,

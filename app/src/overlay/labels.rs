@@ -116,9 +116,9 @@ pub fn without_game_short() -> &'static str {
 /// The lead of Settings → Overlay.
 pub fn section_blurb() -> &'static str {
     if cfg!(windows) {
-        tr!("A panel Back + Start or a keyboard shortcut opens over a game launched by Heronite: screenshots, volume, quitting the game.")
+        tr!("A panel Back + Start or a keyboard shortcut opens over a game launched by Heronite: screenshots, volume, music, quitting the game.")
     } else {
-        tr!("A panel the controller's Guide button or a keyboard shortcut opens over a game launched by Heronite: screenshots, volume, quitting the game.")
+        tr!("A panel the controller's Guide button or a keyboard shortcut opens over a game launched by Heronite: screenshots, volume, music, quitting the game.")
     }
 }
 

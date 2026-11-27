@@ -24,6 +24,7 @@ pub struct State {
     pub right_trigger: u8,
     pub left_x: i16,
     pub left_y: i16,
+    pub right_x: i16,
 }
 
 /// `None` means the slot is disconnected, not that a native call failed.
@@ -122,6 +123,7 @@ fn from_native(state: &XINPUT_STATE) -> State {
         right_trigger: pad.bRightTrigger,
         left_x: pad.sThumbLX,
         left_y: pad.sThumbLY,
+        right_x: pad.sThumbRX,
     }
 }
 
@@ -160,7 +162,7 @@ mod tests {
         };
         assert_eq!(
             from_native(&native),
-            State { buttons: 0x1030, left_trigger: 31, right_trigger: 255, left_x: i16::MIN, left_y: i16::MAX }
+            State { buttons: 0x1030, left_trigger: 31, right_trigger: 255, left_x: i16::MIN, left_y: i16::MAX, right_x: 123 }
         );
     }
 

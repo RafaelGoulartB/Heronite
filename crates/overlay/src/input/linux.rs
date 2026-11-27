@@ -75,9 +75,10 @@ impl Drop for Watcher {
 struct Pad {
     dev: evdev::raw_stream::RawDevice,
     info: Controller,
-    /// `(min, max)` of the left stick axes.
+    /// `(min, max)` of the left stick axes, and the right stick's ← →.
     x: (i32, i32),
     y: (i32, i32),
+    rx: (i32, i32),
     sx: f32,
     sy: f32,
     kind: Kind,
@@ -269,6 +270,10 @@ fn read_pad(id: usize, pads: &mut HashMap<usize, Pad>, core: &mut Core) -> Optio
                     stick_moved = true;
                     continue;
                 }
+                ABS_RX => {
+                    let range = pads.get(&id)?.rx;
+                    core.right_stick(id, normalize(value, range))
+                }
                 ABS_HAT0X => hat(core, id, value, Button::Left, Button::Right, now),
                 ABS_HAT0Y => hat(core, id, value, Button::Up, Button::Down, now),
                 _ => continue,
@@ -458,6 +463,8 @@ const BTN_SOUTH: u16 = 0x130;
 const BUS_BLUETOOTH: u16 = 0x05;
 const ABS_X: u16 = 0x00;
 const ABS_Y: u16 = 0x01;
+/// The right stick's ← → (the kernel's gamepad layout).
+const ABS_RX: u16 = 0x03;
 const ABS_HAT0X: u16 = 0x10;
 const ABS_HAT0Y: u16 = 0x11;
 const SYN_DROPPED: u16 = 0x03;
@@ -483,11 +490,13 @@ fn open_pad(path: &Path) -> io::Result<Option<Pad>> {
     set_nonblocking(&dev)?;
     let mut x = (-32768, 32767);
     let mut y = (-32768, 32767);
+    let mut rx = (-32768, 32767);
     if let Ok(axes) = dev.get_absinfo() {
         for (axis, info) in axes {
             match axis.0 {
                 ABS_X => x = (info.minimum(), info.maximum()),
                 ABS_Y => y = (info.minimum(), info.maximum()),
+                ABS_RX => rx = (info.minimum(), info.maximum()),
                 _ => {}
             }
         }
@@ -501,7 +510,7 @@ fn open_pad(path: &Path) -> io::Result<Option<Pad>> {
     let positional_xy = is_positional_driver(driver_of(Path::new("/sys/class/input"), path).as_deref());
     let bluetooth = (id.bus_type().0 == BUS_BLUETOOTH).then(|| dev.unique_name().unwrap_or_default().to_uppercase()).filter(|m| is_mac(m));
     let info = Controller { name: dev.name().unwrap_or("Controller").to_string(), id: ControllerId::Evdev(path.to_path_buf()), bluetooth };
-    Ok(Some(Pad { dev, info, x, y, sx: 0., sy: 0., kind, positional_xy }))
+    Ok(Some(Pad { dev, info, x, y, rx, sx: 0., sy: 0., kind, positional_xy }))
 }
 
 /// The kernel driver bound to the parent device of an evdev node

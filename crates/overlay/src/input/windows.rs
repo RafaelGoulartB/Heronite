@@ -120,6 +120,7 @@ fn run(opts: Options, rx: Receiver<Cmd>, mut on_event: impl FnMut(Event)) {
                             let out = match change {
                                 Change::Button(button, down) => core.button(index, button, down, now),
                                 Change::Stick(x, y) => core.stick(index, x, y, now),
+                                Change::RightStick(x) => core.right_stick(index, x),
                             };
                             // Grab requests belong to evdev only; XInput cannot apply them.
                             for event in out.events {

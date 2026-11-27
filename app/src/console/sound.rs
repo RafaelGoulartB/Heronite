@@ -79,7 +79,7 @@ pub fn for_pad(pad: Pad) -> Option<Sound> {
         Pad::A | Pad::X | Pad::Y | Pad::Start | Pad::Select | Pad::LT | Pad::RT => Some(Sound::Confirm),
         Pad::B => Some(Sound::Back),
         Pad::LB | Pad::RB => Some(Sound::Tab),
-        Pad::ScrollUp | Pad::ScrollDown => None,
+        Pad::ScrollUp | Pad::ScrollDown | Pad::ScrollLeft | Pad::ScrollRight => None,
     }
 }
 

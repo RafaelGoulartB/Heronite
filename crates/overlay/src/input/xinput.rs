@@ -49,6 +49,7 @@ pub(super) struct Snapshot {
     pub right_trigger: u8,
     pub left_x: i16,
     pub left_y: i16,
+    pub right_x: i16,
 }
 
 #[cfg(windows)]
@@ -60,6 +61,7 @@ impl From<heronite_platform::gamepad::State> for Snapshot {
             right_trigger: state.right_trigger,
             left_x: state.left_x,
             left_y: state.left_y,
+            right_x: state.right_x,
         }
     }
 }
@@ -68,6 +70,8 @@ impl From<heronite_platform::gamepad::State> for Snapshot {
 pub(super) enum Change {
     Button(Button, bool),
     Stick(f32, f32),
+    /// The right stick's ← →.
+    RightStick(f32),
 }
 
 #[derive(Clone, Copy, Default)]
@@ -172,6 +176,9 @@ impl Adapter {
         } else if (state.left_x, state.left_y) != (self.state.left_x, self.state.left_y) {
             out.push(Change::Stick(normalize(state.left_x), normalize(state.left_y)));
         }
+        if state.right_x != self.state.right_x {
+            out.push(Change::RightStick(normalize(state.right_x)));
+        }
         // Other controls in this snapshot still belong to the chord.
         if release_guide {
             out.push(Change::Button(Button::Guide, false));
@@ -275,6 +282,7 @@ mod tests {
             .flat_map(|change| match change {
                 Change::Button(button, down) => core.button(0, button, down, now).events,
                 Change::Stick(x, y) => core.stick(0, x, y, now).events,
+                Change::RightStick(x) => core.right_stick(0, x).events,
             })
             .collect()
     }
@@ -394,6 +402,22 @@ mod tests {
         assert_eq!(core.tick(now + Duration::from_secs(3)), Some(Event::Press(Button::Right)));
         feed(&mut adapter, &mut core, Snapshot::default(), now);
         assert_eq!(core.tick(now + Duration::from_secs(4)), None);
+    }
+
+    #[test]
+    fn right_stick_flicks_once() {
+        let now = Instant::now();
+        let mut adapter = Adapter::new(Snapshot::default());
+        let mut core = Core::new(ALL);
+        core.open();
+        let right = Snapshot { right_x: i16::MAX, ..Snapshot::default() };
+        assert_eq!(feed(&mut adapter, &mut core, right, now), vec![Event::Press(Button::RightStickRight)]);
+        assert_eq!(core.tick(now + Duration::from_secs(1)), None, "no repeat while held");
+        feed(&mut adapter, &mut core, Snapshot::default(), now);
+        assert_eq!(
+            feed(&mut adapter, &mut core, Snapshot { right_x: i16::MIN, ..Snapshot::default() }, now),
+            vec![Event::Press(Button::RightStickLeft)]
+        );
     }
 
     #[test]
@@ -622,10 +646,11 @@ mod tests {
             right_trigger: 255,
             left_x: i16::MIN,
             left_y: i16::MAX,
+            right_x: -7,
         };
         assert_eq!(
             Snapshot::from(state),
-            Snapshot { buttons: GUIDE_COMBO as u16, left_trigger: 42, right_trigger: 255, left_x: i16::MIN, left_y: i16::MAX }
+            Snapshot { buttons: GUIDE_COMBO as u16, left_trigger: 42, right_trigger: 255, left_x: i16::MIN, left_y: i16::MAX, right_x: -7 }
         );
     }
 }

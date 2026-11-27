@@ -59,12 +59,18 @@ sdl3-sys = { version = "=0.7.2", default-features = false, features = [
     "sdl-hidapi",
 ] }
 # COM interfaces (`.lnk` shortcuts through the shell's ShellLink, DXGI's
-# graphics adapters for the GPU preference).
+# graphics adapters for the GPU preference) and WinRT (controllers' battery,
+# media controls).
 windows = { version = "0.62", features = [
+    # A packaged app's name (`media`).
+    "ApplicationModel",
     # Xbox controllers' battery (`pad_battery::xbox`).
     "Devices_Power",
     "Foundation_Collections",
     "Gaming_Input",
+    # The system media transport controls and their thumbnails (`media`).
+    "Media_Control",
+    "Storage_Streams",
     "System_Power",
     "Win32_Devices_FunctionDiscovery",
     "Win32_Foundation",

@@ -1449,7 +1449,7 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
 - Debug: `HERONITE_DEBUG_CONSOLE=1` (or `=game:<key>` for a game page, `=menu`, `=customize`, `=filters`) starts in console mode
   without saving it; `HERONITE_DEBUG_CONSOLE_PRESET=<theme id>` / `HERONITE_DEBUG_CONSOLE_LAYOUT=<layout>` start with
   that theme / every tab in that layout (not saved); `HERONITE_DEBUG_IDLE_SECS=<n>` shows the idle screen sooner;
-  `HERONITE_NO_GAMEPAD=1` ignores controllers (test copies must not follow the one in use; `shot.sh` and `idle-cost.sh` set it); `HERONITE_DEBUG_PAD=down,a,wait:500,b` plays presses (`up down left right a b x y lb rb lt rt start select sup sdown`); `HERONITE_DEBUG_MOUSE=click:0.5:0.4,wheel:-1,right` plays mouse events (points as fractions of the window; on a
+  `HERONITE_NO_GAMEPAD=1` ignores controllers (test copies must not follow the one in use; `shot.sh` and `idle-cost.sh` set it); `HERONITE_DEBUG_PAD=down,a,wait:500,b` plays presses (`up down left right a b x y lb rb lt rt start select sup sdown sleft sright`); `HERONITE_DEBUG_MOUSE=click:0.5:0.4,wheel:-1,right` plays mouse events (points as fractions of the window; on a
   hidden workspace keep capturing it with `grim -T`, or the clicks hit the last frame it presented).
 
 **Do not** use uppercase labels, outlined buttons, underlined tabs, square
@@ -1522,7 +1522,18 @@ limiting") starts with that switch off. Home's rows scroll to keep the focus in
 sight when the panel is short for them. Home's captures share one "Capture" row (by user decision: option B2): a round button each
 for the screenshot, the replay (while it records) and the moment (with a journal), ◀ ▶ choose one, A runs it and the
 description and the A hint name it; a click on a button runs that one. With only the screenshot it is a plain "Take
-screenshot" row. The Screenshots and Notes tabs keep their own rows. "Back to game" comes before "Back to Heronite" only
+screenshot" row. Home (under the mixer) and Audio (first, over it) have a media row while a media player is there (`panel/media.rs`,
+`heronite_overlay::media`: MPRIS players on Linux, the system media controls on Windows; read when the panel opens and
+every 2 s while Home or Audio shows, the focus kept on its row when the media row comes or goes): the cover (44 px,
+rounded; a note, or a globe for a browser, without one), the title (else the app's name) over "Paused · artist · app",
+and round ⏮ ⏯ ⏭ buttons like the "Capture" row's: ◀ ▶ choose (skipping the ones the player does not take, drawn faded),
+A runs it, the A hint names it (Play / Pause, Next, Previous). With several players, dots under the row show which one it
+is (the one shown longer): ◀ ▶ past the first or last button go to the player before or after (landing on the button
+they came in by), the right stick ← → too (Play / Pause chosen), a click on a dot shows that one, and Y ("Other player")
+goes to the next, round. Playing players come first, then the others; within each, the one used last leads (a command
+from the overlay, playing or pausing since the last read, Windows' current session). A command keeps its player on the
+row. Like apps playing, the media row takes
+the room of Home's recent captures. The Screenshots and Notes tabs keep their own rows. "Back to game" comes before "Back to Heronite" only
 while the game has a window and another one has the focus (`heronite_overlay::game_window`, read when the panel opens):
 it gives that window the focus and closes the panel. Only Hyprland can be asked (`hyprctl clients -j` has each window's
 pid); elsewhere the row never shows. The game's panel has the same, as a round → button beside Stop (where Play has its
@@ -1560,6 +1571,9 @@ it (no layer-shell): Settings says so. Debug: `HERONITE_DEBUG_OVERLAY=window[:<a
 window (`app.heronite.overlay`) as if the game ran (Hyprland ignores its size requests there; audio changes are skipped
 under any `HERONITE_DEBUG_OVERLAY`), `=layer` the real surface; `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a`
 plays presses, then `HERONITE_DEBUG_OVERLAY_MOUSE` mouse events (as `HERONITE_DEBUG_MOUSE`); `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` adds a notice (`app.heronite.overlay-notice`), `=achievement|achievement-queue` one or six made-up achievement notices (icon from `HERONITE_DEBUG_OVERLAY_NOTICE_ICON`);
+`HERONITE_DEBUG_OVERLAY_MEDIA=playing|paused|browser|two|none` shows made-up players (cover from
+`HERONITE_DEBUG_OVERLAY_MEDIA_ART`, a file or URL; presses change them in place), `=live` the real ones and sends them
+the presses (otherwise nothing is sent under the debug hooks);
 `HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row as gamescope's, `=mangohud:<limit>` (or `mangohud-hidden:<limit>`) MangoHud's two rows (nothing applied); `HERONITE_DEBUG_OVERLAY=window:none` opens it with no game;
 `HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens
 it as the keyboard shortcut does, `=shortcut` registers the real shortcut instead; `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and

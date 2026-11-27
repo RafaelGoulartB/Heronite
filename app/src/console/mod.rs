@@ -66,6 +66,9 @@ pub enum Pad {
     /// Right stick: scroll long text.
     ScrollUp,
     ScrollDown,
+    /// Right stick ← →: the overlay's media row goes to another player.
+    ScrollLeft,
+    ScrollRight,
 }
 
 impl Pad {

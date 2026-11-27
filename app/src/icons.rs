@@ -70,6 +70,11 @@ pub enum Icon {
     ViewList,
     Downloading,
     Pause,
+    /// ⏭ and ⏮ (the overlay's media row).
+    SkipNext,
+    SkipPrevious,
+    /// A music player with no cover.
+    MusicNote,
     Build,
     Logout,
     Tune,
@@ -297,6 +302,9 @@ impl Icon {
             Downloading => "icons/downloading.svg",
             DragIndicator => "icons/drag-indicator.svg",
             Pause => "icons/pause.svg",
+            SkipNext => "icons/skip-next.svg",
+            SkipPrevious => "icons/skip-previous.svg",
+            MusicNote => "icons/music-note.svg",
             Build => "icons/build.svg",
             Logout => "icons/logout.svg",
             Tune => "icons/tune.svg",
