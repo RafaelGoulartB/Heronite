@@ -37,6 +37,20 @@ pub fn release(root: &ModsRoot, dir: &Path) -> bool {
     }
 }
 
+/// Why the mods are still applied to `dir` although its game ended (Windows:
+/// a file another program kept open while they were being taken out).
+pub fn problem(root: &ModsRoot, dir: &Path) -> Option<String> {
+    #[cfg(not(windows))]
+    {
+        let _ = (root, dir);
+        None
+    }
+    #[cfg(windows)]
+    {
+        windows::problem(root, dir)
+    }
+}
+
 /// At start: takes away the mods a crash or a kill left applied, except in
 /// the folders in `keep` (games that are running now).
 pub fn cleanup_stale(root: &ModsRoot, keep: &[PathBuf]) {
@@ -79,14 +93,25 @@ mod windows {
     }
 
     pub(super) fn cleanup_stale(root: &ModsRoot, keep: &[PathBuf]) {
-        for (dirs, game) in deployed(root) {
-            if keep.iter().any(|k| same(k, &game)) {
+        for entry in std::fs::read_dir(root.path()).into_iter().flatten().flatten() {
+            if !entry.path().is_dir() || entry.path() == root.cache_dir() {
                 continue;
             }
+            let dirs = root.game(&entry.file_name().to_string_lossy());
+            let game = deployed_game_dir(&dirs);
+            if game.as_ref().is_some_and(|g| keep.iter().any(|k| same(k, g))) {
+                continue;
+            }
+            // Without a journal this only sweeps the copies a crash cut short.
             if let Err(e) = restore(&dirs) {
+                let game = game.unwrap_or_default();
                 log::warn!("mods: the mods a crash left in {} could not be taken out: {e}", game.display());
             }
         }
+    }
+
+    pub(super) fn problem(root: &ModsRoot, dir: &Path) -> Option<String> {
+        journal_for(root, dir).and_then(|dirs| crate::journal_deploy::problem(&dirs))
     }
 
     #[cfg(test)]
@@ -115,7 +140,11 @@ mod windows {
             }
             assert!(journal_for(&root, &games[0].1).is_some());
             assert!(journal_for(&root, &t.path().join("elsewhere")).is_none());
+            // A game without mods applied, with a copy a crash cut short.
+            let half = root.game("three").overwrite().join("save.dat.heronite-partial");
+            put(half.clone(), "ha");
             cleanup_stale(&root, std::slice::from_ref(&games[1].1));
+            assert!(!half.exists(), "the cut-short copy is swept at start");
             assert!(!is_deployed(&games[0].0));
             assert_eq!(fs::read_to_string(games[0].1.join("a.txt")).unwrap(), "game");
             assert!(is_deployed(&games[1].0), "a running game keeps its mods");
