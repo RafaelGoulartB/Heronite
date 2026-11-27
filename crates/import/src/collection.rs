@@ -90,7 +90,7 @@ fn here(game: &Game, start_here: bool) -> Option<&Own> {
 
 /// The game settings of the games about to be brought over from Lutris,
 /// Bottles or Faugus: their Wine prefix and Wine, arguments and environment
-/// variables (added to the ones the game already has here). A game that
+/// variables (added to the ones the game already has here, or inherits). A game that
 /// fails is logged; the others are still written.
 fn settle_own(paths: &DataPaths, home: &Path, games: &[(String, &Game, &Own)]) {
     let home = home.to_string_lossy();
@@ -109,7 +109,8 @@ fn settle_own(paths: &DataPaths, home: &Path, games: &[(String, &Game, &Own)]) {
             changes.push(("launcherArgs".into(), json!(own.args.trim())));
         }
         if !own.env.is_empty() {
-            let current = heronite_data::game_config::game_overrides(paths, app);
+            // Its variables as they apply now: its own, else the ones for all games.
+            let current = heronite_data::game_config::load_game(paths, app, &home);
             let mut list: Vec<Value> = current.get("enviromentOptions").and_then(Value::as_array).cloned().unwrap_or_default();
             let set = |list: &[Value], key: &str| list.iter().any(|e| e.get("key").and_then(Value::as_str) == Some(key));
             for (key, value) in &own.env {
@@ -636,7 +637,15 @@ mod tests {
         // The user already set a variable of their own for it here.
         let mine = [("enviromentOptions".to_string(), json!([{"key": "WINEDEBUG", "value": "+mine"}]))];
         heronite_data::game_config::set_game_settings(&paths, "lutris_1", "/home/u", &mine).unwrap();
-        assert_eq!(sync(&paths, home, Launcher::Lutris, &games, &BTreeSet::new(), true).unwrap(), Report { added: 2, updated: 0 });
+        // The variables for all games, which a game without its own inherits.
+        let global = [("enviromentOptions".to_string(), json!([{"key": "PROTON_LOG", "value": "1"}]))];
+        heronite_data::game_config::set_global_settings(&paths, "/home/u", &global).unwrap();
+        let mut hades = startable("3", "Hades");
+        hades.own.as_mut().unwrap().env.truncate(1);
+        let games = [games[0].clone(), games[1].clone(), hades];
+        assert_eq!(sync(&paths, home, Launcher::Lutris, &games, &BTreeSet::new(), true).unwrap(), Report { added: 3, updated: 0 });
+        let hades = heronite_data::game_config::game_overrides(&paths, "lutris_3");
+        assert_eq!(hades["enviromentOptions"], json!([{"key": "PROTON_LOG", "value": "1"}, {"key": "DXVK_HUD", "value": "fps"}]));
 
         let lib = Library::load(&paths).unwrap();
         let celeste = lib.get("sideload_lutris_1").unwrap();

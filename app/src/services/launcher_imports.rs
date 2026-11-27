@@ -454,6 +454,9 @@ impl LauncherImports {
                         this.errors.insert(launcher, format!("{e:#}"));
                     }
                 }
+                if this.again.remove(&launcher) && this.prefs.enabled.contains(&launcher) {
+                    this.import(launcher, cx);
+                }
                 cx.notify();
             })
             .ok();

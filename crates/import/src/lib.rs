@@ -209,17 +209,22 @@ pub(crate) fn proton_named(home: &Path, name: &str) -> Option<Wine> {
     .map(|p| Wine { bin: p.to_string_lossy().into_owned(), name: name.to_string(), proton: true })
 }
 
-/// `KEY=value` words of a command line's start: its environment variables
-/// (the rest, a wrapper or `%command%`, is left out).
+/// The `KEY=value` words a command line starts with (shell words): its
+/// environment variables. The rest (a wrapper, `%command%`) is left out.
 pub(crate) fn env_words(line: &str) -> Vec<(String, String)> {
-    line.split_whitespace()
-        .filter_map(|w| {
-            let (k, v) = w.split_once('=')?;
-            let name =
-                !k.is_empty() && !k.starts_with(|c: char| c.is_ascii_digit()) && k.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
-            name.then(|| (k.to_string(), v.trim_matches(['\'', '"']).to_string()))
-        })
-        .collect()
+    let words = shlex::split(line).unwrap_or_else(|| line.split_whitespace().map(str::to_owned).collect());
+    let mut out: Vec<(String, String)> = Vec::new();
+    for w in words.iter().skip_while(|w| *w == "env") {
+        let Some((k, v)) = w.split_once('=') else { break };
+        let name =
+            !k.is_empty() && !k.starts_with(|c: char| c.is_ascii_digit()) && k.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+        if !name {
+            break;
+        }
+        out.retain(|(key, _)| key != k);
+        out.push((k.to_string(), v.to_string()));
+    }
+    out
 }
 
 /// An XDG base folder of `home`: the variable when `home` is this user's

@@ -121,7 +121,7 @@ mod tests {
             data.join("games.json"),
             r#"[
               {"gameid":"hollow-knight","title":"Hollow Knight","path":"~/Games/HK/hollow_knight.exe","prefix":"~/Faugus/hollow-knight",
-               "runner":"GE-Proton9-20","game_arguments":"-force-vulkan","launch_arguments":"DXVK_HUD=fps PROTON_LOG=1 gamescope --",
+               "runner":"GE-Proton9-20","game_arguments":"-force-vulkan","launch_arguments":"DXVK_HUD=fps MANGOHUD_CONFIG=\"fps, font_size=24\" gamescope -- X=1",
                "playtime":5430,"last_played":"2026-01-02T03:04:05.123456","hidden":false},
               {"gameid":"tux","title":"SuperTux","path":"/opt/tux/supertux","runner":"Linux-Native","playtime":0,"prefix":"/x"},
               {"gameid":"secret","title":"Secret","path":"/g/s.exe","hidden":true},
@@ -151,7 +151,10 @@ mod tests {
         assert_eq!(own.program, home.join("Games/HK/hollow_knight.exe").to_str().unwrap());
         assert_eq!(own.args, "-force-vulkan");
         assert!(own.wine.as_ref().is_some_and(|w| w.proton && w.bin == proton.to_str().unwrap()));
-        assert_eq!(own.env, [("DXVK_HUD".to_string(), "fps".to_string()), ("PROTON_LOG".to_string(), "1".to_string())]);
+        assert_eq!(
+            own.env,
+            [("DXVK_HUD".to_string(), "fps".to_string()), ("MANGOHUD_CONFIG".to_string(), "fps, font_size=24".to_string())]
+        );
         let tux = tux.own.clone().unwrap();
         assert_eq!((tux.program.as_str(), tux.wine), ("/opt/tux/supertux", None));
     }
