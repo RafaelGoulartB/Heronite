@@ -76,6 +76,8 @@ pub(super) struct ConsoleUi {
     pub tab_navs: Vec<layouts::TabNav>,
     /// Menu open, with its focused item.
     pub sidebar: Option<usize>,
+    /// The sidebar menu's scroll: on a short screen its focused item stays in view.
+    menu_scroll: ScrollHandle,
     /// Keyboard, picker or sheet over the current screen.
     pub overlay: Option<Overlay>,
     overlay_sub: Option<Subscription>,
