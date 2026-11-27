@@ -284,8 +284,10 @@ struct IconBudget {
 /// read's budget allows it.
 fn icon_file(icons: &Path, title_id: u32, x: &Xdbf, image_id: u32, budget: &mut IconBudget) -> Option<PathBuf> {
     let png = x.image(u64::from(image_id)).filter(|d| d.starts_with(b"\x89PNG") && d.len() <= MAX_ICON)?;
-    if budget.seen.insert(image_id) {
+    if !budget.seen.contains(&image_id) {
+        // Counted only once it fits: a picture refused stays refused.
         budget.left = budget.left.checked_sub(png.len())?;
+        budget.seen.insert(image_id);
     }
     let file = icons.join(format!("{title_id:08X}")).join(format!("{image_id}.png"));
     let same = std::fs::metadata(&file).ok().is_some_and(|m| m.len() == png.len() as u64);
@@ -483,6 +485,8 @@ mod tests {
         assert!(icon_file(d.path(), 1, &x, 1, &mut budget).is_some());
         assert!(icon_file(d.path(), 1, &x, 1, &mut budget).is_some(), "a shared picture is counted once");
         assert!(icon_file(d.path(), 1, &x, 2, &mut budget).is_none(), "over the budget");
+        assert!(icon_file(d.path(), 1, &x, 2, &mut budget).is_none(), "still over it");
+        assert!(!d.path().join("00000001/2.png").exists());
     }
 
     fn xex(title_id: u32) -> Vec<u8> {

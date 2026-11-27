@@ -71,9 +71,10 @@ fn find(b: &[u8], from: usize, pat: &[u8]) -> usize {
 }
 
 /// How deep the elements of `text` nest, counted from its tags (`<a>`,
-/// `</a>`, `<a/>`) as an XML parser sees them: comments, CDATA, processing
-/// instructions, declarations and quoted attribute values are skipped
-/// whole, whatever `>` or `</` they hold.
+/// `</a>`, `<a/>`) as the parser sees them: comments, CDATA, processing
+/// instructions and quoted attribute values are skipped whole, whatever `>`
+/// or `</` they hold. Any other `<!` ends the count: the parser (without a
+/// DTD) fails there, before reading what follows. One pass: linear.
 fn nesting(text: &str) -> usize {
     let b = text.as_bytes();
     let (mut depth, mut max, mut i) = (0usize, 0usize, 0usize);
@@ -87,14 +88,7 @@ fn nesting(text: &str) -> usize {
         } else if rest.starts_with(b"<?") {
             find(b, at + 2, b"?>").saturating_add(2)
         } else if rest.starts_with(b"<!") {
-            // A declaration with an internal subset ends at `]>`.
-            let close = find(b, at, b">");
-            let bracket = find(b, at, b"[");
-            if bracket < close {
-                find(b, bracket, b"]>").saturating_add(2)
-            } else {
-                close.saturating_add(1)
-            }
+            break;
         } else if rest.starts_with(b"</") {
             depth = depth.saturating_sub(1);
             find(b, at, b">").saturating_add(1)
@@ -123,21 +117,32 @@ fn nesting(text: &str) -> usize {
     max
 }
 
+/// `text` with its `<!DOCTYPE name>` blanked out. Trophy lists have only
+/// that bare form; a declaration with a subset or an external id (where
+/// entities could expand without bound) is refused.
+fn without_doctype(text: &str) -> Result<std::borrow::Cow<'_, str>, String> {
+    let Some(at) = text.find("<!DOCTYPE") else { return Ok(text.into()) };
+    let end = text.get(at..).and_then(|r| r.find('>')).map(|e| at + e).ok_or("not a trophy list: a cut declaration")?;
+    let decl = text.get(at..=end).unwrap_or_default();
+    if decl.contains(['[', '\'', '"']) {
+        return Err("not a trophy list: a document type with declarations".into());
+    }
+    let (before, after) = (text.get(..at).unwrap_or_default(), text.get(end + 1..).unwrap_or_default());
+    Ok(format!("{before}{}{after}", " ".repeat(decl.len())).into())
+}
+
 pub fn parse(bytes: &[u8]) -> Result<TrophyConf, String> {
     let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
     let text = String::from_utf8_lossy(bytes);
     // Packs pad the file after the root's end (shadPS4's `removePadding`).
     let text = text.trim_end_matches(|c: char| c == '\0' || c.is_whitespace());
-    // Trophy lists declare no entities: one that does could expand without
-    // bound.
-    if text.contains("<!ENTITY") {
-        return Err("not a trophy list: it declares entities".into());
-    }
-    if nesting(text) > MAX_DEPTH {
+    let text = without_doctype(text)?;
+    // The parser recurses per level: a file nested too deep must not reach it.
+    if nesting(&text) > MAX_DEPTH {
         return Err("not a trophy list: nested too deep".into());
     }
-    let options = roxmltree::ParsingOptions { allow_dtd: true, nodes_limit: NODES_LIMIT, ..Default::default() };
-    let doc = roxmltree::Document::parse_with_options(text, options).map_err(|e| format!("not a trophy list: {e}"))?;
+    let options = roxmltree::ParsingOptions { allow_dtd: false, nodes_limit: NODES_LIMIT, ..Default::default() };
+    let doc = roxmltree::Document::parse_with_options(&text, options).map_err(|e| format!("not a trophy list: {e}"))?;
     let root = doc.root_element();
     if !root.has_tag_name("trophyconf") {
         return Err(format!("not a trophy list: <{}>", root.tag_name().name()));
@@ -318,7 +323,7 @@ mod tests {
         assert!(parse(entities.as_bytes()).is_err());
         let deep = format!("<trophyconf>{}{}</trophyconf>", "<a>".repeat(100_000), "</a>".repeat(100_000));
         assert!(parse(deep.as_bytes()).is_err());
-        assert_eq!(nesting(CONF), 3);
+        assert_eq!(nesting(&without_doctype(CONF).unwrap()), 3);
         assert_eq!(nesting("<a><b/><!-- <c> --><?x?></a>"), 1);
         // A `>` or `</` where the parser sees none.
         for unit in [r#"<a x="/>">"#, "<a><!-- ></a>-->", "<a><![CDATA[></a>]]>", "<a><?p ></a>?>", "<a x='>'>"] {
@@ -326,7 +331,25 @@ mod tests {
             assert!(nesting(&text) >= 1000, "{unit}");
             assert!(parse(text.as_bytes()).is_err(), "{unit}");
         }
-        assert_eq!(nesting(r#"<!DOCTYPE t [<!ELEMENT t ANY>]><t a="1"></t>"#), 1);
+        // Any document type but the bare one is refused, however it is written.
+        let deep = format!("<trophyconf>{}", "<a>".repeat(1000));
+        for decl in [
+            "<!DOCTYPE trophyconf [ ] >",
+            r#"<!DOCTYPE trophyconf SYSTEM "[">"#,
+            r#"<!DOCTYPE trophyconf SYSTEM '><a x="'>"#,
+            r#"<!DOCTYPE trophyconf [ <!-- ]> <a x=" --> ]>"#,
+            "<!DOCTYPE trophyconf",
+        ] {
+            assert!(parse(format!("{decl}{deep}").as_bytes()).is_err(), "{decl}");
+        }
+        // Another `<!` ends the count where the parser fails.
+        assert_eq!(nesting("<a><b><!x <c><d>"), 2);
+        assert!(parse(format!("<trophyconf><!x>{deep}").as_bytes()).is_err());
+        // Linear on a file of declarations.
+        let many = "<!>".repeat(1 << 20);
+        let started = std::time::Instant::now();
+        assert!(parse(many.as_bytes()).is_err());
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
     }
 
     #[test]
