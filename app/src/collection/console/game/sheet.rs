@@ -180,7 +180,12 @@ impl CollectionView {
                     .child(div().text_size(u(13.5)).text_color(theme::text_muted()).child(Self::console_facts(&g)))
                     .children(self.console_status_badge(&g).map(|b| div().flex().child(b))),
             );
-        let body = div().flex().flex_col().size_full().child(head).child(div().flex_1().min_h_0().px(u(12.)).py(u(6.)).child(list));
+        let body = div()
+            .flex()
+            .flex_col()
+            .size_full()
+            .child(head)
+            .child(div().flex().flex_col().flex_1().min_h_0().px(u(12.)).py(u(6.)).child(list.flex_1().min_h_0()));
         let sheet = floating_sheet("console-game-sheet-panel", body);
         // A screenshot opened from the sheet, over it.
         let viewer = self.shot_viewer().map(|v| div().absolute().inset_0().occlude().child(v));

@@ -30,11 +30,13 @@ thread_local! {
     static PILLS: Cell<u32> = const { Cell::new(0) };
 }
 
-/// Scales the design to the window: `height / 800`, between 1 and 2. Runs
-/// once at the start of every console frame.
+/// Scales the design to the window: `height / 800`, at most 2. Runs once at
+/// the start of every console frame. It goes below 1 so the design always
+/// fits: a screen whose scale leaves fewer than 800 px of height (SteamOS'
+/// Game Mode on a 1920×1200 handheld) would else cut off its bottom.
 pub fn set_scale(window: &Window) {
     let size = crate::ui::content_size(window);
-    let scale = (f32::from(size.height) / 800.).clamp(1., 2.) * look::scale();
+    let scale = (f32::from(size.height) / 800.).clamp(0.5, 2.) * look::scale();
     SCALE.store(scale.to_bits(), Ordering::Relaxed);
     VW.store((f32::from(size.width) / scale).to_bits(), Ordering::Relaxed);
     PILLS.with(|c| c.set(0));

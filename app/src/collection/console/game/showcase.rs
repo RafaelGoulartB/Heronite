@@ -40,7 +40,9 @@ impl CollectionView {
                         .flex_col()
                         .size_full()
                         .child(div().px(u(34.)).pt(u(30.)).pb(u(10.)).child(kit::title(tr!("Options"), 26.)))
-                        .child(div().flex_1().min_h_0().px(u(12.)).pb(u(10.)).children(list));
+                        .child(
+                            div().flex().flex_col().flex_1().min_h_0().px(u(12.)).pb(u(10.)).children(list.map(|l| l.flex_1().min_h_0())),
+                        );
                     side_sheet("console-showcase-more", body)
                 })
             }

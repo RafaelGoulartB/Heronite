@@ -419,7 +419,16 @@ impl CollectionView {
                 .flex_col()
                 .size_full()
                 .child(div().px(u(34.)).pt(u(30.)).pb(u(10.)).child(kit::title(tr!("More"), 26.)))
-                .child(div().flex_1().min_h_0().px(u(12.)).pb(u(10.)).child(list.render("console-game-more", &more, true)));
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_h_0()
+                        .px(u(12.))
+                        .pb(u(10.))
+                        .child(list.render("console-game-more", &more, true).flex_1().min_h_0()),
+                );
             side_sheet("console-game-more-panel", body)
         });
         // Over the page: nothing under them takes clicks.
