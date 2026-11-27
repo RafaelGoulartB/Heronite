@@ -240,45 +240,41 @@ fn list_games(legendary: &Legendary) -> Option<String> {
     match legendary.run(&["--api-timeout", API_TIMEOUT, "list", "--third-party"], &[]) {
         Ok(out) if out.success() => None,
         Ok(out) => {
-            let said = last_lines(&out.stderr, LOGGED_LINES);
+            let said = heronite_data::proc::last_lines(&out.stderr, LOGGED_LINES);
             if !said.is_empty() {
                 log::warn!("legendary list failed, the end of what it said:\n{said}");
             }
-            Some(list_failure(&out.error_lines()))
+            Some(list_failure(&out.error_lines(), ended_on(&out)))
         }
         Err(err) => Some(format!("{err:#}")),
     }
 }
 
-/// The message of a failed list, from its [`Output::error_lines`](crate::cmd::Output::error_lines).
-fn list_failure(why: &str) -> String {
+/// The error legendary ended on: the last of its stderr (where it logs and
+/// crashes), or of its stdout when stderr has none.
+fn ended_on(out: &crate::cmd::Output) -> Option<&str> {
+    let last = |text| heronite_data::proc::error_lines(text).last().copied();
+    last(&out.stderr).or_else(|| last(&out.stdout))
+}
+
+/// The message of a failed list, from its [`Output::error_lines`](crate::cmd::Output::error_lines)
+/// and the one it [`ended_on`].
+fn list_failure(why: &str, ended_on: Option<&str>) -> String {
     if why.is_empty() {
         return "legendary list failed".to_string();
     }
-    if rate_limited(why) {
+    if ended_on.is_some_and(rate_limited) {
         return format!("{}\n{why}", tr!("Epic is limiting requests for now. Try again in a few minutes."));
     }
     why.to_string()
 }
 
 /// Epic (its store's Cloudflare, which answers the achievements legendary
-/// asks for each game) turned the requests away for a while: an HTTP 429 is
-/// what legendary ended on (the last line; an error it logged and went on
-/// from is not the reason).
-fn rate_limited(why: &str) -> bool {
-    why.lines().last().is_some_and(|end| end.contains("429 Client Error") || end.contains("Too Many Requests"))
-}
-
-/// The last `n` lines of `text`.
-fn last_lines(text: &str, n: usize) -> &str {
-    if n == 0 {
-        return "";
-    }
-    let text = text.trim_end();
-    match text.match_indices('\n').nth_back(n - 1) {
-        Some((i, _)) => &text[i + 1..],
-        None => text,
-    }
+/// asks for each game) turned the requests away for a while: the error
+/// legendary ended on is an HTTP 429 (an error it logged and went on from is
+/// not the reason).
+fn rate_limited(end: &str) -> bool {
+    end.contains("429 Client Error") || end.contains("Too Many Requests")
 }
 
 /// The connection to Epic broke before the answer was whole (the errors of
@@ -614,25 +610,26 @@ mod tests {
         assert!(rate_limited("requests.exceptions.HTTPError: 429 Client Error:  for url: https://x"));
         assert!(rate_limited("requests.exceptions.HTTPError: Too Many Requests"));
         // A 429 legendary logged and went on from is not what ended it.
-        assert!(!rate_limited(
-            "[Core] ERROR: 429 Client Error: Too Many Requests\nrequests.exceptions.ReadTimeout: HTTPSConnectionPool(host='x', port=443): Read timed out. (read timeout=60)"
-        ));
+        let out =
+            |stderr: &str, stdout: &str| crate::cmd::Output { stdout: stdout.into(), stderr: stderr.into(), code: Some(1), aborted: false };
+        let logged = out(
+            "[Core] ERROR: 429 Client Error: Too Many Requests\nTraceback (most recent call last):\nrequests.exceptions.ReadTimeout: HTTPSConnectionPool(host='x', port=443): Read timed out. (read timeout=60)",
+            "",
+        );
+        assert!(!ended_on(&logged).is_some_and(rate_limited));
+        // An error line on stdout does not hide the 429 legendary crashed on.
+        let crashed = out(
+            "Traceback (most recent call last):\nrequests.exceptions.HTTPError: 429 Client Error: Too Many Requests for url: https://x",
+            "ERROR somewhere",
+        );
+        assert!(ended_on(&crashed).is_some_and(rate_limited));
+        assert_eq!(ended_on(&out("", "[cli] ERROR: x")), Some("[cli] ERROR: x"));
         assert!(!rate_limited("requests.exceptions.HTTPError: 504 Server Error: Gateway Timeout for url: https://x"));
         assert!(!rate_limited(
             "requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='x', port=443): Read timed out. (read timeout=60)"
         ));
-        assert_eq!(list_failure(""), "legendary list failed");
-        assert_eq!(list_failure("[cli] ERROR: Login failed"), "[cli] ERROR: Login failed");
-    }
-
-    #[test]
-    fn the_log_gets_the_last_lines() {
-        assert_eq!(last_lines("a\nb\nc\n", 2), "b\nc");
-        assert_eq!(last_lines("a\nb\nc", 3), "a\nb\nc");
-        assert_eq!(last_lines("a\nb", 10), "a\nb");
-        assert_eq!(last_lines("a\nb", 0), "");
-        assert_eq!(last_lines("", 5), "");
-        assert_eq!(last_lines("a\r\nb\r\nc\r\n", 2), "b\r\nc");
+        assert_eq!(list_failure("", None), "legendary list failed");
+        assert_eq!(list_failure("[cli] ERROR: Login failed", Some("[cli] ERROR: Login failed")), "[cli] ERROR: Login failed");
     }
 
     /// Compares the rebuilt library with the file Heronite wrote. Read-only:

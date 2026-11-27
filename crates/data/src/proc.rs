@@ -422,6 +422,18 @@ pub fn output(cmd: &mut Command) -> io::Result<RunOutput> {
 /// What starts every Python traceback.
 const TRACEBACK: &str = "Traceback (most recent call last):";
 
+/// The last `n` lines of `text` (for a log: the end of what a tool said).
+pub fn last_lines(text: &str, n: usize) -> &str {
+    if n == 0 {
+        return "";
+    }
+    let text = text.trim_end();
+    match text.match_indices('\n').nth_back(n - 1) {
+        Some((i, _)) => &text[i + 1..],
+        None => text,
+    }
+}
+
 /// The lines of a Python tool's output (legendary, gogdl, nile) that say
 /// what went wrong: its `ERROR` and `CRITICAL` log lines and, for a
 /// traceback, the exception it ends with (`requests.exceptions.ReadTimeout:
@@ -496,7 +508,7 @@ fn names_exception(line: &str) -> bool {
 
 #[cfg(test)]
 mod error_lines_tests {
-    use super::error_lines;
+    use super::{error_lines, last_lines};
 
     /// What legendary 0.21.1 prints when Epic does not answer in time
     /// (shortened: one frame per traceback).
@@ -590,6 +602,16 @@ requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='launcher-public-servi
         assert_eq!(error_lines("Traceback (most recent call last):"), ["Traceback (most recent call last):"]);
         let output = "Traceback (most recent call last):\n  File \"a.py\", line 1\n[DLM] ERROR: worker died";
         assert_eq!(error_lines(output), ["[DLM] ERROR: worker died", "Traceback (most recent call last):"]);
+    }
+
+    #[test]
+    fn the_log_gets_the_last_lines() {
+        assert_eq!(last_lines("a\nb\nc\n", 2), "b\nc");
+        assert_eq!(last_lines("a\nb\nc", 3), "a\nb\nc");
+        assert_eq!(last_lines("a\nb", 10), "a\nb");
+        assert_eq!(last_lines("a\nb", 0), "");
+        assert_eq!(last_lines("", 5), "");
+        assert_eq!(last_lines("a\r\nb\r\nc\r\n", 2), "b\r\nc");
     }
 }
 
