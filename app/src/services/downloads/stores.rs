@@ -175,7 +175,11 @@ impl Downloads {
                         this.store_reload_local(Store::Amazon, cx);
                         Ok(None)
                     }
-                    Err(err) => Err(format!("{err:#}")),
+                    Err(err) => {
+                        // Shown on the page only: the log keeps it too.
+                        log::warn!("Amazon Games: could not start the sign-in: {err:#}");
+                        Err(format!("{err:#}"))
+                    }
                 };
                 then(this, res, cx);
                 cx.notify();
