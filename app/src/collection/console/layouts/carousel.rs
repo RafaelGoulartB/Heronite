@@ -399,7 +399,7 @@ impl CollectionView {
     fn carousel_facts(&self, g: &CollectionGame) -> Div {
         let dash = || "\u{2014}".to_string();
         let played = played_time(g).unwrap_or_else(dash);
-        let last = g.last_played.as_deref().and_then(played_ago).unwrap_or_else(|| tr!("Never").to_string());
+        let last = self.console_last_played(g).as_deref().and_then(played_ago).unwrap_or_else(|| tr!("Never").to_string());
         let mut row = div()
             .flex()
             .items_center()

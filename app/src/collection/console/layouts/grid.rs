@@ -482,7 +482,7 @@ impl CollectionView {
         let art = self.console_wide_art(&key, w, (w * 9. / 16.).round(), 200, window);
         let size = HeroSize { title: 26., logo: (w, 64.), max_w: w, overview: 0 };
         let name = self.console_name(g, size, window);
-        let last = g.last_played.as_deref().and_then(played_ago).unwrap_or_else(|| tr!("Never").to_string());
+        let last = self.console_last_played(g).as_deref().and_then(played_ago).unwrap_or_else(|| tr!("Never").to_string());
         let beat =
             self.wiki.hltb(&g.title, &g.game.title).map(|h| h.main_story).filter(|h| *h > 0.).map_or_else(|| "\u{2014}".into(), hours_text);
         let genres = if g.details.genres.is_empty() { "\u{2014}".to_string() } else { g.details.genres.join(", ") };

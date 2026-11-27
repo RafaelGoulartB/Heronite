@@ -413,6 +413,7 @@ impl CollectionView {
 
     fn dash_game(&mut self, key: &SharedString, w: f32, h: f32, on: bool, window: &Window) -> Div {
         let game = self.lib.as_ref().and_then(|l| l.get(key)).cloned();
+        let last = game.as_deref().and_then(|g| self.console_last_played(g));
         let art = self.dash_art(key, w, h, on, window);
         let r = u(look::tile_radius());
         let categories = self.console_categories(key);
@@ -443,8 +444,7 @@ impl CollectionView {
                     .flex_col()
                     .child(div().truncate().text_size(u(15.)).font_weight(theme::W_BOLD).text_color(kit::strong()).child(g.title.clone()))
                     .children(
-                        g.last_played
-                            .as_deref()
+                        last.as_deref()
                             .and_then(played_ago)
                             .map(|ago| div().truncate().text_size(u(12.)).text_color(theme::text_muted()).child(ago)),
                     )
@@ -457,7 +457,7 @@ impl CollectionView {
         let name = self.console_name(&game, HeroSize { title: 30., logo: (w * 0.7, 66.), ..HeroSize::default() }, window);
         let running = self.playing.contains_key(&game.app_name) || self.preparing.contains_key(&game.app_name);
         let label = if game.installed && !running { tr!("Continue") } else { self.primary_label(&game) };
-        let line = played_line(&game, false);
+        let line = played_line(&game, self.console_last_played(&game).as_deref(), false);
         let r = u(look::tile_radius());
         let pill_ink: Rgba = if kit::light() { rgb(0xffffff) } else { rgb(DARK) };
         div()

@@ -199,7 +199,7 @@ impl CollectionView {
     pub(super) fn spotlight_facts(&self, g: &CollectionGame) -> Div {
         let dash = || "\u{2014}".to_string();
         let played = played_time(g).unwrap_or_else(dash);
-        let last = g.last_played.as_deref().and_then(played_ago).unwrap_or_else(|| tr!("Never").to_string());
+        let last = self.console_last_played(g).as_deref().and_then(played_ago).unwrap_or_else(|| tr!("Never").to_string());
         let icon = store_badges::game_icons(&self.with_copies(&g.key)).first().copied();
         let platform =
             div().gap(u(7.)).children(icon.map(|i| crate::ui::icon(i, u(17.), theme::text_primary()))).child(g.source_label.to_string());
@@ -221,7 +221,7 @@ impl CollectionView {
     /// Playtime, How Long To Beat (how far along the main story) and the
     /// journal; the last one only once the journal of the focused game is read.
     pub(super) fn spotlight_cards(&self, g: &CollectionGame) -> Vec<Card> {
-        let last = match g.last_played.as_deref().and_then(played_ago) {
+        let last = match self.console_last_played(g).as_deref().and_then(played_ago) {
             Some(when) => tr!("Last played: {when}", when = when),
             None => tr!("Never played").to_string(),
         };

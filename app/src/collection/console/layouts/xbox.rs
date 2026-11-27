@@ -265,7 +265,7 @@ impl CollectionView {
             )
         } else {
             let Some(g) = key.and_then(|k| self.lib.as_ref()?.get(k)).cloned() else { return div().into_any_element() };
-            let line = look::theme().hero.facts.then(|| played_line(&g, true));
+            let line = look::theme().hero.facts.then(|| played_line(&g, self.console_last_played(&g).as_deref(), true));
             (format!("xbox-info-{}", g.key), self.console_name(&g, size, window), line)
         };
         let info = div()
