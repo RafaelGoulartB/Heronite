@@ -119,6 +119,7 @@ impl EmulatorsPage {
             }
             "add-menu" => self.menu = Some(Menu::Add),
             "detect" => self.open_detect(window, cx),
+            "srm-import" => self.open_srm_import(arg, window, cx),
             "folder" => self.open_folder_dialog(first, None, window, cx),
             "folder-edit" => {
                 let scanner = self.summaries.iter().flat_map(|s| s.scanners.first().cloned()).next();

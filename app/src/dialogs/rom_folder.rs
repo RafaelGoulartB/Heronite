@@ -16,9 +16,9 @@ use super::scan_roms::profile_label;
 use super::text_of;
 use super::DialogEvent;
 use crate::theme;
-use crate::ui::controls::{action_button, button, checkbox, ButtonKind};
+use crate::ui::controls::{action_button, button, button_sm, checkbox, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
-use crate::ui::fields::{choose_path, meta_text, new_input, panel, paragraph, path_field, select_field};
+use crate::ui::fields::{choose_path, meta_text, new_input, panel, paragraph, path_field, select_field, text_field};
 
 /// What saving did (read by the page once the dialog closes).
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -37,6 +37,7 @@ pub struct RomFolderDialog {
     emulator_id: String,
     profile_id: String,
     directory: Entity<InputState>,
+    rom_glob: Entity<InputState>,
     scan_subfolders: bool,
     merge_related: bool,
     auto_scan: bool,
@@ -85,6 +86,12 @@ impl RomFolderDialog {
                 scanner.as_ref().map(|s| s.directory.as_str()).unwrap_or(""),
                 if cfg!(windows) { r"D:\ROMs\ps2" } else { "/path/to/roms" },
             ),
+            rom_glob: new_input(
+                window,
+                cx,
+                scanner.as_ref().and_then(|s| s.rom_glob.as_deref()).unwrap_or(""),
+                "${title}/@(*[BASE]*.nsp|*.xci)",
+            ),
             scan_subfolders: scanner.as_ref().map(|s| s.scan_subfolders).unwrap_or(true),
             merge_related: scanner.as_ref().map(|s| s.merge_related_files).unwrap_or(true),
             auto_scan: scanner.as_ref().map(|s| s.auto_scan_on_refresh).unwrap_or(true),
@@ -130,6 +137,14 @@ impl RomFolderDialog {
             cx.notify();
             return;
         }
+        let rom_glob = text_of(&self.rom_glob, cx);
+        if !rom_glob.is_empty() {
+            if let Err(err) = heronite_emulation::glob::validate(&rom_glob) {
+                self.error = tr!("Invalid ROM glob pattern: {error}", error = err.as_str());
+                cx.notify();
+                return;
+            }
+        }
         // A folder named after its old target follows the new one.
         let name = self.scanner.as_ref().and_then(|s| {
             let old = self.emulators.iter().find(|e| e.id == s.emulator_id).map(|e| default_name(e, e.profile(&s.profile_id)));
@@ -144,6 +159,7 @@ impl RomFolderDialog {
             scan_subfolders: Some(self.scan_subfolders),
             merge_related_files: Some(self.merge_related),
             auto_scan_on_refresh: Some(self.auto_scan),
+            rom_glob: Some(rom_glob),
         };
         let (paths, auto) = (self.paths.clone(), self.auto_scan);
         self.saving = true;
@@ -258,11 +274,17 @@ impl Render for RomFolderDialog {
                 }
             }),
         );
+        let glob_value = text_of(&self.rom_glob, cx);
+        let has_effective_glob =
+            !glob_value.is_empty() || self.profile().and_then(|p| p.rom_glob.as_deref()).is_some_and(|g| !g.trim().is_empty());
         let toggles = panel()
-            .child(checkbox("romf-subfolders", self.scan_subfolders, tr!("Include subfolders")).on_click(cx.listener(|this, _, _, cx| {
-                this.scan_subfolders = !this.scan_subfolders;
-                cx.notify();
-            })))
+            .child(div().when(has_effective_glob, |d| d.opacity(0.55)).child(
+                checkbox("romf-subfolders", self.scan_subfolders, tr!("Include subfolders")).on_click(cx.listener(|this, _, _, cx| {
+                    this.scan_subfolders = !this.scan_subfolders;
+                    cx.notify();
+                })),
+            ))
+            .children(has_effective_glob.then(|| meta_text(tr!("Subfolder depth is controlled by the glob pattern."))))
             .child(checkbox("romf-merge", self.merge_related, tr!("Merge discs into one game")).on_click(cx.listener(|this, _, _, cx| {
                 this.merge_related = !this.merge_related;
                 cx.notify();
@@ -275,6 +297,48 @@ impl Render for RomFolderDialog {
             )))
             .child(meta_text(tr!("With this on, saving also scans the folder right away and adds the games it finds.")));
 
+        let glob_err = (!glob_value.is_empty()).then(|| heronite_emulation::glob::validate(&glob_value).err()).flatten();
+        let presets = self
+            .profile()
+            .map(|p| heronite_emulation::glob::presets_for_profile(p.platform_id.as_deref(), &p.extensions))
+            .unwrap_or_default();
+        let mut preset_row = div().flex().flex_wrap().items_center().gap(px(6.));
+        for preset in presets {
+            let pat = preset.pattern.clone();
+            let active = glob_value == pat;
+            preset_row = preset_row.child(
+                button_sm(
+                    SharedString::from(format!("romf-preset-{}", preset.id)),
+                    if active { ButtonKind::Primary } else { ButtonKind::Glass },
+                    tr(preset.label),
+                )
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    let pat = pat.clone();
+                    this.rom_glob.update(cx, |s, cx| s.set_value(pat, window, cx));
+                    cx.notify();
+                })),
+            );
+        }
+        if !glob_value.is_empty() {
+            preset_row = preset_row.child(button_sm("romf-preset-clear", ButtonKind::Ghost, tr!("Clear")).on_click(cx.listener(
+                |this, _, window, cx| {
+                    this.rom_glob.update(cx, |s, cx| s.set_value("", window, cx));
+                    cx.notify();
+                },
+            )));
+        }
+        let glob_section = div()
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .child(text_field(tr!("ROM glob pattern (optional)"), &self.rom_glob))
+            .child(meta_text(tr!(
+                "Steam ROM Manager syntax (for example {example}). Leave empty to scan by file extensions.",
+                example = "${title}/@(*[BASE]*.nsp|*.xci)"
+            )))
+            .child(preset_row)
+            .children(glob_err.map(|e| div().text_color(theme::danger_text()).text_size(px(12.5)).child(e)));
+
         let body = div()
             .flex()
             .flex_col()
@@ -283,6 +347,7 @@ impl Render for RomFolderDialog {
             .child(emu_select)
             .child(profile_select)
             .child(folder)
+            .child(glob_section)
             .child(toggles)
             .children(
                 (!self.error.is_empty()).then(|| div().text_color(theme::danger_text()).text_size(px(13.33)).child(self.error.clone())),

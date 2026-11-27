@@ -35,6 +35,7 @@ pub fn hook_for(view: &AnyView) -> Option<PadHook> {
         crate::dialogs::emulator_confirm::EmulatorConfirmDialog,
         crate::dialogs::rom_folder::RomFolderDialog,
         crate::dialogs::scan_roms::ScanRomsDialog,
+        crate::dialogs::srm_import::SrmImportDialog,
         crate::dialogs::pick_rom::PickRomDialog,
         crate::dialogs::play_choice::PlayChoiceDialog,
         crate::dialogs::launch_state::LaunchStateDialog,

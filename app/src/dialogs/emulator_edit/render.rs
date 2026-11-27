@@ -195,7 +195,13 @@ impl EmulatorEditDialog {
         let summary = format!(
             "{}  \u{b7}  {}",
             if p.arguments.is_empty() { tr!("(catalog arguments)").to_string() } else { p.arguments.clone() },
-            if p.extensions.is_empty() { tr!("any extension").to_string() } else { p.extensions.join(", ") }
+            if let Some(glob) = p.rom_glob.as_deref().filter(|g| !g.is_empty()) {
+                glob.to_string()
+            } else if p.extensions.is_empty() {
+                tr!("any extension").to_string()
+            } else {
+                p.extensions.join(", ")
+            }
         );
         let remove_block = if !can_remove {
             Some(tr!("An emulator needs at least one profile."))
@@ -251,15 +257,54 @@ impl EmulatorEditDialog {
         }
         if open {
             if let Some(f) = self.form.as_ref() {
-                let (name, platform, args, ext, core) =
-                    (f.name.clone(), f.platform.clone(), f.arguments.clone(), f.extensions.clone(), f.core.clone());
+                let (name, platform, args, ext, rom_glob, core) =
+                    (f.name.clone(), f.platform.clone(), f.arguments.clone(), f.extensions.clone(), f.rom_glob.clone(), f.core.clone());
                 let wd = f.working_dir.clone().unwrap_or_default();
                 let wd_label = WORKING_DIRS.iter().find(|w| w.0 == wd).map(|w| tr(w.1)).unwrap_or(tr!("Default"));
+                let glob_value = text_of(&rom_glob, cx);
+                let glob_err = (!glob_value.is_empty()).then(|| heronite_emulation::glob::validate(&glob_value).err()).flatten();
+                let presets = heronite_emulation::glob::presets_for_profile(p.platform_id.as_deref(), &p.extensions);
+                let mut preset_row = div().flex().flex_wrap().items_center().gap(px(6.));
+                for preset in presets {
+                    let pat = preset.pattern.clone();
+                    let active = glob_value == pat;
+                    let target = rom_glob.clone();
+                    preset_row = preset_row.child(
+                        button_sm(
+                            SharedString::from(format!("prof-preset-{i}-{}", preset.id)),
+                            if active { ButtonKind::Primary } else { ButtonKind::Glass },
+                            tr(preset.label),
+                        )
+                        .on_click(cx.listener(move |_, _, window, cx| {
+                            let pat = pat.clone();
+                            target.update(cx, |s, cx| s.set_value(pat, window, cx));
+                            cx.notify();
+                        })),
+                    );
+                }
+                if !glob_value.is_empty() {
+                    let target = rom_glob.clone();
+                    preset_row = preset_row.child(
+                        button_sm(SharedString::from(format!("prof-preset-clear-{i}")), ButtonKind::Ghost, tr!("Clear")).on_click(
+                            cx.listener(move |_, _, window, cx| {
+                                target.update(cx, |s, cx| s.set_value("", window, cx));
+                                cx.notify();
+                            }),
+                        ),
+                    );
+                }
                 card = card
                     .child(text_field(tr!("Profile name"), &name))
                     .child(text_field(tr!("Platform"), &platform))
                     .child(text_field(tr!("Arguments"), &args))
-                    .child(text_field(tr!("ROM extensions (comma-separated)"), &ext));
+                    .child(text_field(tr!("ROM extensions (comma-separated)"), &ext))
+                    .child(text_field(tr!("ROM glob pattern (optional)"), &rom_glob))
+                    .child(meta_text(tr!(
+                        "Steam ROM Manager syntax (for example {example}). Leave empty to scan by file extensions.",
+                        example = "${title}/@(*[BASE]*.nsp|*.xci)"
+                    )))
+                    .child(preset_row)
+                    .children(glob_err.map(|e| div().text_color(theme::danger_text()).text_size(px(12.5)).child(e)));
                 if self.core_relevant(&p) {
                     let has_core = !text_of(&core, cx).is_empty();
                     card = card.child(path_field(

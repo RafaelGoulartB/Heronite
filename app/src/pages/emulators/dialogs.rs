@@ -11,6 +11,7 @@ use crate::dialogs::emulator_confirm::EmulatorConfirmDialog;
 use crate::dialogs::emulator_detect::DetectEmulatorsDialog;
 use crate::dialogs::emulator_edit::EmulatorEditDialog;
 use crate::dialogs::rom_folder::RomFolderDialog;
+use crate::dialogs::srm_import::SrmImportDialog;
 use crate::dialogs::DialogEvent;
 use crate::pages::PageEvent;
 
@@ -80,6 +81,35 @@ impl EmulatorsPage {
             }
             Err(v) => v,
         };
+        let view = match view.downcast::<SrmImportDialog>() {
+            Ok(d) => {
+                if let Some(o) = d.update(cx, |d, _| d.outcome.take()) {
+                    let mut parts = Vec::new();
+                    if o.emulators_added > 0 {
+                        parts.push(trn!(o.emulators_added, "{n} emulator", "{n} emulators"));
+                    }
+                    if o.scanners_added > 0 {
+                        parts.push(trn!(o.scanners_added, "{n} ROM folder", "{n} ROM folders"));
+                    }
+                    if o.games_imported > 0 {
+                        parts.push(trn!(o.games_imported, "{n} game", "{n} games"));
+                    }
+                    let summary = if parts.is_empty() {
+                        tr!("Updated Steam ROM Manager folders.").to_string()
+                    } else {
+                        tr!("Imported from Steam ROM Manager: {items}.", items = parts.join(", "))
+                    };
+                    let mut lines = vec![summary];
+                    lines.extend(o.errors.iter().cloned());
+                    self.notice = Some(Notice { lines, error: !o.errors.is_empty() && o.games_imported == 0 });
+                    if o.games_imported > 0 {
+                        cx.emit(PageEvent::LibraryChanged);
+                    }
+                }
+                return;
+            }
+            Err(v) => v,
+        };
         if view.downcast::<EmulatorConfirmDialog>().is_ok() {
             if let Some(text) = self.confirm_notice.take() {
                 self.notice = Some(Notice { lines: vec![text], error: false });
@@ -103,6 +133,12 @@ impl EmulatorsPage {
     pub(super) fn open_detect(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let paths = self.ctx.data_paths.clone();
         let view = cx.new(|cx| DetectEmulatorsDialog::new(paths, cx));
+        self.open_dialog(view, window, cx);
+    }
+
+    pub(super) fn open_srm_import(&mut self, initial_path: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+        let paths = self.ctx.data_paths.clone();
+        let view = cx.new(|cx| SrmImportDialog::new(paths, initial_path, window, cx));
         self.open_dialog(view, window, cx);
     }
 

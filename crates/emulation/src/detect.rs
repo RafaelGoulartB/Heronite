@@ -386,6 +386,7 @@ pub fn apply_detected(emulators: &mut Vec<UserEmulator>, snapshot: &[UserEmulato
                     extensions: p.extensions.clone().or_else(|| cat.map(|c| c.extensions.clone())).unwrap_or_default(),
                     core_path: p.core_path.clone(),
                     folder_indicator: cat.and_then(|c| c.folder_indicator.clone()),
+                    rom_glob: cat.and_then(|c| c.rom_glob.clone()),
                     playlist_extensions: cat.and_then(|c| c.playlist_extensions.clone()),
                     working_dir: cat.and_then(|c| c.working_dir.clone()),
                     extra: Default::default(),

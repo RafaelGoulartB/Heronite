@@ -70,6 +70,9 @@ impl EmulatorsPage {
             Row::action("scan-folder", tr!("Scan a folder for emulators\u{2026}"))
                 .desc(tr!("Searches a folder you pick, for example your Emulation folder"))
                 .icon(Icon::FolderOpen),
+            Row::action("srm-import", tr!("Import from Steam ROM Manager\u{2026}"))
+                .desc(tr!("Bring over emulators, ROM folders and globs"))
+                .icon(Icon::Download),
             Row::action("add-folder", tr!("Add ROM folder")).desc(tr!("Games found in it are added to the Collection")).icon(Icon::Folder),
             Row::action("scan-all", if busy { tr!("Scanning\u{2026}") } else { tr!("Scan all ROM folders") })
                 .desc(tr!("Adds the games not imported yet from every saved folder"))
@@ -91,9 +94,11 @@ impl EmulatorsPage {
             );
             for sc in &s.scanners {
                 let missing = s.missing_folders.contains(&sc.directory);
-                let profile = e.profile(&sc.profile_id).map(profile_label).unwrap_or_else(|| tr!("Unknown profile").into());
+                let profile_ref = e.profile(&sc.profile_id);
+                let profile = profile_ref.map(profile_label).unwrap_or_else(|| tr!("Unknown profile").into());
+                let profile_glob = profile_ref.and_then(|p| p.rom_glob.as_deref());
                 let mut r = Row::action(format!("f:{}", sc.id), sc.directory.clone())
-                    .desc(format!("{profile}  \u{b7}  {}", folder_flags(sc)))
+                    .desc(format!("{profile}  \u{b7}  {}", folder_flags(sc, profile_glob)))
                     .icon(Icon::Folder);
                 if missing {
                     r = r.danger().desc(format!("{}  \u{b7}  {profile}", tr!("Folder not found")));
@@ -119,6 +124,7 @@ impl EmulatorsPage {
                     d.update(cx, |d, cx| d.console_pick_folder(window, cx));
                 }
             }
+            "srm-import" => self.open_srm_import(None, window, cx),
             "add-folder" => self.open_folder_dialog(None, None, window, cx),
             "scan-all" => self.scan_all(cx),
             _ => {

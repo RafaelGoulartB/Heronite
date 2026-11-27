@@ -36,6 +36,9 @@ pub struct RomScanner {
     pub merge_related_files: bool,
     #[serde(default)]
     pub auto_scan_on_refresh: bool,
+    /// Optional Steam ROM Manager-style glob pattern overriding the profile's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rom_glob: Option<String>,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -80,6 +83,9 @@ pub struct UpsertRomScannerArgs {
     pub merge_related_files: Option<bool>,
     #[serde(default)]
     pub auto_scan_on_refresh: Option<bool>,
+    /// `Some("")` clears the scanner's glob; `None` keeps any existing value.
+    #[serde(default)]
+    pub rom_glob: Option<String>,
 }
 
 /// Arguments of `previewRomScan`.
@@ -93,6 +99,9 @@ pub struct RomScanArgs {
     pub scan_subfolders: Option<bool>,
     #[serde(default)]
     pub merge_related_files: Option<bool>,
+    /// Optional glob pattern override for this scan (`Some("")` uses the profile's default).
+    #[serde(default)]
+    pub rom_glob: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -136,6 +145,8 @@ pub struct RomScanImportArgs {
     pub merge_related_files: Option<bool>,
     #[serde(default)]
     pub auto_scan_on_refresh: Option<bool>,
+    #[serde(default)]
+    pub rom_glob: Option<String>,
     pub games: Vec<RomScanItem>,
 }
 

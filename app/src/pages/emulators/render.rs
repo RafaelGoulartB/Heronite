@@ -43,9 +43,14 @@ fn folder_hint() -> &'static str {
     }
 }
 
-pub(super) fn folder_flags(s: &RomScanner) -> String {
+pub(super) fn folder_flags(s: &RomScanner, profile_glob: Option<&str>) -> String {
     let mut flags = vec![];
-    flags.push(if s.scan_subfolders { tr!("Subfolders") } else { tr!("Top folder only") });
+    let has_glob = s.rom_glob.as_deref().is_some_and(|g| !g.trim().is_empty()) || profile_glob.is_some_and(|g| !g.trim().is_empty());
+    if has_glob {
+        flags.push(tr!("Glob"));
+    } else {
+        flags.push(if s.scan_subfolders { tr!("Subfolders") } else { tr!("Top folder only") });
+    }
     if s.merge_related_files {
         flags.push(tr!("Discs merged"));
     }
@@ -232,7 +237,19 @@ impl EmulatorsPage {
                     this.menu = None;
                     this.open_scan_folder_for_emulators(window, cx);
                 }),
-            ));
+            ))
+            .child(
+                way(
+                    "emus-add-srm",
+                    Icon::Download,
+                    tr!("Import from Steam ROM Manager\u{2026}"),
+                    tr!("Bring over emulators, ROM folders and globs"),
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.menu = None;
+                    this.open_srm_import(None, window, cx);
+                })),
+            );
         Some(side_nav::popover("emus-add-menu", menu, 48., false, self.close_menu(cx)))
     }
 
@@ -332,6 +349,16 @@ impl EmulatorsPage {
                     .child(
                         way("emus-empty-folder", Icon::FolderOpen, tr!("Scan a folder for emulators\u{2026}"), folder_hint(), false)
                             .on_click(cx.listener(|this, _, window, cx| this.open_scan_folder_for_emulators(window, cx))),
+                    )
+                    .child(
+                        way(
+                            "emus-empty-srm",
+                            Icon::Download,
+                            tr!("Import from Steam ROM Manager\u{2026}"),
+                            tr!("Bring over emulators, ROM folders and globs"),
+                            false,
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| this.open_srm_import(None, window, cx))),
                     ),
             )
     }
@@ -564,7 +591,9 @@ impl EmulatorsPage {
         let busy = self.busy.is_some();
         let sid = sc.id.clone();
         let missing = s.missing_folders.contains(&sc.directory);
-        let profile = s.emulator.profile(&sc.profile_id).map(profile_label).unwrap_or_else(|| tr!("Unknown profile").into());
+        let profile_ref = s.emulator.profile(&sc.profile_id);
+        let profile = profile_ref.map(profile_label).unwrap_or_else(|| tr!("Unknown profile").into());
+        let profile_glob = profile_ref.and_then(|p| p.rom_glob.as_deref());
         let what = if with_emulator && !profile.eq_ignore_ascii_case(&s.emulator.name) {
             format!("{} \u{b7} {profile}", s.emulator.name)
         } else {
@@ -630,7 +659,7 @@ impl EmulatorsPage {
                             )
                             .children(missing.then(|| status_pill(tr!("Folder not found"), theme::danger_text()))),
                     )
-                    .child(meta_text(format!("{what}  \u{b7}  {}", folder_flags(sc)))),
+                    .child(meta_text(format!("{what}  \u{b7}  {}", folder_flags(sc, profile_glob)))),
             )
             .child(
                 div()

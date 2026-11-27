@@ -64,6 +64,7 @@ impl EmulatorEditDialog {
             platform: new_input(window, cx, p.platform_name.as_deref().unwrap_or(""), tr!("Platform (e.g. PlayStation 2)")),
             arguments: new_input(window, cx, &p.arguments, "{ImagePath}"),
             extensions: new_input(window, cx, &p.extensions.join(", "), "iso, cue, chd"),
+            rom_glob: new_input(window, cx, p.rom_glob.as_deref().unwrap_or(""), "${title}/@(*[BASE]*.nsp|*.xci)"),
             core: new_input(
                 window,
                 cx,
@@ -83,6 +84,8 @@ impl EmulatorEditDialog {
         set_platform(p, text_of(&f.platform, cx));
         p.arguments = text_of(&f.arguments, cx);
         p.extensions = split_extensions(&text_of(&f.extensions, cx));
+        let glob = text_of(&f.rom_glob, cx);
+        p.rom_glob = (!glob.is_empty()).then_some(glob);
         let core = text_of(&f.core, cx);
         p.core_path = (!core.is_empty()).then_some(core);
         p.working_dir = f.working_dir.clone();

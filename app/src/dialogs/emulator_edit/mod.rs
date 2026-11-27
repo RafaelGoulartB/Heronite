@@ -81,6 +81,7 @@ struct ProfileForm {
     platform: Entity<InputState>,
     arguments: Entity<InputState>,
     extensions: Entity<InputState>,
+    rom_glob: Entity<InputState>,
     core: Entity<InputState>,
     working_dir: Option<String>,
 }
@@ -318,6 +319,15 @@ impl EmulatorEditDialog {
             self.error = tr!("Every profile needs a name ({platform}).", platform = bad.platform_name.clone().unwrap_or_default());
             cx.notify();
             return;
+        }
+        for p in &self.profiles {
+            if let Some(glob) = p.rom_glob.as_deref().map(str::trim).filter(|g| !g.is_empty()) {
+                if let Err(err) = heronite_emulation::glob::validate(glob) {
+                    self.error = tr!("Invalid ROM glob pattern: {error}", error = err.as_str());
+                    cx.notify();
+                    return;
+                }
+            }
         }
         emulator.profiles = self.profiles.clone();
         let (paths, create) = (self.paths.clone(), self.create);
