@@ -20,10 +20,18 @@ pub enum Source {
     /// Files a game keeps next to it (a Steam API emulator's), with a Steam
     /// app id.
     Local,
+    /// The trophies RPCS3 keeps of a PlayStation 3 game.
+    Rpcs3,
+    /// The trophies shadPS4 keeps of a PlayStation 4 game.
+    #[serde(rename = "shadps4")]
+    ShadPs4,
+    /// The achievements Xenia keeps of an Xbox 360 game (its profile's GPD).
+    Xenia,
 }
 
 impl Source {
-    pub const ALL: [Source; 5] = [Source::Steam, Source::Gog, Source::Epic, Source::RetroAchievements, Source::Local];
+    pub const ALL: [Source; 8] =
+        [Source::Steam, Source::Gog, Source::Epic, Source::RetroAchievements, Source::Local, Source::Rpcs3, Source::ShadPs4, Source::Xenia];
 
     /// Name shown in the UI (a brand: never translated). The app names
     /// `Local` itself ("Game files", translated).
@@ -34,6 +42,32 @@ impl Source {
             Source::Epic => "Epic Games",
             Source::RetroAchievements => "RetroAchievements",
             Source::Local => "Game files",
+            Source::Rpcs3 => "RPCS3",
+            Source::ShadPs4 => "shadPS4",
+            Source::Xenia => "Xenia",
+        }
+    }
+}
+
+/// A PlayStation trophy's grade.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Grade {
+    Platinum,
+    Gold,
+    Silver,
+    Bronze,
+}
+
+impl Grade {
+    /// From a trophy file's `ttype` (`P`, `G`, `S`, `B`).
+    pub fn from_ttype(ttype: &str) -> Option<Grade> {
+        match ttype.trim().chars().next()?.to_ascii_uppercase() {
+            'P' => Some(Grade::Platinum),
+            'G' => Some(Grade::Gold),
+            'S' => Some(Grade::Silver),
+            'B' => Some(Grade::Bronze),
+            _ => None,
         }
     }
 }
@@ -102,6 +136,9 @@ pub struct Achievement {
     pub points: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<Kind>,
+    /// PlayStation trophies: Platinum, Gold, Silver or Bronze.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grade: Option<Grade>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub progress: Option<Progress>,
     /// When this app first saw it unlocked (`None` for what came with the
@@ -549,6 +586,17 @@ mod tests {
         let back: GameAchievements = serde_json::from_str(&serde_json::to_string(&g).unwrap()).unwrap();
         assert_eq!(back, g);
         assert_eq!(serde_json::to_value(Source::RetroAchievements).unwrap(), "retroachievements");
+        let names: Vec<Value> = [Source::Rpcs3, Source::ShadPs4, Source::Xenia].iter().map(|s| serde_json::to_value(s).unwrap()).collect();
+        assert_eq!(names, ["rpcs3", "shadps4", "xenia"]);
+        let mut t = a("t", None, 5.);
+        t.grade = Some(Grade::Platinum);
+        assert_eq!(serde_json::to_value(&t).unwrap()["grade"], "platinum");
+    }
+
+    #[test]
+    fn grades_come_from_the_trophy_type() {
+        let got: Vec<_> = ["P", "g", " S", "B", "", "X"].iter().map(|t| Grade::from_ttype(t)).collect();
+        assert_eq!(got, [Some(Grade::Platinum), Some(Grade::Gold), Some(Grade::Silver), Some(Grade::Bronze), None, None]);
     }
     fn grouped(id: &str, unlocked_day: Option<u32>, group: Option<&str>) -> Achievement {
         Achievement { group: group.map(str::to_string), ..a(id, unlocked_day, 10.) }

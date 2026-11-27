@@ -26,7 +26,7 @@ use super::{DialogCtx, DialogEvent};
 use crate::icons::Icon;
 use crate::services::achievements as service;
 use crate::theme;
-use crate::ui::achievements::{badge, bar, long_day, rarity_pill, section_label, section_line, source_chip, synced_label};
+use crate::ui::achievements::{badge, bar, grade_label, long_day, rarity_pill, section_label, section_line, source_chip, synced_label};
 use crate::ui::controls::{button_sm, tabs, ButtonKind};
 use crate::ui::dialog::{dialog_scrolled, DialogProps};
 use crate::ui::fields::{new_input, search_box};
@@ -209,6 +209,9 @@ impl AchievementsDialog {
         }
         if let Some(k) = a.kind {
             meta = meta.child(pill(kind_label(k).to_string()));
+        }
+        if let Some(g) = a.grade {
+            meta = meta.child(pill(grade_label(g).to_string()));
         }
         if let Some(name) = set_name {
             meta = meta.child(pill(name));

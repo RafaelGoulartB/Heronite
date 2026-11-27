@@ -171,5 +171,12 @@
   "Some games look for it before they unlock anything. Without GOG Galaxy installed, Heronite can register Comet's stand-in for it; Windows asks for the administrator once.": "Alguns jogos procuram por ele antes de desbloquear qualquer coisa. Sem o GOG Galaxy instalado, o Heronite pode registrar o substituto do Comet; o Windows pede permissão de administrador uma vez.",
   "The service was not registered (the script ended with {code})": "O serviço não foi registrado (o script terminou com {code})",
   "Unlock GOG achievements while you play": "Desbloquear conquistas da GOG enquanto você joga",
-  "Windows did not get the administrator's permission": "O Windows não recebeu a permissão de administrador"
+  "Windows did not get the administrator's permission": "O Windows não recebeu a permissão de administrador",
+  "Emulator trophies": "Troféus de emuladores",
+  "Read trophies from emulators": "Ler troféus dos emuladores",
+  "The trophies RPCS3 and shadPS4 keep of PlayStation 3 and 4 games, and the achievements Xenia keeps of Xbox 360 games, from their own files on this PC. Heronite only reads them. shadPS4 has trophies only with its trophy key.": "Os troféus que o RPCS3 e o shadPS4 guardam de jogos de PlayStation 3 e 4, e as conquistas que o Xenia guarda de jogos de Xbox 360, lidos dos próprios arquivos deles neste PC. O Heronite só os lê. O shadPS4 só tem troféus com a chave de troféus dele.",
+  "Platinum": "Platina",
+  "Gold": "Ouro",
+  "Silver": "Prata",
+  "Bronze": "Bronze"
 }

@@ -19,7 +19,7 @@ use heronite_launch::steam::SteamLocator;
 
 use crate::model::{LocalPin, Source};
 use crate::prefs::Prefs;
-use crate::sources::{comet, local, steam, Ctx};
+use crate::sources::{comet, local, steam, trophies, Ctx};
 use crate::sync::Problem;
 use crate::target::SourceTarget;
 
@@ -48,6 +48,9 @@ pub fn sources(prefs: &Prefs) -> Vec<Source> {
     }
     if prefs.gog_comet {
         out.push(Source::Gog);
+    }
+    if prefs.emulator_trophies {
+        out.extend([Source::Rpcs3, Source::ShadPs4, Source::Xenia]);
     }
     out
 }
@@ -90,6 +93,7 @@ pub fn watched_files(ctx: &Ctx, target: &SourceTarget, pin: Option<&LocalPin>) -
         SourceTarget::Gog { product_id } => {
             comet::database_of(ctx.paths, product_id).map(|db| comet::watched_files(&db)).unwrap_or_default()
         }
+        SourceTarget::Trophies(t) => trophies::watched_files(ctx, t),
         _ => Vec::new(),
     }
 }
@@ -243,15 +247,16 @@ mod tests {
 
     #[test]
     fn the_options_pick_the_sources() {
-        let p = Prefs { game_files: true, gog_comet: false, ..Prefs::default() };
+        let p = Prefs { game_files: true, gog_comet: false, emulator_trophies: false, ..Prefs::default() };
         assert_eq!(sources(&p), [Source::Local]);
         assert!(wanted(&p));
         assert_eq!(sources(&Prefs { live_steam: true, ..p }), [Source::Local, Source::Steam]);
-        // GOG games are checked by default (Comet runs beside them).
-        assert_eq!(sources(&Prefs::default()), [Source::Gog]);
+        // GOG games are checked by default (Comet runs beside them), and
+        // the emulators' trophies (their files).
+        assert_eq!(sources(&Prefs::default()), [Source::Gog, Source::Rpcs3, Source::ShadPs4, Source::Xenia]);
         assert!(wanted(&Prefs::default()));
         // Nothing to read, or nothing to announce it: no check.
-        assert!(!wanted(&Prefs { gog_comet: false, ..Prefs::default() }));
+        assert!(!wanted(&Prefs { gog_comet: false, emulator_trophies: false, ..Prefs::default() }));
         assert!(!wanted(&Prefs { overlay_notices: false, notify: false, ..p }));
         assert!(wanted(&Prefs { overlay_notices: false, notify: true, ..p }));
         let targets = [
@@ -261,6 +266,14 @@ mod tests {
         ];
         assert_eq!(sources_of(&p, &targets), [Source::Local]);
         assert_eq!(sources_of(&Prefs { gog_comet: true, ..p }, &targets), [Source::Gog, Source::Local]);
+        let ps3 = [SourceTarget::Trophies(crate::target::TrophyTarget {
+            emulator: crate::target::TrophyEmulator::Rpcs3,
+            roms: Vec::new(),
+            title: String::new(),
+            emulator_id: None,
+        })];
+        assert_eq!(sources_of(&Prefs::default(), &ps3), [Source::Rpcs3]);
+        assert!(sources_of(&Prefs { emulator_trophies: false, ..Prefs::default() }, &ps3).is_empty());
     }
 
     #[test]

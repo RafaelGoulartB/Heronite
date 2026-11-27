@@ -34,6 +34,9 @@ pub struct Prefs {
     /// its achievements unlock on the GOG account (`heronite_launch::galaxy`),
     /// and they show while it runs (its database, `sources::comet`).
     pub gog_comet: bool,
+    /// The trophies RPCS3 and shadPS4 and the achievements Xenia keep of
+    /// the console games they play (only read).
+    pub emulator_trophies: bool,
     /// What the notices over the game show besides the name.
     pub notice: NoticeFields,
 }
@@ -76,6 +79,7 @@ impl Default for Prefs {
             hardcore: false,
             game_files: false,
             gog_comet: true,
+            emulator_trophies: true,
             notice: NoticeFields::default(),
         }
     }
@@ -100,6 +104,7 @@ mod tests {
         // From before Comet: it is on.
         let p: Prefs = serde_json::from_str(r#"{"gameFiles":true}"#).unwrap();
         assert!(p.gog_comet);
+        assert!(p.emulator_trophies, "on for files from before the option");
         // Without the notice lines, or with only some: the others are on.
         let n = NoticeFields::default();
         assert!(n.description && n.rarity && n.points && n.group && n.kind && n.hardcore);

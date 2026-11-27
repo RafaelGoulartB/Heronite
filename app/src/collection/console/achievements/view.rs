@@ -14,7 +14,7 @@ use crate::console::pointer::Clickable;
 use crate::console::{look, motion, Btn, Pad};
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::achievements::{long_day, percent_label, source_name};
+use crate::ui::achievements::{grade_label, long_day, percent_label, source_name};
 use crate::ui::icon;
 
 /// Space from the screen's left and right edges, and the widest the list gets.
@@ -166,9 +166,10 @@ fn source_line(set: &AchievementSet) -> String {
     parts.join(" \u{b7} ")
 }
 
-/// The tier, the points and how many players have it ("Rare · 25 points · 9.8%").
+/// The tier, the trophy's grade, the points and how many players have it
+/// ("Rare · 25 points · 9.8%", "Gold").
 fn rarity_line(a: &Achievement, size: f32, players: bool) -> Option<Div> {
-    if a.rarity.is_none() && a.points.is_none() {
+    if a.rarity.is_none() && a.points.is_none() && a.grade.is_none() {
         return None;
     }
     let mut d = div().flex().flex_none().items_center().gap(u(6.)).text_size(u(size)).font_weight(theme::W_BOLD);
@@ -179,6 +180,9 @@ fn rarity_line(a: &Achievement, size: f32, players: bool) -> Option<Div> {
             .child(div().text_color(kit::tint(theme::rarity_colour(tier))).child(listing::tier_label(tier)));
     }
     let mut rest = Vec::new();
+    if let Some(g) = a.grade {
+        rest.push(grade_label(g).to_string());
+    }
     if let Some(p) = a.points {
         rest.push(tr!("{n} points", n = p));
     }

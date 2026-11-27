@@ -273,6 +273,17 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         )
         .on_click(cx.listener(|_, _, _, cx| set_prefs(cx, |p| p.game_files = !p.game_files)))
         .into_any_element()]))
+        .child(caption(tr!("Emulator trophies")))
+        .child(card([toggle_row(
+            "ach-emulator-trophies",
+            tr!("Read trophies from emulators"),
+            Some(tr!(
+                "The trophies RPCS3 and shadPS4 keep of PlayStation 3 and 4 games, and the achievements Xenia keeps of Xbox 360 games, from their own files on this PC. Heronite only reads them. shadPS4 has trophies only with its trophy key."
+            )),
+            prefs.emulator_trophies,
+        )
+        .on_click(cx.listener(|_, _, _, cx| set_prefs(cx, |p| p.emulator_trophies = !p.emulator_trophies)))
+        .into_any_element()]))
         .child(caption(tr!("How they show")))
         .child(card([
             with_sub_rows(

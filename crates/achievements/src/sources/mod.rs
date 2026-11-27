@@ -8,6 +8,7 @@ pub mod gog;
 pub mod local;
 pub mod retro;
 pub mod steam;
+pub mod trophies;
 
 use heronite_data::paths::DataPaths;
 use heronite_metadata::Http;
@@ -52,5 +53,6 @@ pub fn fetch(ctx: &Ctx, target: &SourceTarget) -> Fetch {
         SourceTarget::Epic { app_name } => epic::fetch(ctx, app_name),
         SourceTarget::Retro(t) => retro::fetch(ctx, t),
         SourceTarget::Local(t) => local::fetch(ctx, t),
+        SourceTarget::Trophies(t) => trophies::fetch(ctx, t),
     }
 }
