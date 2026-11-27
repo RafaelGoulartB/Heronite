@@ -270,6 +270,7 @@ fn game(d: &Document, install: &Install, resolver: &Resolver, names: &library::N
         banner: media("BackgroundImage"),
         prefix: None,
         transfer,
+        own: None,
         id,
     })
 }
@@ -405,7 +406,7 @@ mod tests {
         assert!(found.in_use && found.games.is_empty());
         assert_eq!(found.count(), 0);
         assert!(
-            crate::sync(&heronite_data::DataPaths::at(d.path().join("data")), d.path(), &found, &Default::default()).is_err(),
+            crate::sync(&heronite_data::DataPaths::at(d.path().join("data")), d.path(), &found, &Default::default(), false).is_err(),
             "nothing is marked as not installed"
         );
         drop(held);

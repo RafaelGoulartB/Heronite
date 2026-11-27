@@ -2,7 +2,10 @@
 //! versions kept it in the config folder), covers `covers/<gameid>.png`.
 //! A game starts with `faugus-launcher --game <gameid>`, which runs it
 //! through umu and returns when it exits. Play time is in seconds and the
-//! last played date is a local time without a zone.
+//! last played date is a local time without a zone. To start one here: its
+//! program, `game_arguments`, the variables of `launch_arguments` and its
+//! `runner`, a Proton build Steam has (umu's own `GE-Proton` and
+//! `UMU-Proton` are left to this app's default).
 
 use std::path::{Path, PathBuf};
 
@@ -10,7 +13,7 @@ use anyhow::{Context, Result};
 use heronite_data::launchers::Launcher;
 use serde_json::Value;
 
-use crate::{Found, Game};
+use crate::{Found, Game, Own};
 
 const FLATPAK_ID: &str = "io.github.Faugus.faugus-launcher";
 
@@ -78,6 +81,14 @@ fn game(g: &Value, data: &Path, flatpak: bool, home: &Path) -> Option<Game> {
         .or_else(|| file(data.join("covers").join(format!("{id}.png"))));
     let seconds = g.get("playtime").and_then(|v| v.as_f64().or_else(|| v.as_str()?.parse().ok())).unwrap_or(0.0);
     let windows = runner != "Linux-Native";
+    let prefix = Some(expand(&text("prefix"), home)).filter(|p| windows && !p.is_empty());
+    let own = (Path::new(&path).is_absolute() && (!windows || prefix.is_some())).then(|| Own {
+        program: path.clone(),
+        args: text("game_arguments"),
+        working_dir: None,
+        wine: if windows { crate::proton_named(home, &runner) } else { None },
+        env: crate::env_words(&text("launch_arguments")),
+    });
     Some(Game {
         command: command(flatpak, &id),
         title,
@@ -87,9 +98,10 @@ fn game(g: &Value, data: &Path, flatpak: bool, home: &Path) -> Option<Game> {
         last_played: last_played(&text("last_played")),
         cover,
         banner: file(data.join("banners").join(format!("{id}.png"))),
-        prefix: Some(expand(&text("prefix"), home)).filter(|p| windows && !p.is_empty()),
+        prefix,
         runs_from: None,
         transfer: None,
+        own,
         id,
     })
 }
@@ -109,7 +121,8 @@ mod tests {
             data.join("games.json"),
             r#"[
               {"gameid":"hollow-knight","title":"Hollow Knight","path":"~/Games/HK/hollow_knight.exe","prefix":"~/Faugus/hollow-knight",
-               "runner":"GE-Proton","playtime":5430,"last_played":"2026-01-02T03:04:05.123456","hidden":false},
+               "runner":"GE-Proton9-20","game_arguments":"-force-vulkan","launch_arguments":"DXVK_HUD=fps MANGOHUD_CONFIG=\"fps, font_size=24\" gamescope -- X=1",
+               "playtime":5430,"last_played":"2026-01-02T03:04:05.123456","hidden":false},
               {"gameid":"tux","title":"SuperTux","path":"/opt/tux/supertux","runner":"Linux-Native","playtime":0,"prefix":"/x"},
               {"gameid":"secret","title":"Secret","path":"/g/s.exe","hidden":true},
               {"gameid":"620","title":"Portal 2","path":"620","runner":"Steam"},
@@ -117,6 +130,9 @@ mod tests {
             ]"#,
         )
         .unwrap();
+        let proton = home.join(".local/share/Steam/compatibilitytools.d/GE-Proton9-20/proton");
+        std::fs::create_dir_all(proton.parent().unwrap()).unwrap();
+        std::fs::write(&proton, "").unwrap();
         let found = detect(home).unwrap().unwrap();
         assert!(!found.flatpak);
         let names: Vec<_> = found.games.iter().map(|g| g.title.as_str()).collect();
@@ -130,5 +146,20 @@ mod tests {
         let tux = &found.games[1];
         assert!(!tux.windows);
         assert_eq!((tux.folder.as_deref(), tux.prefix.as_deref()), (Some("/opt/tux"), None));
+        // To start here: Steam's build of its Proton, its arguments and variables.
+        let own = hk.own.clone().unwrap();
+        assert_eq!(own.program, home.join("Games/HK/hollow_knight.exe").to_str().unwrap());
+        assert_eq!(own.args, "-force-vulkan");
+        assert!(own.wine.as_ref().is_some_and(|w| w.proton && Path::new(&w.bin) == proton));
+        assert_eq!(
+            own.env,
+            [("DXVK_HUD".to_string(), "fps".to_string()), ("MANGOHUD_CONFIG".to_string(), "fps, font_size=24".to_string())]
+        );
+        // `/opt/...` is a full path on Linux only.
+        #[cfg(unix)]
+        {
+            let tux = tux.own.clone().unwrap();
+            assert_eq!((tux.program.as_str(), tux.wine), ("/opt/tux/supertux", None));
+        }
     }
 }

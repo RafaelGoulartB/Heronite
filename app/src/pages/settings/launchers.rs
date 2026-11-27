@@ -2,6 +2,8 @@
 //! Heroic and Playnite on Windows, whether each is on this PC and how many games it
 //! has, and a switch to bring its games into the Collection (kept in sync
 //! while on). Turning one off keeps its games; "Remove them" takes them out.
+//! For Lutris, Bottles and Faugus, a second switch picks whether their games
+//! start here or through them (`Launcher::can_start_here`).
 //! Games then in the Collection twice (added here by hand, and from a
 //! launcher) are listed below the cards, to
 //! merge, replace or keep both. The work is the service's
@@ -52,9 +54,19 @@ pub fn shown(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     d.launchers.svc.update(cx, |s, cx| s.look(cx));
 }
 
-/// What importing a launcher brings, in a line.
-pub fn what(launcher: Launcher) -> &'static str {
+/// What importing a launcher brings, in a line. `start_here`: its games
+/// start here, without it ([`Launcher::can_start_here`]).
+pub fn what(launcher: Launcher, start_here: bool) -> &'static str {
     match launcher {
+        Launcher::Lutris if start_here => tr!(
+            "Its installed games, with their covers and play time. They start here, without Lutris, with the program, arguments, Wine prefix, Wine and environment variables you gave them there. A game of another runner (DOSBox, an emulator) keeps starting through Lutris."
+        ),
+        Launcher::Bottles if start_here => tr!(
+            "The programs you added to its bottles, with the covers of its Library. They start here, without Bottles, in their bottle, with its runner and environment variables."
+        ),
+        Launcher::Faugus if start_here => tr!(
+            "Its games, with their covers and play time. They start here, without Faugus, in their prefix, with their Proton, arguments and environment variables."
+        ),
         Launcher::Heroic => tr!(
             "The games you added by hand there start here, with their settings. The Epic, GOG and Amazon games it installed show as installed once you log in to the store here."
         ),
@@ -129,7 +141,34 @@ fn launcher_card(d: &SettingsPage, launcher: Launcher, cx: &mut Context<Settings
             )
             .child(div().text_size(px(12.5)).text_color(if here { theme::text_muted() } else { theme::text_dim() }).child(found)),
     );
-    details = details.child(div().text_size(px(12.5)).line_height(px(18.)).text_color(theme::text_dim()).child(what(launcher)));
+    let start_here = s.prefs.start_here.contains(&launcher);
+    details = details.child(div().text_size(px(12.5)).line_height(px(18.)).text_color(theme::text_dim()).child(what(launcher, start_here)));
+    if on && launcher.can_start_here() {
+        let svc = svc.clone();
+        let switch = toggle(SharedString::from(format!("launchers-{id}-here")), start_here, false)
+            .cursor_pointer()
+            .on_click(move |_, _, cx| svc.update(cx, |s, cx| s.set_start_here(launcher, !start_here, cx)));
+        details = details.child(
+            div()
+                .mt(px(4.))
+                .flex()
+                .items_center()
+                .gap(px(12.))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .flex_1()
+                        .min_w_0()
+                        .child(div().text_size(px(13.)).text_color(theme::text_primary()).child(start_here_label(launcher)))
+                        .child(
+                            div().text_size(px(12.5)).line_height(px(18.)).text_color(theme::text_muted()).child(start_here_desc(launcher)),
+                        ),
+                )
+                .child(div().flex_none().child(switch)),
+        );
+    }
     if on {
         let svc = svc.clone();
         details = details.child(
@@ -217,6 +256,14 @@ fn launcher_card(d: &SettingsPage, launcher: Launcher, cx: &mut Context<Settings
             .child(details)
             .child(div().flex_none().pt(px(2.)).child(switch)),
     )
+}
+
+fn start_here_label(launcher: Launcher) -> String {
+    tr!("Start them here, without {launcher}", launcher = launcher.name())
+}
+
+fn start_here_desc(launcher: Launcher) -> String {
+    tr!("Turned off, {launcher} starts them, as it does now.", launcher = launcher.name())
 }
 
 pub fn launcher_icon(launcher: Launcher) -> Icon {
@@ -403,6 +450,14 @@ pub fn console_rows(d: &SettingsPage, cx: &App) -> Vec<Row> {
             continue;
         }
         rows.push(Row::toggle(SharedString::from(launcher.id()), tr!("Bring its games in"), on).desc(found));
+        if on && launcher.can_start_here() {
+            let start_here = s.prefs.start_here.contains(&launcher);
+            rows.push(
+                Row::toggle(SharedString::from(format!("{}-here", launcher.id())), start_here_label(launcher), start_here)
+                    .desc(start_here_desc(launcher))
+                    .child_of(launcher.id()),
+            );
+        }
         if on {
             let busy = s.busy.contains(&launcher);
             rows.push(
@@ -424,7 +479,9 @@ pub fn console_apply(d: &mut SettingsPage, outcome: Outcome, cx: &mut Context<Se
     let svc = d.launchers.svc.clone();
     match outcome {
         Outcome::Changed(id, Value::Toggle(on)) => {
-            if let Some(l) = Launcher::from_source(&id) {
+            if let Some(l) = id.strip_suffix("-here").and_then(Launcher::from_source) {
+                svc.update(cx, |s, cx| s.set_start_here(l, on, cx));
+            } else if let Some(l) = Launcher::from_source(&id) {
                 svc.update(cx, |s, cx| s.set_enabled(l, on, cx));
             }
         }

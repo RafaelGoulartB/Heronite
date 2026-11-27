@@ -6,6 +6,9 @@
 //! `library.yml` gives the ones in Bottles' Library a cover
 //! (`grid:<file>`, in the bottle's `grids/`). A program starts with
 //! `bottles-cli run -b <bottle> -p <program>`; Bottles keeps no play time.
+//! To start one here: its program and arguments, the bottle's runner
+//! (`runners/<Runner>` in the data folder) and environment variables
+//! (`Environment_Variables`).
 //!
 //! Inside the Flatpak, Bottles' data folder is `/var/data`: paths it wrote
 //! there are read from `~/.var/app/com.usebottles.bottles/data`.
@@ -17,7 +20,7 @@ use anyhow::{Context, Result};
 use heronite_data::launchers::Launcher;
 use serde_json::Value;
 
-use crate::{Found, Game};
+use crate::{load_yaml, Found, Game, Own, Wine};
 
 const FLATPAK_ID: &str = "com.usebottles.bottles";
 
@@ -44,12 +47,6 @@ pub fn detect(home: &Path) -> Result<Option<Found>> {
     Ok(Some(Found { launcher: Launcher::Bottles, location: install.root, flatpak: install.flatpak, games, heroic: None, in_use: false }))
 }
 
-fn load_yaml(file: &Path) -> Result<Value> {
-    let text = std::fs::read_to_string(file).with_context(|| format!("reading {}", file.display()))?;
-    let options = serde_saphyr::options! { duplicate_keys: serde_saphyr::DuplicateKeyPolicy::LastWins };
-    serde_saphyr::from_str_with_options::<Value>(&text, options).with_context(|| format!("{} is not YAML", file.display()))
-}
-
 fn text<'a>(v: &'a Value, key: &str) -> &'a str {
     v.get(key).and_then(Value::as_str).map(str::trim).unwrap_or_default()
 }
@@ -72,6 +69,17 @@ impl Install {
             .map(|p| self.host(&p))
             .filter(|p| p.is_dir());
         custom.unwrap_or_else(|| self.root.join("bottles"))
+    }
+
+    /// The Wine of the bottle's runner, when it is still there.
+    fn runner(&self, config: &Value) -> Option<Wine> {
+        let name = text(config, "Runner");
+        if name.is_empty() || name.contains('/') {
+            return None;
+        }
+        let dir = self.root.join("runners").join(name);
+        let bin = [dir.join("bin/wine"), dir.join("files/bin/wine")].into_iter().find(|p| p.is_file())?;
+        Some(Wine { bin: bin.to_string_lossy().into_owned(), name: name.to_string(), proton: false })
     }
 
     fn command(&self, bottle: &str, program: &str) -> String {
@@ -147,6 +155,14 @@ fn read(install: &Install) -> Result<Vec<Game>> {
     let mut games = Vec::new();
     for (bottle, prefix, config) in &found {
         let Some(programs) = config.get("External_Programs").and_then(Value::as_object) else { continue };
+        let wine = install.runner(config);
+        let env: Vec<(String, String)> = config
+            .get("Environment_Variables")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+            .filter_map(|(k, v)| Some((k.clone(), crate::scalar(v)?)))
+            .collect();
         let mut list: Vec<&Value> = programs.values().filter(|p| !p.get("removed").and_then(Value::as_bool).unwrap_or(false)).collect();
         list.sort_by_key(|p| text(p, "name").to_lowercase());
         for p in list {
@@ -165,6 +181,13 @@ fn read(install: &Install) -> Result<Vec<Game>> {
                 .or_else(|| exe.as_deref().and_then(Path::parent).map(Path::to_path_buf))
                 .filter(|f| f.components().count() > 2)
                 .map(|f| f.to_string_lossy().into_owned());
+            let own = exe.filter(|e| e.is_absolute()).map(|e| Own {
+                program: e.to_string_lossy().into_owned(),
+                args: text(p, "arguments").to_string(),
+                working_dir: folder.clone(),
+                wine: wine.clone(),
+                env: env.clone(),
+            });
             games.push(Game {
                 cover: covers.get(&id).cloned(),
                 id,
@@ -173,6 +196,7 @@ fn read(install: &Install) -> Result<Vec<Game>> {
                 windows: true,
                 command: install.command(bottle, title),
                 prefix: Some(prefix.to_string_lossy().into_owned()),
+                own,
                 ..Default::default()
             });
         }
@@ -200,11 +224,13 @@ mod tests {
         write(
             &root.join("bottles/Games/bottle.yml"),
             "Name: Games\nPath: Games\nCustom_Path: false\nEnvironment: Gaming\nRunner: soda-9.0-1\n\
+             Environment_Variables:\n  DXVK_ASYNC: 1\n  WINEDEBUG: -all\n\
              External_Programs:\n\
-             \x20 a1:\n    executable: HD_Launcher.exe\n    name: HoMM3 HD\n    path: /var/data/bottles/bottles/Games/drive_c/HoMM3/HD_Launcher.exe\n    id: a1\n    folder: /var/data/bottles/bottles/Games/drive_c/HoMM3\n\
+             \x20 a1:\n    executable: HD_Launcher.exe\n    name: HoMM3 HD\n    path: /var/data/bottles/bottles/Games/drive_c/HoMM3/HD_Launcher.exe\n    id: a1\n    folder: /var/data/bottles/bottles/Games/drive_c/HoMM3\n    arguments: -windowed\n\
              \x20 b2:\n    executable: setup.exe\n    name: Old setup\n    path: /x/setup.exe\n    id: b2\n    removed: true\n\
              \x20 c3:\n    executable: Diablo.exe\n    name: Diablo's Hellfire\n    path: /var/data/bottles/bottles/Games/drive_c/Diablo/Diablo.exe\n    id: c3\n",
         );
+        write(&root.join("runners/soda-9.0-1/bin/wine"), "");
         fs::create_dir_all(root.join("bottles/Games/grids")).unwrap();
         fs::write(root.join("bottles/Games/grids/cover-1.png"), b"png").unwrap();
         write(
@@ -243,6 +269,14 @@ mod tests {
         assert_eq!(games[0].command.split_once("-p ").unwrap().1, r"'Diablo'\''s Hellfire'");
         assert_eq!(games[2].prefix.as_deref(), Some(elsewhere.to_str().unwrap()));
         assert!(games.iter().all(|g| g.windows && g.minutes == 0));
+        // To start here: the program in the bottle, with its runner and variables.
+        let own = homm3.own.clone().unwrap();
+        assert_eq!(own.program, bottle.join("drive_c/HoMM3/HD_Launcher.exe").to_str().unwrap());
+        assert_eq!(own.args, "-windowed");
+        assert!(own.wine.as_ref().is_some_and(|w| w.name == "soda-9.0-1" && w.bin.ends_with("runners/soda-9.0-1/bin/wine") && !w.proton));
+        assert_eq!(own.env, [("DXVK_ASYNC".to_string(), "1".to_string()), ("WINEDEBUG".to_string(), "-all".to_string())]);
+        // The other bottle's runner is not on this PC.
+        assert!(games[2].own.as_ref().is_some_and(|o| o.wine.is_none() && o.env.is_empty()));
     }
 
     #[test]

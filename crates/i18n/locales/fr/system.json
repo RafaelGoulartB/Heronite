@@ -242,5 +242,10 @@
   "Bring in games from Heroic and Playnite": "Importer les jeux de Heroic et Playnite",
   "Bring in the games of Heroic and Playnite. While on, a game added there shows up here too.": "Importez les jeux de Heroic et Playnite. Tant que cette option est activée, un jeu ajouté là-bas apparaît aussi ici.",
   "Backed up {name} while playing": "Copie de sauvegarde de {name} créée pendant la partie",
-  "Sources of details and pictures, their order and keys": "Sources des détails et des images, leur ordre et leurs clés"
+  "Sources of details and pictures, their order and keys": "Sources des détails et des images, leur ordre et leurs clés",
+  "Its installed games, with their covers and play time. They start here, without Lutris, with the program, arguments, Wine prefix, Wine and environment variables you gave them there. A game of another runner (DOSBox, an emulator) keeps starting through Lutris.": "Ses jeux installés, avec leurs jaquettes et leur temps de jeu. Ils se lancent ici, sans Lutris, avec le programme, les arguments, le préfixe Wine, le Wine et les variables d'environnement que vous y avez définis. Un jeu d'un autre runner (DOSBox, un émulateur) continue de se lancer avec Lutris.",
+  "The programs you added to its bottles, with the covers of its Library. They start here, without Bottles, in their bottle, with its runner and environment variables.": "Les programmes que vous avez ajoutés à ses bouteilles, avec les jaquettes de sa Bibliothèque. Ils se lancent ici, sans Bottles, dans leur bouteille, avec son runner et ses variables d'environnement.",
+  "Its games, with their covers and play time. They start here, without Faugus, in their prefix, with their Proton, arguments and environment variables.": "Ses jeux, avec leurs jaquettes et leur temps de jeu. Ils se lancent ici, sans Faugus, dans leur préfixe, avec leur Proton, leurs arguments et leurs variables d'environnement.",
+  "Start them here, without {launcher}": "Les lancer ici, sans {launcher}",
+  "Turned off, {launcher} starts them, as it does now.": "Désactivé, {launcher} les lance, comme maintenant."
 }

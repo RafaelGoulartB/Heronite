@@ -3,15 +3,19 @@
 //! prefix is read from there, and the game's folder when `pga.db` has none:
 //! a game added by hand in Lutris only has its executable). A game starts with
 //! `lutris lutris:rungameid/<id>`; started that way while Lutris is closed,
-//! Lutris quits with the game.
+//! Lutris quits with the game. To start a Wine or Linux game here instead,
+//! its settings give its program, arguments, working folder, Wine build and
+//! environment variables, falling back to Lutris' settings for all games
+//! and for its runner ([`Install::settings`]).
 
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use heronite_data::launchers::Launcher;
 use rusqlite::{Connection, OpenFlags};
+use serde_json::Value;
 
-use crate::{Found, Game};
+use crate::{Found, Game, Own, Wine};
 
 const FLATPAK_ID: &str = "net.lutris.Lutris";
 
@@ -35,7 +39,7 @@ fn installs(home: &Path) -> [Install; 2] {
 
 pub fn detect(home: &Path) -> Result<Option<Found>> {
     let Some(install) = installs(home).into_iter().find(|i| i.data.join("pga.db").is_file()) else { return Ok(None) };
-    let games = read(&install)?;
+    let games = read(&install, home)?;
     Ok(Some(Found { launcher: Launcher::Lutris, location: install.data, flatpak: install.flatpak, games, heroic: None, in_use: false }))
 }
 
@@ -48,7 +52,7 @@ fn command(flatpak: bool, id: i64) -> String {
 }
 
 /// The installed games, but Steam's (the Steam import brings those).
-fn read(install: &Install) -> Result<Vec<Game>> {
+fn read(install: &Install, home: &Path) -> Result<Vec<Game>> {
     let db = install.data.join("pga.db");
     let conn = Connection::open_with_flags(&db, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
         .with_context(|| format!("opening {}", db.display()))?;
@@ -77,11 +81,7 @@ fn read(install: &Install) -> Result<Vec<Game>> {
             continue;
         }
         let art = |dir: &str| ["jpg", "png"].iter().map(|ext| install.data.join(dir).join(format!("{slug}.{ext}"))).find(|p| p.is_file());
-        let settings = if configpath.is_empty() {
-            GameSection::default()
-        } else {
-            game_section(&install.config.join("games").join(format!("{configpath}.yml")))
-        };
+        let settings = install.settings(&runner, &configpath);
         let folder = Some(directory.trim().to_string()).filter(|d| !d.is_empty()).or_else(|| settings.folder());
         games.push(Game {
             id: id.to_string(),
@@ -93,6 +93,7 @@ fn read(install: &Install) -> Result<Vec<Game>> {
             cover: art("coverart").map(|p| p.to_string_lossy().into_owned()),
             banner: art("banners").map(|p| p.to_string_lossy().into_owned()),
             command: command(install.flatpak, id),
+            own: own(install, home, &runner, directory.trim(), &settings),
             prefix: settings.prefix,
             runs_from: None,
             transfer: None,
@@ -101,16 +102,23 @@ fn read(install: &Install) -> Result<Vec<Game>> {
     Ok(games)
 }
 
-/// The keys of a game's YAML settings under `game:` this reads.
+/// What a game's settings say, laid over Lutris' settings for all games
+/// (`system.yml`) and for its runner (`runners/<runner>.yml`), as Lutris
+/// merges them.
 #[derive(Debug, Default)]
-struct GameSection {
+struct Settings {
     prefix: Option<String>,
     exe: Option<String>,
+    args: Option<String>,
     working_dir: Option<String>,
     main_file: Option<String>,
+    /// `wine: version:`, a folder of `runners/wine` (or a Proton build).
+    wine: Option<String>,
+    /// `system: env:`, in order; a later file's value wins.
+    env: Vec<(String, String)>,
 }
 
-impl GameSection {
+impl Settings {
     /// The game's folder from its settings: its working folder, else the
     /// folder of its executable (or main file). Only full paths.
     fn folder(&self) -> Option<String> {
@@ -121,34 +129,94 @@ impl GameSection {
             .filter(|d| d.components().count() > 2)
             .map(|d| d.to_string_lossy().trim_end_matches('/').to_string())
     }
-}
 
-/// `game:` of a game's YAML settings. Only a few plain keys are needed, so
-/// the lines are read as Lutris writes them: `game:` at the start of a line,
-/// its keys indented under it.
-fn game_section(file: &Path) -> GameSection {
-    let mut out = GameSection::default();
-    let Ok(text) = std::fs::read_to_string(file) else { return out };
-    let mut in_game = false;
-    for line in text.lines() {
-        if !line.starts_with([' ', '\t']) {
-            in_game = line.trim_end() == "game:";
-            continue;
+    /// Lays `doc` (one of Lutris' settings files) over these.
+    fn read(&mut self, doc: &Value) {
+        let get = |section: &str, key: &str| doc.get(section)?.get(key).and_then(crate::scalar).filter(|v| !v.trim().is_empty());
+        for (slot, key) in [
+            (&mut self.prefix, "prefix"),
+            (&mut self.exe, "exe"),
+            (&mut self.args, "args"),
+            (&mut self.working_dir, "working_dir"),
+            (&mut self.main_file, "main_file"),
+        ] {
+            if let Some(v) = get("game", key) {
+                *slot = Some(v);
+            }
         }
-        if !in_game {
-            continue;
+        if let Some(v) = get("wine", "version") {
+            self.wine = Some(v);
         }
-        let Some((key, value)) = line.trim_start().split_once(':') else { continue };
-        let value = Some(value.trim().trim_matches(['\'', '"']).to_string()).filter(|v| !v.is_empty());
-        match key {
-            "prefix" => out.prefix = value,
-            "exe" => out.exe = value,
-            "working_dir" => out.working_dir = value,
-            "main_file" => out.main_file = value,
-            _ => {}
+        let env = doc.get("system").and_then(|s| s.get("env")).and_then(Value::as_object);
+        for (k, v) in env.into_iter().flatten() {
+            let Some(v) = crate::scalar(v) else { continue };
+            self.env.retain(|(key, _)| key != k);
+            self.env.push((k.clone(), v));
         }
     }
-    out
+}
+
+impl Install {
+    /// Lutris' settings for all games of `runner`, then the game's own file
+    /// (`configpath` under `games/`; none for an empty one).
+    fn settings(&self, runner: &str, configpath: &str) -> Settings {
+        let mut out = Settings::default();
+        let mut files = vec![self.config.join("system.yml")];
+        if !runner.is_empty() && !runner.contains('/') {
+            files.push(self.config.join("runners").join(format!("{runner}.yml")));
+        }
+        if !configpath.is_empty() {
+            files.push(self.config.join("games").join(format!("{configpath}.yml")));
+        }
+        for file in files.iter().filter(|f| f.is_file()) {
+            match crate::load_yaml(file) {
+                Ok(doc) => out.read(&doc),
+                Err(e) => log::warn!("Lutris: {e:#}"),
+            }
+        }
+        out
+    }
+
+    /// The Wine build named `version`: one Lutris keeps (`runners/wine`, or
+    /// Proton in `runners/proton`), else a Proton build Steam has.
+    fn wine(&self, home: &Path, version: &str) -> Option<Wine> {
+        if version.is_empty() || version.contains('/') {
+            return None;
+        }
+        let wine = self.data.join("runners/wine").join(version).join("bin/wine");
+        if wine.is_file() {
+            return Some(Wine { bin: wine.to_string_lossy().into_owned(), name: version.to_string(), proton: false });
+        }
+        let proton = self.data.join("runners/proton").join(version).join("proton");
+        if proton.is_file() {
+            return Some(Wine { bin: proton.to_string_lossy().into_owned(), name: version.to_string(), proton: true });
+        }
+        crate::proton_named(home, version)
+    }
+}
+
+/// How the game starts here: a Wine game (with its prefix) or a Linux one
+/// whose program is known. Other runners (DOSBox, emulators...) only
+/// Lutris starts.
+fn own(install: &Install, home: &Path, runner: &str, directory: &str, settings: &Settings) -> Option<Own> {
+    let wine = match runner {
+        "wine" => true,
+        "linux" => false,
+        _ => return None,
+    };
+    if wine && settings.prefix.is_none() {
+        return None;
+    }
+    // A program set without its folder is in the game's.
+    let exe = PathBuf::from(settings.exe.as_deref()?);
+    let program = if exe.is_absolute() { exe } else { Path::new(Some(directory).filter(|d| !d.is_empty())?).join(exe) };
+    Some(Own {
+        program: program.to_string_lossy().into_owned(),
+        args: settings.args.clone().unwrap_or_default(),
+        working_dir: settings.working_dir.clone().filter(|d| Path::new(d).is_absolute()),
+        wine: if wine { settings.wine.as_deref().and_then(|v| install.wine(home, v)) } else { None },
+        env: settings.env.clone(),
+    })
 }
 
 #[cfg(test)]
@@ -217,6 +285,74 @@ mod tests {
         let tux = &found.games[1];
         assert!(!tux.windows);
         assert_eq!((tux.minutes, tux.prefix.as_deref(), tux.cover.as_deref()), (0, None, None));
+    }
+
+    /// How its Wine and Linux games start here: their settings over
+    /// Lutris' own for all games and for the runner.
+    #[cfg(unix)]
+    #[test]
+    fn how_its_games_start_here() {
+        let h = tempfile::tempdir().unwrap();
+        let home = h.path();
+        let data = home.join(".local/share/lutris");
+        let config = home.join(".config/lutris");
+        library(&data);
+        let conn = Connection::open(data.join("pga.db")).unwrap();
+        conn.execute_batch(
+            "INSERT INTO games (id, name, slug, platform, runner, directory, installed, configpath) VALUES
+               (8, 'Doom', 'doom', 'Linux', 'dosbox', '/games/doom', 1, 'doom-1');",
+        )
+        .unwrap();
+        let write = |path: PathBuf, text: &str| {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write(config.join("system.yml"), "system:\n  env:\n    DXVK_HUD: fps\n    MANGOHUD: 1\n");
+        write(config.join("runners/wine.yml"), "wine:\n  version: wine-ge-8-26\nsystem:\n  env:\n    WINEDEBUG: -all\n");
+        write(data.join("runners/wine/wine-ge-8-26/bin/wine"), "");
+        write(
+            config.join("games/celeste-1700.yml"),
+            "game:\n  exe: /games/celeste/Celeste.exe\n  args: -windowed\n  prefix: /pfx/celeste\nsystem:\n  env:\n    DXVK_HUD: full\n",
+        );
+        // Its own Wine build, gone from this PC: this app's default one.
+        write(config.join("games/hollow-knight-1.yml"), "game:\n  exe: hk.exe\n  prefix: /pfx/hk\nwine:\n  version: removed-build\n");
+        write(config.join("games/supertux-1.yml"), "game:\n  exe: bin/supertux2\n  working_dir: /games/supertux/data\n");
+        write(config.join("games/doom-1.yml"), "game:\n  main_file: /games/doom/DOOM.EXE\n");
+
+        let found = detect(home).unwrap().unwrap();
+        let by = |t: &str| found.games.iter().find(|g| g.title == t).unwrap();
+        let celeste = by("Celeste").own.clone().unwrap();
+        assert_eq!((celeste.program.as_str(), celeste.args.as_str()), ("/games/celeste/Celeste.exe", "-windowed"));
+        let wine = celeste.wine.unwrap();
+        assert_eq!((wine.name.as_str(), wine.proton), ("wine-ge-8-26", false));
+        assert!(wine.bin.ends_with("runners/wine/wine-ge-8-26/bin/wine"));
+        let env: Vec<_> = celeste.env.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        assert_eq!(env, ["MANGOHUD=1", "WINEDEBUG=-all", "DXVK_HUD=full"]);
+        assert_eq!(by("Celeste").prefix.as_deref(), Some("/pfx/celeste"));
+        // Hollow Knight has no folder in Lutris: a program without one is left to Lutris.
+        assert!(by("Hollow Knight").own.is_none());
+        let tux = by("SuperTux").own.clone().unwrap();
+        assert_eq!(tux.program, "/games/supertux/bin/supertux2");
+        assert_eq!((tux.working_dir.as_deref(), tux.wine), (Some("/games/supertux/data"), None));
+        assert!(by("Doom").own.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_wine_game_without_its_prefix_or_build_here() {
+        let h = tempfile::tempdir().unwrap();
+        let home = h.path();
+        let data = home.join(".local/share/lutris");
+        library(&data);
+        let games = home.join(".config/lutris/games");
+        std::fs::create_dir_all(&games).unwrap();
+        std::fs::write(games.join("celeste-1700.yml"), "game:\n  exe: Celeste.exe\n").unwrap();
+        std::fs::write(games.join("hollow-knight-1.yml"), "game:\n  exe: /g/hk.exe\n  prefix: /pfx\nwine:\n  version: gone\n").unwrap();
+        let found = detect(home).unwrap().unwrap();
+        // No prefix: only Lutris knows where it runs.
+        assert!(found.games[0].own.is_none());
+        let hk = found.games[2].own.clone().unwrap();
+        assert_eq!((hk.program.as_str(), hk.wine), ("/g/hk.exe", None));
     }
 
     #[test]

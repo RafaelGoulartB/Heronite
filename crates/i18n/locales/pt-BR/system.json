@@ -242,5 +242,10 @@
   "Bring in games from Heroic and Playnite": "Trazer jogos do Heroic e do Playnite",
   "Bring in the games of Heroic and Playnite. While on, a game added there shows up here too.": "Traga os jogos do Heroic e do Playnite. Enquanto estiver ligado, um jogo adicionado lá aparece aqui também.",
   "Backed up {name} while playing": "Backup de {name} feito durante o jogo",
-  "Sources of details and pictures, their order and keys": "Fontes de detalhes e imagens, a ordem e as chaves"
+  "Sources of details and pictures, their order and keys": "Fontes de detalhes e imagens, a ordem e as chaves",
+  "Its installed games, with their covers and play time. They start here, without Lutris, with the program, arguments, Wine prefix, Wine and environment variables you gave them there. A game of another runner (DOSBox, an emulator) keeps starting through Lutris.": "Os jogos instalados dele, com capa e tempo de jogo. Eles abrem aqui, sem o Lutris, com o programa, os argumentos, o prefixo Wine, o Wine e as variáveis de ambiente que você deu a eles lá. Um jogo de outro runner (DOSBox, um emulador) continua abrindo pelo Lutris.",
+  "The programs you added to its bottles, with the covers of its Library. They start here, without Bottles, in their bottle, with its runner and environment variables.": "Os programas que você adicionou às garrafas dele, com as capas da Biblioteca dele. Eles abrem aqui, sem o Bottles, na garrafa deles, com o runner e as variáveis de ambiente dela.",
+  "Its games, with their covers and play time. They start here, without Faugus, in their prefix, with their Proton, arguments and environment variables.": "Os jogos dele, com capa e tempo de jogo. Eles abrem aqui, sem o Faugus, no prefixo deles, com o Proton, os argumentos e as variáveis de ambiente deles.",
+  "Start them here, without {launcher}": "Abrir aqui, sem o {launcher}",
+  "Turned off, {launcher} starts them, as it does now.": "Desligado, o {launcher} abre os jogos, como hoje."
 }

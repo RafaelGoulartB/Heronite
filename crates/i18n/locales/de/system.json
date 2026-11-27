@@ -242,5 +242,10 @@
   "Bring in games from Heroic and Playnite": "Spiele aus Heroic und Playnite importieren",
   "Bring in the games of Heroic and Playnite. While on, a game added there shows up here too.": "Importiert die Spiele aus Heroic und Playnite. Solange aktiviert, erscheint ein dort hinzugefügtes Spiel auch hier.",
   "Backed up {name} while playing": "Backup von {name} während des Spielens erstellt",
-  "Sources of details and pictures, their order and keys": "Quellen für Details und Bilder, ihre Reihenfolge und Schlüssel"
+  "Sources of details and pictures, their order and keys": "Quellen für Details und Bilder, ihre Reihenfolge und Schlüssel",
+  "Its installed games, with their covers and play time. They start here, without Lutris, with the program, arguments, Wine prefix, Wine and environment variables you gave them there. A game of another runner (DOSBox, an emulator) keeps starting through Lutris.": "Seine installierten Spiele, mit Covern und Spielzeit. Sie starten hier, ohne Lutris, mit dem Programm, den Argumenten, dem Wine-Präfix, Wine und den Umgebungsvariablen, die du dort festgelegt hast. Ein Spiel eines anderen Runners (DOSBox, ein Emulator) startet weiterhin über Lutris.",
+  "The programs you added to its bottles, with the covers of its Library. They start here, without Bottles, in their bottle, with its runner and environment variables.": "Die Programme, die du seinen Flaschen hinzugefügt hast, mit den Covern seiner Bibliothek. Sie starten hier, ohne Bottles, in ihrer Flasche, mit deren Runner und Umgebungsvariablen.",
+  "Its games, with their covers and play time. They start here, without Faugus, in their prefix, with their Proton, arguments and environment variables.": "Seine Spiele, mit Covern und Spielzeit. Sie starten hier, ohne Faugus, in ihrem Präfix, mit ihrem Proton, ihren Argumenten und Umgebungsvariablen.",
+  "Start them here, without {launcher}": "Hier starten, ohne {launcher}",
+  "Turned off, {launcher} starts them, as it does now.": "Ausgeschaltet startet {launcher} sie, wie bisher."
 }
