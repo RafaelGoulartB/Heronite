@@ -676,7 +676,11 @@ mod tests {
         struct FakeEnv;
         impl DetectEnv for FakeEnv {
             fn home(&self) -> String {
-                "/home/gamer".into()
+                if cfg!(windows) {
+                    r"C:\Users\gamer".into()
+                } else {
+                    "/home/gamer".into()
+                }
             }
             fn var(&self, _: &str) -> Option<String> {
                 None
@@ -694,10 +698,18 @@ mod tests {
                 vec![]
             }
         }
-        assert_eq!(
-            expand_config_path("~/.config/steam-rom-manager/userData/userConfigurations.json", &FakeEnv),
-            "/home/gamer/.config/steam-rom-manager/userData/userConfigurations.json"
-        );
-        assert_eq!(expand_config_path("/abs/path.json", &FakeEnv), "/abs/path.json");
+        if cfg!(windows) {
+            assert_eq!(
+                expand_config_path(r"~\AppData\Roaming\steam-rom-manager\userData\userConfigurations.json", &FakeEnv),
+                r"C:\Users\gamer\AppData\Roaming\steam-rom-manager\userData\userConfigurations.json"
+            );
+            assert_eq!(expand_config_path(r"D:\abs\path.json", &FakeEnv), r"D:\abs\path.json");
+        } else {
+            assert_eq!(
+                expand_config_path("~/.config/steam-rom-manager/userData/userConfigurations.json", &FakeEnv),
+                "/home/gamer/.config/steam-rom-manager/userData/userConfigurations.json"
+            );
+            assert_eq!(expand_config_path("/abs/path.json", &FakeEnv), "/abs/path.json");
+        }
     }
 }
