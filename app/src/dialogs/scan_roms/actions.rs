@@ -122,6 +122,7 @@ impl ScanRomsDialog {
             directory,
             scan_subfolders: Some(self.scan_subfolders),
             merge_related_files: Some(self.merge_related),
+            rom_glob: Some(text_of(&self.rom_glob, cx)),
         };
         let paths = self.ctx.data_paths.clone();
         self.loading = true;
@@ -159,6 +160,7 @@ impl ScanRomsDialog {
             scan_subfolders: Some(self.scan_subfolders),
             merge_related_files: Some(self.merge_related),
             auto_scan_on_refresh: Some(self.auto_scan),
+            rom_glob: Some(text_of(&self.rom_glob, cx)),
             games: preview.games,
         };
         let paths = self.ctx.data_paths.clone();

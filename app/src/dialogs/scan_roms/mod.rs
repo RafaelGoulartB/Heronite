@@ -34,6 +34,7 @@ pub struct ScanRomsDialog {
     profile_id: String,
     scanner_id: Option<String>,
     directory: Entity<InputState>,
+    rom_glob: Entity<InputState>,
     scan_subfolders: bool,
     merge_related: bool,
     auto_scan: bool,
@@ -42,6 +43,7 @@ pub struct ScanRomsDialog {
     detecting: bool,
     error: String,
     pending_dir: Option<String>,
+    pending_glob: Option<String>,
     emu_open: bool,
     profile_open: bool,
     custom_open: bool,
@@ -62,6 +64,11 @@ impl ScanRomsDialog {
             this.preview = None;
             cx.notify();
         });
+        let rom_glob = new_input(window, cx, "", "${title}/@(*[BASE]*.nsp|*.xci)");
+        on_commit(&rom_glob, window, cx, |this: &mut Self, _, _, cx| {
+            this.preview = None;
+            cx.notify();
+        });
         let this = Self {
             ctx,
             initial,
@@ -70,6 +77,7 @@ impl ScanRomsDialog {
             profile_id: String::new(),
             scanner_id: None,
             directory,
+            rom_glob,
             scan_subfolders: true,
             merge_related: true,
             auto_scan: true,
@@ -78,6 +86,7 @@ impl ScanRomsDialog {
             detecting: false,
             error: String::new(),
             pending_dir: None,
+            pending_glob: None,
             emu_open: false,
             profile_open: false,
             custom_open: false,
@@ -161,6 +170,7 @@ impl ScanRomsDialog {
             .or_else(|| saved.as_ref().map(|s| s.directory.clone()))
             .unwrap_or_default();
         self.pending_dir = Some(dir);
+        self.pending_glob = Some(saved.as_ref().and_then(|s| s.rom_glob.clone()).unwrap_or_default());
         self.scan_subfolders = saved.as_ref().map(|s| s.scan_subfolders).unwrap_or(true);
         self.merge_related = saved.as_ref().map(|s| s.merge_related_files).unwrap_or(true);
         self.auto_scan = saved.as_ref().map(|s| s.auto_scan_on_refresh).unwrap_or(true);
@@ -199,6 +209,9 @@ impl Render for ScanRomsDialog {
         if let Some(dir) = self.pending_dir.take() {
             self.directory.update(cx, |s, cx| s.set_value(dir, window, cx));
         }
+        if let Some(glob) = self.pending_glob.take() {
+            self.rom_glob.update(cx, |s, cx| s.set_value(glob, window, cx));
+        }
         if crate::console::active() {
             return self.render_console(cx);
         }
@@ -211,6 +224,7 @@ impl Render for ScanRomsDialog {
         let custom = self.render_custom(busy, cx);
         let profile_select = self.render_profile_select(cx);
         let folder = self.render_folder(&dir_value, cx);
+        let glob = self.render_glob(cx);
         let toggles = self.render_toggles(cx);
 
         let can_scan = !self.emulator_id.is_empty() && !dir_value.is_empty() && !busy;
@@ -235,6 +249,7 @@ impl Render for ScanRomsDialog {
             .children(custom)
             .child(profile_select)
             .child(folder)
+            .child(glob)
             .child(toggles)
             .child(div().flex().child(scan_button))
             .children(preview)

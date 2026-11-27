@@ -10,7 +10,7 @@ use super::super::text_of;
 use super::RomFolderDialog;
 use crate::console::browser::PickKind;
 use crate::console::kit::{self, u};
-use crate::console::layers::{open_browser, HasLayer};
+use crate::console::layers::{open_browser, open_osk, HasLayer};
 use crate::console::list::{Outcome, Row, Value};
 use crate::console::{hint, Btn, Hint, Layer, Pad, PadTarget};
 use crate::icons::Icon;
@@ -41,6 +41,11 @@ impl RomFolderDialog {
             Row::choice("profile", tr!("Platform / profile"), profiles, profile_index)
         });
         rows.push(Row::text("dir", tr!("ROM folder"), text_of(&self.directory, cx)).icon(Icon::FolderOpen));
+        rows.push(
+            Row::text("glob", tr!("ROM glob pattern (optional)"), text_of(&self.rom_glob, cx))
+                .icon(Icon::Edit)
+                .desc(tr!("Leave empty to scan by file extensions. X clears it.")),
+        );
         rows.push(Row::toggle("sub", tr!("Include subfolders"), self.scan_subfolders));
         rows.push(Row::toggle("merge", tr!("Merge discs into one game"), self.merge_related));
         rows.push(
@@ -91,6 +96,11 @@ impl PadTarget for RomFolderDialog {
             return true;
         }
         let rows = self.console_rows(cx);
+        if pad == Pad::X && self.console_list.focused(&rows).is_some_and(|r| r.id == "glob") {
+            self.rom_glob.update(cx, |s, cx| s.set_value("", window, cx));
+            cx.notify();
+            return true;
+        }
         match self.console_list.on_pad(pad, &rows) {
             Outcome::Changed(id, value) => match (id.as_ref(), value) {
                 ("emulator", Value::Choice { index, .. }) => {
@@ -127,6 +137,20 @@ impl PadTarget for RomFolderDialog {
                         },
                     );
                 }
+                "glob" => {
+                    let current = text_of(&self.rom_glob, cx);
+                    let input = self.rom_glob.clone();
+                    open_osk(
+                        &mut self.layer,
+                        tr!("ROM glob pattern (optional)"),
+                        &current,
+                        window,
+                        cx,
+                        move |_: &mut Self, text, window, cx| {
+                            input.update(cx, |s, cx| s.set_value(text.trim().to_string(), window, cx));
+                        },
+                    );
+                }
                 _ => {}
             },
             Outcome::Ignored => return false,
@@ -140,6 +164,12 @@ impl PadTarget for RomFolderDialog {
         if let Some(h) = self.layer.hints(cx) {
             return h;
         }
-        vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change")), hint(Btn::B, tr!("Cancel"))]
+        let rows = self.console_rows(cx);
+        let mut h = vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change"))];
+        if self.console_list.focused(&rows).is_some_and(|r| r.id == "glob") {
+            h.push(hint(Btn::X, tr!("Clear")));
+        }
+        h.push(hint(Btn::B, tr!("Cancel")));
+        h
     }
 }

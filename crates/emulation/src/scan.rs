@@ -17,6 +17,7 @@ use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 use regex::Regex;
 
 use crate::disc_id::read_sfo;
+use crate::glob::RomGlob;
 use crate::names::{name_without_disc, rom_disc_label, sanitize_rom_name, strip_ext, title_from_rom_path};
 use crate::pathutil::dirname;
 use crate::pathutil::{basename, ext_lower, is_absolute, join, normalize_key, resolve};
@@ -262,6 +263,8 @@ struct Candidate {
     distinct: String,
     /// The indicator file of a game folder (`EBOOT.BIN`), not a ROM file.
     game_folder: bool,
+    /// True when a glob's `${title}` matched a directory segment.
+    title_from_dir: bool,
 }
 
 /// The files of one game.
@@ -277,16 +280,28 @@ fn to_scan_item(title: String, roms: Vec<LocalGameRom>, imported: &HashSet<Strin
 }
 
 /// Scan options of `scanRomDirectory`.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ScanOptions {
     pub scan_subfolders: bool,
     pub merge_related_files: bool,
+    /// Optional Steam ROM Manager-style glob overriding the profile's default.
+    pub rom_glob: Option<String>,
 }
 
 impl Default for ScanOptions {
     fn default() -> Self {
-        Self { scan_subfolders: true, merge_related_files: true }
+        Self { scan_subfolders: true, merge_related_files: true, rom_glob: None }
     }
+}
+
+/// Relative path from `root` to `file` with forward slashes.
+fn relative_path(root: &str, file: &str) -> String {
+    if let Ok(rel) = Path::new(file).strip_prefix(Path::new(root)) {
+        return rel.to_string_lossy().replace('\\', "/");
+    }
+    let root_norm = root.replace('\\', "/");
+    let file_norm = file.replace('\\', "/");
+    file_norm.strip_prefix(root_norm.trim_end_matches('/')).map(|s| s.trim_start_matches('/').to_string()).unwrap_or(file_norm)
 }
 
 /// `scanRomDirectory` with the already-imported set supplied by the caller.
@@ -324,40 +339,87 @@ pub fn scan_rom_directory(
         .map(|e| e.to_lowercase())
         .collect();
 
-    let mut files = Vec::new();
-    match template.folder_indicator.as_deref() {
-        Some(ind) => {
-            let images: HashSet<String> = extensions.iter().filter(|e| !INSTALLER_EXTENSIONS.contains(&e.as_str())).cloned().collect();
-            walk_folders_with_indicator(&directory, ind, &images, options.scan_subfolders, &mut files, 0)
-        }
-        None => walk_files(&directory, options.scan_subfolders, &mut files, 0),
-    }
-    let indicator = template.folder_indicator.as_deref().map(str::to_lowercase);
+    let effective_glob = options
+        .rom_glob
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or_else(|| template.rom_glob.as_deref().map(str::trim).filter(|s| !s.is_empty()));
 
     let mut skip_children: HashSet<String> = HashSet::new();
     let mut candidates: Vec<Candidate> = Vec::new();
-    for file in files {
-        let ext = ext_lower(&file);
-        if playlists.contains(&ext) && extensions.contains(&ext) {
-            match read_playlist_files(&file) {
-                Ok(children) => {
-                    for c in children {
-                        skip_children.insert(normalize_key(&c));
-                    }
-                }
-                Err(_) => preview.errors.push(tr!("Could not read playlist {file}", file = file.as_str())),
+
+    if let Some(pattern) = effective_glob {
+        let glob = match RomGlob::parse(pattern) {
+            Ok(g) => g,
+            Err(error) => {
+                preview.errors.push(tr!("Invalid ROM glob pattern: {error}", error = error.as_str()));
+                return preview;
             }
+        };
+        let mut files = Vec::new();
+        walk_files(&directory, glob.needs_subfolders(), &mut files, 0);
+        for file in files {
+            let rel = relative_path(&directory, &file);
+            let Some(m) = glob.matches(&rel) else {
+                continue;
+            };
+            let ext = ext_lower(&file);
+            if playlists.contains(&ext) {
+                match read_playlist_files(&file) {
+                    Ok(children) => {
+                        for c in children {
+                            skip_children.insert(normalize_key(&c));
+                        }
+                    }
+                    Err(_) => preview.errors.push(tr!("Could not read playlist {file}", file = file.as_str())),
+                }
+            }
+            let (title, distinct) = match m.title {
+                Some(raw) => {
+                    let clean = sanitize_rom_name(&raw);
+                    let title = if clean.is_empty() { raw.clone() } else { clean };
+                    let distinct = if m.title_from_dir { raw } else { name_without_disc(&basename(&file)) };
+                    (title, distinct)
+                }
+                None => (title_from_rom_path(&basename(&file)), name_without_disc(&basename(&file))),
+            };
+            candidates.push(Candidate { path: file, title, distinct, game_folder: false, title_from_dir: m.title_from_dir });
         }
-        let is_game_folder = indicator.as_deref().is_some_and(|i| basename(&file).to_lowercase() == i);
-        if is_game_folder {
-            let title = indicator_title(&file, &directory);
-            let folder = basename(&game_folder(&file, &directory));
-            let distinct = if folder == title { title.clone() } else { format!("{title} ({folder})") };
-            candidates.push(Candidate { path: file, title, distinct, game_folder: true });
-        } else if extensions.contains(&ext) {
-            let title = title_from_rom_path(&basename(&file));
-            let distinct = name_without_disc(&basename(&file));
-            candidates.push(Candidate { path: file, title, distinct, game_folder: false });
+    } else {
+        let mut files = Vec::new();
+        match template.folder_indicator.as_deref() {
+            Some(ind) => {
+                let images: HashSet<String> = extensions.iter().filter(|e| !INSTALLER_EXTENSIONS.contains(&e.as_str())).cloned().collect();
+                walk_folders_with_indicator(&directory, ind, &images, options.scan_subfolders, &mut files, 0)
+            }
+            None => walk_files(&directory, options.scan_subfolders, &mut files, 0),
+        }
+        let indicator = template.folder_indicator.as_deref().map(str::to_lowercase);
+
+        for file in files {
+            let ext = ext_lower(&file);
+            if playlists.contains(&ext) && extensions.contains(&ext) {
+                match read_playlist_files(&file) {
+                    Ok(children) => {
+                        for c in children {
+                            skip_children.insert(normalize_key(&c));
+                        }
+                    }
+                    Err(_) => preview.errors.push(tr!("Could not read playlist {file}", file = file.as_str())),
+                }
+            }
+            let is_game_folder = indicator.as_deref().is_some_and(|i| basename(&file).to_lowercase() == i);
+            if is_game_folder {
+                let title = indicator_title(&file, &directory);
+                let folder = basename(&game_folder(&file, &directory));
+                let distinct = if folder == title { title.clone() } else { format!("{title} ({folder})") };
+                candidates.push(Candidate { path: file, title, distinct, game_folder: true, title_from_dir: false });
+            } else if extensions.contains(&ext) {
+                let title = title_from_rom_path(&basename(&file));
+                let distinct = name_without_disc(&basename(&file));
+                candidates.push(Candidate { path: file, title, distinct, game_folder: false, title_from_dir: false });
+            }
         }
     }
 
@@ -378,16 +440,22 @@ pub fn scan_rom_directory(
     // Insertion-ordered groups.
     let mut order: Vec<String> = Vec::new();
     let mut groups: HashMap<String, Group> = HashMap::new();
-    for Candidate { path, title, distinct, .. } in filtered {
+    for Candidate { path, title, distinct, title_from_dir, .. } in filtered {
         let disc = rom_disc_label(&strip_ext(&basename(&path)));
         let rom = LocalGameRom {
             name: Some(disc.filter(|d| !d.is_empty()).unwrap_or_else(|| title.clone())),
             path: path.clone(),
             extra: Default::default(),
         };
-        // Discs of one game: same folder, same name but for the disc.
+        // Discs of one game: same folder, same name but for the disc. When a
+        // glob captured `${title}` from the folder itself, files in that folder
+        // belong to the same game even if their filenames differ.
         let key = if options.merge_related_files {
-            format!("{}|{}", normalize_key(&dirname(&path)), name_without_disc(&basename(&path)).to_lowercase())
+            if title_from_dir {
+                format!("{}|dir|{}", normalize_key(&dirname(&path)), title.to_lowercase())
+            } else {
+                format!("{}|{}", normalize_key(&dirname(&path)), name_without_disc(&basename(&path)).to_lowercase())
+            }
         } else {
             path
         };
@@ -437,7 +505,11 @@ pub fn preview_rom_scan(paths: &DataPaths, args: &RomScanArgs) -> Result<RomScan
         &emulator,
         &profile,
         &args.directory,
-        ScanOptions { scan_subfolders: args.scan_subfolders != Some(false), merge_related_files: args.merge_related_files != Some(false) },
+        ScanOptions {
+            scan_subfolders: args.scan_subfolders != Some(false),
+            merge_related_files: args.merge_related_files != Some(false),
+            rom_glob: args.rom_glob.clone(),
+        },
         &imported,
     ))
 }
@@ -494,7 +566,7 @@ mod tests {
             &e,
             &p,
             root.to_str().unwrap(),
-            ScanOptions { scan_subfolders: false, merge_related_files: true },
+            ScanOptions { scan_subfolders: false, merge_related_files: true, rom_glob: None },
             &HashSet::new(),
         );
         assert_eq!(titles(&flat), ["Mario", "Zelda"]);
@@ -518,7 +590,7 @@ mod tests {
             &e,
             &p,
             root.to_str().unwrap(),
-            ScanOptions { scan_subfolders: true, merge_related_files: false },
+            ScanOptions { scan_subfolders: true, merge_related_files: false, rom_glob: None },
             &HashSet::new(),
         );
         assert_eq!(split.games.len(), 3);
@@ -693,7 +765,7 @@ mod tests {
             &e,
             &p,
             root.to_str().unwrap(),
-            ScanOptions { scan_subfolders: false, merge_related_files: true },
+            ScanOptions { scan_subfolders: false, merge_related_files: true, rom_glob: None },
             &HashSet::new(),
         );
         assert_eq!(titles(&flat), ["God of War III", "Uncharted"]);
@@ -801,6 +873,107 @@ mod tests {
         let gone = root.join("nonexistent").join("zzz");
         let missing = scan_rom_directory(&e, &p, gone.to_str().unwrap(), ScanOptions::default(), &imported);
         assert_eq!(missing.errors, [format!("Folder does not exist: {}", gone.display())]);
+    }
+
+    #[test]
+    fn glob_scan_captures_subfolder_title_and_excludes_updates_and_dlcs() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        create_dir_all(root.join("Zelda Tears of the Kingdom")).unwrap();
+        write(root.join("Zelda Tears of the Kingdom/0100F2C0115B6000 [BASE].nsp"), "x").unwrap();
+        write(root.join("Zelda Tears of the Kingdom/0100F2C0115B6800 [UPD v1.2.1].nsp"), "x").unwrap();
+        write(root.join("Zelda Tears of the Kingdom/0100F2C0115B6001 [DLC].nsp"), "x").unwrap();
+        create_dir_all(root.join("Super Mario Wonder")).unwrap();
+        write(root.join("Super Mario Wonder/Super Mario Wonder.xci"), "x").unwrap();
+        write(root.join("notes.txt"), "x").unwrap();
+
+        let (e, p) = emu("eden", "switch", "-f -g {ImagePath}", &["nsp", "xci"]);
+        let r = scan_rom_directory(
+            &e,
+            &p,
+            root.to_str().unwrap(),
+            ScanOptions { scan_subfolders: false, merge_related_files: true, rom_glob: Some("${title}/@(*[BASE]*.nsp|*.xci)".into()) },
+            &HashSet::new(),
+        );
+        assert!(r.errors.is_empty(), "{:?}", r.errors);
+        assert_eq!(titles(&r), ["Super Mario Wonder", "Zelda Tears of the Kingdom"]);
+        assert_eq!(r.games[0].roms.len(), 1);
+        assert!(r.games[1].roms[0].path.ends_with("[BASE].nsp"));
+    }
+
+    #[test]
+    fn profile_default_glob_is_used_and_scanner_glob_overrides_it() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        create_dir_all(root.join("Metroid Dread")).unwrap();
+        write(root.join("Metroid Dread/game [BASE].nsp"), "x").unwrap();
+        write(root.join("Metroid Dread/game [UPD].nsp"), "x").unwrap();
+        write(root.join("Loose.xci"), "x").unwrap();
+
+        let (mut e, mut p) = emu("eden", "switch", "-f -g {ImagePath}", &["nsp", "xci"]);
+        p.rom_glob = Some("${title}/@(*[BASE]*.nsp|*.xci)".into());
+        e.profiles = vec![p.clone()];
+
+        let from_profile = scan_rom_directory(&e, &p, root.to_str().unwrap(), ScanOptions::default(), &HashSet::new());
+        assert_eq!(titles(&from_profile), ["Metroid Dread"]);
+
+        let overridden = scan_rom_directory(
+            &e,
+            &p,
+            root.to_str().unwrap(),
+            ScanOptions { scan_subfolders: true, merge_related_files: true, rom_glob: Some("*.xci".into()) },
+            &HashSet::new(),
+        );
+        assert_eq!(titles(&overridden), ["Loose"]);
+    }
+
+    #[test]
+    fn glob_title_from_dir_merges_multiple_files_in_same_game_folder() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        create_dir_all(root.join("Final Fantasy VII")).unwrap();
+        write(root.join("Final Fantasy VII/FF7 CD1.chd"), "x").unwrap();
+        write(root.join("Final Fantasy VII/FF7 CD2.chd"), "x").unwrap();
+        create_dir_all(root.join("Zelda")).unwrap();
+        write(root.join("Zelda/0100 [BASE].nsp"), "x").unwrap();
+        write(root.join("Zelda/Zelda.xci"), "x").unwrap();
+
+        let (e, p) = emu("duckstation", "ps1", "{ImagePath}", &["chd"]);
+        let merged = scan_rom_directory(
+            &e,
+            &p,
+            root.to_str().unwrap(),
+            ScanOptions { scan_subfolders: true, merge_related_files: true, rom_glob: Some("${title}/*.chd".into()) },
+            &HashSet::new(),
+        );
+        assert_eq!(titles(&merged), ["Final Fantasy VII"]);
+        assert_eq!(merged.games[0].roms.len(), 2);
+
+        let (sw_e, sw_p) = emu("eden", "switch", "-f -g {ImagePath}", &["nsp", "xci"]);
+        let sw = scan_rom_directory(
+            &sw_e,
+            &sw_p,
+            root.to_str().unwrap(),
+            ScanOptions { scan_subfolders: true, merge_related_files: true, rom_glob: Some("${title}/@(*[BASE]*.nsp|*.xci)".into()) },
+            &HashSet::new(),
+        );
+        assert_eq!(titles(&sw), ["Zelda"]);
+        assert_eq!(sw.games[0].roms.len(), 2);
+    }
+
+    #[test]
+    fn invalid_glob_reports_error() {
+        let d = tempfile::tempdir().unwrap();
+        let (e, p) = emu("eden", "switch", "-f -g {ImagePath}", &["nsp", "xci"]);
+        let r = scan_rom_directory(
+            &e,
+            &p,
+            d.path().to_str().unwrap(),
+            ScanOptions { scan_subfolders: true, merge_related_files: true, rom_glob: Some("${title}/@(*.nsp".into()) },
+            &HashSet::new(),
+        );
+        assert!(r.games.is_empty());
+        assert!(!r.errors.is_empty());
     }
 
     #[test]

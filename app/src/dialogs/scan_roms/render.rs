@@ -6,8 +6,8 @@ use heronite_i18n::{tr, trn};
 
 use super::{profile_label, text_of, ScanRomsDialog};
 use crate::theme;
-use crate::ui::controls::{action_button, button, checkbox, mini_checkbox, ButtonKind};
-use crate::ui::fields::{choose_path, panel, path_field, select_field, text_field};
+use crate::ui::controls::{action_button, button, button_sm, checkbox, mini_checkbox, ButtonKind};
+use crate::ui::fields::{choose_path, meta_text, panel, path_field, select_field, text_field};
 
 impl ScanRomsDialog {
     pub(super) fn render_emulator_row(&self, cx: &mut Context<Self>) -> Div {
@@ -137,12 +137,65 @@ impl ScanRomsDialog {
         })
     }
 
+    pub(super) fn render_glob(&self, cx: &mut Context<Self>) -> Div {
+        let glob_value = text_of(&self.rom_glob, cx);
+        let glob_err = (!glob_value.is_empty()).then(|| heronite_emulation::glob::validate(&glob_value).err()).flatten();
+        let presets = self
+            .profile()
+            .map(|p| heronite_emulation::glob::presets_for_profile(p.platform_id.as_deref(), &p.extensions))
+            .unwrap_or_default();
+        let mut preset_row = div().flex().flex_wrap().items_center().gap(px(6.));
+        for preset in presets {
+            let pat = preset.pattern.clone();
+            let active = glob_value == pat;
+            preset_row = preset_row.child(
+                button_sm(
+                    SharedString::from(format!("scan-preset-{}", preset.id)),
+                    if active { ButtonKind::Primary } else { ButtonKind::Glass },
+                    tr(preset.label),
+                )
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    let pat = pat.clone();
+                    this.rom_glob.update(cx, |s, cx| s.set_value(pat, window, cx));
+                    this.preview = None;
+                    cx.notify();
+                })),
+            );
+        }
+        if !glob_value.is_empty() {
+            preset_row = preset_row.child(button_sm("scan-preset-clear", ButtonKind::Ghost, tr!("Clear")).on_click(cx.listener(
+                |this, _, window, cx| {
+                    this.rom_glob.update(cx, |s, cx| s.set_value("", window, cx));
+                    this.preview = None;
+                    cx.notify();
+                },
+            )));
+        }
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .child(text_field(tr!("ROM glob pattern (optional)"), &self.rom_glob))
+            .child(meta_text(tr!(
+                "Steam ROM Manager syntax (for example {example}). Leave empty to scan by file extensions.",
+                example = "${title}/@(*[BASE]*.nsp|*.xci)"
+            )))
+            .child(preset_row)
+            .children(glob_err.map(|e| div().text_color(theme::danger_text()).text_size(px(12.5)).child(e)))
+    }
+
     pub(super) fn render_toggles(&self, cx: &mut Context<Self>) -> Div {
+        let glob_value = text_of(&self.rom_glob, cx);
+        let has_effective_glob =
+            !glob_value.is_empty() || self.profile().and_then(|p| p.rom_glob.as_deref()).is_some_and(|g| !g.trim().is_empty());
         panel()
-            .child(checkbox("scan-subfolders", self.scan_subfolders, tr!("Include subfolders")).on_click(cx.listener(|this, _, _, cx| {
-                this.scan_subfolders = !this.scan_subfolders;
-                cx.notify();
-            })))
+            .child(div().when(has_effective_glob, |d| d.opacity(0.55)).child(
+                checkbox("scan-subfolders", self.scan_subfolders, tr!("Include subfolders")).on_click(cx.listener(|this, _, _, cx| {
+                    this.scan_subfolders = !this.scan_subfolders;
+                    cx.notify();
+                })),
+            ))
+            .children(has_effective_glob.then(|| meta_text(tr!("Subfolder depth is controlled by the glob pattern."))))
             .child(checkbox("scan-merge", self.merge_related, tr!("Merge discs into one game")).on_click(cx.listener(|this, _, _, cx| {
                 this.merge_related = !this.merge_related;
                 cx.notify();

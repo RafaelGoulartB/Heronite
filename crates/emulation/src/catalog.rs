@@ -25,6 +25,8 @@ pub struct EmulatorDefinitionProfile {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub folder_indicator: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub rom_glob: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub playlist_extensions: Option<Vec<String>>,
     /// 'emulator' | 'rom'
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -212,6 +214,16 @@ static TABLE: &[D] = &[
         binaries: &["ryujinx", "Ryujinx"],
         win_binaries: &["Ryujinx.exe"],
         win_folders: &["Ryujinx"],
+        core_dir_hints: None,
+        profiles: &[p("switch", "Nintendo Switch", "nintendo_switch", "Nintendo Switch", &["nsp", "xci", "nca", "nro", "nso"])],
+    },
+    D {
+        id: "eden",
+        name: "Eden",
+        website: Some("https://eden-emu.dev/"),
+        binaries: &["eden", "eden-cli"],
+        win_binaries: &["eden.exe", "eden-cli.exe"],
+        win_folders: &["Eden"],
         core_dir_hints: None,
         profiles: &[p("switch", "Nintendo Switch", "nintendo_switch", "Nintendo Switch", &["nsp", "xci", "nca", "nro", "nso"])],
     },
@@ -467,6 +479,7 @@ fn build() -> Vec<EmulatorDefinition> {
                             arguments: lp.map(|l| l.arguments.to_string()).unwrap_or_else(|| "{ImagePath}".into()),
                             core: pr.core.map(Into::into),
                             folder_indicator: pr.folder_indicator.map(Into::into),
+                            rom_glob: None,
                             playlist_extensions: pr.playlists.map(|v| v.iter().map(|s| s.to_string()).collect()),
                             working_dir: lp.and_then(|l| l.working_dir).map(Into::into),
                         }
@@ -508,6 +521,7 @@ pub fn guess_definition_id(name: Option<&str>) -> String {
         ("rpcs3", "rpcs3"),
         ("cemu", "cemu"),
         ("ryujinx", "ryujinx"),
+        ("eden", "eden"),
         ("xemu", "xemu"),
         ("xenia", "xenia"),
         ("melonds", "melonds"),
@@ -585,12 +599,16 @@ mod tests {
                 assert!(l.profiles.iter().any(|lp| lp.id == pr.id), "{}:{} missing in launch catalog", d.id, pr.id);
             }
         }
-        assert_eq!(emulator_definitions().len(), 24);
+        assert_eq!(emulator_definitions().len(), 25);
+        let eden = definition_profile("eden", "switch").unwrap();
+        assert_eq!(eden.arguments, "-f -g {ImagePath}");
+        assert_eq!(eden.platform_id, "nintendo_switch");
     }
 
     #[test]
     fn guesses_ids() {
         assert_eq!(guess_definition_id(Some("PCSX2 (AppImage)")), "pcsx2");
+        assert_eq!(guess_definition_id(Some("Eden (Switch)")), "eden");
         assert_eq!(guess_definition_id(Some("Citra Nightly")), "azahar");
         assert_eq!(guess_definition_id(Some("org.libretro.RetroArch")), "retroarch");
         assert_eq!(guess_definition_id(Some("M64Py (Mupen64Plus)")), "m64py");

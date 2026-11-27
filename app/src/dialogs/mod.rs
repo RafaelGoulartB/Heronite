@@ -57,6 +57,7 @@ pub mod script_install;
 pub mod settings_panel;
 pub mod shortcuts;
 pub mod smart_group;
+pub mod srm_import;
 pub mod steamgrid_styles;
 pub mod store_import;
 pub mod store_install;

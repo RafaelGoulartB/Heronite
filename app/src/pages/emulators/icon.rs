@@ -18,6 +18,7 @@ pub fn of_definition(definition_id: &str) -> Icon {
         "rpcs3" => Icon::EmuRpcs3,
         "cemu" => Icon::EmuCemu,
         "ryujinx" => Icon::EmuRyujinx,
+        "eden" => Icon::EmuEden,
         "xemu" => Icon::EmuXemu,
         "xenia" => Icon::EmuXenia,
         "melonds" => Icon::EmuMelonDs,

@@ -66,6 +66,7 @@ const RULES: &[Rule] = &[
     rule("rpcs3", "RPCS3", &["rpcs3"]),
     rule("cemu", "Cemu", &["cemu"]),
     rule("ryujinx", "Ryujinx", &["ryujinx"]),
+    rule("eden", "Eden", &["eden"]),
     rule("xemu", "Xemu", &["xemu"]),
     rule("xenia", "Xenia", &["xenia"]),
     rule("melonds", "melonDS", &["melonds"]),
@@ -85,7 +86,6 @@ const RULES: &[Rule] = &[
     Rule { custom: Some(&SWITCH), ..rule("custom", "Yuzu", &["yuzu"]) },
     Rule { custom: Some(&SWITCH), ..rule("custom", "Suyu", &["suyu"]) },
     Rule { custom: Some(&SWITCH), ..rule("custom", "Sudachi", &["sudachi"]) },
-    Rule { custom: Some(&SWITCH), ..rule("custom", "Eden", &["eden"]) },
     Rule { custom: Some(&SWITCH), ..rule("custom", "Citron", &["citron"]) },
 ];
 
@@ -563,6 +563,7 @@ pub fn add_discovered(paths: &DataPaths, items: &[DetectedEmulator]) -> Result<V
                     extensions: p.extensions.clone().or_else(|| cat.map(|c| c.extensions.clone())).unwrap_or_default(),
                     core_path: p.core_path.clone(),
                     folder_indicator: cat.and_then(|c| c.folder_indicator.clone()),
+                    rom_glob: cat.and_then(|c| c.rom_glob.clone()),
                     playlist_extensions: cat.and_then(|c| c.playlist_extensions.clone()),
                     working_dir: cat.and_then(|c| c.working_dir.clone()),
                     extra: Default::default(),

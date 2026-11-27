@@ -62,6 +62,7 @@ pub fn default_profiles(definition_id: &str, incoming: Option<Vec<UserEmulatorPr
             extensions: p.extensions.clone(),
             core_path: None,
             folder_indicator: p.folder_indicator.clone(),
+            rom_glob: p.rom_glob.clone(),
             playlist_extensions: p.playlist_extensions.clone(),
             working_dir: p.working_dir.clone(),
             extra: Default::default(),
@@ -82,6 +83,7 @@ pub fn catalog_profile(definition_id: &str, profile_id: &str) -> Option<UserEmul
         extensions: p.extensions.clone(),
         core_path: None,
         folder_indicator: p.folder_indicator.clone(),
+        rom_glob: p.rom_glob.clone(),
         playlist_extensions: p.playlist_extensions.clone(),
         working_dir: p.working_dir.clone(),
         extra: Default::default(),
@@ -215,6 +217,7 @@ pub struct ResolvedTemplate {
     pub arguments: String,
     pub extensions: Vec<String>,
     pub folder_indicator: Option<String>,
+    pub rom_glob: Option<String>,
     pub playlist_extensions: Option<Vec<String>>,
     pub working_dir: Option<String>,
     pub platform_id: Option<String>,
@@ -236,6 +239,7 @@ pub fn resolve_template(emulator: &UserEmulator, profile: &UserEmulatorProfile) 
             catalog.map(|c| c.extensions.clone()).unwrap_or_default()
         },
         folder_indicator: profile.folder_indicator.clone().or_else(|| catalog.and_then(|c| c.folder_indicator.clone())),
+        rom_glob: non_empty(profile.rom_glob.as_deref()).or_else(|| catalog.and_then(|c| non_empty(c.rom_glob.as_deref()))),
         playlist_extensions: profile.playlist_extensions.clone().or_else(|| catalog.and_then(|c| c.playlist_extensions.clone())),
         working_dir: profile.working_dir.clone().or_else(|| catalog.and_then(|c| c.working_dir.clone())),
         platform_id: profile.platform_id.clone().or_else(|| catalog.map(|c| c.platform_id.clone())),
@@ -262,9 +266,12 @@ pub fn upsert_rom_scanner(paths: &DataPaths, args: UpsertRomScannerArgs) -> Resu
             .as_ref()
             .and_then(|id| f.scanners.iter().find(|s| &s.id == id))
             .or_else(|| {
-                f.scanners
-                    .iter()
-                    .find(|s| s.emulator_id == args.emulator_id && s.profile_id == args.profile_id && s.directory == args.directory)
+                let target_dir = crate::pathutil::normalize_key(&args.directory);
+                f.scanners.iter().find(|s| {
+                    s.emulator_id == args.emulator_id
+                        && s.profile_id == args.profile_id
+                        && crate::pathutil::normalize_key(&s.directory) == target_dir
+                })
             })
             .cloned();
         let profile = emulator.as_ref().and_then(|e| e.profile(&args.profile_id).cloned());
@@ -286,6 +293,10 @@ pub fn upsert_rom_scanner(paths: &DataPaths, args: UpsertRomScannerArgs) -> Resu
             scan_subfolders: args.scan_subfolders.or(existing.as_ref().map(|s| s.scan_subfolders)).unwrap_or(true),
             merge_related_files: args.merge_related_files.or(existing.as_ref().map(|s| s.merge_related_files)).unwrap_or(true),
             auto_scan_on_refresh: args.auto_scan_on_refresh.or(existing.as_ref().map(|s| s.auto_scan_on_refresh)).unwrap_or(true),
+            rom_glob: match &args.rom_glob {
+                Some(g) => non_empty(Some(g.as_str())),
+                None => existing.as_ref().and_then(|s| s.rom_glob.clone()),
+            },
             extra: existing.map(|s| s.extra).unwrap_or_default(),
         };
         match f.scanners.iter().position(|s| s.id == next.id) {

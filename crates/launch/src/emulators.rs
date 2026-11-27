@@ -64,6 +64,9 @@ pub struct UserEmulatorProfile {
     pub core_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub folder_indicator: Option<String>,
+    /// Optional Steam ROM Manager-style glob pattern (e.g. `${title}/@(*[BASE]*.nsp|*.xci)`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rom_glob: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub playlist_extensions: Option<Vec<String>>,
     /// 'emulator' | 'rom'
@@ -189,6 +192,7 @@ static CATALOG: &[CatalogEmulator] = &[
         stop_pattern: Some("Ryujinx"),
         profiles: &[p("switch", "{ImagePath}")],
     },
+    CatalogEmulator { id: "eden", flatpak_id: None, stop_pattern: Some("eden"), profiles: &[p("switch", "-f -g {ImagePath}")] },
     CatalogEmulator {
         id: "xemu",
         flatpak_id: Some("app.xemu.xemu"),

@@ -124,6 +124,9 @@ impl EmulatorEditDialog {
             Row::text("pf-ext", tr!("ROM extensions"), text_of(&f.extensions, cx))
                 .icon(Icon::Edit)
                 .desc(tr!("Comma-separated, for example iso, cue, chd.")),
+            Row::text("pf-glob", tr!("ROM glob pattern (optional)"), text_of(&f.rom_glob, cx))
+                .icon(Icon::Edit)
+                .desc(tr!("Leave empty to scan by file extensions. X clears it.")),
         ];
         if self.core_relevant(p) {
             rows.push(
@@ -249,12 +252,13 @@ impl EmulatorEditDialog {
             "pcat" => self.add_catalog_profiles(cx),
             "cancel" => cx.emit(DialogEvent::Close),
             "save" => self.save(cx),
-            "pf-name" | "pf-platform" | "pf-args" | "pf-ext" => {
+            "pf-name" | "pf-platform" | "pf-args" | "pf-ext" | "pf-glob" => {
                 let Some(f) = self.form.as_ref() else { return };
                 let (title, input) = match id {
                     "pf-name" => (tr!("Profile name"), f.name.clone()),
                     "pf-platform" => (tr!("Platform"), f.platform.clone()),
                     "pf-args" => (tr!("Arguments"), f.arguments.clone()),
+                    "pf-glob" => (tr!("ROM glob pattern (optional)"), f.rom_glob.clone()),
                     _ => (tr!("ROM extensions"), f.extensions.clone()),
                 };
                 self.console_type(title, input, window, cx);
@@ -317,6 +321,7 @@ impl EmulatorEditDialog {
             "exe" => Some(self.executable.clone()),
             "dir" => Some(self.install_dir.clone()),
             "pf-core" => self.form.as_ref().map(|f| f.core.clone()),
+            "pf-glob" => self.form.as_ref().map(|f| f.rom_glob.clone()),
             _ => None,
         }
     }

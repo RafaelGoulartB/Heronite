@@ -70,7 +70,7 @@ pub mod wine_tools;
 pub mod winetricks;
 mod xbox;
 
-pub use args::split_windows_args;
+pub use args::{split_args, split_windows_args};
 pub use plan::{build_plan, build_plan_with_settings, Command, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec, WineRuntime};
 pub use probe::{Probe, SystemProbe};
 pub use runtime::{

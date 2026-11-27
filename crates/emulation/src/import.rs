@@ -112,6 +112,7 @@ pub fn import_scanned_roms(paths: &DataPaths, args: &RomScanImportArgs) -> Resul
             scan_subfolders: args.scan_subfolders,
             merge_related_files: args.merge_related_files,
             auto_scan_on_refresh: args.auto_scan_on_refresh,
+            rom_glob: args.rom_glob.clone(),
         },
     )?;
     result.scanner_id = scanner.id;
@@ -301,6 +302,7 @@ pub fn scan_saved_folder(paths: &DataPaths, scanner: &crate::types::RomScanner) 
             directory: scanner.directory.clone(),
             scan_subfolders: Some(scanner.scan_subfolders),
             merge_related_files: Some(scanner.merge_related_files),
+            rom_glob: scanner.rom_glob.clone(),
         },
     )?;
     let mut errors = preview.errors.clone();
@@ -329,6 +331,7 @@ pub fn scan_saved_folder(paths: &DataPaths, scanner: &crate::types::RomScanner) 
             scan_subfolders: Some(scanner.scan_subfolders),
             merge_related_files: Some(scanner.merge_related_files),
             auto_scan_on_refresh: Some(scanner.auto_scan_on_refresh),
+            rom_glob: scanner.rom_glob.clone(),
             games: newcomers,
         },
     )?;
