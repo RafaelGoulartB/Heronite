@@ -351,7 +351,8 @@ pub(crate) mod tests {
         assert_eq!((set.source, set.external_id.as_str(), set.total(), set.unlocked()), (Source::Rpcs3, "NPWR00001_00", 3, 1));
         let rescuer = &set.achievements[1];
         assert_eq!(rescuer.unlocked_at.unwrap().timestamp(), 1_700_000_000);
-        assert_eq!((rescuer.grade, rescuer.icon.as_str()), (Some(Grade::Bronze), pack.join("TROP001.PNG").to_str().unwrap()));
+        assert_eq!(rescuer.grade, Some(Grade::Bronze));
+        assert_eq!(Path::new(&rescuer.icon), pack.join("TROP001.PNG"));
         assert!(set.achievements[2].hidden && set.achievements[0].icon.is_empty());
         assert_eq!(watched_files(&env, &[], &target), [pack.join("TROPUSR.DAT")]);
     }
