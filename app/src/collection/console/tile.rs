@@ -424,30 +424,42 @@ impl CollectionView {
 
 /// [`copies_badge`] in a cover's top-right corner, or its top-left when
 /// `corner_taken` by a category style.
-pub(super) fn copies_corner((n, corner_taken): (usize, bool)) -> Div {
-    let badge = copies_badge(n).absolute().top(u(8.));
+pub(super) fn copies_corner(at: (usize, bool)) -> Div {
+    copies_corner_at(at, kit::scale())
+}
+
+/// [`copies_corner`] on a cover drawn `unit` px per design px (a cover that
+/// shrinks away from the focus).
+pub(super) fn copies_corner_at((n, corner_taken): (usize, bool), unit: f32) -> Div {
+    let badge = copies_badge_at(n, unit).absolute().top(px(8. * unit));
     if corner_taken {
-        badge.left(u(8.))
+        badge.left(px(8. * unit))
     } else {
-        badge.right(u(8.))
+        badge.right(px(8. * unit))
     }
 }
 
 /// The number of copies of a game owned in several stores, with the
 /// desktop card's icon.
 pub(super) fn copies_badge(copies: usize) -> Div {
+    copies_badge_at(copies, kit::scale())
+}
+
+fn copies_badge_at(copies: usize, unit: f32) -> Div {
+    let v = |d: f32| px(d * unit);
     div()
         .flex()
+        .flex_none()
         .items_center()
-        .gap(u(4.))
-        .px(u(7.))
-        .py(u(3.))
-        .rounded(u(6.))
+        .gap(v(4.))
+        .px(v(7.))
+        .py(v(3.))
+        .rounded(v(6.))
         .bg(theme::black_a(0.62))
-        .text_size(u(12.))
+        .text_size(v(12.))
         .font_weight(theme::W_BOLD)
         .text_color(theme::white_a(0.9))
-        .child(crate::ui::icon(Icon::ContentCopy, u(13.), theme::white_a(0.9)))
+        .child(crate::ui::icon(Icon::ContentCopy, v(13.), theme::white_a(0.9)))
         .child(copies.to_string())
 }
 

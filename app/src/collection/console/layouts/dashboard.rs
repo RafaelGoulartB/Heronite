@@ -409,7 +409,6 @@ impl CollectionView {
             .overflow_hidden()
             .bg(kit::ink(0.07))
             .children(src.map(|s| img(s).absolute().inset_0().size_full().object_fit(ObjectFit::Cover)))
-            .children(self.console_copies_corner(key).map(super::super::tile::copies_corner))
     }
 
     fn dash_game(&mut self, key: &SharedString, w: f32, h: f32, on: bool, window: &Window) -> Div {
@@ -435,6 +434,7 @@ impl CollectionView {
                 linear_color_stop(kit::veil(0.), 0.62),
             )))
             .children(badges)
+            .children(self.console_copies_corner(key).map(super::super::tile::copies_corner))
             .children(game.map(|g| {
                 div()
                     .absolute()
@@ -468,6 +468,8 @@ impl CollectionView {
                 linear_color_stop(kit::veil(0.88), 0.),
                 linear_color_stop(kit::veil(0.05), 0.75),
             )))
+            // No category overlay here: the copies always take the top-right.
+            .children(self.console_copies_corner(key).map(|(n, _)| super::super::tile::copies_corner((n, false))))
             .child(
                 div()
                     .absolute()
@@ -529,7 +531,9 @@ impl CollectionView {
                     .rounded(u(8.))
                     .overflow_hidden()
                     .bg(kit::ink(0.07))
-                    .children(cover.map(|s| img(s).size_full().object_fit(ObjectFit::Cover))),
+                    .relative()
+                    .children(cover.map(|s| img(s).size_full().object_fit(ObjectFit::Cover)))
+                    .children(self.console_copies_corner(key).map(|(n, _)| super::super::tile::copies_corner((n, false)))),
             )
             .child(
                 div()

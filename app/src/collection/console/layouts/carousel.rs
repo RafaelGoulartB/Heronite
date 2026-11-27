@@ -623,7 +623,7 @@ impl CollectionView {
                     .children(categories.as_ref().and_then(|(style, list)| {
                         crate::collection::category_badges::overlay(*style, list, tile::category_area(cw, k * p.scale, dpr), false)
                     }))
-                    .children(copies.map(tile::copies_corner))
+                    .children(copies.map(|c| tile::copies_corner_at(c, k * p.scale)))
                     .when(p.shade > 0.005, |f| f.child(div().absolute().inset_0().bg(kit::dim(p.shade))));
                 // A thin ring a little way out from the cover.
                 let gap = 6. * k;
