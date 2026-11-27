@@ -9,12 +9,14 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::tr;
+use heronite_mods::game_drive::Choice;
 use heronite_mods::tool::{Support, WindowsSupport};
 
 use super::SettingsPage;
+use crate::dialogs::mods::{drive_name, format_size};
 use crate::icons::Icon;
 use crate::pages::{status_pill, tag_pill};
-use crate::services::mods::{self, HandlerState, JobStage, ModsEvent};
+use crate::services::mods::{self, DriveRow, DrivesInfo, HandlerState, JobStage, ModsEvent};
 use crate::theme;
 use crate::ui::controls::{action_button, button_sm, caption, card, card_box, icon_button_sm, row, ButtonKind};
 use crate::ui::fields::{input_box, labeled, meta_text};
@@ -41,7 +43,7 @@ impl State {
                 ModsEvent::Notice { game_key, message, error } if game_key.is_empty() => {
                     d.mods.message = Some((message.clone().into(), *error));
                 }
-                ModsEvent::Jobs | ModsEvent::Changed { .. } => {}
+                ModsEvent::Jobs | ModsEvent::Changed { .. } | ModsEvent::Drives => {}
                 _ => return,
             }
             cx.notify();
@@ -56,6 +58,7 @@ pub fn shown(cx: &mut Context<SettingsPage>) {
     mods::service(cx).update(cx, |s, cx| {
         s.refresh_handlers(cx);
         s.refresh_support(cx);
+        s.refresh_drives(cx);
     });
 }
 
@@ -84,12 +87,14 @@ struct Facts {
     support: Option<Support>,
     /// Progress of the fuse-overlayfs download, when it runs (0..=100; `None` = unknown size).
     fetching: Option<Option<u32>>,
+    /// Windows: the drives asked about keeping their games' mods.
+    drives: DrivesInfo,
 }
 
 fn facts(cx: &App) -> Facts {
     let service = mods::started(cx);
     let Some(service) = service else {
-        return Facts { account: None, handlers: HandlerState::Unknown, support: None, fetching: None };
+        return Facts { account: None, handlers: HandlerState::Unknown, support: None, fetching: None, drives: DrivesInfo::default() };
     };
     let s = service.read(cx);
     Facts {
@@ -97,6 +102,7 @@ fn facts(cx: &App) -> Facts {
         handlers: s.handlers(),
         support: s.support().cloned(),
         fetching: s.jobs(None).find(|j| j.stage == JobStage::Tool).map(|j| j.progress.fraction().map(|f| (f * 100.0).round() as u32)),
+        drives: s.drives().clone(),
     }
 }
 
@@ -312,6 +318,101 @@ fn windows_card(w: WindowsSupport) -> Div {
     ])
 }
 
+fn answer(volume: std::path::PathBuf, choice: Choice, cx: &mut App) {
+    mods::service(cx).update(cx, |s, cx| s.answer_drive(volume, choice, cx));
+}
+
+fn open_folder(path: std::path::PathBuf, cx: &mut App) {
+    cx.background_spawn(async move { crate::ui::open_external(&path.to_string_lossy()) }).detach();
+}
+
+fn drive_intro() -> &'static str {
+    tr!(
+        "A game on another drive than Heronite's folder gets its mods copied into its folder at every launch. Its Mods asks once per drive whether to keep them on the game's drive instead, where they are linked and the game starts at once."
+    )
+}
+
+fn drive_title(row: &DriveRow) -> String {
+    let drive = drive_name(&row.volume);
+    match row.choice {
+        Choice::Store => tr!("{drive}: mods kept on the drive", drive = drive),
+        Choice::Copy => tr!("{drive}: mods copied at each launch", drive = drive),
+    }
+}
+
+fn drive_detail(row: &DriveRow) -> String {
+    match row.choice {
+        Choice::Store => {
+            let bytes: u64 = row.games.iter().map(|g| g.bytes).sum();
+            tr!(
+                "In {folder}: {games}, {size}.",
+                folder = row.store.display(),
+                games = heronite_i18n::trn!(row.games.len(), "{n} game", "{n} games"),
+                size = format_size(bytes)
+            )
+        }
+        Choice::Copy => tr!("Mods on the game's drive launch instantly: they are linked instead of copied.").to_string(),
+    }
+}
+
+/// Windows: where the mods of games on other drives are kept, the answer of
+/// each drive, and what games no longer installed left there.
+fn drives_card(f: &Facts) -> Div {
+    if f.drives.drives.is_empty() {
+        return card([row(tr!("Mods on the game's drive"), Some(drive_intro()), div()).into_any_element()]);
+    }
+    let mut rows = Vec::new();
+    for (i, d) in f.drives.drives.iter().enumerate() {
+        let volume = d.volume.clone();
+        let control = match d.choice {
+            Choice::Store => {
+                let (store, back) = (d.store.clone(), volume.clone());
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(
+                        button_sm(SharedString::from(format!("mods-drive-open-{i}")), ButtonKind::Glass, tr!("Open"))
+                            .on_click(move |_, _, cx| open_folder(store.clone(), cx)),
+                    )
+                    .child(
+                        button_sm(SharedString::from(format!("mods-drive-copy-{i}")), ButtonKind::Ghost, tr!("Copy at each launch"))
+                            .on_click(move |_, _, cx| answer(back.clone(), Choice::Copy, cx)),
+                    )
+            }
+            Choice::Copy => div().child(
+                button_sm(
+                    SharedString::from(format!("mods-drive-store-{i}")),
+                    ButtonKind::Glass,
+                    tr!("Keep them on {drive}", drive = drive_name(&d.volume)),
+                )
+                .on_click(move |_, _, cx| answer(volume.clone(), Choice::Store, cx)),
+            ),
+        };
+        let detail = drive_detail(d);
+        rows.push(row(drive_title(d), Some(&detail), control).into_any_element());
+        for g in d.games.iter().filter(|g| !g.installed) {
+            let key = g.key.clone();
+            let label = tr!("{game} (not installed)", game = g.title.clone());
+            let why = tr!("Its mods are still on the drive: {size}.", size = format_size(g.bytes));
+            rows.push(
+                row(
+                    label,
+                    Some(&why),
+                    button_sm(SharedString::from(format!("mods-drive-delete-{key}")), ButtonKind::Danger, tr!("Delete")).on_click(
+                        move |_, _, cx| {
+                            let key = key.clone();
+                            mods::service(cx).update(cx, |s, cx| s.delete_stored(key, cx));
+                        },
+                    ),
+                )
+                .into_any_element(),
+            );
+        }
+    }
+    card(rows)
+}
+
 fn apply_card(f: &Facts, cx: &mut Context<SettingsPage>) -> Div {
     if let Some(w) = f.support.as_ref().and_then(|s| s.windows) {
         return windows_card(w);
@@ -380,6 +481,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .child(links_card(&f, cx))
         .child(caption(tr!("Applying mods")))
         .child(apply_card(&f, cx))
+        .when(mods::drives_offered(), |d| d.child(caption(tr!("Mods on the game's drive"))).child(drives_card(&f)))
         .child(div().h(px(12.)))
         .child(notes)
         .into_any_element()
@@ -425,6 +527,18 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     if let Some(w) = f.support.as_ref().and_then(|s| s.windows) {
         rows.push(Row::info("method", tr!("Hard links and copies"), tr!("Ready")));
         rows.push(Row::info("projfs", tr!("Projected File System"), if w.projfs { tr!("On") } else { tr!("Off") }));
+        rows.push(Row::header(tr!("Mods on the game's drive")));
+        if f.drives.drives.is_empty() {
+            rows.push(Row::info("drives", tr!("Mods on the game's drive"), "").desc(drive_intro()));
+        }
+        for (i, d) in f.drives.drives.iter().enumerate() {
+            rows.push(Row::info(format!("drive-{i}"), drive_title(d), "").desc(drive_detail(d)));
+            let other = match d.choice {
+                Choice::Store => tr!("Copy at each launch").to_string(),
+                Choice::Copy => tr!("Keep them on {drive}", drive = drive_name(&d.volume)),
+            };
+            rows.push(Row::action(format!("drive-switch-{i}"), other));
+        }
         return rows;
     }
     let (overlay, _) = overlay_text(&f);
@@ -454,6 +568,11 @@ pub(super) fn console_apply(
         "register" => mods::service(cx).update(cx, |s, cx| s.register_handlers(cx)),
         "fetch-tool" => mods::service(cx).update(cx, |s, cx| s.fetch_tool(cx)),
         "unpack-look-again" => mods::service(cx).update(cx, |s, cx| s.refresh_support(cx)),
-        _ => {}
+        other => {
+            let Some(i) = other.strip_prefix("drive-switch-").and_then(|i| i.parse::<usize>().ok()) else { return };
+            let Some(d) = facts(cx).drives.drives.get(i).cloned() else { return };
+            let choice = if d.choice == Choice::Store { Choice::Copy } else { Choice::Store };
+            answer(d.volume, choice, cx);
+        }
     }
 }

@@ -82,6 +82,9 @@ pub fn apply(req: &ApplyRequest, progress: &mut dyn FnMut(Progress), cancel: &At
         return Ok(None);
     }
     let failed = |e: String| tr!("Mods could not be applied: {error}", error = e);
+    if crate::game_drive::moving(req.root, req.game_key) {
+        return Err(failed(tr!("they are being moved to the game's drive. Try again when the move ends.").to_string()));
+    }
 
     let enabled: Vec<_> = list.enabled().collect();
     let mut layers: Vec<PathBuf> = Vec::new();

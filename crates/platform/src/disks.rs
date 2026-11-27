@@ -84,6 +84,32 @@ pub fn on_removable_drive(path: &Path) -> bool {
     }
 }
 
+/// The folder the volume holding `path` is mounted at: `D:\` (or a mounted
+/// folder such as `C:\Games\SSD\`) on Windows, the mount point on Unix
+/// (`/`, `/mnt/games`). Two paths with the same root are on the same volume,
+/// so a hard link between them works. `path` need not exist: its nearest
+/// existing folder is asked. `None` when nothing of it can be read.
+pub fn volume_root(path: &Path) -> Option<PathBuf> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let real = path.ancestors().find_map(|p| canonical(p).ok())?;
+        let dev = std::fs::metadata(&real).ok()?.dev();
+        let mut root = real.clone();
+        for p in real.ancestors().skip(1) {
+            match std::fs::metadata(p) {
+                Ok(m) if m.dev() == dev => root = p.to_path_buf(),
+                _ => break,
+            }
+        }
+        Some(root)
+    }
+    #[cfg(windows)]
+    {
+        win::volume_root(path)
+    }
+}
+
 /// Whether Windows hides the file (the hidden or the system attribute:
 /// `$RECYCLE.BIN`, `System Volume Information`). Unix hides by a leading
 /// dot in the name instead: always `false` there.
@@ -277,6 +303,18 @@ mod win {
         unsafe { GetDriveTypeW(root.as_ptr()) == DRIVE_REMOVABLE }
     }
 
+    pub(super) fn volume_root(path: &Path) -> Option<PathBuf> {
+        let _quiet = QuietErrors::new();
+        let real = path.ancestors().find_map(|p| super::canonical(p).ok())?;
+        let mut root = [0u16; 1024];
+        // SAFETY: the path is NUL-terminated; `root` is writable for its length.
+        if unsafe { GetVolumePathNameW(wide(&real).as_ptr(), root.as_mut_ptr(), root.len() as u32) } == 0 {
+            return None;
+        }
+        let len = root.iter().position(|&c| c == 0).unwrap_or(root.len());
+        Some(without_verbatim(PathBuf::from(OsString::from_wide(&root[..len]))))
+    }
+
     pub(super) fn without_verbatim(path: PathBuf) -> PathBuf {
         let Some(s) = path.to_str() else { return path };
         if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
@@ -425,6 +463,15 @@ mod tests {
         assert!(real.is_absolute());
         assert!(!real.to_string_lossy().starts_with(r"\\?\"), "{}", real.display());
         assert!(!on_removable_drive(d.path()));
+    }
+
+    #[test]
+    fn a_folder_and_what_is_not_made_yet_share_a_volume() {
+        let d = tempfile::tempdir().unwrap();
+        let root = volume_root(d.path()).unwrap();
+        assert!(canonical(d.path()).unwrap().starts_with(&root), "{} under {}", d.path().display(), root.display());
+        assert_eq!(volume_root(&d.path().join("not/made/yet")), Some(root.clone()));
+        assert_eq!(volume_root(&root), Some(root));
     }
 
     #[cfg(windows)]

@@ -98,7 +98,7 @@ impl CollectionView {
                     self.toast_action = Some(ToastAction::OpenMods(game_key.clone()));
                 }
             }
-            ModsEvent::Jobs | ModsEvent::Account => {}
+            ModsEvent::Jobs | ModsEvent::Account | ModsEvent::Drives => {}
         }
     }
 

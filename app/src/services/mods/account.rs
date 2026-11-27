@@ -100,6 +100,7 @@ impl ModsService {
             error: None,
             warning: None,
             dependencies: 0,
+            moving: false,
         });
         let (tx, bin) = (self.work.tx.clone(), self.data_paths.root.join("tools/bin"));
         let spawned = std::thread::Builder::new().name("mods-tool".into()).spawn({

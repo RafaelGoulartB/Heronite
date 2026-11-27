@@ -82,6 +82,14 @@ impl GameShared {
         store::save(dirs, &snapshot)
     }
 
+    /// [`save`](Self::save), with the game's folder looked up once the
+    /// writer's turn comes: a move of the mods may have ended meanwhile.
+    pub fn save_in(&self, root: &ModsRoot, key: &str) -> io::Result<()> {
+        let _io = locked(&self.io);
+        let snapshot = self.list();
+        store::save(&root.game(key), &snapshot)
+    }
+
     pub fn lock_io(&self) -> MutexGuard<'_, ()> {
         locked(&self.io)
     }
@@ -116,10 +124,10 @@ impl ModsService {
     /// Writes the list in the background; a failure becomes a notice.
     pub(super) fn save_later(&mut self, game_key: &str, cx: &mut Context<Self>) {
         let Some(shared) = self.shared.get(game_key).cloned() else { return };
-        let dirs = self.root.game(game_key);
-        let key = game_key.to_string();
+        let (root, key) = (self.root.clone(), game_key.to_string());
+        let k = key.clone();
         cx.spawn(async move |this, cx| {
-            if let Err(e) = cx.background_spawn(async move { shared.save(&dirs) }).await {
+            if let Err(e) = cx.background_spawn(async move { shared.save_in(&root, &k) }).await {
                 log::warn!("mods: could not save the list of {key}: {e}");
                 this.update(cx, |_, cx| {
                     cx.emit(ModsEvent::Notice {
@@ -137,6 +145,9 @@ impl ModsService {
     /// Applies `change` to the loaded game's list at once. When it says it
     /// changed something: the screen follows and the file is saved.
     fn edit_list(&mut self, game_key: &str, check: bool, change: impl FnOnce(&mut ModList) -> bool, cx: &mut Context<Self>) -> bool {
+        if self.refuse_while_moving(game_key, cx) {
+            return false;
+        }
         let (Some(shared), Some(game)) = (self.shared.get(game_key).cloned(), self.games.get_mut(game_key)) else {
             log::warn!("mods: a change to {game_key}, whose list is not loaded");
             return false;
@@ -260,6 +271,9 @@ impl ModsService {
         cx: &mut Context<Self>,
         then: impl FnOnce(&mut Self, &mut Context<Self>) + 'static,
     ) {
+        if self.refuse_while_moving(game_key, cx) {
+            return;
+        }
         let (root, game_dir, key) =
             (self.root.clone(), self.games.get(game_key).and_then(|g| g.info.game_dir.clone()), game_key.to_string());
         cx.spawn(async move |this, cx| {
@@ -335,6 +349,9 @@ impl ModsService {
     }
 
     pub(super) fn empty_overwrite(&mut self, game_key: &str, cx: &mut Context<Self>) {
+        if self.refuse_while_moving(game_key, cx) {
+            return;
+        }
         let Some(shared) = self.shared.get(game_key).cloned() else { return };
         let (dirs, game_dir, key) =
             (self.root.game(game_key), self.games.get(game_key).and_then(|g| g.info.game_dir.clone()), game_key.to_string());
@@ -359,6 +376,9 @@ impl ModsService {
     }
 
     pub(super) fn turn_overwrite_into_mod(&mut self, game_key: &str, name: String, cx: &mut Context<Self>) {
+        if self.refuse_while_moving(game_key, cx) {
+            return;
+        }
         let Some(shared) = self.shared.get(game_key).cloned() else { return };
         let (dirs, game_dir, key) =
             (self.root.game(game_key), self.games.get(game_key).and_then(|g| g.info.game_dir.clone()), game_key.to_string());
@@ -413,6 +433,7 @@ impl ModsService {
                     s.shared.remove(&key);
                     s.counts.remove(&key);
                     cx.emit(ModsEvent::Changed { game_key: key });
+                    s.refresh_drives(cx);
                 }
                 Err(message) => cx.emit(ModsEvent::Notice { game_key: key, message, error: true }),
             })
@@ -434,7 +455,11 @@ fn remove_entry(list: &mut ModList, id: &str) -> bool {
 /// nothing of them is deleted, replaced or emptied. Blocking (reads the mount
 /// table or the journals).
 pub(super) fn refuse_while_mounted(root: &ModsRoot, game_dir: Option<&std::path::Path>) -> Result<(), String> {
-    if game_dir.is_some_and(|d| heronite_mods::deployment::in_use(root, d)) {
+    if let Some(dir) = game_dir.filter(|d| heronite_mods::deployment::in_use(root, d)) {
+        // The game ended, but a file kept the mods from being taken out.
+        if let Some(problem) = heronite_mods::deployment::problem(root, dir) {
+            return Err(problem);
+        }
         return Err(tr!("The game is running with mods; close it first").to_string());
     }
     Ok(())

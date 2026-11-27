@@ -37,7 +37,9 @@ Mods.
      in the app and installs with every dependency (BepInExPack included);
      "Install with mod manager" on thunderstore.io (`ror2mm://`) works too.
    - *A file*: "Add from file…" (zip, 7z, rar, tar, or a folder), or dropping
-     an archive on the manager.
+     an archive on the manager. Zip and 7z are opened in process
+     (`heronite_installer::builtin`); tar and RAR need `tar`/`bsdtar`,
+     `unrar` or 7-Zip, and on Windows its own `tar.exe` does both.
 3. **Installers.** A FOMOD installer (`fomod/ModuleConfig.xml`) opens the
    installer wizard: steps, options with their pictures and descriptions,
    conditions between them. The choices are kept: "Reinstall" asks again with
@@ -146,6 +148,9 @@ tried.
     overwrite/                  upperdir: what the game wrote while modded
     .work/                      fuse-overlayfs workdir
     .layers/<nnn>               short symlinks to the layers (mount options)
+    elsewhere.json              Windows: the game's mods are on its own drive
+                                (then the only file here; see "On the game's drive")
+  drives.json                   Windows: the answer of each drive
 ```
 
 Backups (`heronite_backup::catalog`) leave the whole `<mods root>` out
@@ -209,14 +214,11 @@ still on its folder (`deploy::unmount_ours`).
   the service.
 - At start: unfinished installs are swept and stale overlays unmounted (not
   when the start is a game launch: its own mount is being made).
-- Settings → Mods: the account, who opens the links, fuse-overlayfs and FUSE.
+- Settings → Mods: the account, who opens the links, fuse-overlayfs and FUSE;
+  on Windows how the files go in and the answer of each drive (see "On the
+  game's drive").
 
 ## Windows
-
-Hidden for now (`Feature::Mods` is off on Windows; a debug build turns it on
-with `HERONITE_FEATURES=+mods`): mod archives still need 7-Zip, `unzip` or
-`bsdtar` on the PATH, which a stock Windows lacks, and putting the game's
-folder back has no retry when a file is still locked.
 
 Windows has no overlay file system, and Heronite does not hook a game's file
 calls (MO2's usvfs). So while the game runs, the enabled mods' files are **in
@@ -227,9 +229,12 @@ its folder**, and they come out again when it ends (`journal_deploy`):
   (another drive, FAT, a share). The first failed link makes the rest of
   that deployment copy. Text files (`.ini .cfg .json .xml .txt .toml .yaml
   .yml .log`) and files under 64 KiB are always copied, so a game that
-  rewrites one never writes into the mod through a link.
+  rewrites one never writes into the mod through a link. A game on another
+  drive can keep its mods on that drive so they link too: see [On the game's
+  drive](#on-the-games-drive-game_drive).
 - **The game's own files** that a mod replaces are moved to
-  `<mods root>/<game key>/.backup/<path>` and put back afterwards.
+  `<mods root>/<game key>/.backup/<path>` (on the game's drive when its mods
+  are there, so the move is a rename) and put back afterwards.
 - **Journal first.** `deploy.json` (the plan, then the size and time of each
   placed file) and `deploy.snapshot` (the game folder's list) are written
   before the game folder is touched. `restore` is idempotent: after a crash at
@@ -237,6 +242,22 @@ its folder**, and they come out again when it ends (`journal_deploy`):
   when an adopted game ends (`GameMods::release`), at start for every game
   that is not running (`deployment::cleanup_stale`), and before the next
   deployment. A failed restore keeps the journal for the next try.
+- **A file still open** (a crash reporter, a virus scan, the store client):
+  before anything moves, `restore` checks that every file it takes can be
+  taken (`journal_fs::probe`), and retries a locked one with a growing pause,
+  15 s for all files together (`journal_fs::Patience`). If one is still open,
+  nothing is touched: the mods stay as the game had them, the journal keeps
+  the reason (`journal_deploy::problem`, shown when the mod manager refuses a
+  change), and the next start or launch tries again. A file locked between
+  the check and the move is retried too; if it still fails, the files done
+  are done and the journal lists the rest.
+- **Copies to another drive** go to `<name>.heronite-partial` beside the
+  target, are flushed, keep the source's time, and are renamed into place;
+  the source is removed only after. So a crash leaves a whole file or none,
+  and a leftover partial copy (its source is still whole) is removed by the
+  next restore or at start. A game file that was copied back whole but whose
+  backup was not removed yet matches the backup's size and time, and is not
+  taken for something the game wrote.
 - **What the game wrote** goes to the overwrite folder, as on Linux: files
   that were not in the snapshot, and copies of ours whose size or time
   changed. The overwrite folder is the top layer of the next deployment. Not
@@ -261,3 +282,52 @@ its folder**, and they come out again when it ends (`journal_deploy`):
 
 Storage adds, per game: `deploy.json`, `deploy.snapshot` and `.backup/`, only
 while mods are in the game folder.
+
+### On the game's drive (`game_drive`)
+
+A hard link cannot cross volumes, so a game on another drive than the mods
+root used to get every mod file copied in at each launch (and deleted at
+exit): seconds to minutes for a big texture pack, gigabytes rewritten each
+time. Instead, the game's whole folder of the mods root (list, mods,
+downloads, overwrite, `.backup`) can live on the game's own volume, and every
+launch links. Nothing is kept twice, and the game folder holds mods only
+while the game runs, as before (not Vortex's "deploy and leave it").
+
+- **Where:** `<volume>\.heronite-mods\<game key>`, `<volume>` being where the
+  game's volume is mounted (`D:\`, or a mounted folder;
+  `heronite_platform::disks::volume_root`). A name another Heronite already
+  uses there gets `-2`, `-3`…
+- **Asked once per drive.** The manager of the first game found on another
+  volume than the mods root shows "Keep this game's mods on D:?" with *Keep
+  them on D:* and *Copy at each launch*. The answer goes to
+  `<mods root>/drives.json` and counts for every game on that volume.
+  - *Keep*: every game with mods on that volume moves now, one move at a
+    time (a job in its manager: "Moving the mods to D:\.heronite-mods",
+    with progress, cancellable). A game whose manager opens later with mods
+    elsewhere moves then.
+  - *Copy*: nothing moves; launches copy as before. Settings → Mods says
+    "Mods on the game's drive launch instantly" next to the drive, with a
+    button to change the answer.
+- **The pointer.** `<mods root>/<game key>/` stays, holding only
+  `elsewhere.json` (the folder in use). `ModsRoot::game` follows it, so the
+  rest of the code sees the usual folders. A pointer to anything but a
+  `.heronite-mods/<name>` folder is ignored.
+- **A move** (`game_drive::relocate`): refused while the mods are applied, and
+  while a download or install of the game runs; edits, installs and launches
+  of that game are refused while it runs. It checks the free space, writes
+  `moving.json` (from, to), copies with each file's time, checks again that
+  no launch slipped in, switches `elsewhere.json`, then deletes the old copy.
+  A crash or a cancel at any step is put right by `game_drive::sweep` (at
+  start, and before the next move): before the switch the new copy is
+  deleted, after it the old one.
+- **The game moved.** Placement is worked out each time the manager opens: a
+  game now on the mods root's volume moves back home; one now on a volume
+  answered *Keep* moves there; one on a volume answered *Copy* moves home.
+- **Cleanup.** "Remove all mods" deletes the folder on the game's drive too,
+  and `.heronite-mods` once empty. Uninstalls happen in many places (and in
+  the stores' own clients), so nothing is deleted by guesswork: Settings →
+  Mods lists, under each drive, the games that are no longer installed with
+  the space their mods take, and a *Delete* button.
+- Linux needs none of this: `fuse-overlayfs` layers the mods from wherever
+  they are, so the question is never asked there (the code builds and is
+  tested on both).

@@ -25,6 +25,7 @@ impl ModsService {
                     let found = facts::resolve(&paths, &game);
                     let list = shared.ensure_loaded(&root, &game.key, &game.title);
                     let known = games::find(game.steam_app_id.as_deref(), &game.title);
+                    let placement = super::drives::placement_of(&root, &game.key, found.dir.as_deref());
                     let info = GameModInfo {
                         title: game.title.clone(),
                         game_dir: found.dir,
@@ -39,6 +40,7 @@ impl ModsService {
                         anticheat: anticheat::lookup(&paths, game.steam_app_id.as_deref(), &game.title)
                             .map(|a| a.anticheats.iter().map(|n| anticheat::short_name(n)).collect())
                             .unwrap_or_default(),
+                        placement,
                     };
                     (info, list, tool::support(&paths.root.join("tools/bin")))
                 })
@@ -61,6 +63,7 @@ impl ModsService {
                 cx.emit(ModsEvent::Changed { game_key: key.clone() });
                 s.recheck(&key, cx);
                 s.find_links(&key, true, cx);
+                s.move_if_answered(&key, cx);
             })
             .ok();
         })
