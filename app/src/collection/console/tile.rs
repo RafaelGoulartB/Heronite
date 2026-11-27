@@ -413,7 +413,7 @@ impl TileArt {
 
 /// The number of copies of a game owned in several stores, with the
 /// desktop card's icon.
-fn copies_badge(copies: usize) -> Div {
+pub(super) fn copies_badge(copies: usize) -> Div {
     div()
         .flex()
         .items_center()

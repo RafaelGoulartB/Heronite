@@ -151,7 +151,12 @@ impl CollectionView {
                         }
                     });
                     let title = g.map_or(String::new(), |g| g.title.clone());
-                    let categories = self.console_categories(key).and_then(|(style, list)| {
+                    let categories = self.console_categories(key);
+                    // The copies take the top-right, or go beside "Playing" when a category style has it.
+                    let corner_taken =
+                        categories.as_ref().is_some_and(|(style, _)| crate::collection::category_badges::takes_top_right(*style));
+                    let copies = (theme.tiles.badges != Badges::Off).then(|| self.console_copy_count(key)).filter(|n| *n > 1);
+                    let categories = categories.and_then(|(style, list)| {
                         crate::collection::category_badges::overlay(
                             style,
                             &list,
@@ -186,6 +191,15 @@ impl CollectionView {
                         .children(categories)
                         .when_some(running.filter(|_| theme.tiles.badges != Badges::Off), |d, b| {
                             d.child(div().absolute().top(u(6.)).left(u(6.)).child(kit::badge(b, theme::console_btn_a())))
+                        })
+                        .when_some(copies, |d, n| {
+                            let badge = super::super::super::tile::copies_badge(n).absolute().top(u(6.));
+                            d.child(match (corner_taken, running.is_some() && theme.tiles.badges != Badges::Off) {
+                                (false, _) => badge.right(u(6.)),
+                                // Under "Playing", on the left.
+                                (true, true) => badge.top(u(34.)).left(u(6.)),
+                                (true, false) => badge.left(u(6.)),
+                            })
                         })
                 }
                 None => all_games(p.w, p.h, k),
