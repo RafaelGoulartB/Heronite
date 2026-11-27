@@ -108,14 +108,17 @@ impl Details {
         let rarity = a.rarity.filter(|_| fields.rarity);
         let description = Some(a.description.trim()).filter(|d| fields.description && !d.is_empty()).map(str::to_string);
         let mut chips: Vec<Chip> = rarity.map(Chip::Rarity).into_iter().collect();
-        // Only RetroAchievements (points) and Epic Games (XP) give them.
+        // Only RetroAchievements and Xenia (points) and Epic Games (XP) give them.
         match (a.points.filter(|_| fields.points), unlock.source) {
-            (Some(n), Source::RetroAchievements) => chips.push(Chip::Points(trn!(n, "{n} point", "{n} points"))),
+            (Some(n), Source::RetroAchievements | Source::Xenia) => chips.push(Chip::Points(trn!(n, "{n} point", "{n} points"))),
             (Some(n), Source::Epic) => chips.push(Chip::Points(tr!("{n} XP", n = n))),
             _ => {}
         }
         if let Some(kind) = a.kind.filter(|_| fields.kind && retro) {
             chips.push(Chip::Kind(crate::dialogs::achievements::kind_label(kind).to_string()));
+        }
+        if let Some(grade) = a.grade {
+            chips.push(Chip::Kind(crate::ui::achievements::grade_label(grade).to_string()));
         }
         if fields.hardcore && retro && a.hardcore {
             chips.push(Chip::Hardcore);

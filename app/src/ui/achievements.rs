@@ -4,7 +4,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_achievements::{AchievementGroup, Section, Source};
+use heronite_achievements::{AchievementGroup, Grade, Section, Source};
 
 use crate::icons::Icon;
 use crate::theme;
@@ -66,6 +66,16 @@ pub fn percent_label(percent: f32) -> String {
     format!("{}%", heronite_i18n::decimal(percent as f64, 1))
 }
 
+/// A PlayStation trophy's grade, as the console names it.
+pub fn grade_label(grade: Grade) -> &'static str {
+    match grade {
+        Grade::Platinum => tr!("Platinum"),
+        Grade::Gold => tr!("Gold"),
+        Grade::Silver => tr!("Silver"),
+        Grade::Bronze => tr!("Bronze"),
+    }
+}
+
 /// A source's name in the UI: its brand, or "Game files" (translated).
 pub fn source_name(source: Source) -> SharedString {
     match source {
@@ -82,6 +92,9 @@ pub fn source_chip(source: Source) -> Div {
         Source::RetroAchievements => theme::rgb_a(240, 180, 41, 1.),
         // No brand: a neutral dot.
         Source::Local => theme::rgb_a(150, 160, 175, 1.),
+        Source::Rpcs3 => theme::rgb_a(112, 128, 232, 1.),
+        Source::ShadPs4 => theme::rgb_a(64, 156, 255, 1.),
+        Source::Xenia => theme::rgb_a(92, 184, 72, 1.),
     };
     div()
         .flex()

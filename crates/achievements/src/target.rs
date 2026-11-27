@@ -23,6 +23,60 @@ pub enum SourceTarget {
     },
     Retro(RetroTarget),
     Local(LocalTarget),
+    Trophies(TrophyTarget),
+}
+
+/// The emulator that keeps a console game's trophies in its own files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrophyEmulator {
+    Rpcs3,
+    ShadPs4,
+    Xenia,
+}
+
+impl TrophyEmulator {
+    pub fn source(self) -> Source {
+        match self {
+            TrophyEmulator::Rpcs3 => Source::Rpcs3,
+            TrophyEmulator::ShadPs4 => Source::ShadPs4,
+            TrophyEmulator::Xenia => Source::Xenia,
+        }
+    }
+
+    /// The emulator of a game, by the Collection's emulator name, else by
+    /// its platform.
+    fn of(emulator_name: &str, platform_id: &str) -> Option<TrophyEmulator> {
+        let name = emulator_name.to_ascii_lowercase();
+        if name.contains("rpcs3") {
+            return Some(TrophyEmulator::Rpcs3);
+        }
+        if name.contains("shadps4") {
+            return Some(TrophyEmulator::ShadPs4);
+        }
+        if name.contains("xenia") {
+            return Some(TrophyEmulator::Xenia);
+        }
+        match platform_id {
+            "sony_playstation3" => Some(TrophyEmulator::Rpcs3),
+            "sony_playstation4" => Some(TrophyEmulator::ShadPs4),
+            "microsoft_xbox360" => Some(TrophyEmulator::Xenia),
+            _ => None,
+        }
+    }
+}
+
+/// A console game whose emulator keeps its trophies (RPCS3, shadPS4) or
+/// achievements (Xenia) in its own files.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrophyTarget {
+    pub emulator: TrophyEmulator,
+    /// The game's files (an `EBOOT.BIN`, a `default.xex`, an image), the
+    /// one picked to play first. Only absolute paths.
+    pub roms: Vec<PathBuf>,
+    pub title: String,
+    /// The Collection's emulator: its executable and Flatpak tell where it
+    /// keeps its files.
+    pub emulator_id: Option<String>,
 }
 
 /// Where a game that keeps its achievements in its own files may have them.
@@ -63,6 +117,7 @@ impl SourceTarget {
             SourceTarget::Epic { .. } => Source::Epic,
             SourceTarget::Retro(_) => Source::RetroAchievements,
             SourceTarget::Local(_) => Source::Local,
+            SourceTarget::Trophies(t) => t.emulator.source(),
         }
     }
 }
@@ -83,19 +138,8 @@ pub fn targets_of(game: &CollectionGame) -> Vec<SourceTarget> {
             out.push(SourceTarget::Steam { app_id: id });
         }
     }
-    if source == "emulator" || game.launch_kind.as_deref() == Some("emulator") {
-        let roms: Vec<PathBuf> = meta
-            .and_then(|m| m.selected_rom_path.as_deref())
-            .into_iter()
-            .chain(meta.and_then(|m| m.roms.as_ref()).into_iter().flatten().map(|r| r.path.as_str()))
-            .map(PathBuf::from)
-            .filter(|p| p.is_absolute())
-            .fold(Vec::new(), |mut v, p| {
-                if !v.contains(&p) {
-                    v.push(p);
-                }
-                v
-            });
+    if is_emulated(game) {
+        let roms = rom_paths(game);
         if !roms.is_empty() {
             let platform_id = meta.and_then(|m| m.platform_id.clone()).filter(|p| !p.is_empty() && p != "other");
             out.push(SourceTarget::Retro(RetroTarget {
@@ -115,10 +159,53 @@ pub fn targets_of(game: &CollectionGame) -> Vec<SourceTarget> {
     out
 }
 
+fn is_emulated(game: &CollectionGame) -> bool {
+    game.meta.as_deref().is_some_and(|m| m.source == "emulator") || game.launch_kind.as_deref() == Some("emulator")
+}
+
+/// The ROM files of an emulated game, the one picked to play first. Only
+/// absolute paths, no repeats.
+fn rom_paths(game: &CollectionGame) -> Vec<PathBuf> {
+    let meta = game.meta.as_deref();
+    meta.and_then(|m| m.selected_rom_path.as_deref())
+        .into_iter()
+        .chain(meta.and_then(|m| m.roms.as_ref()).into_iter().flatten().map(|r| r.path.as_str()))
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .fold(Vec::new(), |mut v, p| {
+            if !v.contains(&p) {
+                v.push(p);
+            }
+            v
+        })
+}
+
+/// The trophies target of a game RPCS3, shadPS4 or Xenia plays.
+fn trophy_target(game: &CollectionGame) -> Option<TrophyTarget> {
+    if !is_emulated(game) {
+        return None;
+    }
+    let meta = game.meta.as_deref()?;
+    let emulator = TrophyEmulator::of(meta.emulator_name.as_deref().unwrap_or(""), meta.platform_id.as_deref().unwrap_or(""))?;
+    Some(TrophyTarget {
+        emulator,
+        roms: rom_paths(game),
+        title: game.title.clone(),
+        emulator_id: meta.emulator_id.clone().filter(|id| !id.is_empty()),
+    })
+}
+
 /// [`targets_of`] with the options: game files (off by default) add the
-/// [`LocalTarget`], after the game's own store and before its Steam copy.
+/// [`LocalTarget`], after the game's own store and before its Steam copy;
+/// emulator trophies (on by default) add the [`TrophyTarget`] of a console
+/// game first.
 pub fn targets_with(game: &CollectionGame, prefs: &Prefs) -> Vec<SourceTarget> {
     let mut out = targets_of(game);
+    if prefs.emulator_trophies {
+        if let Some(trophies) = trophy_target(game) {
+            out.insert(0, SourceTarget::Trophies(trophies));
+        }
+    }
     if prefs.game_files {
         if let Some(local) = local_target(game) {
             let at = out.iter().position(|t| matches!(t, SourceTarget::Steam { .. })).unwrap_or(out.len());
@@ -192,5 +279,17 @@ mod tests {
         assert!(!plays_its_own_files("other", "steam-uri", false), "started through the Steam client");
         assert!(!plays_its_own_files("emulator", "emulator", false));
         assert!(!plays_its_own_files("gog", "executable", true), "plays through its Steam copy");
+    }
+
+    #[test]
+    fn the_emulator_comes_from_its_name_then_the_platform() {
+        assert_eq!(TrophyEmulator::of("RPCS3", ""), Some(TrophyEmulator::Rpcs3));
+        assert_eq!(TrophyEmulator::of("shadPS4 (Qt)", "other"), Some(TrophyEmulator::ShadPs4));
+        assert_eq!(TrophyEmulator::of("Xenia Edge", ""), Some(TrophyEmulator::Xenia));
+        assert_eq!(TrophyEmulator::of("My PS3", "sony_playstation3"), Some(TrophyEmulator::Rpcs3));
+        assert_eq!(TrophyEmulator::of("", "sony_playstation4"), Some(TrophyEmulator::ShadPs4));
+        assert_eq!(TrophyEmulator::of("", "microsoft_xbox360"), Some(TrophyEmulator::Xenia));
+        assert_eq!(TrophyEmulator::of("PCSX2", "sony_playstation2"), None);
+        assert_eq!(TrophyEmulator::of("", ""), None);
     }
 }

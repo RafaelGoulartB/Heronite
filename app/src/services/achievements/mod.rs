@@ -727,15 +727,23 @@ impl Achievements {
 
     pub fn set_prefs(&mut self, prefs: Prefs, cx: &mut Context<Self>) {
         let emulators_changed = (prefs.emulators, prefs.hardcore) != (self.prefs.emulators, self.prefs.hardcore);
-        let game_files_changed = prefs.game_files != self.prefs.game_files;
-        let live_changed = (prefs.overlay_notices, prefs.notify, prefs.live_steam, prefs.game_files, prefs.gog_comet)
-            != (self.prefs.overlay_notices, self.prefs.notify, self.prefs.live_steam, self.prefs.game_files, self.prefs.gog_comet);
+        let sources_changed = (prefs.game_files, prefs.emulator_trophies) != (self.prefs.game_files, self.prefs.emulator_trophies);
+        let live_changed =
+            (prefs.overlay_notices, prefs.notify, prefs.live_steam, prefs.game_files, prefs.gog_comet, prefs.emulator_trophies)
+                != (
+                    self.prefs.overlay_notices,
+                    self.prefs.notify,
+                    self.prefs.live_steam,
+                    self.prefs.game_files,
+                    self.prefs.gog_comet,
+                    self.prefs.emulator_trophies,
+                );
         let user = self.signed_in_user();
         self.prefs = prefs;
         if emulators_changed {
             self.sync_emulators(user, cx);
         }
-        if game_files_changed {
+        if sources_changed {
             // Every game's sources change: the Collection asks for them again.
             self.known.clear();
             self.games.clear();

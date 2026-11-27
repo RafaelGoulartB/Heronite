@@ -65,7 +65,8 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      QuickJS sandbox that runs their scripts      → data, metadata, images
  ├─ heronite-achievements achievements of Steam (the client's files),
  │                      GOG, Epic and RetroAchievements (ROM hashes
- │                      by the vendored rcheevos), and the local copy
+ │                      by the vendored rcheevos), the trophies of
+ │                      RPCS3, shadPS4 and Xenia, and the local copy
  │                      that keeps them                → data, metadata, gog, epic, steam, launch
  ├─ heronite-media      screenshots: listing, thumbnails, capture,
  │                      lossless PNG → WebP compression, posters of
@@ -1048,6 +1049,19 @@ text size) and applies it.
   files of RetroArch, DuckStation, PCSX2, PPSSPP, Dolphin and Flycast (native
   and Flatpak; only files that exist, never while the emulator runs, other
   lines untouched), so they unlock achievements without signing in there.
+  `trophies` reads what the console emulators keep of a game (on by
+  default, Settings → Achievements → Emulator trophies; only read):
+  `rpcs3` the trophy folder `dev_hdd0/home/<user>/trophy/<NP comm id>`
+  (`TROPCONF.SFM` and the binary `TROPUSR.DAT`), `shadps4` the decrypted
+  pack `<user>/trophy/<NP comm id>/Xml` with each console user's copy in
+  `home/<id>/trophy/<NP comm id>.xml` (and the older `game_data` layout),
+  `xenia` the profile's GPD (`<content>/<XUID>/FFFE07D1/00010000/<XUID>/<title
+  id>.gpd`, XDBF; its pictures are written once to
+  `local_library/achievements/_trophy-icons/xenia`). The game is found by
+  the comm id its files name (`TROPDIR`, `sce_sys/npbind.dat`) or the
+  title id of its `default.xex`, else by its name. The files are the
+  emulator's and may be damaged: every read is bounded and checked, never
+  panics (release builds abort), and a bad file fails only that source.
   `merge` folds a read into the local copy so it only
   grows (an unlock is never taken back, the earliest time wins); a read
   with groups replaces them (renames, reorders and moved achievements keep
