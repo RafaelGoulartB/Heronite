@@ -65,26 +65,60 @@ fn text_of(node: roxmltree::Node, tag: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Where `pat` next starts in `b` from `from` (`b.len()` when it does not).
+fn find(b: &[u8], from: usize, pat: &[u8]) -> usize {
+    b.get(from..).and_then(|r| r.windows(pat.len()).position(|w| w == pat)).map_or(b.len(), |p| from + p)
+}
+
 /// How deep the elements of `text` nest, counted from its tags (`<a>`,
-/// `</a>`, `<a/>`); declarations, comments and processing instructions do
-/// not count.
+/// `</a>`, `<a/>`) as an XML parser sees them: comments, CDATA, processing
+/// instructions, declarations and quoted attribute values are skipped
+/// whole, whatever `>` or `</` they hold.
 fn nesting(text: &str) -> usize {
     let b = text.as_bytes();
     let (mut depth, mut max, mut i) = (0usize, 0usize, 0usize);
-    while let Some(at) = b.get(i..).and_then(|r| r.iter().position(|&c| c == b'<')).map(|p| i + p) {
-        let end = b.get(at..).and_then(|r| r.iter().position(|&c| c == b'>')).map(|p| at + p);
-        match b.get(at + 1) {
-            Some(b'/') => depth = depth.saturating_sub(1),
-            Some(b'?' | b'!') | None => {}
-            Some(_) => {
-                let empty = end.is_some_and(|e| e > 0 && b.get(e - 1) == Some(&b'/'));
-                if !empty {
-                    depth += 1;
-                    max = max.max(depth);
-                }
+    while i < b.len() {
+        let at = find(b, i, b"<");
+        let rest = b.get(at..).unwrap_or_default();
+        i = if rest.starts_with(b"<!--") {
+            find(b, at + 4, b"-->").saturating_add(3)
+        } else if rest.starts_with(b"<![CDATA[") {
+            find(b, at + 9, b"]]>").saturating_add(3)
+        } else if rest.starts_with(b"<?") {
+            find(b, at + 2, b"?>").saturating_add(2)
+        } else if rest.starts_with(b"<!") {
+            // A declaration with an internal subset ends at `]>`.
+            let close = find(b, at, b">");
+            let bracket = find(b, at, b"[");
+            if bracket < close {
+                find(b, bracket, b"]>").saturating_add(2)
+            } else {
+                close.saturating_add(1)
             }
-        }
-        i = end.map_or(b.len(), |e| e + 1).max(at + 1);
+        } else if rest.starts_with(b"</") {
+            depth = depth.saturating_sub(1);
+            find(b, at, b">").saturating_add(1)
+        } else if rest.is_empty() {
+            b.len()
+        } else {
+            // A start tag: its end is the first `>` outside quotes.
+            let (mut j, mut quote) = (at + 1, None);
+            while let Some(&c) = b.get(j) {
+                match quote {
+                    Some(q) if c == q => quote = None,
+                    Some(_) => {}
+                    None if c == b'"' || c == b'\'' => quote = Some(c),
+                    None if c == b'>' => break,
+                    None => {}
+                }
+                j += 1;
+            }
+            if b.get(j.wrapping_sub(1)) != Some(&b'/') {
+                depth += 1;
+                max = max.max(depth);
+            }
+            j.saturating_add(1)
+        };
     }
     max
 }
@@ -286,6 +320,13 @@ mod tests {
         assert!(parse(deep.as_bytes()).is_err());
         assert_eq!(nesting(CONF), 3);
         assert_eq!(nesting("<a><b/><!-- <c> --><?x?></a>"), 1);
+        // A `>` or `</` where the parser sees none.
+        for unit in [r#"<a x="/>">"#, "<a><!-- ></a>-->", "<a><![CDATA[></a>]]>", "<a><?p ></a>?>", "<a x='>'>"] {
+            let text = format!("<trophyconf>{}</trophyconf>", unit.repeat(1000));
+            assert!(nesting(&text) >= 1000, "{unit}");
+            assert!(parse(text.as_bytes()).is_err(), "{unit}");
+        }
+        assert_eq!(nesting(r#"<!DOCTYPE t [<!ELEMENT t ANY>]><t a="1"></t>"#), 1);
     }
 
     #[test]

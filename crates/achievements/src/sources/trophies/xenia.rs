@@ -38,6 +38,8 @@ const MAX_ITEMS: usize = 4_096;
 const MAX_STRING: usize = 4_096;
 /// A picture bigger than this is not an achievement's icon.
 const MAX_ICON: usize = 2 << 20;
+/// The pictures written for one game, in all (a real game's are well under).
+const MAX_ICONS_TOTAL: usize = 32 << 20;
 
 fn be_u16(b: &[u8], at: usize) -> Option<u16> {
     Some(u16::from_be_bytes(b.get(at..at.checked_add(2)?)?.try_into().ok()?))
@@ -51,19 +53,18 @@ fn be_u64(b: &[u8], at: usize) -> Option<u64> {
     Some(u64::from_be_bytes(b.get(at..at.checked_add(8)?)?.try_into().ok()?))
 }
 
-/// A NUL-ended UTF-16BE string at `at` (at most [`MAX_STRING`] units kept),
-/// and where the next one starts.
+/// A NUL-ended UTF-16BE string at `at`, and where the next one starts. It
+/// stops after [`MAX_STRING`] units: a longer one is no real string, and the
+/// scan must stay short however the entries overlap.
 fn utf16_at(b: &[u8], at: usize) -> (String, usize) {
     let mut units = Vec::new();
     let mut i = at;
     while let Some(u) = be_u16(b, i) {
         i += 2;
-        if u == 0 {
+        if u == 0 || units.len() >= MAX_STRING {
             break;
         }
-        if units.len() < MAX_STRING {
-            units.push(u);
-        }
+        units.push(u);
     }
     (String::from_utf16_lossy(&units), i)
 }
@@ -271,10 +272,21 @@ fn title_id_of(profiles: &[PathBuf], target: &TrophyTarget) -> Option<u32> {
     game_title_id(&target.roms).or_else(|| (!target.title.trim().is_empty()).then(|| title_id_by_name(profiles, &target.title)).flatten())
 }
 
+/// What one read may still write of the game's pictures.
+struct IconBudget {
+    left: usize,
+    /// The pictures already counted (several achievements may share one).
+    seen: HashSet<u32>,
+}
+
 /// The picture of an achievement, written once under the app's
-/// achievements folder (the GPD keeps it inside), when it is a PNG.
-fn icon_file(icons: &Path, title_id: u32, x: &Xdbf, image_id: u32) -> Option<PathBuf> {
+/// achievements folder (the GPD keeps it inside), when it is a PNG and the
+/// read's budget allows it.
+fn icon_file(icons: &Path, title_id: u32, x: &Xdbf, image_id: u32, budget: &mut IconBudget) -> Option<PathBuf> {
     let png = x.image(u64::from(image_id)).filter(|d| d.starts_with(b"\x89PNG") && d.len() <= MAX_ICON)?;
+    if budget.seen.insert(image_id) {
+        budget.left = budget.left.checked_sub(png.len())?;
+    }
     let file = icons.join(format!("{title_id:08X}")).join(format!("{image_id}.png"));
     let same = std::fs::metadata(&file).ok().is_some_and(|m| m.len() == png.len() as u64);
     if !same {
@@ -298,6 +310,7 @@ pub fn read(gpd: &Path, title_id: u32, icons: &Path) -> Fetch {
     if list.is_empty() {
         return Fetch::None;
     }
+    let mut budget = IconBudget { left: MAX_ICONS_TOTAL, seen: HashSet::new() };
     let achievements = list
         .iter()
         .map(|a| {
@@ -307,7 +320,7 @@ pub fn read(gpd: &Path, title_id: u32, icons: &Path) -> Fetch {
                 name: if a.name.is_empty() { format!("#{}", a.id) } else { a.name.clone() },
                 description: if a.description.is_empty() { a.locked_description.clone() } else { a.description.clone() },
                 hidden: a.flags & SHOW_UNACHIEVED == 0,
-                icon: icon_file(icons, title_id, &x, a.image_id).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
+                icon: icon_file(icons, title_id, &x, a.image_id, &mut budget).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
                 unlocked,
                 unlocked_at: if unlocked { from_filetime(a.unlock_time) } else { None },
                 // Gamerscore: 0..=1000 a game.
@@ -458,6 +471,18 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         std::fs::write(d.path().join("x.gpd"), b"garbage").unwrap();
         assert!(matches!(read(&d.path().join("x.gpd"), 1, d.path()), Fetch::Failed(_)));
+    }
+
+    #[test]
+    fn pictures_stay_within_the_reads_budget() {
+        let png = b"\x89PNG\r\n\x1a\n0123456789".to_vec();
+        let gpd = xdbf(&[(2, 1, png.clone()), (2, 2, png.clone())]);
+        let x = Xdbf::parse(&gpd).unwrap();
+        let d = tempfile::tempdir().unwrap();
+        let mut budget = IconBudget { left: png.len() + 5, seen: HashSet::new() };
+        assert!(icon_file(d.path(), 1, &x, 1, &mut budget).is_some());
+        assert!(icon_file(d.path(), 1, &x, 1, &mut budget).is_some(), "a shared picture is counted once");
+        assert!(icon_file(d.path(), 1, &x, 2, &mut budget).is_none(), "over the budget");
     }
 
     fn xex(title_id: u32) -> Vec<u8> {
