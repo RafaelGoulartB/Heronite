@@ -15,6 +15,7 @@ use heronite_i18n::tr;
 use crate::fsutil::remove_any;
 use crate::paths::{GameDirs, ModsRoot};
 use crate::tool;
+use crate::write_rule::{self, WriteRule};
 
 const MOUNT_WAIT: Duration = Duration::from_secs(5);
 const BUSY_RETRY: Duration = Duration::from_millis(250);
@@ -25,6 +26,7 @@ const FSTYPE_PREFIX: &str = "fuse.fuse-overlayfs";
 /// A live overlay over a game folder. Dropping it unmounts.
 #[derive(Debug)]
 pub struct Mount {
+    dirs: GameDirs,
     game_dir: PathBuf,
     mods_root: PathBuf,
     fusermount: PathBuf,
@@ -49,6 +51,7 @@ impl Mount {
         let gone = unmount_dir(&self.fusermount, &self.game_dir);
         if gone {
             record_remove(&self.mods_root, &self.game_dir);
+            settle(&self.dirs);
         }
         gone
     }
@@ -63,8 +66,10 @@ impl Drop for Mount {
 /// Mounts `layers` (mod folders, lowest priority first) over `game_dir`; what
 /// the game writes lands in `dirs.overwrite()`. The game folder itself is the
 /// bottom layer: `fuse-overlayfs` opens its layers before it mounts, so they
-/// stay reachable and the folder is never written.
-pub fn mount(overlay_bin: &Path, dirs: &GameDirs, game_dir: &Path, layers: &[PathBuf]) -> Result<Mount, String> {
+/// stay reachable and the folder is never written while it runs. Once it is
+/// unmounted, what `rule` keeps with the game moves from the overwrite
+/// folder into the game folder ([`write_rule::settle`]).
+pub fn mount(overlay_bin: &Path, dirs: &GameDirs, game_dir: &Path, layers: &[PathBuf], rule: &WriteRule) -> Result<Mount, String> {
     let fusermount =
         tool::fusermount().ok_or_else(|| tr!("Heronite needs FUSE (fusermount3) to apply mods. Install the fuse3 package.").to_string())?;
     let mods_root = dirs.root().parent().map(Path::to_path_buf).unwrap_or_else(|| dirs.root().to_path_buf());
@@ -77,6 +82,8 @@ pub fn mount(overlay_bin: &Path, dirs: &GameDirs, game_dir: &Path, layers: &[Pat
         }
         record_remove(&mods_root, game_dir);
     }
+    // What an earlier run left to sort out (a crash after the unmount).
+    settle(dirs);
     let game = game_dir.canonicalize().map_err(|_| tr!("Cannot use {path}: it is not a folder", path = game_dir.display()))?;
     if !game.is_dir() {
         return Err(tr!("Cannot use {path}: it is not a folder", path = game_dir.display()));
@@ -85,15 +92,27 @@ pub fn mount(overlay_bin: &Path, dirs: &GameDirs, game_dir: &Path, layers: &[Pat
     check_places(&game, &dirs.root().canonicalize().map_err(|e| e.to_string())?)?;
 
     let layer_dir = prepare_layers(dirs, &game, layers)?;
+    write_rule::begin_session(dirs, &game, rule)?;
+    let mounted = mount_layers(overlay_bin, dirs, &game, &layer_dir, layers.len(), &fusermount);
+    if mounted.is_err() {
+        write_rule::drop_session(dirs);
+    }
+    mounted?;
+    record_add(&mods_root, &game);
+    Ok(Mount { dirs: dirs.clone(), game_dir: game, mods_root, fusermount, done: false })
+}
+
+/// Runs `fuse-overlayfs` and waits for the mount to show.
+fn mount_layers(overlay_bin: &Path, dirs: &GameDirs, game: &Path, layer_dir: &Path, count: usize, fusermount: &Path) -> Result<(), String> {
     let log_file = dirs.root().join(".mount.log");
     let stderr = fs::File::create(&log_file).map(Stdio::from).unwrap_or_else(|_| Stdio::null());
-    let options = options(layers.len());
-    log::info!("mods: mounting {} layers over {}", layers.len(), game.display());
+    let options = options(count);
+    log::info!("mods: mounting {} layers over {}", count, game.display());
     let status = Command::new(overlay_bin)
-        .current_dir(&layer_dir)
+        .current_dir(layer_dir)
         .arg("-o")
         .arg(&options)
-        .arg(&game)
+        .arg(game)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(stderr)
@@ -104,12 +123,24 @@ pub fn mount(overlay_bin: &Path, dirs: &GameDirs, game_dir: &Path, layers: &[Pat
     if !status.success() {
         return Err(tr!("fuse-overlayfs failed: {error}", error = first_lines(&said, status.code())));
     }
-    if !wait_until(|| is_overlay_at(&game)) {
-        let _ = unmount_dir(&fusermount, &game);
+    if !wait_until(|| is_overlay_at(game)) {
+        let _ = unmount_dir(fusermount, game);
         return Err(tr!("fuse-overlayfs did not mount {path}: {error}", path = game.display(), error = first_lines(&said, None)));
     }
-    record_add(&mods_root, &game);
-    Ok(Mount { game_dir: game, mods_root, fusermount, done: false })
+    Ok(())
+}
+
+/// Moves what the game wrote outside the mods' folders back into the game
+/// folder, now that nothing is mounted over it.
+fn settle(dirs: &GameDirs) {
+    if let Some(game) = write_rule::session_game_dir(dirs) {
+        if is_overlay_at(&game) {
+            return;
+        }
+    }
+    if let Err(e) = write_rule::settle(dirs) {
+        log::warn!("mods: {e}");
+    }
 }
 
 /// `lowerdir` lists the layers by the short names of `.layers` (highest
@@ -290,6 +321,7 @@ pub fn unmount_ours(root: &ModsRoot, dir: &Path) -> bool {
         let canonical = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
         record_remove(root.path(), &canonical);
         record_remove(root.path(), dir);
+        write_rule::settle_folder(root, dir);
     }
     gone
 }
@@ -354,6 +386,7 @@ pub fn cleanup_stale(root: &ModsRoot, keep: &[PathBuf]) {
     for dir in records.iter().filter(|d| !keep.contains(d)) {
         if !is_overlay_at(dir) || unmount_dir(&fusermount, dir) {
             record_remove(root.path(), dir);
+            write_rule::settle_folder(root, dir);
         }
     }
 }
@@ -458,8 +491,10 @@ garbage";
         put(dirs.mod_dir("a").join("a.txt"), "A");
         put(dirs.mod_dir("a").join("c.txt"), "A");
         put(dirs.mod_dir("b").join("a.txt"), "B");
+        put(dirs.mod_dir("b").join("Mod/x.dll"), "B");
 
-        let m = mount(&bin, &dirs, &game, &[dirs.mod_dir("a"), dirs.mod_dir("b")]).unwrap();
+        let layers = [dirs.mod_dir("a"), dirs.mod_dir("b")];
+        let m = mount(&bin, &dirs, &game, &layers, &WriteRule::new(&layers, &[])).unwrap();
         assert!(is_mounted(&game));
         assert_eq!(overlay_mounts().iter().filter(|p| p.as_path() == m.game_dir()).count(), 1);
         let read = |n: &str| fs::read_to_string(game.join(n)).unwrap();
@@ -467,16 +502,20 @@ garbage";
         assert_eq!(read("Data/old.txt"), "game");
 
         put(game.join("new.txt"), "written");
+        put(game.join("Mod/log.txt"), "log");
         fs::write(game.join("b.txt"), "changed").unwrap();
         fs::remove_file(game.join("Data/old.txt")).unwrap();
         assert!(m.unmount());
         assert!(!is_mounted(&game));
         assert_eq!(read("a.txt"), "game");
-        assert_eq!(read("b.txt"), "game");
+        assert!(!game.join("Mod").exists() && !game.join("c.txt").exists());
+        // Outside the mods' folders the game's writing stays with the game.
+        assert_eq!(read("new.txt"), "written");
+        assert_eq!(read("b.txt"), "changed");
+        assert_eq!(fs::read_to_string(dirs.overwrite().join("Mod/log.txt")).unwrap(), "log");
+        // A deletion stays in the overwrite folder (the next modded run hides the file).
         assert_eq!(read("Data/old.txt"), "game");
-        assert!(!game.join("new.txt").exists());
-        assert_eq!(fs::read_to_string(dirs.overwrite().join("new.txt")).unwrap(), "written");
-        assert_eq!(fs::read_to_string(dirs.overwrite().join("b.txt")).unwrap(), "changed");
+        assert!(!dirs.write_session().exists());
         assert!(read_records(root.path()).is_empty());
     }
 
@@ -491,7 +530,7 @@ garbage";
         put(dirs.mod_dir("a").join("a.txt"), "A");
         assert!(!is_ours_mounted(&root, &game) && unmount_ours(&root, &game), "nothing mounted: nothing to do");
         // The app quit while the game ran: the guard is gone, the mount stays.
-        std::mem::forget(mount(&bin, &dirs, &game, &[dirs.mod_dir("a")]).unwrap());
+        std::mem::forget(mount(&bin, &dirs, &game, &[dirs.mod_dir("a")], &WriteRule::default()).unwrap());
         assert!(is_ours_mounted(&root, &game));
         assert!(unmount_ours(&root, &game));
         assert!(!is_mounted(&game) && !is_ours_mounted(&root, &game));
@@ -509,13 +548,13 @@ garbage";
         put(game.join("a.txt"), "game");
         put(dirs.mod_dir("a").join("a.txt"), "A");
         {
-            let _m = mount(&bin, &dirs, &game, &[dirs.mod_dir("a")]).unwrap();
+            let _m = mount(&bin, &dirs, &game, &[dirs.mod_dir("a")], &WriteRule::default()).unwrap();
             assert_eq!(fs::read_to_string(game.join("a.txt")).unwrap(), "A");
         }
         assert!(!is_mounted(&game));
 
         // A crash leaves the mount and its record; the next mount takes it away.
-        let m = mount(&bin, &dirs, &game, &[dirs.mod_dir("a")]).unwrap();
+        let m = mount(&bin, &dirs, &game, &[dirs.mod_dir("a")], &WriteRule::default()).unwrap();
         std::mem::forget(m);
         assert!(is_mounted(&game));
         cleanup_stale(&root, &[game.canonicalize().unwrap()]);
@@ -524,9 +563,9 @@ garbage";
         assert!(!is_mounted(&game));
         assert!(read_records(root.path()).is_empty());
 
-        let m = mount(&bin, &dirs, &game, &[dirs.mod_dir("a")]).unwrap();
+        let m = mount(&bin, &dirs, &game, &[dirs.mod_dir("a")], &WriteRule::default()).unwrap();
         std::mem::forget(m);
-        let again = mount(&bin, &dirs, &game, &[dirs.mod_dir("a")]).unwrap();
+        let again = mount(&bin, &dirs, &game, &[dirs.mod_dir("a")], &WriteRule::default()).unwrap();
         assert_eq!(fs::read_to_string(game.join("a.txt")).unwrap(), "A");
         assert!(again.unmount());
         assert_eq!(fs::read_to_string(game.join("a.txt")).unwrap(), "game");

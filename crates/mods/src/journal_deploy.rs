@@ -12,10 +12,12 @@
 //!   touched, so [`restore`] can undo a deployment that a crash, a kill or a
 //!   power cut cut short, at any step. It runs when the guard drops, when an
 //!   adopted game ends, at the app's start, and before the next deployment.
-//! * What the game wrote goes to the overwrite folder, the same as Linux's
-//!   upper layer: files it created (anything not in `deploy.snapshot`, the
-//!   folder's list from before), and the copies of ours it rewrote. The
-//!   overwrite folder is the top layer of the next deployment.
+//! * What the game wrote under the mods' own folders goes to the overwrite
+//!   folder: files it created there (anything not in `deploy.snapshot`, the
+//!   folder's list from before), and the copies of ours it rewrote. Files it
+//!   created anywhere else (saves) stay in the game folder
+//!   ([`crate::write_rule`]). The overwrite folder is the top layer of the
+//!   next deployment.
 //!
 //! The module builds on every system, so its tests run on Linux too; only
 //! Windows uses it at launch.
@@ -31,8 +33,12 @@ use heronite_i18n::tr;
 use serde::{Deserialize, Serialize};
 
 use crate::fsutil::{extension, remove_any};
+use crate::journal_fs::{
+    self, copy_atomic, is_locked, is_partial, move_file, partial_of, probe, sweep_partials, Patience, RESTORE_PATIENCE,
+};
 use crate::overwrite::is_whiteout;
 use crate::paths::GameDirs;
+use crate::write_rule::WriteRule;
 
 /// Below this size a copy costs nothing, and the game can never write into
 /// the mod's own file through a link.
@@ -77,6 +83,13 @@ struct Journal {
     game_dir: PathBuf,
     phase: Phase,
     entries: Vec<Entry>,
+    /// Which new files go to the overwrite folder. A journal from before the
+    /// rule has none: every new file goes there, as it did then.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rule: Option<WriteRule>,
+    /// Why the last restore stopped (a file still open), for the user.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    problem: Option<String>,
 }
 
 /// What a deployment did, for the game's log.
@@ -96,6 +109,8 @@ pub struct RestoreSummary {
     pub restored: usize,
     /// Files the game wrote, moved to the overwrite folder.
     pub kept: usize,
+    /// Files the game made outside the mods' folders, left in the game folder.
+    pub stayed: usize,
 }
 
 /// The mods in a game folder. Dropping it takes them out again.
@@ -145,10 +160,17 @@ pub fn deployed_game_dir(dirs: &GameDirs) -> Option<PathBuf> {
     read_journal(dirs).map(|j| j.game_dir)
 }
 
+/// Why the mods are still in the game folder after a restore was tried (a
+/// file another program keeps open), or `None`.
+pub fn problem(dirs: &GameDirs) -> Option<String> {
+    read_journal(dirs).and_then(|j| j.problem)
+}
+
 /// Puts `layers` (mod folders, lowest priority first) into `game_dir`, with
-/// the overwrite folder on top. A deployment left by a crash is restored
+/// the overwrite folder on top. `rule` says what the game writes meanwhile
+/// is kept in the overwrite folder. A deployment left by a crash is restored
 /// first. Fails, leaving the folder as it was, when a file cannot be placed.
-pub fn deploy(dirs: &GameDirs, game_dir: &Path, layers: &[PathBuf]) -> Result<Deployed, String> {
+pub fn deploy(dirs: &GameDirs, game_dir: &Path, layers: &[PathBuf], rule: &WriteRule) -> Result<Deployed, String> {
     if is_deployed(dirs) {
         log::warn!("mods: mods from an earlier run are still in the game folder; taking them out first");
         restore(dirs).map_err(|e| tr!("The mods of an earlier run could not be taken out of the game folder: {error}", error = e))?;
@@ -168,7 +190,8 @@ pub fn deploy(dirs: &GameDirs, game_dir: &Path, layers: &[PathBuf]) -> Result<De
     let mut entries = plan(&all_layers, &snapshot.files);
     let summary_files = entries.len();
     write_snapshot(dirs, &snapshot)?;
-    let mut journal = Journal { game_dir: game.clone(), phase: Phase::Deploying, entries: entries.clone() };
+    let mut journal =
+        Journal { game_dir: game.clone(), phase: Phase::Deploying, entries: entries.clone(), rule: Some(rule.clone()), problem: None };
     write_journal(dirs, &journal)?;
 
     let mut links = true;
@@ -269,7 +292,7 @@ fn place(dirs: &GameDirs, game: &Path, entry: &mut Entry, links: &mut bool) -> i
         }
     }
     if !entry.linked {
-        fs::copy(&entry.source, &target)?;
+        copy_atomic(&entry.source, &target)?;
     }
     let (size, modified) = stamp(&target).unwrap_or((size, 0));
     entry.size = Some(size);
@@ -284,21 +307,29 @@ fn stamp(path: &Path) -> Option<(u64, u64)> {
     Some((meta.len(), u64::try_from(modified.as_nanos()).unwrap_or(u64::MAX)))
 }
 
-/// Rename, else (another volume) copy and delete.
-fn move_file(from: &Path, to: &Path) -> io::Result<()> {
-    fs::rename(from, to).or_else(|_| fs::copy(from, to).and_then(|_| fs::remove_file(from)))
-}
-
 /// Takes a deployment out of its game folder. It is safe to run after a
 /// crash at any step of [`deploy`], and again after a restore that failed
-/// halfway. Without a journal there is nothing to do.
+/// halfway. Without a journal there is nothing to do but sweep what a cut
+/// short copy left.
+///
+/// Files another program still holds open are waited for, all together for
+/// at most [`RESTORE_PATIENCE`]. If one is still open then, nothing is
+/// touched: the mods stay in place, the journal says why
+/// ([`problem`]), and the next start or launch tries again.
 pub fn restore(dirs: &GameDirs) -> Result<RestoreSummary, String> {
-    let Some(journal) = read_journal(dirs) else {
+    restore_with(dirs, &Patience::new(RESTORE_PATIENCE))
+}
+
+fn restore_with(dirs: &GameDirs, patience: &Patience) -> Result<RestoreSummary, String> {
+    // Copies to another drive that a crash cut short; their sources are whole.
+    sweep_partials(&dirs.deploy_backup());
+    sweep_partials(&dirs.overwrite());
+    let Some(mut journal) = read_journal(dirs) else {
         // A snapshot or backups without a journal: the journal is written
         // after them, so nothing was placed yet.
         let _ = fs::remove_file(dirs.deploy_snapshot());
-        if dirs.deploy_backup().is_dir() && fs::read_dir(dirs.deploy_backup()).map(|mut d| d.next().is_none()).unwrap_or(false) {
-            let _ = fs::remove_dir(dirs.deploy_backup());
+        if dirs.deploy_backup().is_dir() && crate::fsutil::totals(&dirs.deploy_backup()).0 == 0 {
+            let _ = remove_any(&dirs.deploy_backup());
         }
         return Ok(RestoreSummary::default());
     };
@@ -306,45 +337,108 @@ pub fn restore(dirs: &GameDirs) -> Result<RestoreSummary, String> {
     if !game.is_dir() {
         return Err(tr!("The game folder {path} is not there (an unplugged drive?)", path = game.display()));
     }
+    for e in &journal.entries {
+        let _ = journal_fs::remove_file(&partial_of(&game.join(&e.rel)));
+    }
     let snapshot = read_snapshot(dirs);
-    let mut summary = RestoreSummary::default();
-    let mut touched_dirs: BTreeSet<String> = BTreeSet::new();
-    let mut moved: HashSet<String> = HashSet::new();
+    let backup_of = |rel: &str| dirs.deploy_backup().join(rel);
 
+    // What the game made while it ran (only once it could have run) under
+    // the mods' folders; what it made elsewhere stays.
+    let mut made: Vec<String> = Vec::new();
+    let mut stayed = 0;
+    // Folders the game made, files or not (BepInEx makes empty `plugins`).
+    let mut made_dirs: Vec<String> = Vec::new();
     if journal.phase == Phase::Deployed {
-        let ours: HashSet<String> = journal.entries.iter().map(|e| e.rel.to_lowercase()).collect();
-        // Files the game made while it ran.
-        let now = list_tree(&game);
-        let known: HashSet<String> = snapshot.as_ref().map(|s| s.files.iter().map(|f| f.to_lowercase()).collect()).unwrap_or_default();
-        if snapshot.is_some() {
-            for rel in &now.files {
+        if let Some(snapshot) = &snapshot {
+            let ours: HashSet<String> = journal.entries.iter().map(|e| e.rel.to_lowercase()).collect();
+            let known: HashSet<String> = snapshot.files.iter().map(|f| f.to_lowercase()).collect();
+            let now = list_tree(&game);
+            made_dirs = now.dirs.into_iter().collect();
+            for rel in now.files {
                 let key = rel.to_lowercase();
-                if !known.contains(&key) && !ours.contains(&key) {
-                    keep_written(dirs, &game, rel).map_err(|e| format!("{rel}: {e}"))?;
-                    touched_dirs.insert(rel.clone());
-                    summary.kept += 1;
+                if is_partial(&rel) {
+                    // Ours: a copy into the game folder cut short.
+                    let _ = journal_fs::remove_file(&game.join(&rel));
+                } else if !known.contains(&key) && !ours.contains(&key) {
+                    if journal.rule.as_ref().is_none_or(|r| r.to_overwrite(&rel)) {
+                        made.push(rel);
+                    } else {
+                        stayed += 1;
+                    }
                 }
-            }
-        }
-        // Files of ours the game wrote over. A replaced file whose backup is
-        // gone was put back by an earlier restore that failed further on: what
-        // is there is the game's own file, and it stays.
-        for e in &journal.entries {
-            if e.replaced && !dirs.deploy_backup().join(&e.rel).exists() {
-                continue;
-            }
-            if rewritten(&game, e) {
-                keep_written(dirs, &game, &e.rel).map_err(|err| format!("{}: {err}", e.rel))?;
-                moved.insert(e.rel.clone());
-                summary.kept += 1;
             }
         }
     }
 
+    // Before anything moves: every file this restore takes must be free.
+    // A game's crash reporter or an anti-virus scan lets go in a moment.
+    let mut to_take: Vec<(String, PathBuf)> = made.iter().map(|rel| (rel.clone(), game.join(rel))).collect();
+    for e in &journal.entries {
+        if e.replaced && !backup_of(&e.rel).exists() {
+            continue;
+        }
+        // A folder there is the game's, and stays.
+        if game.join(&e.rel).symlink_metadata().is_ok_and(|m| !m.is_dir()) {
+            to_take.push((e.rel.clone(), game.join(&e.rel)));
+        }
+        if e.replaced {
+            to_take.push((e.rel.clone(), backup_of(&e.rel)));
+        }
+    }
+    let busy: Vec<&str> = to_take
+        .iter()
+        .filter(|(_, path)| patience.retry(|| probe(path)).is_err_and(|e| is_locked(&e)))
+        .map(|(rel, _)| rel.as_str())
+        .collect();
+    if let Some(first) = busy.first() {
+        let problem = if busy.len() == 1 {
+            tr!("{file} in the game folder is still open in another program, so the mods were left in place. Close that program; Heronite takes the mods out at its next start or before the game's next launch.", file = *first)
+        } else {
+            tr!("{file} and {count} more files in the game folder are still open in another program, so the mods were left in place. Close that program; Heronite takes the mods out at its next start or before the game's next launch.", file = *first, count = busy.len() - 1)
+        };
+        return Err(stopped(dirs, &mut journal, problem));
+    }
+
+    let mut summary = RestoreSummary { stayed, ..Default::default() };
+    let mut touched_dirs: BTreeSet<String> = BTreeSet::new();
+    let mut moved: HashSet<String> = HashSet::new();
     let mut failed: Vec<String> = Vec::new();
+    for rel in &made {
+        match patience.retry(|| keep_written(dirs, &game, rel)) {
+            Ok(()) => {
+                touched_dirs.insert(rel.clone());
+                summary.kept += 1;
+            }
+            Err(e) => failed.push(format!("{rel}: {e}")),
+        }
+    }
+    if journal.phase == Phase::Deployed {
+        // Files of ours the game wrote over. A replaced file whose backup is
+        // gone was put back by an earlier restore that failed further on: what
+        // is there is the game's own file, and it stays.
+        for e in &journal.entries {
+            if e.replaced && !backup_of(&e.rel).exists() {
+                continue;
+            }
+            if rewritten(&game, e, &backup_of(&e.rel)) {
+                match patience.retry(|| keep_written(dirs, &game, &e.rel)) {
+                    Ok(()) => {
+                        moved.insert(e.rel.clone());
+                        summary.kept += 1;
+                    }
+                    Err(err) => failed.push(format!("{}: {err}", e.rel)),
+                }
+            }
+        }
+    }
+    if !failed.is_empty() {
+        return Err(stopped(dirs, &mut journal, unfinished(&failed)));
+    }
+
     for e in journal.entries.iter().rev() {
         let target = game.join(&e.rel);
-        let backup = dirs.deploy_backup().join(&e.rel);
+        let backup = backup_of(&e.rel);
         touched_dirs.insert(e.rel.clone());
         if e.replaced && !backup.exists() {
             // Not reached before a crash: the game's own file never moved.
@@ -352,7 +446,7 @@ pub fn restore(dirs: &GameDirs) -> Result<RestoreSummary, String> {
         }
         // Only a file: a folder there is the game's (a mod file that could not be placed).
         if !moved.contains(&e.rel) && target.symlink_metadata().is_ok_and(|m| !m.is_dir()) {
-            match fs::remove_file(&target) {
+            match patience.retry(|| journal_fs::remove_file(&target)) {
                 Ok(()) => summary.removed += 1,
                 Err(err) => {
                     failed.push(format!("{}: {err}", e.rel));
@@ -361,37 +455,64 @@ pub fn restore(dirs: &GameDirs) -> Result<RestoreSummary, String> {
             }
         }
         if e.replaced {
-            match move_file(&backup, &target) {
+            match patience.retry(|| move_file(&backup, &target)) {
                 Ok(()) => summary.restored += 1,
                 Err(err) => failed.push(format!("{}: {err}", e.rel)),
             }
         }
     }
     if !failed.is_empty() {
-        // The journal stays, so the next try picks up from here.
-        return Err(failed.into_iter().take(3).collect::<Vec<_>>().join("; "));
+        // A file was taken between the check and the move. The journal
+        // stays, so the next try picks up from here: each file is either back
+        // or still listed.
+        return Err(stopped(dirs, &mut journal, unfinished(&failed)));
     }
-    remove_new_dirs(&game, &touched_dirs, snapshot.as_ref());
+    remove_new_dirs(&game, &touched_dirs, &made_dirs, snapshot.as_ref());
     let _ = remove_any(&dirs.deploy_backup());
     let _ = fs::remove_file(dirs.deploy_snapshot());
     fs::remove_file(dirs.deploy_journal()).map_err(|e| format!("{}: {e}", dirs.deploy_journal().display()))?;
     log::info!(
-        "mods: taken out of {}: {} removed, {} game files put back, {} written by the game kept in overwrite",
+        "mods: taken out of {}: {} removed, {} game files put back, {} written by the game kept in overwrite, {} left in the game folder",
         game.display(),
         summary.removed,
         summary.restored,
-        summary.kept
+        summary.kept,
+        summary.stayed
     );
     Ok(summary)
 }
 
+/// Keeps why a restore stopped in the journal (the state the next try
+/// resumes from), logs it and gives it back.
+fn stopped(dirs: &GameDirs, journal: &mut Journal, problem: String) -> String {
+    log::warn!("mods: the mods stay in {} for now: {problem}", journal.game_dir.display());
+    journal.problem = Some(problem.clone());
+    if let Err(e) = write_journal(dirs, journal) {
+        log::warn!("mods: {e}");
+    }
+    problem
+}
+
+/// The message for files that could not be put back.
+fn unfinished(failed: &[String]) -> String {
+    tr!(
+        "Some files could not be put back yet ({errors}). Heronite finishes putting the game folder back at its next start or before the game's next launch.",
+        errors = failed.iter().take(3).cloned().collect::<Vec<_>>().join("; ")
+    )
+}
+
 /// Whether the game wrote over a file of ours. A link whose mod file changed
 /// in step was written in place: the change is already in the mod's file,
-/// and moving it would only link the overwrite folder to the mod.
-fn rewritten(game: &Path, e: &Entry) -> bool {
+/// and moving it would only link the overwrite folder to the mod. A file
+/// just like its backup (size and time) is the game's own, put back by a
+/// copy to another drive that a crash stopped before the backup was removed.
+fn rewritten(game: &Path, e: &Entry, backup: &Path) -> bool {
     let (Some(size), Some(modified)) = (e.size, e.modified) else { return false };
     let Some(now) = stamp(&game.join(&e.rel)) else { return false };
     if now == (size, modified) {
+        return false;
+    }
+    if e.replaced && stamp(backup) == Some(now) {
         return false;
     }
     !(e.linked && stamp(&e.source) == Some(now))
@@ -411,11 +532,13 @@ fn keep_written(dirs: &GameDirs, game: &Path, rel: &str) -> io::Result<()> {
 }
 
 /// Removes the empty folders that were not in the game before: those the
-/// mods' files needed, and those the game made for files now in overwrite.
-fn remove_new_dirs(game: &Path, files: &BTreeSet<String>, snapshot: Option<&Tree>) {
+/// mods' files needed, those the game made for files now in overwrite, and
+/// the ones it made and left empty (`dirs`). A folder with anything in it
+/// stays.
+fn remove_new_dirs(game: &Path, files: &BTreeSet<String>, dirs: &[String], snapshot: Option<&Tree>) {
     let Some(snapshot) = snapshot else { return };
     let before: HashSet<String> = snapshot.dirs.iter().map(|d| d.to_lowercase()).collect();
-    let mut candidates: BTreeSet<String> = BTreeSet::new();
+    let mut candidates: BTreeSet<String> = dirs.iter().cloned().collect();
     for rel in files {
         let mut parent = Path::new(rel).parent();
         while let Some(p) = parent.filter(|p| !p.as_os_str().is_empty()) {
@@ -566,6 +689,11 @@ mod tests {
             vec![self.dirs.mod_dir("a"), self.dirs.mod_dir("b")]
         }
 
+        /// As before the rule: everything the game makes goes to overwrite.
+        fn rule(&self) -> WriteRule {
+            WriteRule { mod_folders: ["data", "logs", "bepinex", "sub"].map(String::from).into(), keep: Vec::new() }
+        }
+
         fn vanilla(&self) {
             assert_eq!(read(self.game.join("Data/base.txt")), "game");
             assert_eq!(read(self.game.join("Data/keep.txt")), "game");
@@ -578,7 +706,7 @@ mod tests {
     #[test]
     fn the_highest_layer_wins_ignoring_case_and_the_game_comes_back() {
         let e = env();
-        let d = deploy(&e.dirs, &e.game, &e.layers()).unwrap();
+        let d = deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap();
         assert!(is_deployed(&e.dirs));
         assert_eq!(deployed_game_dir(&e.dirs).as_deref(), Some(e.game.as_path()));
         assert_eq!(read(e.game.join("Data/base.txt")), "B", "b is last in the load order");
@@ -597,7 +725,7 @@ mod tests {
     fn dropping_the_guard_restores() {
         let e = env();
         {
-            let _d = deploy(&e.dirs, &e.game, &e.layers()).unwrap();
+            let _d = deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap();
             assert_eq!(read(e.game.join("Data/base.txt")), "B");
         }
         e.vanilla();
@@ -606,23 +734,23 @@ mod tests {
     #[test]
     fn what_the_game_writes_lands_in_overwrite_and_comes_back_next_time() {
         let e = env();
-        let d = deploy(&e.dirs, &e.game, &e.layers()).unwrap();
+        let d = deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap();
         // The game makes a log and a folder, and rewrites a copied text file.
         put(e.game.join("Logs/run.log"), "log");
-        put(e.game.join("settings.ini"), "mine");
+        put(e.game.join("Data/settings.ini"), "mine");
         std::thread::sleep(std::time::Duration::from_millis(20));
         fs::write(e.game.join("Data/base.txt"), "rewritten by the game").unwrap();
         let r = d.restore().unwrap();
         assert_eq!(r.kept, 3);
         e.vanilla();
-        assert!(!e.game.join("Logs").exists() && !e.game.join("settings.ini").exists());
+        assert!(!e.game.join("Logs").exists() && !e.game.join("Data/settings.ini").exists());
         assert_eq!(read(e.dirs.overwrite().join("Logs/run.log")), "log");
-        assert_eq!(read(e.dirs.overwrite().join("settings.ini")), "mine");
+        assert_eq!(read(e.dirs.overwrite().join("Data/settings.ini")), "mine");
         assert_eq!(read(e.dirs.overwrite().join("Data/base.txt")), "rewritten by the game");
         assert_eq!(read(e.dirs.mod_dir("b").join("data/BASE.txt")), "B");
 
         // Next launch: the overwrite folder is the top layer.
-        let d = deploy(&e.dirs, &e.game, &e.layers()).unwrap();
+        let d = deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap();
         assert_eq!(read(e.game.join("Data/base.txt")), "rewritten by the game");
         assert_eq!(read(e.game.join("Logs/run.log")), "log");
         drop(d);
@@ -631,15 +759,86 @@ mod tests {
         assert_eq!(read(e.dirs.overwrite().join("Logs/run.log")), "log", "unchanged, still in overwrite");
     }
 
+    /// BepInEx makes `BepInEx/plugins` and `BepInEx/patchers` at start and
+    /// leaves them empty (seen with ULTRAKILL).
+    #[test]
+    fn empty_folders_the_game_made_go_and_its_own_stay() {
+        let e = env();
+        fs::create_dir_all(e.game.join("Playlists")).unwrap();
+        let d = deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap();
+        fs::create_dir_all(e.game.join("BepInEx/plugins")).unwrap();
+        fs::create_dir_all(e.game.join("BepInEx/patchers")).unwrap();
+        put(e.game.join("BepInEx/LogOutput.log"), "log");
+        fs::create_dir_all(e.game.join("Data/Empty")).unwrap();
+        d.restore().unwrap();
+        e.vanilla();
+        assert!(!e.game.join("BepInEx").exists(), "made by the game while modded, now empty");
+        assert!(!e.game.join("Data/Empty").exists());
+        assert!(e.game.join("Playlists").is_dir(), "an empty folder the game had before stays");
+        assert_eq!(read(e.dirs.overwrite().join("BepInEx/LogOutput.log")), "log");
+    }
+
+    /// ULTRAKILL with BepInEx: its saves are in `Saves`, which no mod has.
+    #[test]
+    fn saves_stay_in_the_game_folder_and_mod_files_go_to_overwrite() {
+        let e = env();
+        fs::create_dir_all(e.game.join("Saves")).unwrap();
+        put(e.game.join("Saves/old.sav"), "old");
+        put(e.dirs.mod_dir("bep").join("BepInEx/plugins/X/x.dll"), "x");
+        put(e.dirs.mod_dir("bep").join("Data/Saves/shipped.sav"), "a mod's own save");
+        let layers = vec![e.dirs.mod_dir("bep")];
+        let rule = WriteRule::new(&layers, &["Data/Profiles"]);
+        let d = deploy(&e.dirs, &e.game, &layers, &rule).unwrap();
+        put(e.game.join("Saves/new.sav"), "new");
+        fs::write(e.game.join("Saves/old.sav"), "old, played on").unwrap();
+        put(e.game.join("output_log.txt"), "root log");
+        put(e.game.join("BepInEx/config/x.cfg"), "cfg");
+        put(e.game.join("Data/Profiles/1.dat"), "listed as the game's");
+        put(e.game.join("Data/Saves/slot2.sav"), "named like saves");
+        put(e.game.join("Data/cache.bin"), "a mod folder");
+        let r = d.restore().unwrap();
+        assert_eq!((r.kept, r.stayed), (2, 4));
+        assert_eq!(read(e.game.join("Saves/new.sav")), "new");
+        assert_eq!(read(e.game.join("Saves/old.sav")), "old, played on");
+        assert_eq!(read(e.game.join("output_log.txt")), "root log");
+        assert_eq!(read(e.game.join("Data/Profiles/1.dat")), "listed as the game's");
+        assert_eq!(read(e.game.join("Data/Saves/slot2.sav")), "named like saves");
+        assert!(!e.game.join("Data/Saves/shipped.sav").exists(), "the mod's file is taken out");
+        assert_eq!(read(e.dirs.overwrite().join("BepInEx/config/x.cfg")), "cfg");
+        assert_eq!(read(e.dirs.overwrite().join("Data/cache.bin")), "a mod folder");
+        assert!(!e.game.join("BepInEx").exists());
+        assert!(!is_deployed(&e.dirs));
+    }
+
+    /// A journal written before the rule (an update while a game ran):
+    /// everything new goes to overwrite, as it did then.
+    #[test]
+    fn a_journal_from_before_the_rule_keeps_every_new_file() {
+        let e = env();
+        std::mem::forget(deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap());
+        let journal = read_journal(&e.dirs).unwrap();
+        let mut text: serde_json::Value = serde_json::to_value(&journal).unwrap();
+        text.as_object_mut().unwrap().remove("rule");
+        fs::write(e.dirs.deploy_journal(), serde_json::to_vec(&text).unwrap()).unwrap();
+        assert_eq!(read_journal(&e.dirs).unwrap().rule, None);
+        put(e.game.join("save.dat"), "save");
+        let r = restore(&e.dirs).unwrap();
+        assert_eq!((r.kept, r.stayed), (1, 0));
+        assert_eq!(read(e.dirs.overwrite().join("save.dat")), "save");
+        e.vanilla();
+    }
+
     #[test]
     fn a_crash_while_running_is_undone_at_the_next_start() {
         let e = env();
-        std::mem::forget(deploy(&e.dirs, &e.game, &e.layers()).unwrap());
+        std::mem::forget(deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap());
+        put(e.game.join("Data/written.dat"), "data");
         put(e.game.join("save.dat"), "save");
         assert!(is_deployed(&e.dirs));
         restore(&e.dirs).unwrap();
         e.vanilla();
-        assert_eq!(read(e.dirs.overwrite().join("save.dat")), "save");
+        assert_eq!(read(e.dirs.overwrite().join("Data/written.dat")), "data");
+        assert_eq!(read(e.game.join("save.dat")), "save", "outside the mods' folders: it stays");
         assert_eq!(restore(&e.dirs).unwrap(), RestoreSummary::default(), "nothing left to do");
     }
 
@@ -651,7 +850,7 @@ mod tests {
         let snapshot = list_tree(&e.game);
         write_snapshot(&e.dirs, &snapshot).unwrap();
         let mut entries = plan(&e.layers(), &snapshot.files);
-        let journal = Journal { game_dir: e.game.clone(), phase: Phase::Deploying, entries: entries.clone() };
+        let journal = Journal { game_dir: e.game.clone(), phase: Phase::Deploying, entries: entries.clone(), rule: None, problem: None };
         write_journal(&e.dirs, &journal).unwrap();
         let mut links = true;
         for entry in entries.iter_mut().take(2) {
@@ -663,7 +862,7 @@ mod tests {
         put(e.game.join("unrelated.txt"), "x");
 
         // The next deployment restores first.
-        let d = deploy(&e.dirs, &e.game, &e.layers()).unwrap();
+        let d = deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap();
         assert_eq!(read(e.game.join("Data/base.txt")), "B");
         drop(d);
         e.vanilla();
@@ -677,7 +876,7 @@ mod tests {
         let snapshot = list_tree(&e.game);
         write_snapshot(&e.dirs, &snapshot).unwrap();
         let entries = plan(&e.layers(), &snapshot.files);
-        write_journal(&e.dirs, &Journal { game_dir: e.game.clone(), phase: Phase::Deploying, entries }).unwrap();
+        write_journal(&e.dirs, &Journal { game_dir: e.game.clone(), phase: Phase::Deploying, entries, rule: None, problem: None }).unwrap();
         restore(&e.dirs).unwrap();
         e.vanilla();
     }
@@ -688,7 +887,7 @@ mod tests {
         // A mod file where the game has a folder cannot be placed.
         put(e.dirs.mod_dir("b").join("Data/Sub"), "a file named like a folder");
         put(e.game.join("Data/Sub/inner.txt"), "game");
-        let err = deploy(&e.dirs, &e.game, &e.layers()).unwrap_err();
+        let err = deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap_err();
         assert!(err.to_lowercase().contains("data/sub"), "{err}");
         e.vanilla();
         assert_eq!(read(e.game.join("Data/Sub/inner.txt")), "game");
@@ -700,7 +899,7 @@ mod tests {
         let big = "x".repeat(COPY_BELOW as usize + 1);
         put(e.dirs.mod_dir("a").join("Data/big.bsa"), &big);
         put(e.dirs.mod_dir("a").join("Data/big.ini"), &big);
-        let d = deploy(&e.dirs, &e.game, &e.layers()).unwrap();
+        let d = deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap();
         let j = read_journal(&e.dirs).unwrap();
         let linked = |rel: &str| j.entries.iter().find(|x| x.rel == rel).unwrap().linked;
         // Same volume (one temp dir): the big archive is a link.
@@ -717,7 +916,7 @@ mod tests {
     fn whiteouts_brought_from_linux_are_not_files() {
         let e = env();
         put(e.dirs.overwrite().join("Data/.wh.keep.txt"), "");
-        let d = deploy(&e.dirs, &e.game, &e.layers()).unwrap();
+        let d = deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap();
         assert!(!e.game.join("Data/.wh.keep.txt").exists());
         drop(d);
         e.vanilla();
@@ -733,7 +932,7 @@ mod tests {
         put(e.game.join("sub/b.bin"), "game");
         put(e.dirs.mod_dir("m").join("a.txt"), "mod");
         put(e.dirs.mod_dir("m").join("sub/c.bin"), "mod");
-        std::mem::forget(deploy(&e.dirs, &e.game, &[e.dirs.mod_dir("m")]).unwrap());
+        std::mem::forget(deploy(&e.dirs, &e.game, &[e.dirs.mod_dir("m")], &WriteRule::new(&[e.dirs.mod_dir("m")], &[])).unwrap());
         let locked = |mode| fs::set_permissions(e.game.join("sub"), fs::Permissions::from_mode(mode)).unwrap();
         locked(0o555);
         assert!(restore(&e.dirs).is_err(), "sub/c.bin cannot be removed");
@@ -747,10 +946,119 @@ mod tests {
         assert!(!is_deployed(&e.dirs));
     }
 
+    /// Holds a file open the way a game's crash reporter or a virus scan
+    /// does: no sharing, so Windows refuses to delete or rename it.
+    #[cfg(windows)]
+    fn hold(path: &Path) -> fs::File {
+        use std::os::windows::fs::OpenOptionsExt;
+        fs::OpenOptions::new().read(true).share_mode(0).open(path).unwrap()
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_file_still_open_leaves_every_mod_in_place_and_says_why() {
+        let e = env();
+        let d = deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap();
+        std::mem::forget(d);
+        put(e.game.join("Logs/run.log"), "log");
+        let held = hold(&e.game.join("Logs/run.log"));
+        let started = std::time::Instant::now();
+        let err = restore_with(&e.dirs, &Patience::new(std::time::Duration::from_millis(400))).unwrap_err();
+        assert!(started.elapsed() >= std::time::Duration::from_millis(200), "it waited before giving up");
+        assert!(err.starts_with("Logs/run.log in the game folder is still open"), "{err}");
+        // Nothing was touched: the folder is as the game had it.
+        assert_eq!(read(e.game.join("Data/base.txt")), "B");
+        assert_eq!(read(e.game.join("winhttp.dll")), "dll");
+        assert_eq!(read(e.dirs.deploy_backup().join("Data/base.txt")), "game");
+        assert!(e.game.join("Logs/run.log").exists() && !e.dirs.overwrite().join("Logs/run.log").exists());
+        assert!(is_deployed(&e.dirs));
+        assert_eq!(problem(&e.dirs).as_deref(), Some(err.as_str()));
+
+        // Closed: the next start puts the folder back.
+        drop(held);
+        restore(&e.dirs).unwrap();
+        e.vanilla();
+        assert_eq!(read(e.dirs.overwrite().join("Logs/run.log")), "log");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_file_let_go_in_a_moment_is_waited_for() {
+        let e = env();
+        std::mem::forget(deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap());
+        let held = hold(&e.game.join("Data/base.txt"));
+        let backup = hold(&e.dirs.deploy_backup().join("Data/base.txt"));
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            drop((held, backup));
+        });
+        let r = restore_with(&e.dirs, &Patience::new(std::time::Duration::from_secs(10))).unwrap();
+        release.join().unwrap();
+        assert_eq!((r.removed, r.restored), (3, 1));
+        e.vanilla();
+    }
+
+    #[test]
+    fn a_copy_back_from_another_drive_cut_short_is_finished_next_time() {
+        let e = env();
+        std::mem::forget(deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap());
+        // What a power cut in the middle of copying the backup back leaves:
+        // our file removed, half the game's file beside where it goes.
+        fs::remove_file(e.game.join("Data/base.txt")).unwrap();
+        fs::write(partial_of(&e.game.join("Data/base.txt")), "ga").unwrap();
+        // And a cut-short copy into the overwrite folder.
+        put(partial_of(&e.dirs.overwrite().join("Logs/run.log")), "lo");
+        restore(&e.dirs).unwrap();
+        e.vanilla();
+        assert!(!partial_of(&e.game.join("Data/base.txt")).exists());
+        assert!(!partial_of(&e.dirs.overwrite().join("Logs/run.log")).exists());
+        assert!(!e.dirs.overwrite().join("Data").exists(), "the partial was not taken for a file the game wrote");
+    }
+
+    #[test]
+    fn a_copy_back_done_but_its_backup_not_removed_is_not_taken_for_the_games_writing() {
+        let e = env();
+        std::mem::forget(deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap());
+        // A crash after the game's file was copied back whole, before its
+        // backup was removed: both are the game's file, with the same time.
+        fs::remove_file(e.game.join("Data/base.txt")).unwrap();
+        copy_atomic(&e.dirs.deploy_backup().join("Data/base.txt"), &e.game.join("Data/base.txt")).unwrap();
+        let r = restore(&e.dirs).unwrap();
+        assert_eq!(r.kept, 0);
+        e.vanilla();
+        assert!(!e.dirs.overwrite().join("Data/base.txt").exists());
+    }
+
+    #[test]
+    fn a_copy_to_the_backup_cut_short_is_swept_without_a_journal() {
+        let e = env();
+        // A crash while the game's file was being copied aside, before the
+        // journal reached the disk: the game's file is still in place.
+        put(partial_of(&e.dirs.deploy_backup().join("Data/base.txt")), "ga");
+        restore(&e.dirs).unwrap();
+        assert!(!e.dirs.deploy_backup().exists());
+        assert_eq!(read(e.game.join("Data/base.txt")), "game");
+    }
+
+    #[test]
+    fn a_read_only_copy_is_taken_out() {
+        let e = env();
+        let ro = e.dirs.mod_dir("a").join("Data/ro.esp");
+        put(ro.clone(), "ro");
+        let mut perms = fs::metadata(&ro).unwrap().permissions();
+        perms.set_readonly(true);
+        fs::set_permissions(&ro, perms).unwrap();
+        let d = deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap();
+        assert!(fs::metadata(e.game.join("Data/ro.esp")).unwrap().permissions().readonly());
+        drop(d);
+        e.vanilla();
+        assert!(!e.game.join("Data/ro.esp").exists());
+    }
+
     #[test]
     fn the_game_folder_missing_keeps_the_journal() {
         let e = env();
-        std::mem::forget(deploy(&e.dirs, &e.game, &e.layers()).unwrap());
+        std::mem::forget(deploy(&e.dirs, &e.game, &e.layers(), &e.rule()).unwrap());
         let journal = read_journal(&e.dirs).unwrap();
         write_journal(&e.dirs, &Journal { game_dir: e.game.join("gone"), ..journal }).unwrap();
         assert!(restore(&e.dirs).is_err());

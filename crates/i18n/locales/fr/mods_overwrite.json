@@ -1,0 +1,17 @@
+{
+  "Keep them here": "Les garder ici",
+  "Move to the game folder": "Déplacer dans le dossier du jeu",
+  "Newest files": "Fichiers les plus récents",
+  "The game folder itself": "Le dossier du jeu lui-même",
+  "What the game writes into the mods' folders while modded (their settings, logs) is kept here and comes back at the next modded launch. Saves and anything else stay in the game folder.": "Ce que le jeu écrit dans les dossiers des mods quand il est moddé (réglages, journaux) est gardé ici et revient au prochain lancement avec mods. Les sauvegardes et tout le reste restent dans le dossier du jeu.",
+  "and {n} more folder": "et {n} autre dossier",
+  "and {n} more folders": "et {n} autres dossiers",
+  "outside the mods' folders": "hors des dossiers des mods",
+  "{n} file here lies outside the mods' folders: probably a save or setting of the game, kept here before Heronite left those in the game folder. Move it back into the game folder? A file the game folder has already is not replaced.": "{n} fichier ici se trouve hors des dossiers des mods : sans doute une sauvegarde ou un réglage du jeu, gardé ici avant que Heronite laisse ces fichiers dans le dossier du jeu. Le remettre dans le dossier du jeu ? Un fichier que le dossier du jeu a déjà n’est pas remplacé.",
+  "{n} file moved into the game folder.": "{n} fichier déplacé dans le dossier du jeu.",
+  "{n} file stays in Overwrite: the game folder has its own copy.": "{n} fichier reste dans Écrasement : le dossier du jeu a sa propre copie.",
+  "{n} files here lie outside the mods' folders: probably saves or settings of the game, kept here before Heronite left those in the game folder. Move them back into the game folder? A file the game folder has already is not replaced.": "{n} fichiers ici se trouvent hors des dossiers des mods : sans doute des sauvegardes ou des réglages du jeu, gardés ici avant que Heronite laisse ces fichiers dans le dossier du jeu. Les remettre dans le dossier du jeu ? Un fichier que le dossier du jeu a déjà n’est pas remplacé.",
+  "{n} files moved into the game folder.": "{n} fichiers déplacés dans le dossier du jeu.",
+  "{n} files stay in Overwrite: the game folder has its own copy.": "{n} fichiers restent dans Écrasement : le dossier du jeu a ses propres copies.",
+  "{n} outside the mods' folders": "{n} hors des dossiers des mods"
+}

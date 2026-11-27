@@ -62,7 +62,7 @@
   "This game is not linked to a game on Nexus Mods yet": "Este juego aún no está vinculado a un juego de Nexus Mods",
   "This is not a link to a mod": "Este no es un enlace a un mod",
   "This mod has no main file to install: pick a file on its page": "Este mod no tiene archivo principal para instalar: elige un archivo en su página",
-  "What the game wrote while modded (settings, saves) stays in Overwrite. The game will not see it until mods are on again, unless you turn it into a mod.": "Lo que el juego escribió con mods (ajustes, partidas) se queda en Sobrescritura. El juego no lo verá hasta que los mods vuelvan a estar activos, salvo que lo conviertas en un mod.",
+  "What the game wrote into the mods' folders stays in Overwrite until mods are on again. Its saves stay in the game folder.": "Lo que el juego escribió en las carpetas de los mods se queda en Sobrescritura hasta que los mods vuelvan a estar activados. Sus partidas guardadas se quedan en la carpeta del juego.",
   "Your Nexus Mods account, the download buttons of the mod sites, and what Heronite needs to apply mods when a game starts. Each game's mods are managed from its own Mods.": "Tu cuenta de Nexus Mods, los botones de descarga de los sitios de mods y lo que Heronite necesita para aplicar mods cuando se inicia un juego. Los mods de cada juego se gestionan desde su propia sección Mods.",
   "fuse-overlayfs is ready: mods can be applied": "fuse-overlayfs está listo: se pueden aplicar mods",
   "xdg-mime could not set Heronite for the mod links (it exited with {status})": "xdg-mime no pudo configurar Heronite para los enlaces de mods (salió con {status})",

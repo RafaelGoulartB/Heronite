@@ -1,0 +1,17 @@
+{
+  "Keep them here": "Manter aqui",
+  "Move to the game folder": "Mover para a pasta do jogo",
+  "Newest files": "Arquivos mais recentes",
+  "The game folder itself": "A própria pasta do jogo",
+  "What the game writes into the mods' folders while modded (their settings, logs) is kept here and comes back at the next modded launch. Saves and anything else stay in the game folder.": "O que o jogo escreve nas pastas dos mods enquanto está com mods (configurações, logs) fica guardado aqui e volta na próxima vez que ele abrir com mods. Saves e todo o resto ficam na pasta do jogo.",
+  "and {n} more folder": "e mais {n} pasta",
+  "and {n} more folders": "e mais {n} pastas",
+  "outside the mods' folders": "fora das pastas dos mods",
+  "{n} file here lies outside the mods' folders: probably a save or setting of the game, kept here before Heronite left those in the game folder. Move it back into the game folder? A file the game folder has already is not replaced.": "{n} arquivo aqui está fora das pastas dos mods: provavelmente um save ou configuração do jogo, guardado aqui antes de o Heronite deixar esses arquivos na pasta do jogo. Mover de volta para a pasta do jogo? Um arquivo que a pasta do jogo já tem não é substituído.",
+  "{n} file moved into the game folder.": "{n} arquivo movido para a pasta do jogo.",
+  "{n} file stays in Overwrite: the game folder has its own copy.": "{n} arquivo fica em Overwrite: a pasta do jogo tem a própria cópia.",
+  "{n} files here lie outside the mods' folders: probably saves or settings of the game, kept here before Heronite left those in the game folder. Move them back into the game folder? A file the game folder has already is not replaced.": "{n} arquivos aqui estão fora das pastas dos mods: provavelmente saves ou configurações do jogo, guardados aqui antes de o Heronite deixar esses arquivos na pasta do jogo. Mover de volta para a pasta do jogo? Um arquivo que a pasta do jogo já tem não é substituído.",
+  "{n} files moved into the game folder.": "{n} arquivos movidos para a pasta do jogo.",
+  "{n} files stay in Overwrite: the game folder has its own copy.": "{n} arquivos ficam em Overwrite: a pasta do jogo tem a própria cópia.",
+  "{n} outside the mods' folders": "{n} fora das pastas dos mods"
+}

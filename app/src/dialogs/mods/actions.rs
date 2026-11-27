@@ -129,6 +129,16 @@ impl ModsDialog {
         cx.notify();
     }
 
+    pub(super) fn move_outside_overwrite(&mut self, cx: &mut Context<Self>) {
+        let key = self.key.clone();
+        self.service.update(cx, |s, cx| s.move_outside_overwrite(&key, cx));
+    }
+
+    pub(super) fn keep_outside_overwrite(&mut self, cx: &mut Context<Self>) {
+        let key = self.key.clone();
+        self.service.update(cx, |s, cx| s.keep_outside_overwrite(&key, cx));
+    }
+
     pub(super) fn forget_game(&mut self, cx: &mut Context<Self>) {
         let key = self.key.clone();
         self.confirm = None;

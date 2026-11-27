@@ -79,6 +79,11 @@ impl GameDirs {
     pub fn deploy_snapshot(&self) -> PathBuf {
         self.0.join("deploy.snapshot")
     }
+    /// What a mount on Linux left to sort out once it is gone: the rule of
+    /// [`crate::write_rule`] and what the overwrite folder held before.
+    pub fn write_session(&self) -> PathBuf {
+        self.0.join("write-session.json")
+    }
     /// The game's own files a mod replaced, moved aside while it runs.
     pub fn deploy_backup(&self) -> PathBuf {
         self.0.join(".backup")

@@ -7,8 +7,9 @@ use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 
 use gpui_kit::*;
-use heronite_i18n::tr;
+use heronite_i18n::{tr, trn};
 use heronite_mods::games::Profile;
+use heronite_mods::write_rule::{self, WriteRule};
 use heronite_mods::{overwrite, store, GameDirs, GameLinks, ModEntry, ModList, ModsRoot};
 
 use super::{ModsEvent, ModsService};
@@ -169,7 +170,7 @@ impl ModsService {
     }
 
     pub(super) fn edit_active(&mut self, game_key: &str, on: bool, cx: &mut Context<Self>) {
-        let written = self.games.get(game_key).map(|g| g.overwrite).unwrap_or_default();
+        let written = self.games.get(game_key).map(|g| g.overwrite.clone()).unwrap_or_default();
         let changed = self.edit_list(
             game_key,
             false,
@@ -181,7 +182,7 @@ impl ModsService {
             cx,
         );
         if changed && !on && !written.is_empty() {
-            self.notice(game_key, tr!("What the game wrote while modded (settings, saves) stays in Overwrite. The game will not see it until mods are on again, unless you turn it into a mod."), false, cx);
+            self.notice(game_key, tr!("What the game wrote into the mods' folders stays in Overwrite until mods are on again. Its saves stay in the game folder."), false, cx);
         }
         if changed {
             self.recheck(game_key, cx);
@@ -394,6 +395,53 @@ impl ModsService {
         .detach();
     }
 
+    /// The one-time offer, accepted: moves the files of the overwrite folder
+    /// that lie outside the mods' folders (saves kept there before the rule)
+    /// into the game folder, then remembers the answer.
+    pub(super) fn move_outside_files(&mut self, game_key: &str, cx: &mut Context<Self>) {
+        let Some(shared) = self.shared.get(game_key).cloned() else { return };
+        let Some(game) = self.games.get(game_key) else { return };
+        let Some(game_dir) = game.info.game_dir.clone() else { return };
+        let keep = game.info.profile.keep;
+        let (dirs, key, root) = (self.root.game(game_key), game_key.to_string(), self.root.clone());
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_spawn(async move {
+                    refuse_while_mounted(&root, Some(&game_dir))?;
+                    let _io = shared.lock_io();
+                    let rule = WriteRule::for_list(&dirs, &shared.list(), keep);
+                    write_rule::migrate(&dirs, &game_dir, &rule)
+                })
+                .await;
+            this.update(cx, |s, cx| {
+                match result {
+                    Ok(done) => {
+                        let mut message = trn!(done.moved, "{n} file moved into the game folder.", "{n} files moved into the game folder.");
+                        if !done.left.is_empty() {
+                            message.push(' ');
+                            message.push_str(&trn!(
+                                done.left.len(),
+                                "{n} file stays in Overwrite: the game folder has its own copy.",
+                                "{n} files stay in Overwrite: the game folder has its own copy."
+                            ));
+                        }
+                        cx.emit(ModsEvent::Notice { game_key: key.clone(), message, error: false });
+                        s.answer_outside_offer(&key, cx);
+                    }
+                    Err(message) => cx.emit(ModsEvent::Notice { game_key: key.clone(), message, error: true }),
+                }
+                s.recheck(&key, cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Remembers that the offer was answered: it is not shown again.
+    pub(super) fn answer_outside_offer(&mut self, game_key: &str, cx: &mut Context<Self>) {
+        self.edit_list(game_key, false, |l| !std::mem::replace(&mut l.outside_files_answered, true), cx);
+    }
+
     /// Deletes everything the mods root keeps for the game.
     pub(super) fn forget(&mut self, game_key: &str, cx: &mut Context<Self>) {
         let key = game_key.to_string();
@@ -434,7 +482,11 @@ fn remove_entry(list: &mut ModList, id: &str) -> bool {
 /// nothing of them is deleted, replaced or emptied. Blocking (reads the mount
 /// table or the journals).
 pub(super) fn refuse_while_mounted(root: &ModsRoot, game_dir: Option<&std::path::Path>) -> Result<(), String> {
-    if game_dir.is_some_and(|d| heronite_mods::deployment::in_use(root, d)) {
+    if let Some(dir) = game_dir.filter(|d| heronite_mods::deployment::in_use(root, d)) {
+        // The game ended, but a file kept the mods from being taken out.
+        if let Some(problem) = heronite_mods::deployment::problem(root, dir) {
+            return Err(problem);
+        }
         return Err(tr!("The game is running with mods; close it first").to_string());
     }
     Ok(())
@@ -505,7 +557,7 @@ mod tests {
         std::fs::create_dir_all(dirs.mod_dir("a")).unwrap();
         assert!(refuse_while_mounted(&root, Some(&game)).is_ok());
         assert!(refuse_while_mounted(&root, None).is_ok());
-        let mount = deploy::mount(&bin, &dirs, &game, &[dirs.mod_dir("a")]).unwrap();
+        let mount = deploy::mount(&bin, &dirs, &game, &[dirs.mod_dir("a")], &Default::default()).unwrap();
         let said = refuse_while_mounted(&root, Some(&game)).unwrap_err();
         assert_eq!(said, "The game is running with mods; close it first");
         drop(mount);
@@ -524,7 +576,7 @@ mod tests {
         std::fs::create_dir_all(dirs.mod_dir("a")).unwrap();
         std::fs::write(dirs.mod_dir("a").join("f.txt"), b"x").unwrap();
         assert!(refuse_while_mounted(&root, Some(&game)).is_ok());
-        let deployed = heronite_mods::journal_deploy::deploy(&dirs, &game, &[dirs.mod_dir("a")]).unwrap();
+        let deployed = heronite_mods::journal_deploy::deploy(&dirs, &game, &[dirs.mod_dir("a")], &Default::default()).unwrap();
         let said = refuse_while_mounted(&root, Some(&game)).unwrap_err();
         assert_eq!(said, "The game is running with mods; close it first");
         drop(deployed);

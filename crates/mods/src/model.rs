@@ -24,6 +24,11 @@ pub struct ModList {
     /// Plugins (`.esp` / `.esm` / `.esl`, lower case) the user turned off;
     /// every other plugin of an enabled mod is active.
     pub disabled_plugins: Vec<String>,
+    /// The user answered the one-time offer to move the files of the
+    /// overwrite folder that lie outside the mods' folders (saves written
+    /// before [`crate::write_rule`]) back into the game folder.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub outside_files_answered: bool,
 }
 
 impl ModList {

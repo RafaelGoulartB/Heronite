@@ -1,0 +1,17 @@
+{
+  "Keep them here": "Hier behalten",
+  "Move to the game folder": "In den Spielordner verschieben",
+  "Newest files": "Neueste Dateien",
+  "The game folder itself": "Der Spielordner selbst",
+  "What the game writes into the mods' folders while modded (their settings, logs) is kept here and comes back at the next modded launch. Saves and anything else stay in the game folder.": "Was das Spiel mit Mods in die Ordner der Mods schreibt (Einstellungen, Logs), wird hier aufbewahrt und ist beim nächsten Start mit Mods wieder da. Spielstände und alles andere bleiben im Spielordner.",
+  "and {n} more folder": "und {n} weiterer Ordner",
+  "and {n} more folders": "und {n} weitere Ordner",
+  "outside the mods' folders": "außerhalb der Ordner der Mods",
+  "{n} file here lies outside the mods' folders: probably a save or setting of the game, kept here before Heronite left those in the game folder. Move it back into the game folder? A file the game folder has already is not replaced.": "{n} Datei hier liegt außerhalb der Ordner der Mods: wahrscheinlich ein Spielstand oder eine Einstellung des Spiels, hier aufbewahrt, bevor Heronite solche Dateien im Spielordner ließ. Zurück in den Spielordner verschieben? Eine Datei, die der Spielordner schon hat, wird nicht ersetzt.",
+  "{n} file moved into the game folder.": "{n} Datei in den Spielordner verschoben.",
+  "{n} file stays in Overwrite: the game folder has its own copy.": "{n} Datei bleibt in Überschreiben: Der Spielordner hat eine eigene Kopie.",
+  "{n} files here lie outside the mods' folders: probably saves or settings of the game, kept here before Heronite left those in the game folder. Move them back into the game folder? A file the game folder has already is not replaced.": "{n} Dateien hier liegen außerhalb der Ordner der Mods: wahrscheinlich Spielstände oder Einstellungen des Spiels, hier aufbewahrt, bevor Heronite solche Dateien im Spielordner ließ. Zurück in den Spielordner verschieben? Eine Datei, die der Spielordner schon hat, wird nicht ersetzt.",
+  "{n} files moved into the game folder.": "{n} Dateien in den Spielordner verschoben.",
+  "{n} files stay in Overwrite: the game folder has its own copy.": "{n} Dateien bleiben in Überschreiben: Der Spielordner hat eigene Kopien.",
+  "{n} outside the mods' folders": "{n} außerhalb der Ordner der Mods"
+}

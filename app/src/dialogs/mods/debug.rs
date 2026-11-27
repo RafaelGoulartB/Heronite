@@ -49,6 +49,7 @@ impl ModsDialog {
                 _ => match step {
                     "overwrite-name" => self.start_naming_overwrite(window, cx),
                     "overwrite-clear" => self.confirm = Some(Confirm::ClearOverwrite),
+                    "overwrite-files" => self.overwrite_files_open = true,
                     "forget" => {
                         self.tab = Tab::Game;
                         self.confirm = Some(Confirm::ForgetGame);

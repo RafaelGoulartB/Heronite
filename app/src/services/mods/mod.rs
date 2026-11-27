@@ -477,6 +477,17 @@ impl ModsService {
         self.turn_overwrite_into_mod(game_key, name, cx);
     }
 
+    /// Moves the files of the overwrite folder that lie outside the mods'
+    /// folders into the game folder (the one-time offer).
+    pub fn move_outside_overwrite(&mut self, game_key: &str, cx: &mut Context<Self>) {
+        self.move_outside_files(game_key, cx);
+    }
+
+    /// Leaves those files in the overwrite folder; the offer goes away.
+    pub fn keep_outside_overwrite(&mut self, game_key: &str, cx: &mut Context<Self>) {
+        self.answer_outside_offer(game_key, cx);
+    }
+
     /// Removes every mod of the game and its folder under the mods root.
     pub fn forget_game(&mut self, game_key: &str, cx: &mut Context<Self>) {
         self.forget(game_key, cx);
