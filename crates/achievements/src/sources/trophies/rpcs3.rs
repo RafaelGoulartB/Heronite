@@ -31,7 +31,8 @@ pub fn config_roots(env: &Env, installs: &[Install]) -> Vec<PathBuf> {
         }
     };
     for i in installs {
-        if let Some(dir) = i.exe_dir.as_ref().filter(|d| d.join("dev_hdd0").is_dir()) {
+        let portable = |d: &&PathBuf| d.join("dev_hdd0").is_dir() || d.join("config/vfs.yml").is_file() || d.join("vfs.yml").is_file();
+        if let Some(dir) = i.exe_dir.as_ref().filter(portable) {
             push(dir.clone());
         }
         if let Some(id) = &i.flatpak_id {
@@ -45,10 +46,12 @@ pub fn config_roots(env: &Env, installs: &[Install]) -> Vec<PathBuf> {
     out
 }
 
-/// `dev_hdd0` of a config folder: where `vfs.yml` puts it, else inside.
+/// `dev_hdd0` of a config folder: where `vfs.yml` (in `config/` on
+/// Windows) puts it, else inside.
 fn hdd0_of(root: &Path) -> PathBuf {
     let default = root.join("dev_hdd0");
-    let Ok(bytes) = read_capped(&root.join("vfs.yml"), 1 << 16) else { return default };
+    let vfs = [root.join("config/vfs.yml"), root.join("vfs.yml")];
+    let Some(bytes) = vfs.iter().find_map(|f| read_capped(f, 1 << 16).ok()) else { return default };
     let text = String::from_utf8_lossy(&bytes);
     let Some(value) = text.lines().find_map(|l| l.trim().strip_prefix("/dev_hdd0/:")) else { return default };
     let value = value.trim().trim_matches(|c| c == '"' || c == '\'');
@@ -128,7 +131,8 @@ fn locate(trophy_dirs: &[PathBuf], target: &TrophyTarget) -> Option<PathBuf> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Unlock {
     pub unlocked: bool,
-    pub tick: u64,
+    /// The two times RPCS3 writes (the same, by its code), the second first.
+    pub ticks: [u64; 2],
 }
 
 fn be_u32(b: &[u8], at: usize) -> Option<u32> {
@@ -174,10 +178,12 @@ pub fn parse_tropusr(b: &[u8]) -> Result<HashMap<u32, Unlock>, String> {
             // Past the end (and an offset near `usize::MAX`) is a short read.
             let entry =
                 i.checked_mul(ENTRY6).and_then(|o| o.checked_add(offset)).filter(|e| *e < b.len()).ok_or("TROPUSR.DAT: bad offset")?;
-            let (Some(id), Some(state), Some(tick)) = (be_u32(b, entry + 0x10), be_u32(b, entry + 0x14), be_u64(b, entry + 0x28)) else {
+            let (Some(id), Some(state), Some(t1), Some(t2)) =
+                (be_u32(b, entry + 0x10), be_u32(b, entry + 0x14), be_u64(b, entry + 0x20), be_u64(b, entry + 0x28))
+            else {
                 return Err("TROPUSR.DAT: cut short".into());
             };
-            out.insert(id, Unlock { unlocked: state == 1, tick });
+            out.insert(id, Unlock { unlocked: state == 1, ticks: [t2, t1] });
         }
     }
     Ok(out)
@@ -207,7 +213,7 @@ pub fn read(dir: &Path, game_title: &str) -> Fetch {
         Source::Rpcs3,
         &conf,
         game_title,
-        |t| unlocks.get(&t.id).filter(|u| u.unlocked).map_or((false, None), |u| (true, from_rtc_tick(u.tick))),
+        |t| unlocks.get(&t.id).filter(|u| u.unlocked).map_or((false, None), |u| (true, u.ticks.iter().find_map(|t| from_rtc_tick(*t)))),
         |id| psxml::icon_in(dir, id),
     );
     Fetch::Set(set)
@@ -293,7 +299,7 @@ pub(crate) mod tests {
         let b = tropusr(&[(0, false, 0), (1, true, TICK_2023), (2, false, 0)]);
         let u = parse_tropusr(&b).unwrap();
         assert_eq!(u.len(), 3);
-        assert_eq!(u[&1], Unlock { unlocked: true, tick: TICK_2023 });
+        assert_eq!(u[&1], Unlock { unlocked: true, ticks: [TICK_2023, TICK_2023] });
         assert!(!u[&2].unlocked);
     }
 

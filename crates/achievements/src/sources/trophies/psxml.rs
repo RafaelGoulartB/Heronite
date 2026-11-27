@@ -23,6 +23,11 @@ use crate::model::{Achievement, AchievementGroup, AchievementSet, Grade, Source}
 /// More nodes than any trophy list has (one has at most a few hundred
 /// trophies): a bound on what a damaged file costs.
 const NODES_LIMIT: u32 = 200_000;
+/// Elements nested deeper than this are not a trophy list (one nests three
+/// deep); the parser recurses per level, so a damaged file must not reach it.
+const MAX_DEPTH: usize = 64;
+/// Comm ids taken from one file (a game names a handful).
+const MAX_COMM_IDS: usize = 64;
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TrophyConf {
@@ -60,11 +65,43 @@ fn text_of(node: roxmltree::Node, tag: &str) -> String {
         .unwrap_or_default()
 }
 
+/// How deep the elements of `text` nest, counted from its tags (`<a>`,
+/// `</a>`, `<a/>`); declarations, comments and processing instructions do
+/// not count.
+fn nesting(text: &str) -> usize {
+    let b = text.as_bytes();
+    let (mut depth, mut max, mut i) = (0usize, 0usize, 0usize);
+    while let Some(at) = b.get(i..).and_then(|r| r.iter().position(|&c| c == b'<')).map(|p| i + p) {
+        let end = b.get(at..).and_then(|r| r.iter().position(|&c| c == b'>')).map(|p| at + p);
+        match b.get(at + 1) {
+            Some(b'/') => depth = depth.saturating_sub(1),
+            Some(b'?' | b'!') | None => {}
+            Some(_) => {
+                let empty = end.is_some_and(|e| e > 0 && b.get(e - 1) == Some(&b'/'));
+                if !empty {
+                    depth += 1;
+                    max = max.max(depth);
+                }
+            }
+        }
+        i = end.map_or(b.len(), |e| e + 1).max(at + 1);
+    }
+    max
+}
+
 pub fn parse(bytes: &[u8]) -> Result<TrophyConf, String> {
     let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
     let text = String::from_utf8_lossy(bytes);
     // Packs pad the file after the root's end (shadPS4's `removePadding`).
     let text = text.trim_end_matches(|c: char| c == '\0' || c.is_whitespace());
+    // Trophy lists declare no entities: one that does could expand without
+    // bound.
+    if text.contains("<!ENTITY") {
+        return Err("not a trophy list: it declares entities".into());
+    }
+    if nesting(text) > MAX_DEPTH {
+        return Err("not a trophy list: nested too deep".into());
+    }
     let options = roxmltree::ParsingOptions { allow_dtd: true, nodes_limit: NODES_LIMIT, ..Default::default() };
     let doc = roxmltree::Document::parse_with_options(text, options).map_err(|e| format!("not a trophy list: {e}"))?;
     let root = doc.root_element();
@@ -73,11 +110,12 @@ pub fn parse(bytes: &[u8]) -> Result<TrophyConf, String> {
     }
     let mut conf = TrophyConf { npcommid: text_of(root, "npcommid"), title: text_of(root, "title-name"), ..Default::default() };
     let mut seen = HashSet::new();
+    let mut seen_groups = HashSet::new();
     for node in root.children().filter(|n| n.is_element()) {
         match node.tag_name().name() {
             "group" => {
                 if let Some(id) = node.attribute("id").map(str::trim).filter(|id| !id.is_empty()) {
-                    if !conf.groups.iter().any(|(g, _)| g == id) {
+                    if seen_groups.insert(id.to_string()) {
                         conf.groups.push((id.to_string(), text_of(node, "name")));
                     }
                 }
@@ -104,8 +142,9 @@ pub fn parse(bytes: &[u8]) -> Result<TrophyConf, String> {
     Ok(conf)
 }
 
-/// The base game's group (its trophies have no `gid`): "Base game".
-const BASE_GROUP: &str = "0";
+/// The base game's group (its trophies have no `gid`): "Base game". Not a
+/// number, so no pack's own group has it.
+const BASE_GROUP: &str = "base";
 
 /// The set of a trophy list. `unlock` says whether a trophy is unlocked and
 /// when; `icon` where its picture is (empty when there is none).
@@ -167,6 +206,9 @@ pub fn comm_ids(bytes: &[u8]) -> Vec<String> {
             let id = String::from_utf8_lossy(w).into_owned();
             if !out.contains(&id) {
                 out.push(id);
+                if out.len() >= MAX_COMM_IDS {
+                    break;
+                }
             }
         }
     }
@@ -216,7 +258,7 @@ mod tests {
         assert_eq!((set.total(), set.unlocked(), set.external_id.as_str()), (3, 1, "NPWR01234_00"));
         assert_eq!(set.title, None, "the same name as ours");
         let groups: Vec<_> = set.achievements.iter().map(|a| a.group.as_deref()).collect();
-        assert_eq!(groups, [Some("0"), Some("0"), Some("001")]);
+        assert_eq!(groups, [Some("base"), Some("base"), Some("001")]);
         assert_eq!(set.sections().len(), 2);
         assert_eq!(set.achievements[0].grade, Some(Grade::Platinum));
         let other = build(Source::ShadPs4, &c, "Another name", |_| (false, None), |_| None);
@@ -234,6 +276,16 @@ mod tests {
         assert!(parse(b"<other/>").is_err());
         assert!(parse(&CONF.as_bytes()[..CONF.len() / 2]).is_err(), "half written");
         assert!(parse(&[0xFF, 0xFE, 0x00, 0x3C]).is_err());
+    }
+
+    #[test]
+    fn entities_and_deep_nesting_are_refused() {
+        let entities = CONF.replace("<!DOCTYPE trophyconf>", r#"<!DOCTYPE trophyconf [<!ENTITY a "aaaa">]>"#);
+        assert!(parse(entities.as_bytes()).is_err());
+        let deep = format!("<trophyconf>{}{}</trophyconf>", "<a>".repeat(100_000), "</a>".repeat(100_000));
+        assert!(parse(deep.as_bytes()).is_err());
+        assert_eq!(nesting(CONF), 3);
+        assert_eq!(nesting("<a><b/><!-- <c> --><?x?></a>"), 1);
     }
 
     #[test]

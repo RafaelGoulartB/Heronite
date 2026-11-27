@@ -9,6 +9,7 @@
 //! The game's title id comes from its `default.xex`; without it (a disc
 //! image), from the profile's list of played games (`FFFE07D1.gpd`) by name.
 
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
@@ -29,6 +30,14 @@ const SECTION_TITLE: u16 = 4;
 const ACHIEVED: u32 = 0x2_0000;
 const ACHIEVED_ONLINE: u32 = 0x1_0000;
 const SHOW_UNACHIEVED: u32 = 0x8;
+/// Entry slots a GPD may have: a game has at most a few hundred entries.
+const MAX_SLOTS: u32 = 16_384;
+/// Achievements (or played games) read from one GPD.
+const MAX_ITEMS: usize = 4_096;
+/// UTF-16 units of one string (names and descriptions are short).
+const MAX_STRING: usize = 4_096;
+/// A picture bigger than this is not an achievement's icon.
+const MAX_ICON: usize = 2 << 20;
 
 fn be_u16(b: &[u8], at: usize) -> Option<u16> {
     Some(u16::from_be_bytes(b.get(at..at.checked_add(2)?)?.try_into().ok()?))
@@ -42,7 +51,8 @@ fn be_u64(b: &[u8], at: usize) -> Option<u64> {
     Some(u64::from_be_bytes(b.get(at..at.checked_add(8)?)?.try_into().ok()?))
 }
 
-/// A NUL-ended UTF-16BE string at `at`, and where the next one starts.
+/// A NUL-ended UTF-16BE string at `at` (at most [`MAX_STRING`] units kept),
+/// and where the next one starts.
 fn utf16_at(b: &[u8], at: usize) -> (String, usize) {
     let mut units = Vec::new();
     let mut i = at;
@@ -51,9 +61,17 @@ fn utf16_at(b: &[u8], at: usize) -> (String, usize) {
         if u == 0 {
             break;
         }
-        units.push(u);
+        if units.len() < MAX_STRING {
+            units.push(u);
+        }
     }
     (String::from_utf16_lossy(&units), i)
+}
+
+/// Sync list and sync data entries (`0x1_0000_0000`, `0x2_0000_0000`) share
+/// the achievement and title sections: real entries have 32-bit ids.
+fn is_record(id: u64) -> bool {
+    id <= u64::from(u32::MAX)
 }
 
 /// An XDBF file (Xenia's `xdbf_io.h`, big-endian): a 0x18-byte header
@@ -64,11 +82,12 @@ fn utf16_at(b: &[u8], at: usize) -> (String, usize) {
 pub struct Xdbf<'a> {
     /// `(section, id, data)`, in the file's order.
     entries: Vec<(u16, u64, &'a [u8])>,
+    /// The pictures by id (the first of a repeated id).
+    images: HashMap<u64, &'a [u8]>,
 }
 
 impl<'a> Xdbf<'a> {
     pub fn parse(b: &'a [u8]) -> Result<Xdbf<'a>, String> {
-        const MAX_SLOTS: u32 = 1 << 20;
         if b.get(..4) != Some(b"XDBF".as_slice()) {
             return Err("not a GPD file".into());
         }
@@ -90,7 +109,11 @@ impl<'a> Xdbf<'a> {
             let data = start.checked_add(size as usize).and_then(|end| b.get(start..end)).ok_or("GPD: an entry past the end")?;
             entries.push((section, id, data));
         }
-        Ok(Xdbf { entries })
+        let mut images = HashMap::new();
+        for (_, id, data) in entries.iter().filter(|(s, _, _)| *s == SECTION_IMAGE) {
+            images.entry(*id).or_insert(*data);
+        }
+        Ok(Xdbf { entries, images })
     }
 
     fn section(&self, section: u16) -> impl Iterator<Item = (u64, &'a [u8])> + '_ {
@@ -98,13 +121,17 @@ impl<'a> Xdbf<'a> {
     }
 
     pub fn image(&self, id: u64) -> Option<&'a [u8]> {
-        self.section(SECTION_IMAGE).find(|(i, _)| *i == id).map(|(_, d)| d)
+        self.images.get(&id).copied()
     }
 
     /// The games a dashboard GPD lists: `(title id, name)`. Each entry is
     /// a 0x28-byte record (the title id first), then its name.
     pub fn titles(&self) -> Vec<(u32, String)> {
-        self.section(SECTION_TITLE).filter_map(|(_, d)| Some((be_u32(d, 0)?, utf16_at(d, 0x28).0))).collect()
+        self.section(SECTION_TITLE)
+            .filter(|(id, _)| is_record(*id))
+            .take(MAX_ITEMS)
+            .filter_map(|(_, d)| Some((be_u32(d, 0)?, utf16_at(d, 0x28).0)))
+            .collect()
     }
 }
 
@@ -124,7 +151,10 @@ pub struct GpdAchievement {
 }
 
 pub fn achievements(x: &Xdbf) -> Vec<GpdAchievement> {
+    let mut seen = HashSet::new();
     x.section(SECTION_ACHIEVEMENT)
+        .filter(|(id, d)| is_record(*id) && be_u32(d, 0) == Some(0x1C))
+        .take(MAX_ITEMS)
         .filter_map(|(_, d)| {
             let (name, at) = utf16_at(d, 0x1C);
             let (description, at) = utf16_at(d, at);
@@ -140,6 +170,7 @@ pub fn achievements(x: &Xdbf) -> Vec<GpdAchievement> {
                 locked_description,
             })
         })
+        .filter(|a| seen.insert(a.id))
         .collect()
 }
 
@@ -243,7 +274,7 @@ fn title_id_of(profiles: &[PathBuf], target: &TrophyTarget) -> Option<u32> {
 /// The picture of an achievement, written once under the app's
 /// achievements folder (the GPD keeps it inside), when it is a PNG.
 fn icon_file(icons: &Path, title_id: u32, x: &Xdbf, image_id: u32) -> Option<PathBuf> {
-    let png = x.image(u64::from(image_id)).filter(|d| d.starts_with(b"\x89PNG"))?;
+    let png = x.image(u64::from(image_id)).filter(|d| d.starts_with(b"\x89PNG") && d.len() <= MAX_ICON)?;
     let file = icons.join(format!("{title_id:08X}")).join(format!("{image_id}.png"));
     let same = std::fs::metadata(&file).ok().is_some_and(|m| m.len() == png.len() as u64);
     if !same {
@@ -370,6 +401,11 @@ mod tests {
 
     fn game_gpd() -> Vec<u8> {
         xdbf(&[
+            // The sync list and data share the section, and a record of
+            // another kind.
+            (1, 0x1_0000_0000, vec![0u8; 0x40]),
+            (1, 0x2_0000_0000, [0x1Cu32.to_be_bytes().to_vec(), vec![0u8; 0x30]].concat()),
+            (1, 9, vec![0u8; 0x30]),
             (1, 1, achievement(1, 10, 20, ACHIEVED | SHOW_UNACHIEVED | 1, FT_2023, "First", "Did it.", "Do it.")),
             (1, 2, achievement(2, 11, 50, 0, 0, "Secret", "", "Keep going.")),
             (2, 10, b"\x89PNG\r\n\x1a\nimage".to_vec()),

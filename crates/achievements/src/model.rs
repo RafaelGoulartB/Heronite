@@ -47,11 +47,6 @@ impl Source {
             Source::Xenia => "Xenia",
         }
     }
-
-    /// An emulator's own record of a console game (read from its files).
-    pub fn is_emulator(self) -> bool {
-        matches!(self, Source::Rpcs3 | Source::ShadPs4 | Source::Xenia)
-    }
 }
 
 /// A PlayStation trophy's grade.
