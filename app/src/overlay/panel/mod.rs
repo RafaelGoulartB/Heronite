@@ -151,6 +151,8 @@ pub fn pad_of(b: Button) -> Pad {
         Button::Down => Pad::Down,
         Button::Left => Pad::Left,
         Button::Right => Pad::Right,
+        Button::RightStickLeft => Pad::ScrollLeft,
+        Button::RightStickRight => Pad::ScrollRight,
     }
 }
 

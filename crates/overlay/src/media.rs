@@ -5,6 +5,7 @@
 //! shows). Blocking: call from a worker, not the UI.
 
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, PoisonError};
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -79,21 +80,87 @@ pub fn control(_player: &Player, _action: Action) -> Result<(), String> {
     Err("media controls are not available on this system".into())
 }
 
-/// The players worth showing, in the order the overlay offers them: the ones
-/// playing, then paused, then stopped (each kind in the order found). A
-/// stopped player with nothing loaded (a browser that played once) and one
-/// that takes no commands are left out.
-pub(crate) fn shown(players: Vec<Player>) -> Vec<Player> {
+/// The players used last, for the app's life (the panel is made again each
+/// time it opens).
+static RECENT: Mutex<Recent> = Mutex::new(Recent::new());
+/// Ids [`Recent`] keeps.
+const RECENT_MAX: usize = 16;
+
+/// The players used last, the latest first: one that took a command from
+/// the overlay, started playing or paused. What each was doing at the last
+/// read tells the last two.
+struct Recent {
+    ids: Vec<String>,
+    seen: Vec<(String, Playback)>,
+    /// The system's choice at the last read.
+    latest: Option<String>,
+}
+
+impl Recent {
+    const fn new() -> Self {
+        Recent { ids: Vec::new(), seen: Vec::new(), latest: None }
+    }
+
+    fn used(&mut self, id: &str) {
+        self.ids.retain(|i| i != id);
+        self.ids.insert(0, id.to_string());
+        self.ids.truncate(RECENT_MAX);
+    }
+
+    /// Notes the players that started playing or paused since the last read
+    /// (a new one only when it plays), then `latest`, the one the system
+    /// says was used last (Windows' current session), when that changed: it
+    /// may keep its choice while the overlay's commands go to others.
+    fn read(&mut self, players: &[Player], latest: Option<&str>) {
+        // Backwards: of the ones noted together, the first found leads.
+        for p in players.iter().rev() {
+            let changed = match self.seen.iter().find(|(id, _)| id == &p.id) {
+                Some((_, before)) => *before != p.playback && p.playback != Playback::Stopped,
+                None => p.playback == Playback::Playing,
+            };
+            if changed {
+                self.used(&p.id);
+            }
+        }
+        self.seen = players.iter().map(|p| (p.id.clone(), p.playback)).collect();
+        if let Some(id) = latest.filter(|id| self.latest.as_deref() != Some(*id)) {
+            self.used(id);
+        }
+        self.latest = latest.map(str::to_string);
+    }
+
+    /// Where `id` is among the ones used last (after them all when it is not).
+    fn rank(&self, id: &str) -> usize {
+        self.ids.iter().position(|i| i == id).unwrap_or(usize::MAX)
+    }
+}
+
+/// `player` was just sent a command from the overlay: it comes first among
+/// the ones that play (or that do not) from now on.
+pub fn used(player: &Player) {
+    RECENT.lock().unwrap_or_else(PoisonError::into_inner).used(&player.id);
+}
+
+/// The players worth showing, in the order the overlay offers them (see
+/// [`ordered`]), after noting which were used since the last read and
+/// `latest`, the one the system says was used last.
+pub(crate) fn shown(players: Vec<Player>, latest: Option<&str>) -> Vec<Player> {
+    let mut recent = RECENT.lock().unwrap_or_else(PoisonError::into_inner);
+    recent.read(&players, latest);
+    ordered(players, &recent)
+}
+
+/// The ones playing first, then the others; within each, the one used last
+/// first, then paused before stopped, then in the order found. A stopped
+/// player with nothing loaded (a browser that played once) and one that
+/// takes no commands are left out.
+fn ordered(players: Vec<Player>, recent: &Recent) -> Vec<Player> {
     let mut players: Vec<Player> = players
         .into_iter()
         .filter(|p| !(p.playback == Playback::Stopped && p.title.is_empty()))
         .filter(|p| p.can_play_pause || p.can_next || p.can_previous)
         .collect();
-    players.sort_by_key(|p| match p.playback {
-        Playback::Playing => 0,
-        Playback::Paused => 1,
-        Playback::Stopped => 2,
-    });
+    players.sort_by_key(|p| (p.playback != Playback::Playing, recent.rank(&p.id), p.playback == Playback::Stopped));
     players
 }
 
@@ -204,20 +271,56 @@ mod tests {
         }
     }
 
+    fn ids(list: &[Player]) -> Vec<&str> {
+        list.iter().map(|p| p.id.as_str()).collect()
+    }
+
     #[test]
     fn playing_first_and_idle_players_left_out() {
         let mut deaf = player("deaf", Playback::Playing, "Song");
         (deaf.can_play_pause, deaf.can_next, deaf.can_previous) = (false, false, false);
-        let list = shown(vec![
-            player("paused", Playback::Paused, "A"),
-            player("idle", Playback::Stopped, ""),
-            player("stopped", Playback::Stopped, "B"),
-            player("playing", Playback::Playing, "C"),
-            deaf,
-            player("playing-2", Playback::Playing, ""),
-        ]);
-        let ids: Vec<&str> = list.iter().map(|p| p.id.as_str()).collect();
-        assert_eq!(ids, ["playing", "playing-2", "paused", "stopped"]);
+        let list = ordered(
+            vec![
+                player("paused", Playback::Paused, "A"),
+                player("idle", Playback::Stopped, ""),
+                player("stopped", Playback::Stopped, "B"),
+                player("playing", Playback::Playing, "C"),
+                deaf,
+                player("playing-2", Playback::Playing, ""),
+            ],
+            &Recent::new(),
+        );
+        assert_eq!(ids(&list), ["playing", "playing-2", "paused", "stopped"]);
+    }
+
+    #[test]
+    fn the_one_used_last_leads() {
+        let mut recent = Recent::new();
+        let first = vec![player("a", Playback::Playing, "A"), player("b", Playback::Paused, "B"), player("c", Playback::Paused, "C")];
+        recent.read(&first, None);
+        assert_eq!(ids(&ordered(first, &recent)), ["a", "b", "c"]);
+        // c started playing: it leads a, which played before.
+        let next = vec![player("a", Playback::Playing, "A"), player("b", Playback::Paused, "B"), player("c", Playback::Playing, "C")];
+        recent.read(&next, None);
+        assert_eq!(ids(&ordered(next.clone(), &recent)), ["c", "a", "b"]);
+        // A command to b: still after the ones playing, but first of the others.
+        recent.used("b");
+        let all_paused: Vec<Player> = next.into_iter().map(|p| Player { playback: Playback::Paused, ..p }).collect();
+        recent.read(&all_paused, None);
+        // a and c paused just now (of the two, the first found leads); b's command came before.
+        assert_eq!(ids(&ordered(all_paused.clone(), &recent)), ["a", "c", "b"]);
+        // The system's own choice (Windows' current session) comes last, so it leads.
+        recent.read(&all_paused, Some("b"));
+        assert_eq!(ids(&ordered(all_paused.clone(), &recent)), ["b", "a", "c"]);
+        // A command to c afterwards: the system keeping b does not take it back.
+        recent.used("c");
+        recent.read(&all_paused, Some("b"));
+        assert_eq!(ids(&ordered(all_paused.clone(), &recent)), ["c", "b", "a"]);
+        // Stopping on its own is no use.
+        let a_stopped: Vec<Player> =
+            all_paused.into_iter().map(|p| if p.id == "a" { Player { playback: Playback::Stopped, ..p } } else { p }).collect();
+        recent.read(&a_stopped, Some("b"));
+        assert_eq!(ids(&ordered(a_stopped, &recent)), ["c", "b", "a"]);
     }
 
     #[test]

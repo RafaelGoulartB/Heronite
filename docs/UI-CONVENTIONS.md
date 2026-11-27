@@ -1449,7 +1449,7 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
 - Debug: `HERONITE_DEBUG_CONSOLE=1` (or `=game:<key>` for a game page, `=menu`, `=customize`, `=filters`) starts in console mode
   without saving it; `HERONITE_DEBUG_CONSOLE_PRESET=<theme id>` / `HERONITE_DEBUG_CONSOLE_LAYOUT=<layout>` start with
   that theme / every tab in that layout (not saved); `HERONITE_DEBUG_IDLE_SECS=<n>` shows the idle screen sooner;
-  `HERONITE_NO_GAMEPAD=1` ignores controllers (test copies must not follow the one in use; `shot.sh` and `idle-cost.sh` set it); `HERONITE_DEBUG_PAD=down,a,wait:500,b` plays presses (`up down left right a b x y lb rb lt rt start select sup sdown`); `HERONITE_DEBUG_MOUSE=click:0.5:0.4,wheel:-1,right` plays mouse events (points as fractions of the window; on a
+  `HERONITE_NO_GAMEPAD=1` ignores controllers (test copies must not follow the one in use; `shot.sh` and `idle-cost.sh` set it); `HERONITE_DEBUG_PAD=down,a,wait:500,b` plays presses (`up down left right a b x y lb rb lt rt start select sup sdown sleft sright`); `HERONITE_DEBUG_MOUSE=click:0.5:0.4,wheel:-1,right` plays mouse events (points as fractions of the window; on a
   hidden workspace keep capturing it with `grim -T`, or the clicks hit the last frame it presented).
 
 **Do not** use uppercase labels, outlined buttons, underlined tabs, square
@@ -1527,8 +1527,12 @@ screenshot" row. Home (under the mixer) and Audio (first, over it) have a media 
 every 2 s while Home or Audio shows, the focus kept on its row when the media row comes or goes): the cover (44 px,
 rounded; a note, or a globe for a browser, without one), the title (else the app's name) over "Paused · artist · app",
 and round ⏮ ⏯ ⏭ buttons like the "Capture" row's: ◀ ▶ choose (skipping the ones the player does not take, drawn faded),
-A runs it, the A hint names it (Play / Pause, Next, Previous) and Y ("Other player") goes to the next player when several
-are there. Playing players come first; a command keeps its player on the row. Like apps playing, the media row takes
+A runs it, the A hint names it (Play / Pause, Next, Previous). With several players, dots under the row show which one it
+is (the one shown longer): ◀ ▶ past the first or last button go to the player before or after (landing on the button
+they came in by), the right stick ← → too (Play / Pause chosen), a click on a dot shows that one, and Y ("Other player")
+goes to the next, round. Playing players come first, then the others; within each, the one used last leads (a command
+from the overlay, playing or pausing since the last read, Windows' current session). A command keeps its player on the
+row. Like apps playing, the media row takes
 the room of Home's recent captures. The Screenshots and Notes tabs keep their own rows. "Back to game" comes before "Back to Heronite" only
 while the game has a window and another one has the focus (`heronite_overlay::game_window`, read when the panel opens):
 it gives that window the focus and closes the panel. Only Hyprland can be asked (`hyprctl clients -j` has each window's

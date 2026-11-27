@@ -9,9 +9,9 @@ use heronite_platform::media::{self as native, Command, MediaSession};
 
 use super::{art_file, base_id, keep_art, unique_ids, Action, Art, Playback, Player};
 
-/// The players worth showing (see [`super::shown`]), Windows' current one
-/// first among the ones playing; `None` when the media controls cannot be
-/// asked.
+/// The players worth showing (see [`super::shown`]); Windows' current
+/// session counts as the one used last. `None` when the media controls
+/// cannot be asked.
 pub fn read(art_dir: &Path) -> Option<Vec<Player>> {
     let key = |s: &MediaSession| format!("{}\u{1f}{}\u{1f}{}\u{1f}{}", s.app_id, s.title, s.artist, s.album);
     let mut sessions = native::sessions(|s| !s.title.is_empty() && !art_file(art_dir, &key(s)).exists())
@@ -19,6 +19,7 @@ pub fn read(art_dir: &Path) -> Option<Vec<Player>> {
         .ok()?;
     // Stable: the current one leads, the others keep Windows' order.
     sessions.sort_by_key(|s| !s.current);
+    let current = sessions.first().is_some_and(|s| s.current);
     let mut players: Vec<Player> = sessions
         .into_iter()
         .map(|s| {
@@ -49,7 +50,8 @@ pub fn read(art_dir: &Path) -> Option<Vec<Player>> {
         })
         .collect();
     unique_ids(&mut players);
-    Some(super::shown(players))
+    let latest = current.then(|| players[0].id.clone());
+    Some(super::shown(players, latest.as_deref()))
 }
 
 /// Sends `action` to the player's session. Blocking.

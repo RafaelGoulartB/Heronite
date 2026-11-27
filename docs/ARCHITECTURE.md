@@ -537,14 +537,17 @@ text size) and applies it.
   current one first, a packaged app's name through `AppInfo`, a desktop
   program's from its id), whose thumbnails are kept as files in
   `<cache>/overlay-media` (the newest 24). Playing players come first, then
-  paused, then stopped ones with something loaded. On Linux, `input` reads
+  the others (stopped ones only with something loaded); within each, the one
+  used last leads (a command from the overlay, playing or pausing since the
+  last read, Windows' current session; kept for the app's life). On Linux, `input` reads
   the controllers from `/dev/input/event*` on its own thread (only while a
   game launched by the app runs and the overlay is on) and grabs them
   (`EVIOCGRAB`) while Guide is held or the panel is open, so the game gets
   none of those presses; `input::core` is the pure state machine (Guide tap
   = open / close, Guide + RB (or the button chosen) = screenshot,
   Guide + ↑ / ↓ = volume, Guide + Y = a moment for the journal, Guide + X
-  = the replay saved, held directions repeat). `audio` drives the default output, the microphone,
+  = the replay saved, held directions repeat, the right stick ← → one
+  press each time, on Linux `ABS_RX`, on Windows XInput's right thumb). `audio` drives the default output, the microphone,
   the game's own streams and the other apps playing through `pactl`; `controller` reads the battery from
   sysfs and disconnects Bluetooth controllers. `replay` runs gpu-screen-recorder (6.0 or newer, the
   system's or the Flatpak) as a replay buffer: `info` reads its `--info`, `plan` builds the command

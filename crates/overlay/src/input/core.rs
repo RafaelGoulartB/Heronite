@@ -11,7 +11,8 @@
 //! - Guide released without a chord opens the overlay (every controller is
 //!   grabbed while it is open) or closes it.
 //! - While open, the presses become navigation, with held directions and the
-//!   left stick repeating.
+//!   left stick repeating. The right stick pushed ← or → is one press each
+//!   time (no repeat).
 //! - With [`Options::console_hold`] (no game runs), Guide held alone for
 //!   [`CONSOLE_HOLD`] while closed asks for console mode instead
 //!   ([`Event::ConsoleMode`]); its release then opens nothing. A tap still
@@ -37,6 +38,9 @@ pub enum Button {
     Left,
     Right,
     Guide,
+    /// The right stick pushed ← / → (one press each time).
+    RightStickLeft,
+    RightStickRight,
 }
 
 impl From<heronite_data::overlay_prefs::ChordButton> for Button {
@@ -142,13 +146,15 @@ pub(super) struct Core {
     held: Option<(usize, Button, Instant)>,
     /// Where the left stick points (past the threshold).
     stick: Option<(usize, Button)>,
+    /// Where the right stick points, ← or → (past the threshold).
+    right_stick: Option<(usize, Button)>,
     /// When the held Guide went down, while it may still be console mode.
     console: Option<Instant>,
 }
 
 impl Core {
     pub fn new(opts: Options) -> Self {
-        Self { opts, open: false, guide: None, held: None, stick: None, console: None }
+        Self { opts, open: false, guide: None, held: None, stick: None, right_stick: None, console: None }
     }
 
     /// The Guide held for console mode will not be: tell the app.
@@ -247,6 +253,7 @@ impl Core {
             self.open = true;
             self.held = None;
             self.stick = None;
+            self.right_stick = None;
             out.events.push(Event::Open);
             out.grabs.push(Grab::HoldAll);
         }
@@ -256,6 +263,7 @@ impl Core {
         self.open = false;
         self.held = None;
         self.stick = None;
+        self.right_stick = None;
         out.events.push(Event::Close);
         if self.guide.is_none() {
             out.grabs.push(Grab::ReleaseAll);
@@ -305,6 +313,9 @@ impl Core {
         if self.stick.is_some_and(|(d, _)| d == dev) {
             self.stick = None;
         }
+        if self.right_stick.is_some_and(|(d, _)| d == dev) {
+            self.right_stick = None;
+        }
     }
 
     /// The Guide release of `dev` will never come: another program grabbed
@@ -341,6 +352,9 @@ impl Core {
         if self.stick.is_some_and(|(d, _)| d == dev) {
             self.stick = None;
         }
+        if self.right_stick.is_some_and(|(d, _)| d == dev) {
+            self.right_stick = None;
+        }
         if self.open && remaining == 0 {
             self.set_closed(&mut out);
         }
@@ -359,6 +373,7 @@ impl Core {
         self.console = None;
         self.held = None;
         self.stick = None;
+        self.right_stick = None;
     }
 
     /// The left stick of `dev` moved (`x`, `y` in -1..=1, `y` up). While Guide
@@ -393,6 +408,30 @@ impl Core {
             let more = self.button(dev, d, true, now);
             out.events.extend(more.events);
             out.grabs.extend(more.grabs);
+        }
+        out
+    }
+
+    /// The right stick of `dev` moved (`x` in -1..=1): pushed ← or →, it is
+    /// one press of [`Button::RightStickLeft`] / [`Button::RightStickRight`]
+    /// while open (it does not repeat while held). It is no chord: moved
+    /// while Guide is down (the game's camera), Guide still opens or closes.
+    pub fn right_stick(&mut self, dev: usize, x: f32) -> Output {
+        let threshold = |wanted: Button| if self.right_stick == Some((dev, wanted)) { STICK_OFF } else { STICK_ON };
+        let dir = if x >= threshold(Button::RightStickRight) {
+            Some(Button::RightStickRight)
+        } else if x <= -threshold(Button::RightStickLeft) {
+            Some(Button::RightStickLeft)
+        } else {
+            None
+        };
+        if dir == self.right_stick.filter(|(d, _)| *d == dev).map(|(_, b)| b) {
+            return Output::default();
+        }
+        self.right_stick = dir.map(|b| (dev, b));
+        let mut out = Output::default();
+        if let Some(b) = dir.filter(|_| self.open && self.guide.is_none()) {
+            out.events.push(Event::Press(b));
         }
         out
     }
@@ -565,6 +604,30 @@ mod tests {
         assert!(c.stick(0, 0., 0.4, now).events.is_empty(), "still past the release threshold");
         assert!(c.stick(0, 0., 0.1, now).events.is_empty());
         assert_eq!(c.stick(0, -0.9, 0., now).events, vec![Event::Press(Button::Left)]);
+    }
+
+    #[test]
+    fn right_stick_flicks_once() {
+        let mut c = Core::new(ALL);
+        let now = Instant::now();
+        assert!(c.right_stick(0, 0.9).events.is_empty(), "closed: the game has it");
+        c.right_stick(0, 0.);
+        c.open();
+        assert_eq!(c.right_stick(0, 0.9).events, vec![Event::Press(Button::RightStickRight)]);
+        assert!(c.right_stick(0, 0.4).events.is_empty(), "still past the release threshold");
+        assert_eq!(c.tick(now + Duration::from_secs(2)), None, "no repeat while held");
+        assert!(c.right_stick(0, 0.1).events.is_empty());
+        assert_eq!(c.right_stick(0, -0.7).events, vec![Event::Press(Button::RightStickLeft)]);
+        assert_eq!(c.right_stick(0, 0.8).events, vec![Event::Press(Button::RightStickRight)], "straight across");
+    }
+
+    #[test]
+    fn right_stick_is_no_guide_chord() {
+        let mut c = Core::new(ALL);
+        let now = Instant::now();
+        c.button(0, Button::Guide, true, now);
+        assert!(c.right_stick(0, -0.9).events.is_empty());
+        assert_eq!(c.button(0, Button::Guide, false, now).events, vec![Event::Open], "Guide still opens");
     }
 
     #[test]

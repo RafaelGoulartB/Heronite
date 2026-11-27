@@ -1,10 +1,13 @@
 //! The media row of Home and Audio: what a media player plays now (its
 //! cover, the track, the artist and the app) and a round button each for the
 //! previous track, play / pause and the next one. ◀ ▶ choose a button and A
-//! runs it, as on Home's "Capture" row; Y goes to the next player when there
-//! are several. The players are read when the panel opens and every couple
-//! of seconds while Home or Audio shows (`heronite_overlay::media`: MPRIS on
-//! Linux, the system media controls on Windows).
+//! runs it, as on Home's "Capture" row. With several players, dots under the
+//! row show which one it is: ◀ ▶ past the first or last button, the right
+//! stick ← → and a click on a dot go to another, Y to the next (round).
+//! The one playing comes first, else the one used last. The players are read
+//! when the panel opens and every couple of seconds while Home or Audio shows
+//! (`heronite_overlay::media`: MPRIS on Linux, the system media controls on
+//! Windows).
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -83,7 +86,8 @@ impl Button {
 /// The panel's players and what the media row has chosen.
 pub(super) struct Media {
     players: Vec<Player>,
-    /// The player Y (or a command) chose, while it is there; else the first.
+    /// The player chosen (another page, a command), while it is there; else
+    /// the first.
     chosen: Option<String>,
     /// The button ◀ ▶ chose (in [`BUTTONS`]).
     button: usize,
@@ -100,8 +104,8 @@ pub(super) struct Media {
 impl Media {
     /// `HERONITE_DEBUG_OVERLAY_MEDIA`: `live` reads the real players and
     /// sends them the panel's presses (under the other debug hooks nothing is
-    /// sent, as with the volume); `playing`, `paused`, `browser`, `two` or
-    /// `none` show made-up players instead (the cover from
+    /// sent, as with the volume); `playing`, `paused`, `browser`, `two`,
+    /// `three` or `none` show made-up players instead (the cover from
     /// `HERONITE_DEBUG_OVERLAY_MEDIA_ART`, a file or a URL), changed in place.
     pub(super) fn new(paths: &DataPaths) -> Self {
         let spec = crate::env::value("HERONITE_DEBUG_OVERLAY_MEDIA").unwrap_or_default();
@@ -162,6 +166,20 @@ fn made_up(spec: &str) -> Option<Vec<Player>> {
         "paused" => Some(vec![music(Playback::Paused)]),
         "browser" => Some(vec![browser]),
         "two" => Some(vec![music(Playback::Playing), Player { playback: Playback::Paused, ..browser }]),
+        "three" => Some(vec![
+            music(Playback::Playing),
+            Player { playback: Playback::Paused, ..browser.clone() },
+            Player {
+                id: "debug.podcast".into(),
+                app: "VLC".into(),
+                title: "Patch notes, episode 12".into(),
+                artist: "Respawn Radio".into(),
+                playback: Playback::Paused,
+                can_next: true,
+                can_previous: true,
+                ..browser
+            },
+        ]),
         "none" => Some(Vec::new()),
         _ => None,
     }
@@ -218,13 +236,23 @@ impl OverlayPanel {
         }
     }
 
-    /// A press on the media row: ◀ ▶ choose, A runs the chosen button, Y
-    /// goes to the next player.
+    /// A press on the media row: ◀ ▶ choose (past the first or last button,
+    /// the player before or after), A runs the chosen button, the right stick
+    /// ← → goes to the player before or after, Y to the next (round).
     pub(super) fn media_pad(&mut self, pad: Pad, cx: &mut Context<Self>) -> bool {
         let Some(player) = self.media_player().cloned() else { return false };
         match pad {
-            Pad::Left => self.media.button = self.media_step(&player, false),
-            Pad::Right => self.media.button = self.media_step(&player, true),
+            Pad::Left | Pad::Right => {
+                let forward = pad == Pad::Right;
+                let (at, to) = (self.media_button(&player), self.media_step(&player, forward));
+                if to != at {
+                    self.media.button = to;
+                } else {
+                    // From the edge it leaves by: ▶ past ⏭ lands on the next one's ⏮.
+                    self.media_turn(forward, if forward { 0 } else { BUTTONS.len() - 1 });
+                }
+            }
+            Pad::ScrollLeft | Pad::ScrollRight => self.media_turn(pad == Pad::ScrollRight, MIDDLE),
             Pad::A => {
                 let b = BUTTONS[self.media_button(&player)];
                 if b.enabled(&player) {
@@ -238,6 +266,18 @@ impl OverlayPanel {
             _ => return false,
         }
         true
+    }
+
+    /// Shows the player after (or before) the one shown, with `button`
+    /// chosen; nothing past the last (or the first).
+    fn media_turn(&mut self, forward: bool, button: usize) {
+        let Some(id) = self.media_player().map(|p| p.id.clone()) else { return };
+        let at = self.media.players.iter().position(|p| p.id == id).unwrap_or(0);
+        let to = if forward { at.checked_add(1) } else { at.checked_sub(1) };
+        if let Some(next) = to.and_then(|i| self.media.players.get(i)) {
+            self.media.chosen = Some(next.id.clone());
+            self.media.button = button;
+        }
     }
 
     pub(super) fn media_hints(&self) -> Vec<Hint> {
@@ -274,6 +314,7 @@ impl OverlayPanel {
             log::info!("overlay debug: media {action:?} skipped");
             return;
         }
+        media::used(player);
         let player = player.clone();
         cx.spawn(async move |this, cx| {
             let res = cx.background_spawn(async move { media::control(&player, action) }).await;
@@ -359,6 +400,49 @@ impl OverlayPanel {
         self.icons(cx).get_or_request(&id, || vec![chain], px, px, Variant::Cover, 30).map(ImageSource::Render)
     }
 
+    /// The focus goes to the media row (a click on it).
+    fn media_focus(&mut self) {
+        if let Some(i) = self.rows().iter().position(|r| r.id.as_ref() == MEDIA) {
+            self.nav.focus = i;
+        }
+    }
+
+    /// A click on button `i`: the focus goes to the row and the button runs.
+    fn media_click(&mut self, i: usize, cx: &mut Context<Self>) {
+        self.media_focus();
+        self.media.button = i;
+        let Some(p) = self.media_player().cloned() else { return };
+        if BUTTONS[i].enabled(&p) {
+            self.run_media(&p, BUTTONS[i].action(), cx);
+        }
+    }
+
+    /// With several players, a dot each under the row (the one shown is
+    /// longer); a click on one shows that player.
+    fn media_dots(&self, shown: &Player, fg: Hsla, clickable: bool) -> Option<Div> {
+        let players = &self.media.players;
+        if players.len() < 2 {
+            return None;
+        }
+        Some(div().flex().justify_center().pb(u(6.)).children(players.iter().map(|p| {
+            let on = p.id == shown.id;
+            let id = p.id.clone();
+            let pick = clickable.then(|| {
+                self.click(move |this, _, _| {
+                    this.media_focus();
+                    this.media.chosen = Some(id.clone());
+                    this.media.button = MIDDLE;
+                })
+            });
+            // The room around it takes the click too.
+            div()
+                .px(u(3.))
+                .py(u(3.))
+                .when_some(pick, |d, pick| d.on_mouse_down(MouseButton::Left, pick))
+                .child(div().h(u(6.)).w(u(if on { 18. } else { 6. })).rounded_full().bg(Hsla { a: if on { 0.9 } else { 0.3 }, ..fg }))
+        })))
+    }
+
     /// The media row: the cover, the track and its line, then the buttons.
     /// `route` brings the focus to the row (`None`: the rows take no clicks).
     pub(super) fn render_media(&self, r: &Row, focused: bool, route: Option<&[Pad]>, art: Option<ImageSource>) -> Div {
@@ -374,7 +458,9 @@ impl OverlayPanel {
                 .filter(|_| enabled)
                 .map(|route| route.iter().copied().chain(pointer::repeat(if i > at { Pad::Right } else { Pad::Left }, steps)).collect())
                 .unwrap_or_default();
-            let click: Vec<Pad> = route.filter(|_| enabled).map(|_| to.iter().copied().chain([Pad::A]).collect()).unwrap_or_default();
+            // Run straight away, not as ▶ presses from the button chosen: a
+            // hover's presses may not be drawn yet, and ▶ past ⏭ turns the page.
+            let click = route.filter(|_| enabled).map(|_| self.click(move |this, _, cx| this.media_click(i, cx)));
             let (bg, ink): (Hsla, Hsla) = match (focused, i == at && enabled) {
                 (true, true) => (fg, theme::console_focus().into()),
                 (true, false) => (theme::black_a(0.08), fg),
@@ -391,7 +477,7 @@ impl OverlayPanel {
                 // Faded, and its clicks do not reach the row (which runs the chosen one).
                 .when(!enabled, |d| d.opacity(0.35).on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()))
                 .on_hover_pads(to)
-                .on_pads(click)
+                .when_some(click, |d, click| d.on_mouse_down(MouseButton::Left, click))
                 .child(icon(b.icon(p), u(20.), ink))
         });
         let tile = div().flex_none().size(u(ART)).rounded(u(10.)).overflow_hidden().flex().items_center().justify_center().bg(if focused {
@@ -404,11 +490,10 @@ impl OverlayPanel {
             None => tile.child(icon(if p.is_browser() { Icon::Language } else { Icon::MusicNote }, u(22.), fg)),
         };
         let sub: Hsla = if focused { Hsla { a: 0.7, ..fg } } else { theme::text_muted().into() };
-        let row = kit::row_base(focused)
+        let line = div()
+            .flex()
+            .items_center()
             .gap(u(12.))
-            // The cover starts where the rows' icons do; the buttons end
-            // where the "Capture" row's do.
-            .pl(u(12.))
             .child(tile)
             .child(
                 div()
@@ -426,6 +511,16 @@ impl OverlayPanel {
                     ),
             )
             .child(div().flex().flex_none().gap(u(8.)).children(buttons));
+        let row = kit::row_base(focused)
+            .flex_col()
+            .items_stretch()
+            .justify_center()
+            .gap(u(0.))
+            // The cover starts where the rows' icons do; the buttons end
+            // where the "Capture" row's do.
+            .pl(u(12.))
+            .child(line)
+            .children(self.media_dots(p, fg, route.is_some()));
         // A click on the row itself runs the chosen button.
         let click: Vec<Pad> = route.map(|route| route.iter().copied().chain([Pad::A]).collect()).unwrap_or_default();
         div().on_hover_pads(route.map(<[Pad]>::to_vec).unwrap_or_default()).on_pads(click).child(row)

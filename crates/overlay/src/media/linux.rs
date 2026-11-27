@@ -73,7 +73,7 @@ pub fn read(art_dir: &Path) -> Option<Vec<Player>> {
             Some(player_of(name, &app, &player, art_dir))
         })
         .collect();
-    Some(super::shown(players))
+    Some(super::shown(players, None))
 }
 
 /// The MPRIS names, sorted (each kind of player keeps its place between
