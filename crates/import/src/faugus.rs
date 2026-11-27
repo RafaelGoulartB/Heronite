@@ -150,7 +150,7 @@ mod tests {
         let own = hk.own.clone().unwrap();
         assert_eq!(own.program, home.join("Games/HK/hollow_knight.exe").to_str().unwrap());
         assert_eq!(own.args, "-force-vulkan");
-        assert!(own.wine.as_ref().is_some_and(|w| w.proton && w.bin == proton.to_str().unwrap()));
+        assert!(own.wine.as_ref().is_some_and(|w| w.proton && Path::new(&w.bin) == proton));
         assert_eq!(
             own.env,
             [("DXVK_HUD".to_string(), "fps".to_string()), ("MANGOHUD_CONFIG".to_string(), "fps, font_size=24".to_string())]

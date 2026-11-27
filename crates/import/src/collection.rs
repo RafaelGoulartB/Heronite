@@ -626,6 +626,8 @@ mod tests {
 
     /// Picked to start here, a Lutris game that can comes over as this
     /// app's own with its settings; picked back, Lutris starts it again.
+    // Linux launchers' paths; imports are off on Windows (`Feature::LauncherImports`).
+    #[cfg(unix)]
     #[test]
     fn lutris_games_start_here_when_picked() {
         let dir = tempfile::tempdir().unwrap();
