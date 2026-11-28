@@ -1,0 +1,19 @@
+{
+  "An update of Heronite is using {path}": "Heronite 的更新正在使用 {path}",
+  "Could not move {path} to the Recycle Bin: {error}": "无法将 {path} 移到回收站：{error}",
+  "Deleted. Heronite downloads them again when needed.": "已删除。Heronite 会在需要时重新下载。",
+  "Disk space of games, store tools, caches": "游戏、商店工具和缓存占用的磁盘空间",
+  "GOG redistributables": "GOG 运行库",
+  "Heronite updates": "Heronite 更新",
+  "Leftover folders go to the Recycle Bin, where they can be restored; the rest is deleted.": "残留文件夹会移到回收站，可从那里恢复；其余内容会被删除。",
+  "Move to the Recycle Bin": "移到回收站",
+  "No game points to these folders any more. They go to the Recycle Bin, where they can be restored.": "已没有游戏指向这些文件夹。它们会移到回收站，可从那里恢复。",
+  "Old downloads": "旧下载",
+  "Press A again to move it to the Recycle Bin": "再按一次 A 将其移到回收站",
+  "Store tools": "商店工具",
+  "To the Recycle Bin": "移到回收站",
+  "Unfinished download of {name}": "{name} 的未完成下载",
+  "{freed} freed, {trashed} moved to the Recycle Bin": "已释放 {freed}，已将 {trashed} 移到回收站",
+  "{path} is on a removable drive, which has no Recycle Bin": "{path} 位于可移动驱动器上，该驱动器没有回收站",
+  "{size} moved to the Recycle Bin": "已将 {size} 移到回收站"
+}

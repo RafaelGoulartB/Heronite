@@ -48,6 +48,9 @@ fn region_of(lang: Lang) -> &'static str {
         Lang::Es => "Spain",
         Lang::De => "Germany",
         Lang::Fr => "France",
+        // LaunchBox has no Chinese region: art made for everyone is the
+        // closest thing to it.
+        Lang::ZhCn => "World",
     }
 }
 

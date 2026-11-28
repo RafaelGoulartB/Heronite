@@ -81,6 +81,7 @@ pub fn regions_for(lang: Lang) -> &'static [&'static str] {
         Lang::Fr => &["France", "Europe", "USA", "USA, Europe", "World", "Japan"],
         Lang::Es => &["Spain", "Europe", "USA", "USA, Europe", "World", "Japan"],
         Lang::PtBr => &["Brazil", "USA", "Europe", "USA, Europe", "World", "Japan"],
+        Lang::ZhCn => &["China", "Taiwan", "Hong Kong", "USA", "Europe", "USA, Europe", "World", "Japan"],
     }
 }
 
@@ -316,7 +317,10 @@ mod tests {
     #[test]
     fn regions_follow_the_language() {
         let first = |lang| regions_for(lang)[0];
-        assert_eq!([first(Lang::En), first(Lang::De), first(Lang::Es), first(Lang::PtBr)], ["USA", "Germany", "Spain", "Brazil"]);
+        assert_eq!(
+            [first(Lang::En), first(Lang::De), first(Lang::Es), first(Lang::PtBr), first(Lang::Fr), first(Lang::ZhCn)],
+            ["USA", "Germany", "Spain", "Brazil", "France", "China"]
+        );
         for lang in Lang::ALL {
             let list = regions_for(lang);
             assert!(list.iter().all(|r| is_region_group(r)), "{lang:?}");

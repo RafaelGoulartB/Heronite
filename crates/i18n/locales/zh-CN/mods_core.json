@@ -1,0 +1,22 @@
+{
+  "Cannot use {path}: it is not a folder": "无法使用 {path}：它不是文件夹",
+  "Could not download fuse-overlayfs: {error}": "无法下载 fuse-overlayfs：{error}",
+  "Heronite needs FUSE (fusermount3) to apply mods. Install the fuse3 package.": "Heronite 需要 FUSE（fusermount3）才能应用模组。请安装 fuse3 包。",
+  "Heronite needs FUSE to apply mods, but /dev/fuse is missing. Load the fuse kernel module.": "Heronite 需要 FUSE 才能应用模组，但 /dev/fuse 不存在。请加载 fuse 内核模块。",
+  "Mods cannot be applied over {path}": "无法在 {path} 上应用模组",
+  "Mods could not be applied: {error}": "无法应用模组：{error}",
+  "Not a valid game key: {key}": "无效的游戏标识：{key}",
+  "The archive has no files to install": "压缩包中没有可安装的文件",
+  "The fuse-overlayfs download is corrupt (its checksum does not match)": "fuse-overlayfs 下载已损坏（校验和不匹配）",
+  "The game is running with mods; close it first": "游戏正在带模组运行；请先关闭",
+  "The mods folder and the game folder cannot be inside each other": "模组文件夹和游戏文件夹不能互相嵌套",
+  "The overwrite folder is empty": "覆盖文件夹为空",
+  "The path {path} is not allowed": "不允许使用路径 {path}",
+  "fuse-overlayfs did not mount {path}: {error}": "fuse-overlayfs 未能挂载 {path}：{error}",
+  "fuse-overlayfs failed: {error}": "fuse-overlayfs 失败：{error}",
+  "fuse-overlayfs is needed to apply mods and could not be found. Install the fuse-overlayfs package.": "应用模组需要 fuse-overlayfs，但未找到。请安装 fuse-overlayfs 包。",
+  "fuse-overlayfs is not available for {arch}; install it with your package manager": "fuse-overlayfs 不支持 {arch}；请用包管理器安装",
+  "{n} enabled mod is missing its files: {names}. Reinstall or remove it in Mods.": "{n} 个已启用的模组缺少文件：{names}。请在“模组”中重新安装或移除。",
+  "{n} enabled mods are missing their files: {names}. Reinstall or remove them in Mods.": "{n} 个已启用的模组缺少文件：{names}。请在“模组”中重新安装或移除。",
+  "{path} is still mounted from an earlier run and could not be unmounted": "{path} 仍挂载着上次运行的内容，且无法卸载"
+}

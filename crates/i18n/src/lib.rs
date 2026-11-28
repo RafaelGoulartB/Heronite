@@ -1,6 +1,6 @@
 //! Interface language. The English text is the key: `tr!("Play")` is "Play"
 //! in English and its entry in `locales/<lang>/*.json` in the other languages
-//! (`pt-BR`, `es`, `de`, `fr`; English again when there is none, so nothing ever shows up
+//! (`pt-BR`, `es`, `de`, `fr`, `zh-CN`; English again when there is none, so nothing ever shows up
 //! empty).
 //!
 //! - `tr!("Play")` gives a `&'static str`;
@@ -30,12 +30,13 @@ pub enum Lang {
     Es,
     De,
     Fr,
+    ZhCn,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 5] = [Lang::En, Lang::PtBr, Lang::Es, Lang::De, Lang::Fr];
+    pub const ALL: [Lang; 6] = [Lang::En, Lang::PtBr, Lang::Es, Lang::De, Lang::Fr, Lang::ZhCn];
     /// The languages with a `locales/` folder.
-    pub const TRANSLATED: [Lang; 4] = [Lang::PtBr, Lang::Es, Lang::De, Lang::Fr];
+    pub const TRANSLATED: [Lang; 5] = [Lang::PtBr, Lang::Es, Lang::De, Lang::Fr, Lang::ZhCn];
 
     /// BCP 47 tag, also what the settings file stores.
     pub fn code(self) -> &'static str {
@@ -45,6 +46,7 @@ impl Lang {
             Lang::Es => "es",
             Lang::De => "de",
             Lang::Fr => "fr",
+            Lang::ZhCn => "zh-CN",
         }
     }
 
@@ -56,6 +58,7 @@ impl Lang {
             Lang::Es => "Español",
             Lang::De => "Deutsch",
             Lang::Fr => "Français",
+            Lang::ZhCn => "简体中文",
         }
     }
 
@@ -71,6 +74,7 @@ impl Lang {
             "es" => Some(Lang::Es),
             "de" => Some(Lang::De),
             "fr" => Some(Lang::Fr),
+            "zh" => Some(Lang::ZhCn),
             _ => None,
         }
     }
@@ -81,6 +85,7 @@ impl Lang {
             2 => Lang::Es,
             3 => Lang::De,
             4 => Lang::Fr,
+            5 => Lang::ZhCn,
             _ => Lang::En,
         }
     }
@@ -88,13 +93,14 @@ impl Lang {
     /// Writes weekdays and months in lower case in the middle of a sentence
     /// (German capitalizes them, like English).
     pub fn lowercase_names(self) -> bool {
-        matches!(self, Lang::PtBr | Lang::Es | Lang::Fr)
+        // Chinese has no letter case: either answer is a no-op there.
+        matches!(self, Lang::PtBr | Lang::Es | Lang::Fr | Lang::ZhCn)
     }
 
     /// Decimal separator (`1.5` / `1,5`).
     pub fn decimal_separator(self) -> char {
         match self {
-            Lang::En => '.',
+            Lang::En | Lang::ZhCn => '.',
             Lang::PtBr | Lang::Es | Lang::De | Lang::Fr => ',',
         }
     }
@@ -177,12 +183,14 @@ fn translations(lang: Lang) -> Option<&'static HashMap<String, String>> {
     static ES_MAP: OnceLock<HashMap<String, String>> = OnceLock::new();
     static DE_MAP: OnceLock<HashMap<String, String>> = OnceLock::new();
     static FR_MAP: OnceLock<HashMap<String, String>> = OnceLock::new();
+    static ZH_CN_MAP: OnceLock<HashMap<String, String>> = OnceLock::new();
     let cell = match lang {
         Lang::En => return None,
         Lang::PtBr => &PT_BR_MAP,
         Lang::Es => &ES_MAP,
         Lang::De => &DE_MAP,
         Lang::Fr => &FR_MAP,
+        Lang::ZhCn => &ZH_CN_MAP,
     };
     Some(cell.get_or_init(|| {
         let mut map = HashMap::new();
@@ -204,6 +212,7 @@ pub fn embedded_files(lang: Lang) -> &'static [(&'static str, &'static str)] {
         Lang::Es => ES,
         Lang::De => DE,
         Lang::Fr => FR,
+        Lang::ZhCn => ZH_CN,
     }
 }
 
@@ -329,7 +338,7 @@ pub fn decimal(v: f64, digits: usize) -> String {
 /// An integer with thousands separators (`12,345` / `12.345` / `12 345`).
 pub fn grouped(v: i64) -> String {
     let sep = match current() {
-        Lang::En => ',',
+        Lang::En | Lang::ZhCn => ',',
         Lang::PtBr | Lang::Es | Lang::De => '.',
         Lang::Fr => '\u{202f}',
     };

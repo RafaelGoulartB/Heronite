@@ -1,0 +1,16 @@
+{
+  "{client} is not installed on this PC. Set it up in Stores → {client}.": "本机未安装 {client}。请在“商店 → {client}”中设置。",
+  "{client} was not installed: the administrator prompt was declined.": "{client} 未安装：管理员授权提示被拒绝。",
+  "The installer of {client} closed before {client} was installed.": "{client} 的安装程序在安装完成前关闭了。",
+  "The folder of this game was not found. Refresh the games of {client} in Stores → {client}.": "未找到此游戏的文件夹。请在“商店 → {client}”中刷新 {client} 的游戏。",
+  "Heronite downloads the official installer of {client} and runs it. Windows may ask you to allow it.": "Heronite 会下载 {client} 的官方安装程序并运行。Windows 可能会请求你允许。",
+  "Installed in": "安装位置",
+  "You sign in, install and update games in {client}; Heronite starts them through it and counts the play time for the game, not for {client}.": "你在 {client} 中登录、安装和更新游戏；Heronite 通过它启动游戏，并统计游戏本身的游玩时长，而不是 {client} 的。",
+  "Downloads the official installer and runs it.": "下载官方安装程序并运行。",
+  "Download its installer and install it": "下载其安装程序并安装",
+  "Closes it and its helper programs": "关闭它及其辅助程序",
+  "Blizzard games": "暴雪游戏",
+  "EA games": "EA 游戏",
+  "Ubisoft games": "育碧游戏",
+  "Rockstar games": "Rockstar 游戏"
+}

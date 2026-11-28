@@ -1,0 +1,11 @@
+{
+  "ModuleConfig.xml is not valid: {error}": "ModuleConfig.xml 无效：{error}",
+  "The option {flag} is not set to {value}": "选项 {flag} 未设置为 {value}",
+  "This mod has no FOMOD installer": "此模组没有 FOMOD 安装程序",
+  "This mod uses a scripted installer (script.cs), which Heronite cannot run": "此模组使用脚本安装程序（script.cs），Heronite 无法运行",
+  "could not read ModuleConfig.xml: {error}": "无法读取 ModuleConfig.xml：{error}",
+  "{file} is installed but not enabled": "{file} 已安装但未启用",
+  "{file} is not installed": "{file} 未安装",
+  "{file} must be installed and not enabled": "{file} 必须已安装且未启用",
+  "{file} must not be installed": "{file} 必须未安装"
+}

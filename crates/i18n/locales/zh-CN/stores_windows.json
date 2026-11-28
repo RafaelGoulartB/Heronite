@@ -1,0 +1,5 @@
+{
+  "Leave it empty to use the one in the data folder ({path}).": "留空则使用数据文件夹中的那个（{path}）。",
+  "Windows programs do not run on {system} without Wine": "在 {system} 上，Windows 程序没有 Wine 无法运行",
+  "{platform} programs do not run on {system}": "{platform} 程序无法在 {system} 上运行"
+}

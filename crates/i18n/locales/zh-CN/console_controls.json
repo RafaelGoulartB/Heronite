@@ -1,0 +1,15 @@
+{
+  "Ask shows a notice in the corner of the screen, even with Heronite in the tray.": "“询问”会在屏幕角落显示提示，即使 Heronite 已最小化到托盘。",
+  "Button to enter console mode": "进入主机模式的按键",
+  "Controller connected": "控制器已连接",
+  "Heronite comes to the front": "Heronite 会切换到前台",
+  "Hold Back + Start": "按住 Back + Start",
+  "Hold Guide": "按住 Guide",
+  "Hold LB + RB": "按住 LB + RB",
+  "Hold it for a second, from any app. Not while a game runs.": "在任意应用中按住一秒。游戏运行时无效。",
+  "Hold to enter console mode": "按住以进入主机模式",
+  "Hold {button} to enter console mode": "按住 {button} 进入主机模式",
+  "Keep holding…": "继续按住…",
+  "Opening console mode…": "正在打开主机模式…",
+  "Release to cancel": "松开即可取消"
+}

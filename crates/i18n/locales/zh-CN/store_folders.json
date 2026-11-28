@@ -1,0 +1,16 @@
+{
+  "A store can have a folder of its own: choose it on the store's page, in Stores.": "每个商店可以有自己的文件夹：在“商店”中该商店的页面上选择。",
+  "Choose a folder to keep the games of {client} out of its Wine prefix.": "选择一个文件夹，让 {client} 的游戏不放进它的 Wine 前缀。",
+  "Choose the install folder of {store}": "选择 {store} 的安装文件夹",
+  "Default install folder, from Settings → General": "默认安装文件夹，来自“设置 → 常规”",
+  "Heronite sets this folder in {client} each time it opens it, so new games go here. Games already installed stay where they are.": "Heronite 每次打开 {client} 时都会设置此文件夹，新游戏会安装到这里。已安装的游戏保持原位。",
+  "Inside its Wine prefix": "位于其 Wine 前缀内",
+  "New {store} games are installed here. The install dialog can still put one somewhere else.": "新的 {store} 游戏会安装到这里。安装对话框仍可将某个游戏放到别处。",
+  "Only for {store}": "仅用于 {store}",
+  "Path in {client}": "{client} 中的路径",
+  "Use default": "使用默认",
+  "Use the default folder": "使用默认文件夹",
+  "{client} asks where to install each game: choose {path}. Games already installed stay where they are.": "{client} 会询问每个游戏的安装位置：请选择 {path}。已安装的游戏保持原位。",
+  "{client} is open: close it and open it again for the change to apply.": "{client} 正在运行：请关闭后重新打开，更改才会生效。",
+  "{client}'s own folder": "{client} 自己的文件夹"
+}

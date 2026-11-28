@@ -1,0 +1,21 @@
+{
+  "A game with this name is in your Collection": "你的合集中已有同名游戏",
+  "Add from folder": "从文件夹添加",
+  "Add games from a folder": "从文件夹添加游戏",
+  "Add games from a folder…": "从文件夹添加游戏…",
+  "Choose the folder your games are in. Heronite looks for the programs that start them, and you choose the games to add.": "选择存放游戏的文件夹。Heronite 会查找启动游戏的程序，由你选择要添加的游戏。",
+  "Could not add the games: {error}": "无法添加游戏：{error}",
+  "Find many games at once": "一次查找多个游戏",
+  "Find the games in a folder and add them at once": "在文件夹中查找游戏并一次性添加",
+  "Games are found by the programs that start them (.exe). Try the folder of one game, or the one that holds them.": "游戏通过启动它们的程序（.exe）识别。可以试试单个游戏的文件夹，或存放多个游戏的文件夹。",
+  "Games are found by the programs that start them: Windows programs (.exe), AppImages, start scripts and Linux programs. Try the folder of one game, or the one that holds them.": "游戏通过启动它们的程序识别：Windows 程序（.exe）、AppImage、启动脚本和 Linux 程序。可以试试单个游戏的文件夹，或存放多个游戏的文件夹。",
+  "Games folder": "游戏文件夹",
+  "Give each Windows game its own Wine prefix": "为每个 Windows 游戏使用独立的 Wine 前缀",
+  "Looking for games…": "正在查找游戏…",
+  "No games were found in this folder.": "此文件夹中未找到游戏。",
+  "Scan again": "重新扫描",
+  "The folder your games are in": "存放游戏的文件夹",
+  "This folder does not exist.": "此文件夹不存在。",
+  "This folder is very big: only part of it was searched.": "此文件夹非常大：仅搜索了其中一部分。",
+  "{n} already in Collection": "{n} 个已在合集中"
+}

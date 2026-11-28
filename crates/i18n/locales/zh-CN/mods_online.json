@@ -1,0 +1,21 @@
+{
+  "Could not reach {host}: {error}": "无法连接 {host}：{error}",
+  "Free Nexus Mods accounts download with the \"Mod manager download\" button on the mod's page": "免费 Nexus Mods 账户需使用模组页面上的“Mod manager download”按钮下载",
+  "Nexus Mods asks to wait: the hourly limit of requests was reached": "Nexus Mods 要求等待：已达到每小时请求上限",
+  "Nexus Mods collections are not supported yet: install their mods one by one": "尚不支持 Nexus Mods 合集：请逐个安装其中的模组",
+  "Nexus Mods could not search: {error}": "Nexus Mods 搜索失败：{error}",
+  "Nexus Mods gave no download link": "Nexus Mods 未提供下载链接",
+  "Nexus Mods refused the API key. Paste it again in Settings → Mods.": "Nexus Mods 拒绝了 API 密钥。请在“设置 → 模组”中重新粘贴。",
+  "Not found on {host}": "在 {host} 上未找到",
+  "The download link from Nexus Mods expired or is not valid: use the \"Mod manager download\" button on the mod's page again": "Nexus Mods 的下载链接已过期或无效：请再次使用模组页面上的“Mod manager download”按钮",
+  "The download stopped before the end": "下载在中途停止",
+  "The download stopped: {error}": "下载已停止：{error}",
+  "The download was cancelled": "下载已取消",
+  "This is not a Nexus Mods download link": "这不是 Nexus Mods 下载链接",
+  "This is not a Thunderstore install link": "这不是 Thunderstore 安装链接",
+  "Thunderstore has no version of {name}": "Thunderstore 上没有 {name} 的版本",
+  "{host} answered with HTTP {status}": "{host} 返回了 HTTP {status}",
+  "{host} asks to wait: too many requests": "{host} 要求等待：请求过多",
+  "{host} refused the request (HTTP {status})": "{host} 拒绝了请求（HTTP {status}）",
+  "{host} sent an answer Heronite does not understand: {error}": "{host} 返回了 Heronite 无法解析的响应：{error}"
+}

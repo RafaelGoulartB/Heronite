@@ -114,6 +114,9 @@ pub fn format_time(iso: &str) -> String {
                     )
                 }
                 heronite_i18n::Lang::De => local.format("%d.%m.%Y, %H:%M").to_string(),
+                heronite_i18n::Lang::ZhCn => {
+                    format!("{}年{}月{}日, {}", local.year(), local.month(), local.day(), local.format("%H:%M"))
+                }
             }
         }
         Err(_) => iso.to_string(),

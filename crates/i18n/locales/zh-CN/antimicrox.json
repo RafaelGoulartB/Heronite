@@ -1,0 +1,11 @@
+{
+  "AntiMicroX profiles": "AntiMicroX 配置",
+  "Player {number}": "玩家 {number}",
+  "Add player": "添加玩家",
+  "Add a player…": "添加玩家…",
+  "Remove a player…": "移除玩家…",
+  "Remove a player": "移除玩家",
+  "Choose the AntiMicroX profile of {player}": "选择 {player} 的 AntiMicroX 配置",
+  "AntiMicroX profile of {player}": "{player} 的 AntiMicroX 配置",
+  "A profile (.amgp) for each controller, loaded while the game runs: player 1's on the first controller, player 2's on the second. Needs AntiMicroX installed.": "为每个控制器指定一个配置（.amgp），在游戏运行时加载：玩家 1 的用于第一个控制器，玩家 2 的用于第二个。需要安装 AntiMicroX。"
+}

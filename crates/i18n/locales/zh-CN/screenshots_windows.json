@@ -1,0 +1,6 @@
+{
+  "Shortcut registered with Windows and ready. The game's monitor is captured with DXGI Desktop Duplication.": "快捷键已在 Windows 中注册并可用。游戏所在的显示器通过 DXGI Desktop Duplication 捕获。",
+  "The shortcut {accelerator} could not be registered: {error}": "无法注册快捷键 {accelerator}：{error}",
+  "The shortcut {accelerator} is already used by another program": "快捷键 {accelerator} 已被其他程序占用",
+  "While a game runs, Windows hands this shortcut to Heronite alone: the game does not receive it, so pick keys the game does not use.": "游戏运行时，Windows 会把这个快捷键只交给 Heronite：游戏收不到它，因此请选择游戏没有用到的按键。"
+}

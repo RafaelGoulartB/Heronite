@@ -1,0 +1,8 @@
+{
+  "Default order": "默认顺序",
+  "Not unlocked": "未解锁",
+  "Unlocked": "已解锁",
+  "{percent} of players": "{percent} 的玩家",
+  "{unlocked} of {total} unlocked": "已解锁 {unlocked}/{total}",
+  "{unlocked} of {total} unlocked · last on {date}": "已解锁 {unlocked}/{total} · 最近于 {date}"
+}
