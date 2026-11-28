@@ -1,0 +1,9 @@
+{
+  "Could not load the save folders: {error}": "无法加载存档文件夹：{error}",
+  "Default folder": "默认文件夹",
+  "GOG lists these folders. They are kept in the game's settings (gogSaves).": "这些文件夹由 GOG 列出，保存在游戏设置（gogSaves）中。",
+  "GOG lists these folders. They are kept in the game's settings (gogSaves); refresh them after changing the Wine prefix.": "这些文件夹由 GOG 列出，保存在游戏设置（gogSaves）中；更改 Wine 前缀后请刷新。",
+  "Loading the save folders…": "正在加载存档文件夹…",
+  "Refresh locations": "刷新路径",
+  "Save folders": "存档文件夹"
+}

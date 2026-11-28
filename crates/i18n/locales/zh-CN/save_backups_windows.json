@@ -1,0 +1,9 @@
+{
+  "1. Download the Windows version (the file ending in -win64.zip).": "1. 下载 Windows 版本（文件名以 -win64.zip 结尾）。",
+  "2. Extract ludusavi.exe into %LOCALAPPDATA%\\Programs\\Ludusavi, or install it with winget install mtkennerly.ludusavi or scoop install ludusavi.": "2. 将 ludusavi.exe 解压到 %LOCALAPPDATA%\\Programs\\Ludusavi，或使用 winget install mtkennerly.ludusavi 或 scoop install ludusavi 安装。",
+  "Installed somewhere else? Set the program in Backup location & format.": "安装在别处？请在“备份位置与格式”中设置程序。",
+  "Linux paths, Wine registry files or a drive this PC does not have. They cannot be restored here.": "Linux 路径、Wine 注册表文件，或本机没有的驱动器。它们无法在此恢复。",
+  "No place on this PC": "本机没有对应位置",
+  "Nothing in this backup has a place on this PC.": "此备份中没有任何内容在本机有对应位置。",
+  "The Saves tab of each game lists the backups in these folders: the one new backups go to, and only the folders you add. It puts a backup back where the game keeps its saves on this PC, even one made by another Windows user, in another Steam library or on Linux.": "每个游戏的“存档”标签页会列出这些文件夹中的备份：新备份写入的那个文件夹，以及你添加的文件夹。它会把备份恢复到游戏在本机保存存档的位置，即使该备份来自其他 Windows 用户、另一个 Steam 库或 Linux。"
+}

@@ -117,7 +117,7 @@ fn date_text(ms: u64) -> String {
     let format = match heronite_i18n::current() {
         heronite_i18n::Lang::PtBr | heronite_i18n::Lang::Es | heronite_i18n::Lang::Fr => "%d/%m/%Y %H:%M",
         heronite_i18n::Lang::De => "%d.%m.%Y %H:%M",
-        heronite_i18n::Lang::En => "%Y-%m-%d %H:%M",
+        heronite_i18n::Lang::En | heronite_i18n::Lang::ZhCn => "%Y-%m-%d %H:%M",
     };
     Local.timestamp_millis_opt(ms as i64).single().map(|d| d.format(format).to_string()).unwrap_or_default()
 }

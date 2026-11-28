@@ -1,0 +1,23 @@
+{
+  "Connect EA account": "连接 EA 账户",
+  "Connected to your EA account": "已连接到你的 EA 账户",
+  "Could not keep the EA sign-in: {error}": "无法保存 EA 登录状态：{error}",
+  "Could not read your EA library: {error}. Your installed EA games are not affected.": "无法读取你的 EA 仓库：{error}。已安装的 EA 游戏不受影响。",
+  "Could not sign in to EA: {error}": "无法登录 EA：{error}",
+  "Disconnected. The games your EA account brought stay in your Collection.": "已断开连接。EA 账户带来的游戏仍保留在你的合集中。",
+  "EA account connected: {name}": "EA 账户已连接：{name}",
+  "EA account not connected": "EA 账户未连接",
+  "EA changed how its service answers, so your EA library cannot be read for now; a Heronite update may be needed. Your installed EA games are not affected.": "EA 更改了其服务的响应方式，因此暂时无法读取你的 EA 仓库；可能需要更新 Heronite。已安装的 EA 游戏不受影响。",
+  "EA did not finish the sign-in. Try again.": "EA 未完成登录。请重试。",
+  "EA ended the connection. Connect your EA account again to see the games you own that are not installed.": "EA 已结束连接。请重新连接 EA 账户，以查看你拥有但尚未安装的游戏。",
+  "Heronite signs in on EA's own page and only reads the list of your games: it never sees your password, and never buys, installs or changes anything in your account. If EA changes its service, your installed games keep showing as they do now.": "Heronite 在 EA 自己的页面上登录，只读取你的游戏列表：它始终看不到你的密码，也不会在你的账户中购买、安装或更改任何内容。如果 EA 更改其服务，已安装的游戏仍会像现在一样显示。",
+  "Optional, apart from the EA app's own sign-in above. Connect your EA account to also see the games you own that are not installed; they install through the EA app.": "可选，与上方 EA app 自身的登录相互独立。连接 EA 账户还可查看你拥有但尚未安装的游戏；它们通过 EA app 安装。",
+  "Read {n} game from your EA account.": "已从你的 EA 账户读取 {n} 个游戏。",
+  "Read {n} games from your EA account.": "已从你的 EA 账户读取 {n} 个游戏。",
+  "The login window (heronite-epic-login) was not found next to the app.": "未在应用旁边找到登录窗口（heronite-epic-login）。",
+  "The login window stopped unexpectedly. Try again.": "登录窗口意外关闭。请重试。",
+  "Wait for your EA account to finish, then try again.": "请等待 EA 账户处理完成，然后重试。",
+  "Your EA library": "你的 EA 仓库",
+  "{n} game on the account": "账户中有 {n} 个游戏",
+  "{n} games on the account": "账户中有 {n} 个游戏"
+}

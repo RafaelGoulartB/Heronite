@@ -1,0 +1,10 @@
+{
+  "A program, or a .bat, .cmd or .ps1 script": "程序，或 .bat、.cmd、.ps1 脚本",
+  "Adds its variables and arguments to this game": "将其变量和参数添加到此游戏",
+  "Adds its variables and arguments to this game, without duplicates.": "将其变量和参数添加到此游戏，并避免重复。",
+  "Nothing to save: add environment variables or game arguments first.": "没有可保存的内容：请先添加环境变量或游戏参数。",
+  "Saves this game's variables and arguments under a name, to reuse in other games.": "将此游戏的变量和参数以某个名称保存，以便在其他游戏中复用。",
+  "Steam starts the game itself, as from its library. Heronite runs these when you play from Heronite.": "Steam 会自行启动游戏，就像从 Steam 库中启动一样。当你从 Heronite 游玩时，由 Heronite 运行这些内容。",
+  "This game's variables and arguments, for other games": "此游戏的变量和参数，供其他游戏使用",
+  "Trainers and tools started with the game and closed with it.": "随游戏启动并随游戏关闭的修改器和工具。"
+}

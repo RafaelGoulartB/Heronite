@@ -1,0 +1,7 @@
+{
+  "Asks Steam for the tags of your games now and then.": "不时向 Steam 查询你游戏的标签。",
+  "Steam tag": "Steam 标签",
+  "Steam tags": "Steam 标签",
+  "Steam tags per game": "每个游戏的 Steam 标签",
+  "The tags Steam players voted for, for games on Steam (other stores' games too, once their metadata found them on Steam). Filter by them in the View menu; rename or remove one in Library fields. From the Steam Web API; Heronite is not affiliated with Valve.": "Steam 玩家投票选出的标签，适用于 Steam 上的游戏（其他商店的游戏在元数据于 Steam 上找到它们后也适用）。可在“视图”菜单中按标签筛选；在仓库字段中重命名或移除某个标签。数据来自 Steam Web API；Heronite 与 Valve 无关联。"
+}

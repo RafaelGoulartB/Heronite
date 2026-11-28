@@ -1,0 +1,18 @@
+{
+  "Add the Microsoft Store and PC Game Pass games installed on this PC": "添加本机已安装的 Microsoft Store 和 PC Game Pass 游戏",
+  "Could not open the Xbox app: {error}": "无法打开 Xbox 应用：{error}",
+  "Get the Xbox app": "获取 Xbox 应用",
+  "Install PC Game Pass and Microsoft Store games": "安装 PC Game Pass 和 Microsoft Store 游戏",
+  "Microsoft Store and PC Game Pass games": "Microsoft Store 和 PC Game Pass 游戏",
+  "Microsoft Store games run on Windows only": "Microsoft Store 游戏只能在 Windows 上运行",
+  "No games yet. Install them in the Xbox app or the Microsoft Store: they come into your Collection by themselves.": "还没有游戏。请在 Xbox 应用或 Microsoft Store 中安装：它们会自动出现在你的合集中。",
+  "Open the Xbox app": "打开 Xbox 应用",
+  "Read games now": "立即读取游戏",
+  "Read the Xbox games": "读取 Xbox 游戏",
+  "The Collection already has every game installed from the Xbox app.": "合集中已包含从 Xbox 应用安装的所有游戏。",
+  "The Xbox app was not found on this PC. Get it from the Microsoft Store to install PC Game Pass games; the games you installed from the Microsoft Store show up here anyway.": "本机未找到 Xbox 应用。请从 Microsoft Store 获取以安装 PC Game Pass 游戏；你从 Microsoft Store 安装的游戏仍会显示在这里。",
+  "Xbox app found": "已找到 Xbox 应用",
+  "Xbox app not found": "未找到 Xbox 应用",
+  "{n} game installed": "已安装 {n} 个游戏",
+  "{n} games installed": "已安装 {n} 个游戏"
+}

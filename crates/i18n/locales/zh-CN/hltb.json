@@ -1,0 +1,17 @@
+{
+  "Asks HowLongToBeat about the game you select, then again after a month.": "向你选择的游戏查询 HowLongToBeat，一个月后再查一次。",
+  "Change match…": "更改匹配…",
+  "Couldn't reach HowLongToBeat. Try again later.": "无法连接 HowLongToBeat。请稍后重试。",
+  "How long a game takes to beat, from howlongtobeat.com. Heronite is not affiliated with HowLongToBeat.": "通关一款游戏需要多久，数据来自 howlongtobeat.com。Heronite 与 HowLongToBeat 无关联。",
+  "HowLongToBeat has no times for this game.": "HowLongToBeat 没有此游戏的时长数据。",
+  "HowLongToBeat match": "HowLongToBeat 匹配",
+  "HowLongToBeat times updated.": "HowLongToBeat 时长已更新。",
+  "Match automatically": "自动匹配",
+  "Match picked by you": "你手动选择的匹配",
+  "Matched by a similar name": "按相似名称匹配",
+  "Matched by a similar name: {name}": "按相似名称匹配：{name}",
+  "No games found. Try another name.": "未找到游戏。请换个名称试试。",
+  "Not on HowLongToBeat": "HowLongToBeat 上没有",
+  "Pick the game the times are of. Your pick is kept when the times are refreshed.": "选择这些时长对应的游戏。刷新时长时会保留你的选择。",
+  "Search HowLongToBeat": "搜索 HowLongToBeat"
+}

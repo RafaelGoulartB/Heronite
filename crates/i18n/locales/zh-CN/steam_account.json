@@ -1,0 +1,7 @@
+{
+  "Another program on this PC uses port {port}, which Steam needs to let Heronite read your library. Close the program that uses it (a torrent client or a development server, for example) or change its port, then restart Steam.": "本机另一个程序占用了端口 {port}，而 Steam 需要它来让 Heronite 读取你的 Steam 库。请关闭占用该端口的程序（例如 BT 客户端或开发服务器），或更改其端口，然后重启 Steam。",
+  "Another program on this PC uses the port Steam needs to let Heronite in. The Steam page says which.": "本机另一个程序占用了 Steam 允许 Heronite 接入所需的端口。Steam 页面会显示是哪个端口。",
+  "Another program on this PC, {program}, uses port {port}, which Steam needs to let Heronite read your library. Close {program} or change its port, then restart Steam.": "本机另一个程序 {program} 占用了端口 {port}，而 Steam 需要它来让 Heronite 读取你的 Steam 库。请关闭 {program} 或更改其端口，然后重启 Steam。",
+  "From your Steam account": "来自你的 Steam 账户",
+  "Port in use": "端口被占用"
+}

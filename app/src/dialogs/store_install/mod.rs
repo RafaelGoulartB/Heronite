@@ -88,6 +88,7 @@ fn ui_language() -> &'static str {
         Lang::Es => "es-ES",
         Lang::De => "de-DE",
         Lang::Fr => "fr-FR",
+        Lang::ZhCn => "zh-CN",
     }
 }
 

@@ -1,0 +1,8 @@
+{
+  "Flatpak emulators do not run on Windows": "Flatpak 模拟器无法在 Windows 上运行",
+  "Looking in PATH and the usual folders…": "正在 PATH 和常用文件夹中查找…",
+  "Looks in PATH and the usual folders": "在 PATH 和常用文件夹中查找",
+  "No emulators were found on PATH or in the usual folders. Add one manually.": "在 PATH 和常用文件夹中都没有找到模拟器。请手动添加一个。",
+  "Programs kept in one folder": "集中放在一个文件夹中的程序",
+  "RetroArch core (.dll)": "RetroArch 核心（.dll）"
+}

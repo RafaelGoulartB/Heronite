@@ -1,0 +1,13 @@
+{
+  "Every field follows the list order": "所有字段均按列表顺序排列",
+  "Groups": "分组",
+  "No settings match.": "没有匹配的设置。",
+  "Sections and settings, by their names and descriptions.": "按名称和描述搜索分区与设置。",
+  "Turn on “{parent}” first": "请先开启“{parent}”",
+  "{n} field set by you": "你设置了 {n} 个字段",
+  "{n} fields set by you": "你设置了 {n} 个字段",
+  "{n} item": "{n} 项",
+  "{n} items": "{n} 项",
+  "{n} more setting": "还有 {n} 项设置",
+  "{n} more settings": "还有 {n} 项设置"
+}

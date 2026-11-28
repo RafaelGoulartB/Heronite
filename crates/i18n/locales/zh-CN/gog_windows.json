@@ -1,0 +1,18 @@
+{
+  "Add the games of GOG Galaxy": "添加 GOG Galaxy 中的游戏",
+  "Added {n} game from GOG Galaxy": "已从 GOG Galaxy 添加 {n} 个游戏",
+  "Added {n} games from GOG Galaxy": "已从 GOG Galaxy 添加 {n} 个游戏",
+  "Could not add the games of GOG Galaxy: {error}": "无法添加 GOG Galaxy 中的游戏：{error}",
+  "Could not move the game: {error}": "无法移动游戏：{error}",
+  "Could not run {program}: {error}": "无法运行 {program}：{error}",
+  "GOG Galaxy has no other games of your library": "GOG Galaxy 没有你仓库中的其他游戏",
+  "GOG Galaxy installed this game: move it in GOG Galaxy": "此游戏由 GOG Galaxy 安装：请在 GOG Galaxy 中移动",
+  "GOG Galaxy installed this game: repair it in GOG Galaxy": "此游戏由 GOG Galaxy 安装：请在 GOG Galaxy 中修复",
+  "GOG Galaxy installed this game: update it in GOG Galaxy": "此游戏由 GOG Galaxy 安装：请在 GOG Galaxy 中更新",
+  "Games of GOG Galaxy": "GOG Galaxy 中的游戏",
+  "Installing the game's requirements...": "正在安装游戏所需组件...",
+  "Its files stay where GOG Galaxy put them: uninstall it in GOG Galaxy to delete them.": "其文件仍保留在 GOG Galaxy 放置的位置：请在 GOG Galaxy 中卸载以删除它们。",
+  "Show the games GOG Galaxy installed on this PC as installed, without downloading them again. GOG Galaxy keeps updating them.": "将 GOG Galaxy 在本机安装的游戏显示为已安装，无需重新下载。GOG Galaxy 会继续更新它们。",
+  "{program} needs administrator rights: answer the Windows prompt": "{program} 需要管理员权限：请响应 Windows 的提示",
+  "{program} was not installed: the administrator prompt was declined. It is asked again at the next launch.": "{program} 未安装：管理员授权提示被拒绝。下次启动时会再次询问。"
+}

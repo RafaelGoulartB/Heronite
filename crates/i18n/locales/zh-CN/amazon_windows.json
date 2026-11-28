@@ -1,0 +1,16 @@
+{
+  "The game's files belong to the Amazon Games app and were left in {folder}. Uninstall it there to delete them.": "游戏文件属于 Amazon Games 应用，留在了 {folder}。请在该应用中卸载游戏以删除它们。",
+  "The game's files belong to the Amazon Games app: move the game there": "游戏文件属于 Amazon Games 应用：请在该应用中移动游戏",
+  "The Amazon Games app was not found on this PC": "本机未找到 Amazon Games 应用",
+  "{n} game of the Amazon Games app could not be added ({title}: {error})": "Amazon Games 应用的 {n} 个游戏无法添加（{title}：{error}）",
+  "{n} games of the Amazon Games app could not be added ({title}: {error})": "Amazon Games 应用的 {n} 个游戏无法添加（{title}：{error}）",
+  "Added {n} game from the Amazon Games app": "已从 Amazon Games 应用添加 {n} 个游戏",
+  "Added {n} games from the Amazon Games app": "已从 Amazon Games 应用添加 {n} 个游戏",
+  "The Amazon Games app has no other games to add": "Amazon Games 应用没有其他可添加的游戏",
+  "Could not add the games of the Amazon Games app: {error}": "无法添加 Amazon Games 应用中的游戏：{error}",
+  "Games of the Amazon Games app": "Amazon Games 应用中的游戏",
+  "Add the games the Amazon Games app installed on this PC, without downloading them again.": "添加 Amazon Games 应用在本机安装的游戏，无需重新下载。",
+  "Adding...": "正在添加...",
+  "Add games": "添加游戏",
+  "Add the games of the Amazon Games app": "添加 Amazon Games 应用中的游戏"
+}

@@ -1,0 +1,23 @@
+{
+  "Pick a random game": "随机选一个游戏",
+  "Pick a random installed game": "随机选一个已安装的游戏",
+  "Pick a random game you have not played": "随机选一个尚未游玩的游戏",
+  "Pick a random favourite": "随机选一个收藏",
+  "Pick a random game from the whole Collection": "从整个合集中随机选一个游戏",
+  "Pick a random game: {category}": "随机选一个游戏：{category}",
+  "Pick another": "换一个",
+  "No game to pick from": "没有可选的游戏",
+  "It is the only game to pick from": "这是唯一可选的游戏",
+  "From the {n} game on screen": "从屏幕上的 {n} 个游戏中选",
+  "From the {n} games on screen": "从屏幕上的 {n} 个游戏中选",
+  "From the whole Collection: {n} game": "从整个合集：{n} 个游戏",
+  "From the whole Collection: {n} games": "从整个合集：{n} 个游戏",
+  "From your {n} installed game": "从你已安装的 {n} 个游戏中选",
+  "From your {n} installed games": "从你已安装的 {n} 个游戏中选",
+  "From the {n} game you have not played": "从你尚未游玩的 {n} 个游戏中选",
+  "From the {n} games you have not played": "从你尚未游玩的 {n} 个游戏中选",
+  "From your {n} favourite": "从你的 {n} 个收藏中选",
+  "From your {n} favourites": "从你的 {n} 个收藏中选",
+  "From {name}: {n} game": "从 {name}：{n} 个游戏",
+  "From {name}: {n} games": "从 {name}：{n} 个游戏"
+}

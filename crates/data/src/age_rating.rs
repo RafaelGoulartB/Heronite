@@ -274,7 +274,7 @@ pub fn board_order(preference: &str, lang: Lang) -> Vec<RatingSystem> {
     let first = RatingSystem::parse(preference).unwrap_or(match lang {
         Lang::En => RatingSystem::Esrb,
         Lang::PtBr => RatingSystem::ClassInd,
-        Lang::Es | Lang::Fr => RatingSystem::Pegi,
+        Lang::Es | Lang::Fr | Lang::ZhCn => RatingSystem::Pegi,
         Lang::De => RatingSystem::Usk,
     });
     let mut order = vec![first];
